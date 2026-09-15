@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 132" fill="none">
+  <defs>
+    <linearGradient id="gold" x1="17" y1="7" x2="94" y2="122" gradientUnits="userSpaceOnUse"><stop stop-color="#fff1b6"/><stop offset=".3" stop-color="#d9a94e"/><stop offset=".72" stop-color="#80501f"/><stop offset="1" stop-color="#e7bf67"/></linearGradient>
+    <linearGradient id="iron" x1="16" y1="8" x2="95" y2="126" gradientUnits="userSpaceOnUse"><stop stop-color="#38444a"/><stop offset=".5" stop-color="#11181d"/><stop offset="1" stop-color="#030609"/></linearGradient>
+    <filter id="shadow" x="0" y="0" width="112" height="132" filterUnits="userSpaceOnUse"><feDropShadow dx="0" dy="6" stdDeviation="5" flood-opacity=".72"/></filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <path d="M56 3 101 17v47c0 27-16 49-45 64C27 113 11 91 11 64V17L56 3Z" fill="url(#iron)" stroke="url(#gold)" stroke-width="4"/>
+    <path d="M56 12 92 23v40c0 22-13 40-36 52-23-12-36-30-36-52V23l36-11Z" stroke="#e7bd64" stroke-opacity=".55" stroke-width="1.5"/>
+    <path d="M31 38 42 89l14-20 14 20 11-51-16 10-9-14-9 14-16-10Z" fill="url(#gold)" fill-opacity=".18"/>
+    <path d="m29 39 14 55 13-24 13 24 14-55-18 12-9-15-9 15-18-12Z" stroke="url(#gold)" stroke-width="2"/>
+    <path d="m34 43 10 37 12-20 12 20 10-37-13 9-9-14-9 14-13-9Z" fill="#d7aa4f" fill-opacity=".16"/>
+    <path d="M38 49h7l5 17 6-22 6 22 5-17h7l-10 35H48L38 49Z" fill="url(#gold)"/>
+  </g>
+</svg>

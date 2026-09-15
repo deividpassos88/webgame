@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 320" fill="none" preserveAspectRatio="xMidYMax meet">
+  <defs>
+    <linearGradient id="platform-stone" x1="480" y1="178" x2="480" y2="276" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5C6670" stop-opacity=".16"/>
+      <stop offset=".3" stop-color="#1A2228" stop-opacity=".44"/>
+      <stop offset="1" stop-color="#05090C" stop-opacity=".86"/>
+    </linearGradient>
+    <linearGradient id="platform-rim" x1="480" y1="207" x2="480" y2="310" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#DFBE70"/>
+      <stop offset=".12" stop-color="#7C663D"/>
+      <stop offset=".38" stop-color="#242A2C"/>
+      <stop offset=".72" stop-color="#0A0F12"/>
+      <stop offset="1" stop-color="#3C3220"/>
+    </linearGradient>
+    <linearGradient id="platform-edge" x1="480" y1="250" x2="480" y2="309" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#30383A"/>
+      <stop offset=".32" stop-color="#11181A"/>
+      <stop offset="1" stop-color="#030607"/>
+    </linearGradient>
+    <radialGradient id="platform-glow" cx="0" cy="0" r="1" gradientTransform="matrix(0 58 -253 0 480 224)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8C877" stop-opacity=".23"/>
+      <stop offset=".46" stop-color="#A88039" stop-opacity=".07"/>
+      <stop offset="1" stop-color="#0A1013" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="platform-crack" x1="160" y1="231" x2="799" y2="231" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A0E10" stop-opacity="0"/>
+      <stop offset=".16" stop-color="#0A0E10" stop-opacity=".82"/>
+      <stop offset=".5" stop-color="#A88A51" stop-opacity=".36"/>
+      <stop offset=".84" stop-color="#0A0E10" stop-opacity=".82"/>
+      <stop offset="1" stop-color="#0A0E10" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="platform-shadow" x="35" y="223" width="890" height="97" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="platform-metal" x="95" y="187" width="770" height="130" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="6" stdDeviation="4" flood-color="#000" flood-opacity=".72"/>
+      <feDropShadow dx="0" dy="-1" stdDeviation="1" flood-color="#F6D88B" flood-opacity=".2"/>
+    </filter>
+    <filter id="platform-rune" x="175" y="185" width="610" height="84" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation=".32"/>
+    </filter>
+  </defs>
+  <ellipse cx="480" cy="274" rx="408" ry="28" fill="#000" fill-opacity=".58" filter="url(#platform-shadow)"/>
+  <path d="M126 232C166 190 306 174 480 174C654 174 794 190 834 232L789 268C710 289 250 289 171 268L126 232Z" fill="url(#platform-stone)"/>
+  <path d="M126 232C166 190 306 174 480 174C654 174 794 190 834 232L789 268C710 289 250 289 171 268L126 232Z" fill="url(#platform-glow)"/>
+  <g filter="url(#platform-rune)">
+    <path d="M198 232C249 201 349 190 480 190C611 190 711 201 762 232" stroke="#D8B65C" stroke-opacity=".32" stroke-width="1.4"/>
+    <path d="M222 238C281 214 372 205 480 205C588 205 679 214 738 238" stroke="#080D10" stroke-opacity=".82" stroke-width="3"/>
+    <path d="M222 238C281 214 372 205 480 205C588 205 679 214 738 238" stroke="#C6A455" stroke-opacity=".19" stroke-width="1" stroke-dasharray="4 13"/>
+    <path d="M335 215v13l8 5m-8-5-8 5M415 204v14l8 5m-8-5-8 5M545 204v14l8 5m-8-5-8 5M625 215v13l8 5m-8-5-8 5" stroke="#D7B96D" stroke-opacity=".42" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M480 195l8 14-8 14-8-14 8-14ZM480 224l5 9-5 9-5-9 5-9Z" fill="#DCC06F" fill-opacity=".34"/>
+  </g>
+  <path d="M126 232L171 268C250 289 710 289 789 268L834 232L834 253L789 291C710 313 250 313 171 291L126 253V232Z" fill="url(#platform-edge)" filter="url(#platform-metal)"/>
+  <path d="M126 232C166 190 306 174 480 174C654 174 794 190 834 232L789 268C710 289 250 289 171 268L126 232Z" stroke="url(#platform-rim)" stroke-width="4" filter="url(#platform-metal)"/>
+  <path d="M140 236C211 261 310 272 480 272C650 272 749 261 820 236" stroke="#E2C171" stroke-opacity=".23" stroke-width="1.4"/>
+  <path d="M171 268C250 289 710 289 789 268" stroke="#B08D47" stroke-opacity=".36" stroke-width="1.2"/>
+  <path d="M190 256l57-13 45 11 63-18 59 18 66-20 66 20 58-18 64 18 46-11 57 13" stroke="url(#platform-crack)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M248 275l10 12m-10-12-12 6M712 275l-10 12m10-12 12 6M480 278v16" stroke="#C7A459" stroke-opacity=".32" stroke-width="1.4" stroke-linecap="round"/>
+  <g fill="#E1C071" fill-opacity=".52">
+    <circle cx="158" cy="247" r="2"/><circle cx="802" cy="247" r="2"/>
+    <circle cx="199" cy="272" r="1.6"/><circle cx="761" cy="272" r="1.6"/>
+  </g>
+</svg>

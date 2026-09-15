@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="Peitoral de aço envelhecido">
+ <defs><linearGradient id="m" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#dcd9cf"/><stop offset=".25" stop-color="#737b7e"/><stop offset=".55" stop-color="#252c31"/><stop offset=".82" stop-color="#929897"/><stop offset="1" stop-color="#191f24"/></linearGradient><filter id="s"><feDropShadow dy="5" stdDeviation="3" flood-opacity=".85"/></filter></defs>
+ <g filter="url(#s)" stroke="#151a1e" stroke-width="3" stroke-linejoin="round">
+  <path fill="url(#m)" d="m53 22-34 19 10 38 18-8-7 62c26 13 54 13 80 0l-7-62 18 8 10-38-34-19-12 15H65Z"/>
+  <path fill="#252c31" d="m53 22 12 15-14 20-24 14-8-30Zm54 0L95 37l14 20 24 14 8-30Z"/>
+  <path fill="#747b7d" d="M65 37h30l-4 21-11 10-11-10Z"/>
+  <path fill="#32393e" d="M51 58c17 9 41 9 58 0l4 27c-20 13-46 13-66 0Z"/>
+  <path fill="url(#m)" d="M47 85c20 10 46 10 66 0l4 31c-23 11-51 11-74 0Z"/>
+  <path fill="none" stroke="#d1cfc4" stroke-width="2" d="M55 66c16 6 34 6 50 0m-59 27c22 9 46 9 68 0m-70 24c24 9 48 9 72 0"/>
+  <path fill="#857352" d="M77 70h6v48h-6z"/>
+  <circle cx="80" cy="88" r="3" fill="#c3af7c"/>
+ </g>
+</svg>

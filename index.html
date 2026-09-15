@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dragon Miner - Dungeon Crawler</title>
+  <link rel="stylesheet" href="/src/style.css" />
+  <link rel="stylesheet" href="/src/styles/lobby-reference.css" />
+  <link rel="stylesheet" href="/src/styles/forge-reference.css" />
+  <link rel="stylesheet" href="/src/styles/skills-reference.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="game-canvas"></canvas>
+
+    <section id="class-select-screen" class="flow-screen hidden" aria-labelledby="class-select-title">
+      <header class="flow-masthead">
+        <span>Dragon Miner</span>
+        <span>Seleção de classe</span>
+      </header>
+      <div class="class-select-copy">
+        <p class="section-label">Primeiro acesso</p>
+        <h1 id="class-select-title">Escolha sua classe</h1>
+        <p>O Guerreiro entra equipado com espada e domina ataques de curto alcance.</p>
+      </div>
+      <button id="select-warrior" class="class-choice" type="button">
+        <span class="class-choice-index">01</span>
+        <span><strong>Guerreiro</strong><small>Arma inicial: Espada do Recruta</small></span>
+      </button>
+    </section>
+
+    <section id="lobby-screen" class="flow-screen hidden" aria-labelledby="lobby-title">
+      <div class="forge-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <header class="flow-masthead">
+        <div class="lobby-brand"><img class="warrior-crest" src="/assets/ui/lobby/user-pack/crest-w.png" alt=""><span><small>Fortaleza de Cinzafogo</small><strong id="lobby-title">Salão do Guerreiro</strong></span></div>
+        <nav class="lobby-tabs" aria-label="Seções do personagem">
+          <button type="button" data-lobby-tab="hero" aria-pressed="true"><img src="/assets/ui/lobby/user-pack/nav-hero.png" alt=""><span>Herói</span></button>
+          <button type="button" data-lobby-tab="inventory" aria-pressed="false"><img src="/assets/ui/lobby/user-pack/nav-inventory.png" alt=""><span>Inventário</span></button>
+          <button type="button" data-lobby-tab="skills" aria-pressed="false"><img src="/assets/ui/lobby/user-pack/nav-skills.png" alt=""><span>Skills</span></button>
+          <button type="button" data-lobby-tab="blacksmith" aria-pressed="false"><img src="/assets/ui/lobby/user-pack/nav-workshop.png" alt=""><span>Oficina</span></button>
+        </nav>
+        <div class="lobby-header-discipline" aria-hidden="true"><span>Disciplina</span><strong>Forja<br>lenda</strong></div>
+      </header>
+      <aside class="lobby-equipment" aria-labelledby="lobby-equipment-title">
+        <header class="lobby-equipment-heading"><p class="section-label">Equipamento</p><h2 id="lobby-equipment-title">Armadura e arma</h2></header>
+        <section id="lobby-equipment-panel" aria-label="Armadura e armas equipadas">
+          <div id="lobby-equipment-slots" class="equipment-grid"></div>
+        </section>
+        <section id="lobby-status-panel" aria-label="Status atual do Guerreiro">
+          <div id="lobby-current-status"></div>
+        </section>
+      </aside>
+      <main class="lobby-hero-stage" tabindex="0" aria-label="Prévia 3D do Guerreiro. Use as setas para girar e aproximar.">
+        <div class="hero-rank"><small>Classe selecionada</small><strong>Guerreiro</strong><span>Vanguarda • corpo a corpo • força</span></div>
+        <p class="hero-stage-quote" aria-hidden="true">A força<br>é a base<br>de todos<br>os caminhos.</p>
+        <aside class="hero-stage-banner" aria-hidden="true"><span></span><p>Mais que batalhas<br>forjamos lendas</p></aside>
+        <div class="hero-stage-platform" aria-hidden="true"></div>
+        <div class="hero-stage-marker"><span>Guerreiro</span><small>Arraste ou use ← → para girar · ↑ ↓ aproxima</small></div>
+      </main>
+      <aside class="lobby-detail-panel" data-lobby-view="inventory">
+        <section id="lobby-panel-hero" data-lobby-panel="hero">
+          <p class="section-label">Classe selecionada</p>
+          <h2>Guerreiro</h2>
+          <dl class="warrior-summary"><div><dt>Vida</dt><dd>100</dd></div><div><dt>Energia</dt><dd>50</dd></div><div><dt>Arma</dt><dd>Espada</dd></div></dl>
+        </section>
+        <section id="lobby-panel-inventory" data-lobby-panel="inventory">
+          <div class="panel-heading"><div class="inventory-heading-title"><img src="/assets/ui/lobby/user-pack/inventory-header-bag.png" alt=""><h2>Itens armazenados</h2></div><div class="lobby-backpack-heading-actions"><span id="lobby-capacity" tabindex="-1" aria-label="Capacidade do inventário">0 / 20</span><div id="lobby-backpack-actions"></div></div></div>
+          <div class="lobby-inventory-tools"><label><span class="lobby-search-icon" aria-hidden="true"></span><input id="lobby-inventory-search" type="search" placeholder="Buscar item..." autocomplete="off"></label><select id="lobby-inventory-filter" aria-label="Filtrar itens"><option value="all">Todos</option><option value="equipment">Equipamentos</option><option value="material">Materiais</option></select><span class="lobby-grid-icon" aria-hidden="true"></span></div>
+          <div id="lobby-backpack" class="inventory-grid compact-grid"></div>
+        </section>
+        <section id="lobby-panel-skills" data-lobby-panel="skills">
+          <p class="section-label">Progressão</p>
+          <h2>Cinco skills</h2>
+          <div id="lobby-skills" class="lobby-skill-list"></div>
+          <div id="lobby-hotkeys"></div>
+        </section>
+      </aside>
+      <footer class="lobby-footer">
+        <div class="lobby-footer-status"><img src="/assets/ui/lobby/user-pack/footer-helmet.png" alt=""><i aria-hidden="true"></i><span id="lobby-status" role="status">Espada inicial pronta<br><small>5 skills disponíveis</small></span></div><q>Guerreiros não nascem prontos.<br>Eles se constroem.</q>
+      </footer>
+      <div class="lobby-start-action">
+        <button id="start-game" class="primary-action" type="button"><small>Entrar na masmorra</small><strong>Iniciar partida</strong></button>
+      </div>
+    </section>
+
+    <section id="blacksmith-screen" class="flow-screen blacksmith-screen hidden" data-blacksmith-screen aria-labelledby="blacksmith-screen-title" aria-hidden="true"></section>
+
+    <section id="character-overlay" class="rpg-overlay character-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="character-title">
+      <header class="overlay-header">
+        <div><p id="character-eyebrow" class="section-label">Ficha do Guerreiro</p><h2 id="character-title">Equipamentos</h2></div>
+        <button type="button" data-close-overlay aria-label="Fechar ficha do personagem">Fechar</button>
+      </header>
+      <div class="character-panel" data-character-panel="equipment">
+        <section class="overlay-panel equipment-card"><p class="section-label">Armadura e armas</p><h3>Equipamento</h3><div id="inventory-equipment" class="equipment-grid equipment-silhouette"></div></section>
+        <div class="character-sheet-crest" aria-hidden="true"><span>W</span><strong>Guerreiro</strong><small>Vanguarda de Cinzafogo</small></div>
+        <aside class="overlay-panel equipment-note"><p class="section-label">Preparação</p><h3>Arsenal ativo</h3><p>Selecione a mochila para equipar peças conquistadas. A arma secundária permanece vazia para o Guerreiro.</p></aside>
+      </div>
+      <div class="character-panel hidden" data-character-panel="backpack">
+        <section class="overlay-panel backpack-card"><div class="panel-heading"><div><p class="section-label">Itens obtidos</p><h3>Mochila</h3></div><span id="inventory-capacity" tabindex="-1" aria-label="Capacidade da mochila">0 / 20</span></div><p class="backpack-copy">Clique em um item para inspecionar, ou equipe uma peça compatível.</p><div id="inventory-backpack"></div></section>
+      </div>
+      <div class="character-panel hidden" data-character-panel="status">
+        <section class="status-overview overlay-panel"><p class="section-label">Progresso da campanha</p><h3>Build do Guerreiro</h3><div class="status-metrics"><div><strong id="status-level">Nível 1</strong><span id="status-experience">0 / 100 XP</span></div><div class="attribute-budget"><strong id="status-attribute-points">0</strong><span>pontos disponíveis</span></div></div><p>Todo nível concede 5 pontos. Uma especialização pode chegar a 30; para passar disso, outro status também precisa atingir 30.</p></section>
+        <section class="overlay-panel status-controls-card"><p class="section-label">Distribuir pontos</p><div id="status-controls" class="attribute-controls" aria-label="Atributos do Guerreiro"></div><p id="status-gate-message" class="status-gate-message" role="status"></p></section>
+        <aside class="attribute-preview overlay-panel" aria-live="polite"><p class="section-label">Impacto atual</p><dl id="status-derived-stats"></dl><div class="attribute-reset"><strong>Reset futuro</strong><button type="button" disabled>5 USDT · indisponível</button><button type="button" disabled>1000 Guild Tokens · indisponível</button><small>O reset será ativado quando a integração de pagamento existir.</small></div></aside>
+      </div>
+      <p id="inventory-message" class="overlay-message" role="status"></p>
+      <section id="craft-item-inspector" class="craft-item-inspector hidden" role="dialog" aria-modal="true" aria-labelledby="craft-item-inspector-name" aria-describedby="craft-item-inspector-copy">
+        <button type="button" data-close-craft-inspector aria-label="Voltar para a mochila">Voltar</button>
+        <div class="craft-inspector-frame"><img data-craft-inspector-image alt=""><span class="craft-inspector-glint" aria-hidden="true"></span></div>
+        <p data-craft-inspector-rarity class="craft-inspector-rarity"></p>
+        <h3 id="craft-item-inspector-name" data-craft-inspector-name></h3>
+        <p id="craft-item-inspector-copy" data-craft-inspector-copy></p>
+        <output data-craft-inspector-quantity></output>
+      </section>
+    </section>
+
+
+    <div id="hud">
+      <div id="top-hud-stack">
+        <div id="anim-warning-banner" class="hidden">
+          <span id="anim-warning-text"></span>
+          <button id="anim-warning-close">✕</button>
+        </div>
+
+        <section id="wave-status" class="hidden" aria-live="polite" aria-atomic="true">
+          <h2 id="wave-title"></h2>
+          <p id="wave-detail"></p>
+        </section>
+
+        <div id="boss-health-container" class="hidden">
+          <div class="boss-name">DRAGON OVERLORD</div>
+          <div class="health-bar-bg boss-bar">
+            <div id="boss-health-fill" class="health-bar-fill boss-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <section id="animation-test-panel" class="hidden" aria-labelledby="animation-test-title">
+        <header>
+          <h2 id="animation-test-title">Teste de animações</h2>
+          <p id="animation-test-status" aria-live="polite">Selecione uma animação</p>
+        </header>
+        <div id="animation-test-controls"></div>
+      </section>
+
+      <aside id="gameplay-utility-dock" aria-label="Menus do personagem">
+        <button id="player-portrait" class="portrait player-portrait" type="button" data-open-equipment aria-label="Abrir equipamentos do Guerreiro"><span aria-hidden="true">W</span></button>
+        <div class="player-quick-status" aria-label="Vida e progressão do Guerreiro">
+          <div class="health-bar-bg resource-bar">
+            <div id="player-health-fill" class="health-bar-fill"></div>
+            <span id="player-health-text" class="bar-text">100%</span>
+          </div>
+          <div class="player-progression" aria-live="polite"><strong id="player-level">Nv. 1</strong><span id="player-stat-points">0 pontos</span></div>
+        </div>
+        <div class="hud-utility-actions">
+          <button class="hud-utility-button" type="button" data-open-backpack aria-label="Abrir mochila"><img src="/assets/ui/backpack-icon.png" alt=""><kbd>I</kbd></button>
+          <button class="hud-utility-button" type="button" data-open-status aria-label="Abrir status"><img src="/assets/ui/status-icon.png" alt=""><span>STATUS</span></button>
+        </div>
+      </aside>
+
+      <div id="bottom-hud">
+        <div class="bars player-vitals" aria-label="Experiência, mana e fadiga">
+          <div class="xp-bar-bg resource-bar">
+            <div id="player-xp-fill" class="xp-bar-fill"></div>
+            <span id="player-xp-text" class="bar-text">0%</span>
+          </div>
+          <div class="mana-bar-bg resource-bar">
+            <div id="player-mana-fill" class="mana-bar-fill"></div>
+            <span id="player-mana-text" class="bar-text">100%</span>
+          </div>
+          <div class="fatigue-bar-bg resource-bar">
+            <div id="player-fatigue-fill" class="fatigue-bar-fill"></div>
+            <span id="player-fatigue-text" class="bar-text">100%</span>
+          </div>
+        </div>
+      </div>
+      <div id="combat-actions" class="skills" aria-label="Ataques do Guerreiro"></div>
+
+      <aside id="craft-reward-notification" class="craft-reward-notification hidden" role="status" aria-live="polite" aria-atomic="true"></aside>
+
+      <div id="loading-screen">
+        <div class="loading-content">
+          <h1>DRAGON MINER</h1>
+          <div class="loading-bar-bg">
+            <div id="loading-bar-fill"></div>
+          </div>
+          <p id="loading-text">Carregando...</p>
+          <div id="loading-error" class="hidden"></div>
+          <button id="reload-btn" class="hidden">Recarregar página</button>
+        </div>
+      </div>
+
+      <div id="death-screen" class="hidden">
+        <h1>VOCÊ MORREU</h1>
+        <button id="respawn-btn">Renascer</button>
+      </div>
+
+      <section
+        id="victory-screen"
+        class="hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="victory-title"
+      >
+        <div class="victory-panel">
+          <h2 id="victory-title">Dungeon concluída</h2>
+          <button id="play-again-btn" type="button">Jogar novamente</button>
+        </div>
+      </section>
+
+      <section
+        id="reward-selection"
+        class="hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reward-selection-title"
+        aria-describedby="reward-selection-status"
+      >
+        <div class="reward-panel">
+          <p class="reward-kicker">ARSENAL · EQUIPAMENTO INICIAL</p>
+          <h2 id="reward-selection-title">Escolha sua arma</h2>
+          <div id="reward-options" class="reward-options"></div>
+          <p id="reward-selection-status" aria-live="polite"></p>
+          <button id="reward-continue" class="hidden" type="button">
+            Reiniciar partida
+          </button>
+        </div>
+      </section>
+
+      <div id="damage-log"></div>
+
+      <button id="debug-log-fab" title="Abrir logs (tecla `)">LOG</button>
+      <div id="debug-log-panel">
+        <div id="debug-log-header">
+          <span>LOGS DO JOGO</span>
+          <div class="debug-log-actions">
+            <button id="debug-log-export">Exportar .txt</button>
+            <button id="debug-log-clear">Limpar</button>
+            <button id="debug-log-close">✕</button>
+          </div>
+        </div>
+        <div id="debug-log-content"></div>
+      </div>
+    </div>
+
+    <!-- Popover contextual de item: filho DIRETO de #app (fora de #hud, que
+         cria stacking context z-index:10 e aplica pointer-events:none — ambos
+         deixariam o menu atrás do lobby #lobby-screen z-index:40 e não clicável).
+         Nenhum ancestral com transform/backdrop-filter, então position:fixed
+         funciona de verdade contra o viewport. -->
+    <section id="lobby-item-actions" class="lobby-item-actions hidden" role="menu" aria-labelledby="lobby-item-actions-title">
+      <header class="lobby-item-actions__header">
+        <div id="lobby-item-actions-art" class="lobby-item-actions__art" aria-hidden="true"></div>
+        <div class="lobby-item-actions__heading">
+          <p id="lobby-item-actions-title" class="lobby-item-actions__title"></p>
+          <p id="lobby-item-actions-state" class="lobby-item-actions__state"></p>
+        </div>
+        <button type="button" data-close-item-actions aria-label="Fechar ações do item">✕</button>
+      </header>
+      <div class="lobby-item-actions__details">
+        <p id="lobby-item-actions-description" class="lobby-item-actions__description"></p>
+        <p id="lobby-item-actions-stat" class="lobby-item-actions__stat"></p>
+      </div>
+      <div class="lobby-item-actions__list">
+        <button type="button" class="lobby-item-action is-equip" role="menuitem" data-item-action="equip">Equipar</button>
+        <button type="button" class="lobby-item-action is-upgrade" role="menuitem" data-item-action="upgrade">Aprimorar</button>
+        <button type="button" class="lobby-item-action is-destroy" role="menuitem" data-item-action="destroy">Destruir</button>
+      </div>
+      <div id="lobby-item-destroy-confirm" class="lobby-item-destroy-confirm hidden">
+        <p class="lobby-item-destroy-confirm__question">Destruir este item?</p>
+        <p id="lobby-item-destroy-name" class="lobby-item-destroy-confirm__name"></p>
+        <div class="lobby-item-destroy-confirm__actions">
+          <button type="button" data-destroy-cancel>Cancelar</button>
+          <button type="button" class="is-danger" data-destroy-confirm>Destruir</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

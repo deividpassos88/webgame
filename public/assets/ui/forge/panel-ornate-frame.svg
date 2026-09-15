@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 960" fill="none" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="forgeFrameGold" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#F4D98A"/>
+      <stop offset=".32" stop-color="#B98535"/>
+      <stop offset=".7" stop-color="#6D481F"/>
+      <stop offset="1" stop-color="#D3A64C"/>
+    </linearGradient>
+    <linearGradient id="forgeFrameIron" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#3E4C4B"/>
+      <stop offset=".5" stop-color="#121A1B"/>
+      <stop offset="1" stop-color="#05090A"/>
+    </linearGradient>
+    <radialGradient id="forgeEmber" cx=".5" cy=".5" r=".5">
+      <stop stop-color="#FFE2A0"/>
+      <stop offset=".26" stop-color="#E88B36"/>
+      <stop offset=".7" stop-color="#9E351B"/>
+      <stop offset="1" stop-color="#3B1511" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <path d="M28 88 74 42h114L224 8h272l36 34h114l46 46v142l-22 22v456l22 22v142l-46 46H532l-36 34H224l-36-34H74l-46-46V730l22-22V252L28 230Z" fill="url(#forgeFrameIron)" stroke="#050708" stroke-width="16"/>
+  <path d="M38 90 82 54h110l35-31h266l35 31h110l44 36v136l-24 25v458l24 25v136l-44 36H528l-35 31H227l-35-31H82l-44-36V734l24-25V251l-24-25Z" stroke="url(#forgeFrameGold)" stroke-width="4"/>
+  <path d="M72 116 105 83h96l40-38h238l40 38h96l33 33v107l-32 31v452l32 31v107l-33 33h-96l-40 38H241l-40-38h-96l-33-33V735l32-31V254l-32-31Z" stroke="#D6B25B" stroke-opacity=".58" stroke-width="2"/>
+  <path d="M82 108h70l20 22-20 22H88l-16-17 10-27ZM638 108h-70l-20 22 20 22h64l16-17-10-27ZM82 852h70l20-22-20-22H88l-16 17 10 27ZM638 852h-70l-20-22 20-22h64l16 17-10 27Z" fill="#151B1A" stroke="#B88936" stroke-width="3"/>
+  <path d="m122 82 14-26 14 26 26 14-26 14-14 26-14-26-26-14ZM598 82l14-26 14 26 26 14-26 14-14 26-14-26-26-14ZM122 878l14-26 14 26 26 14-26 14-14 26-14-26-26-14ZM598 878l14-26 14 26 26 14-26 14-14 26-14-26-26-14Z" fill="url(#forgeFrameGold)"/>
+  <path d="M286 28h148l-12 18h-124ZM286 932h148l-12-18h-124Z" fill="#21170F" stroke="#C79943" stroke-width="2"/>
+  <path d="M42 232h18v496H42ZM678 232h-18v496h18Z" fill="#1A1410" stroke="#9E7130" stroke-width="2"/>
+  <g opacity=".78">
+    <circle cx="47" cy="240" r="18" fill="url(#forgeEmber)"/>
+    <circle cx="673" cy="720" r="18" fill="url(#forgeEmber)"/>
+  </g>
+  <path d="M90 188h540M90 772h540" stroke="#D7B15B" stroke-opacity=".35" stroke-width="2"/>
+</svg>

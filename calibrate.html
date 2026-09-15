@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<title>Calibração offline</title>
+</head>
+<body>
+<div id="out">iniciando...</div>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+
+const out = [];
+const origLog = console.log;
+console.log = (...a) => { out.push(a.join(' ')); document.getElementById('out').textContent = out.join('\n'); };
+
+// cena mínima sem render
+const scene = new THREE.Scene();
+const loader = new GLTFLoader();
+const draco = new DRACOLoader();
+draco.setDecoderPath('/node_modules/three/examples/jsm/libs/draco/');
+loader.setDRACOLoader(draco);
+
+const charGltf = await loader.loadAsync('/models/Guerreiro/guerreiro_animado.glb');
+const character = charGltf.scene;
+scene.add(character);
+let socketBone = null;
+character.traverse(o => { if (!socketBone && o.isBone && o.name==='mixamorigRightHand') socketBone = o; });
+
+function computeLocalBounds(rootObject) {
+  const box = new THREE.Box3();
+  rootObject.updateMatrixWorld(true);
+  let found = false;
+  rootObject.traverse((o) => {
+    if (!o.isMesh || !o.geometry || !o.geometry.boundingBox) return;
+    found = true;
+    const g = o.geometry.boundingBox.clone();
+    const rel = new THREE.Matrix4().copy(o.matrixWorld)
+      .premultiply(new THREE.Matrix4().copy(rootObject.matrixWorld).invert());
+    g.applyMatrix4(rel);
+    box.union(g);
+  });
+  return found ? box : null;
+}
+
+async function loadWeapon(path, desiredLength, gripFraction) {
+  const g = await loader.loadAsync(path);
+  const model = g.scene;
+  model.updateMatrixWorld(true);
+  return { model, desiredLength, gripFraction };
+}
+
+function buildPivot(socketBone, w, rotationDeg) {
+  const model = w.model.clone(true);
+  model.updateMatrixWorld(true);
+  const bounds = computeLocalBounds(model);
+  const size = bounds.getSize(new THREE.Vector3());
+  const longest = Math.max(size.x, size.y, size.z);
+  const axis = size.x >= size.y && size.x >= size.z ? 'x' : size.y >= size.z ? 'y' : 'z';
+  const grip = bounds.getCenter(new THREE.Vector3());
+  grip[axis] = bounds.min[axis] + size[axis]*w.gripFraction;
+  model.position.sub(grip);
+  model.updateMatrixWorld(true);
+  const toPivot = (p) => p.clone().applyMatrix4(model.matrixWorld);
+  const tipPoint = bounds.getCenter(new THREE.Vector3()); tipPoint[axis]=bounds.max[axis];
+  const buttPoint = bounds.getCenter(new THREE.Vector3()); buttPoint[axis]=bounds.min[axis];
+  const tipL = toPivot(tipPoint), buttL = toPivot(buttPoint);
+  const sws = socketBone.getWorldScale(new THREE.Vector3());
+  const s = w.desiredLength / longest;
+  const pivot = new THREE.Group();
+  pivot.scale.set(s/Math.max(Math.abs(sws.x),1e-4), s/Math.max(Math.abs(sws.y),1e-4), s/Math.max(Math.abs(sws.z),1e-4));
+  const r = Math.PI/180;
+  pivot.rotation.set(rotationDeg[0]*r, rotationDeg[1]*r, rotationDeg[2]*r);
+  pivot.position.set(0,0,0);
+  pivot.add(model);
+  socketBone.add(pivot);
+  character.updateMatrixWorld(true);
+  pivot.updateMatrixWorld(true);
+  return { pivot, tipL, buttL };
+}
+
+function evaluate(socketBone, pivot, tipL, buttL) {
+  character.updateMatrixWorld(true);
+  pivot.updateMatrixWorld(true);
+  const hp = socketBone.getWorldPosition(new THREE.Vector3());
+  const tipW = pivot.localToWorld(tipL.clone());
+  const buttW = pivot.localToWorld(buttL.clone());
+  const blade = tipW.clone().sub(buttW).normalize();
+  const vertical = blade.dot(new THREE.Vector3(0,1,0));
+  const ab = tipW.clone().sub(buttW);
+  const t = THREE.MathUtils.clamp(hp.clone().sub(buttW).dot(ab)/ab.lengthSq(), 0, 1);
+  const closest = buttW.clone().addScaledVector(ab, t);
+  return { score: vertical*2 - hp.distanceTo(closest)*1.5, tipW, buttW };
+}
+
+// aplica Idle t=0
+const mixer = new THREE.AnimationMixer(character);
+const idleClip = charGltf.animations.find(c=>/^idle$/i.test(c.name));
+const action = mixer.clipAction(idleClip);
+action.play(); action.time=0; mixer.update(0);
+character.updateMatrixWorld(true);
+
+const sword = await loadWeapon('/models/sword.glb', 1.35, 0.12);
+const axe   = await loadWeapon('/models/axe.glb', 0.9, 0.12);
+
+for (const [name, w] of [['SWORD', sword], ['AXE', axe]]) {
+  let best=null, bestScore=-Infinity;
+  for (let rx=-180; rx<=180; rx+=15)
+    for (let ry=-180; ry<=180; ry+=15)
+      for (let rz=-180; rz<=180; rz+=15) {
+        // remove pivot anterior
+        const prev = socketBone.children.find(c=>c.type==='Group');
+        if (prev) prev.removeFromParent();
+        const { pivot, tipL, buttL } = buildPivot(socketBone, w, [rx,ry,rz]);
+        const { score } = evaluate(socketBone, pivot, tipL, buttL);
+        if (score > bestScore) { bestScore = score; best=[rx,ry,rz]; }
+      }
+  let finer=null, finerScore=-Infinity;
+  for (let dx=-10; dx<=10; dx+=5)
+    for (let dy=-10; dy<=10; dy+=5)
+      for (let dz=-10; dz<=10; dz+=5) {
+        const rx=Math.max(-180,Math.min(180,best[0]+dx));
+        const ry=Math.max(-180,Math.min(180,best[1]+dy));
+        const rz=Math.max(-180,Math.min(180,best[2]+dz));
+        const prev = socketBone.children.find(c=>c.type==='Group');
+        if (prev) prev.removeFromParent();
+        const { pivot, tipL, buttL } = buildPivot(socketBone, w, [rx,ry,rz]);
+        const { score } = evaluate(socketBone, pivot, tipL, buttL);
+        if (score > finerScore) { finerScore=score; finer=[rx,ry,rz]; }
+      }
+  const win = finerScore>bestScore?finer:best;
+  const winScore = finerScore>bestScore?finerScore:bestScore;
+  // monta final para medição
+  const prev = socketBone.children.find(c=>c.type==='Group');
+  if (prev) prev.removeFromParent();
+  const fin = buildPivot(socketBone, w, win);
+  const res = evaluate(socketBone, fin.pivot, fin.tipL, fin.buttL);
+  const r=Math.PI/180;
+  console.log(`=== ${name} ===`);
+  console.log(`rotation graus: [${win[0]}, ${win[1]}, ${win[2]}]`);
+  console.log(`rotation rad: [${(win[0]*r).toFixed(4)}, ${(win[1]*r).toFixed(4)}, ${(win[2]*r).toFixed(4)}]`);
+  console.log(`score=${winScore.toFixed(3)} ponta=(${res.tipW.x.toFixed(2)},${res.tipW.y.toFixed(2)},${res.tipW.z.toFixed(2)}) cabo=(${res.buttW.x.toFixed(2)},${res.buttW.y.toFixed(2)},${res.buttW.z.toFixed(2)}) mão=(${socketBone.getWorldPosition(new THREE.Vector3()).x.toFixed(2)},${socketBone.getWorldPosition(new THREE.Vector3()).y.toFixed(2)},${socketBone.getWorldPosition(new THREE.Vector3()).z.toFixed(2)})`);
+}
+console.log('=== FIM ===');
+document.getElementById('out').textContent = out.join('\n');
+</script>
+</body>
+</html>

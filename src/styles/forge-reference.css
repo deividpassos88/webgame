@@ -1,0 +1,951 @@
+/* Forja de Cinzafogo: uma pele visual isolada sobre a rota funcional existente. */
+
+#blacksmith-screen {
+  --forge-ink: #090d0d;
+  --forge-panel: #111817;
+  --forge-panel-deep: #0b1010;
+  --forge-steel: #273434;
+  --forge-gold: #d7ae59;
+  --forge-gold-bright: #f2d98f;
+  --forge-parchment: #e9dcc0;
+  --forge-muted: #a99e88;
+  --forge-ember: #dc642e;
+  --forge-green: #a8c77a;
+  --forge-red: #d76b5b;
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  overflow: auto;
+  color: var(--forge-parchment);
+  background:
+    radial-gradient(circle at 18% 39%, rgba(194, 74, 24, .18), transparent 24rem),
+    radial-gradient(circle at 77% 21%, rgba(102, 127, 128, .12), transparent 26rem),
+    linear-gradient(115deg, rgba(5, 8, 9, .9), rgba(12, 18, 18, .82)),
+    #080b0b;
+  font-family: Georgia, 'Times New Roman', serif;
+  isolation: isolate;
+}
+
+#blacksmith-screen::before,
+#blacksmith-screen::after {
+  content: '';
+  position: fixed;
+  pointer-events: none;
+  z-index: -1;
+}
+
+#blacksmith-screen::before {
+  inset: 0;
+  opacity: .5;
+  background-image:
+    linear-gradient(rgba(218, 176, 88, .04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(218, 176, 88, .025) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(ellipse at center, #000, transparent 76%);
+}
+
+#blacksmith-screen::after {
+  inset: 16px;
+  border: 1px solid rgba(215, 174, 89, .46);
+  box-shadow: inset 0 0 0 5px rgba(5, 8, 9, .82), inset 0 0 0 6px rgba(215, 174, 89, .16);
+}
+
+#blacksmith-screen .forge-frame { inset: 22px; z-index: 2; opacity: .58; }
+#blacksmith-screen .forge-frame::before { border-color: rgba(215, 174, 89, .3); }
+#blacksmith-screen .forge-frame::after { border-color: rgba(91, 68, 36, .72); }
+
+#blacksmith-screen .workshop-masthead {
+  position: relative;
+  z-index: 4;
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px clamp(34px, 5vw, 94px);
+  border-bottom: 1px solid rgba(215, 174, 89, .62);
+  background:
+    linear-gradient(90deg, rgba(7, 11, 12, .97), rgba(13, 20, 20, .86) 52%, rgba(7, 11, 12, .97)),
+    repeating-linear-gradient(0deg, transparent 0 4px, rgba(255,255,255,.018) 5px 6px);
+  box-shadow: 0 8px 24px rgba(0,0,0,.48);
+}
+
+#blacksmith-screen .workshop-masthead::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  width: 112px;
+  height: 12px;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, transparent, var(--forge-gold) 22%, var(--forge-gold-bright) 50%, var(--forge-gold) 78%, transparent);
+  clip-path: polygon(0 50%, 29% 0, 50% 35%, 71% 0, 100% 50%, 71% 100%, 50% 65%, 29% 100%);
+}
+
+#blacksmith-screen .workshop-masthead > div { position: relative; display: grid; gap: 3px; padding-left: 59px; }
+#blacksmith-screen .workshop-masthead > div::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 47px;
+  height: 47px;
+  transform: translateY(-50%);
+  background: url('/assets/ui/forge/anvil-crest.svg') center / contain no-repeat;
+}
+#blacksmith-screen .section-label {
+  margin: 0;
+  color: var(--forge-gold);
+  font: 700 10px/1 Consolas, 'Courier New', monospace;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+#blacksmith-screen .workshop-masthead h1 {
+  margin: 0;
+  color: #f4e6c1;
+  font: 700 clamp(28px, 3vw, 45px)/1 Georgia, serif;
+  letter-spacing: .025em;
+  text-shadow: 0 2px 14px rgba(0,0,0,.85);
+}
+
+#blacksmith-screen button {
+  min-height: 38px;
+  border: 1px solid rgba(215, 174, 89, .76);
+  color: var(--forge-parchment);
+  background: linear-gradient(180deg, rgba(45, 51, 47, .92), rgba(12, 17, 17, .96));
+  box-shadow: inset 0 0 0 2px rgba(3, 6, 6, .5), 0 5px 12px rgba(0,0,0,.28);
+  font: 700 12px/1.1 Georgia, serif;
+  letter-spacing: .025em;
+  cursor: pointer;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease;
+}
+#blacksmith-screen button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--forge-gold-bright);
+  color: #fff0c6;
+  box-shadow: inset 0 0 18px rgba(213, 151, 48, .16), 0 7px 17px rgba(0,0,0,.4);
+}
+#blacksmith-screen button:focus-visible {
+  outline: 2px solid #fff1b2;
+  outline-offset: 3px;
+}
+#blacksmith-screen button:disabled,
+#blacksmith-screen button[aria-disabled='true'] { cursor: not-allowed; opacity: .52; }
+#blacksmith-screen [data-back-from-blacksmith] { padding: 11px 17px; white-space: nowrap; }
+
+#blacksmith-screen .workshop-layout {
+  position: relative;
+  z-index: 3;
+  align-self: start;
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(340px, .96fr);
+  grid-template-areas: 'conversation equipment' 'recipes recipes';
+  gap: 18px;
+  width: min(1540px, calc(100% - clamp(42px, 7vw, 170px)));
+  margin: 27px auto 54px;
+}
+
+#blacksmith-screen .workshop-conversation,
+#blacksmith-screen .workshop-equipment,
+#blacksmith-screen .workshop-recipes {
+  position: relative;
+  border: 1px solid rgba(167, 136, 72, .6);
+  background:
+    linear-gradient(rgba(8, 13, 13, .86), rgba(8, 13, 13, .86)),
+    url('/assets/ui/forge/panel-ornate-frame.svg') center / 100% 100% no-repeat,
+    linear-gradient(145deg, rgba(25, 34, 33, .92), rgba(7, 12, 12, .96)),
+    var(--forge-panel);
+  box-shadow: inset 0 0 0 4px rgba(2, 5, 5, .56), inset 0 0 32px rgba(172, 110, 36, .04), 0 18px 40px rgba(0,0,0,.32);
+}
+#blacksmith-screen .workshop-conversation::before,
+#blacksmith-screen .workshop-equipment::before,
+#blacksmith-screen .workshop-recipes::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  pointer-events: none;
+  border: 1px solid rgba(215, 174, 89, .19);
+  clip-path: polygon(0 18px,18px 0,calc(100% - 18px) 0,100% 18px,100% calc(100% - 18px),calc(100% - 18px) 100%,18px 100%,0 calc(100% - 18px));
+}
+
+#blacksmith-screen .workshop-conversation { grid-area: conversation; min-height: 0; padding: clamp(16px, 2vw, 28px); }
+#blacksmith-screen .workshop-equipment { grid-area: equipment; min-height: 0; padding: clamp(22px, 2vw, 32px); }
+#blacksmith-screen .workshop-recipes { grid-area: recipes; min-height: 0; padding: clamp(20px, 2vw, 32px); }
+
+#blacksmith-screen .workshop-conversation,
+#blacksmith-screen .workshop-equipment {
+  display: block;
+}
+
+#blacksmith-screen .workshop-conversation .blacksmith-scene {
+  flex: none;
+  min-height: 0;
+}
+
+#blacksmith-screen .blacksmith-scene {
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 18px;
+  border: 1px solid rgba(215, 174, 89, .72);
+  background:
+    linear-gradient(180deg, rgba(8,8,7,.02) 45%, rgba(6,8,8,.84)),
+    url('/blacksmith/forge-bench-background.png') center/cover,
+    #100b08;
+  box-shadow: inset 0 0 34px #020303, 0 10px 22px rgba(0,0,0,.36);
+}
+#blacksmith-screen .blacksmith-scene::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: radial-gradient(ellipse at 48% 83%, rgba(242,104,28,.28), transparent 36%), linear-gradient(90deg, rgba(1,3,3,.48), transparent 23% 78%, rgba(1,3,3,.54));
+}
+#blacksmith-screen .blacksmith-scene__viewport { width: 100%; aspect-ratio: 1.47 / 1; min-height: 275px; }
+#blacksmith-screen .blacksmith-scene__canvas { position: relative; z-index: 1; display: block; width: 100%; height: 100%; }
+#blacksmith-screen .blacksmith-scene__fallback { display: grid; place-items: center; height: 100%; color: rgba(239,218,168,.55); font-style: italic; }
+#blacksmith-screen .blacksmith-scene figcaption {
+  position: relative;
+  z-index: 3;
+  margin: 0;
+  padding: 10px 13px;
+  border-top: 1px solid rgba(215, 174, 89, .48);
+  color: var(--forge-gold-bright);
+  background: rgba(5,9,9,.88);
+  font: 700 11px/1.35 Consolas, 'Courier New', monospace;
+}
+
+#blacksmith-screen .workshop-conversation h2,
+#blacksmith-screen .workshop-equipment h2,
+#blacksmith-screen .workshop-recipes h2 {
+  position: relative;
+  margin: 7px 0 9px;
+  color: #f1e4c7;
+  font: 700 clamp(22px, 2vw, 31px)/1.08 Georgia, serif;
+}
+#blacksmith-screen .workshop-conversation > p:not(.section-label):not(.workshop-message) { max-width: 53ch; margin: 0; color: var(--forge-muted); line-height: 1.55; }
+#blacksmith-screen .workshop-message { min-height: 1.3em; margin: 12px 0 0; color: var(--forge-gold-bright); font-size: 13px; }
+
+#blacksmith-screen .blacksmith-actions { display: grid; gap: 8px; margin-top: 18px; max-width: 520px; }
+#blacksmith-screen .blacksmith-actions button { min-height: 47px; padding: 11px 15px; text-align: left; }
+#blacksmith-screen .blacksmith-actions button:first-child { border-color: var(--forge-gold); background: linear-gradient(110deg, #3e2d15, #8d5a21 50%, #241b11); color: #fff0c2; }
+#blacksmith-screen .blacksmith-actions button strong,
+#blacksmith-screen .blacksmith-actions button small { display: block; }
+#blacksmith-screen .blacksmith-actions button small { margin-top: 3px; color: #d7c396; font: 11px/1.2 Consolas, monospace; }
+
+#blacksmith-screen .equipment-grid { display: grid; grid-template-columns: repeat(4, minmax(72px, 1fr)); gap: 9px; margin-top: 15px; }
+#blacksmith-screen .equipment-grid .equipment-slot {
+  position: relative;
+  display: grid;
+  aspect-ratio: auto;
+  min-height: 105px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(110, 136, 135, .54);
+  background: linear-gradient(145deg, rgba(25,36,36,.9), rgba(6,11,11,.96));
+  box-shadow: inset 0 0 0 3px rgba(3,6,6,.65);
+}
+#blacksmith-screen .equipment-grid .equipment-slot:last-child { grid-column: span 2; }
+#blacksmith-screen .equipment-grid .equipment-slot::after { display: none; }
+#blacksmith-screen .equipment-grid .equipment-slot.is-equipped { border-color: var(--forge-gold); box-shadow: inset 0 0 20px rgba(210,146,39,.18), 0 0 12px rgba(202,127,35,.1); }
+#blacksmith-screen .equipment-grid .equipment-slot img { max-width: 66%; max-height: 65%; object-fit: contain; }
+
+#blacksmith-screen .workshop-backpack { margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(215, 174, 89, .36); }
+#blacksmith-screen .workshop-backpack header { display: flex; align-items: end; justify-content: space-between; gap: 10px; }
+#blacksmith-screen .workshop-backpack h3 { margin: 5px 0 0; color: #f1e4c7; font-size: 16px; }
+#blacksmith-screen .workshop-backpack output { color: var(--forge-gold-bright); font: 700 12px Consolas, monospace; }
+#blacksmith-screen .workshop-backpack-grid { display: grid; grid-template-columns: repeat(6, minmax(38px, 1fr)); gap: 6px; margin-top: 12px; }
+#blacksmith-screen .workshop-backpack-item { display: grid; min-height: 49px; place-items: center; padding: 2px; border-color: rgba(109,134,132,.47); }
+#blacksmith-screen .workshop-backpack-item img { width: 73%; height: 73%; object-fit: contain; }
+#blacksmith-screen .workshop-backpack-item.is-selected { border-color: var(--forge-gold-bright); box-shadow: inset 0 0 13px rgba(211,165,73,.24); }
+#blacksmith-screen .workshop-item-inspector { display: flex; gap: 10px; align-items: center; margin-top: 10px; padding: 9px; border: 1px solid rgba(215,174,89,.35); background: rgba(4,8,8,.6); }
+#blacksmith-screen .workshop-item-inspector > div { width: 45px; height: 45px; display: grid; place-items: center; }
+#blacksmith-screen .workshop-item-inspector img { max-width: 100%; max-height: 100%; object-fit: contain; }
+#blacksmith-screen .workshop-item-inspector span { display: grid; gap: 2px; min-width: 0; }
+#blacksmith-screen .workshop-item-inspector strong { color: var(--forge-gold-bright); font-size: 13px; }
+#blacksmith-screen .workshop-item-inspector small { color: var(--forge-muted); line-height: 1.25; }
+#blacksmith-screen .workshop-item-inspector em { color: var(--forge-green); font: 11px Consolas, monospace; font-style: normal; }
+
+#blacksmith-screen .workshop-recipes > header { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 17px; padding-bottom: 13px; border-bottom: 1px solid rgba(215,174,89,.38); }
+#blacksmith-screen .workshop-recipes > header::after { content: ''; width: 148px; height: 22px; margin-left: auto; background: url('/assets/ui/forge/forge-divider.svg') center / contain no-repeat; }
+#blacksmith-screen .workshop-recipes > header h2 { margin-bottom: 0; }
+#blacksmith-screen .workshop-recipes__locked-copy { margin: 0; color: var(--forge-muted); }
+#blacksmith-screen .blacksmith-recipes { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+#blacksmith-screen .blacksmith-recipe {
+  position: relative;
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(105,127,125,.58);
+  background: linear-gradient(135deg, rgba(30,39,38,.89), rgba(7,12,12,.95));
+}
+#blacksmith-screen .blacksmith-recipe.is-ready { border-color: rgba(215,174,89,.86); box-shadow: inset 0 0 18px rgba(193,129,30,.1); }
+#blacksmith-screen .blacksmith-recipe.is-forging { animation: forge-pulse 1.1s ease-in-out infinite alternate; }
+#blacksmith-screen .blacksmith-recipe__art { width: 58px; height: 58px; object-fit: contain; filter: drop-shadow(0 5px 5px rgba(0,0,0,.55)); }
+#blacksmith-screen .blacksmith-recipe__content { min-width: 0; }
+#blacksmith-screen .blacksmith-recipe__heading { display: block; }
+#blacksmith-screen .blacksmith-recipe h3 { margin: 0; color: #f1e4c7; font: 700 15px/1.08 Georgia, serif; }
+#blacksmith-screen .blacksmith-recipe__heading p { min-height: 2.2em; margin: 4px 0 0; color: var(--forge-muted); font-size: 11px; line-height: 1.15; }
+#blacksmith-screen .blacksmith-recipe__heading > span { display: block; margin-top: 5px; color: var(--forge-red); font: 700 9px/1 Consolas, monospace; text-transform: uppercase; }
+#blacksmith-screen .blacksmith-recipe.is-ready .blacksmith-recipe__heading > span { color: var(--forge-green); }
+#blacksmith-screen .blacksmith-ingredients { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin: 10px 0 0; padding: 0; list-style: none; }
+#blacksmith-screen .blacksmith-ingredient { display: flex; min-width: 0; align-items: center; gap: 4px; color: #b9b1a0; font-size: 9px; line-height: 1.05; }
+#blacksmith-screen .blacksmith-ingredient img { width: 17px; height: 17px; flex: none; object-fit: contain; }
+#blacksmith-screen .blacksmith-ingredient span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#blacksmith-screen .blacksmith-ingredient small { display: block; color: inherit; font: 700 8px Consolas, monospace; }
+#blacksmith-screen .blacksmith-ingredient.is-available { color: var(--forge-green); }
+#blacksmith-screen .blacksmith-ingredient.is-missing { color: var(--forge-red); }
+#blacksmith-screen .blacksmith-recipe > button { grid-column: 1 / -1; min-height: 34px; padding: 7px 7px 7px 32px; color: #fff0c2; background: url('/assets/ui/forge/hammer-anvil-cta.svg') 9px center / 17px 17px no-repeat, linear-gradient(90deg, #302413, #7d4e1a, #302413); }
+
+#blacksmith-screen .workshop-craft-notification { position: fixed; z-index: 10; top: 110px; left: 50%; display: grid; gap: 3px; min-width: min(390px, calc(100vw - 44px)); padding: 14px 22px; transform: translateX(-50%); border: 1px solid var(--forge-gold-bright); color: #ffefbc; background: linear-gradient(105deg, #18130b, #694519, #18130b); box-shadow: 0 13px 34px rgba(0,0,0,.6), 0 0 28px rgba(239,154,40,.18); text-align: center; }
+#blacksmith-screen .workshop-craft-notification span { color: var(--forge-gold-bright); font: 700 10px Consolas, monospace; letter-spacing: .14em; text-transform: uppercase; }
+#blacksmith-screen .workshop-craft-notification strong { font-size: 20px; }
+#blacksmith-screen .workshop-craft-notification small { color: #e1ceb1; }
+
+@keyframes forge-pulse { from { box-shadow: inset 0 0 11px rgba(196,81,24,.1); } to { box-shadow: inset 0 0 29px rgba(240,104,23,.34), 0 0 18px rgba(218,99,24,.18); } }
+
+@media (max-width: 1260px) {
+  #blacksmith-screen .workshop-layout { width: min(1120px, calc(100% - 50px)); }
+  #blacksmith-screen .blacksmith-recipes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 820px) {
+  #blacksmith-screen .workshop-masthead { min-height: 78px; padding: 14px 24px; }
+  #blacksmith-screen .workshop-masthead h1 { font-size: 28px; }
+  html body #blacksmith-screen .workshop-layout { display: block !important; width: min(660px, calc(100% - 28px)); height: auto !important; min-height: 0 !important; margin-top: 19px; }
+  #blacksmith-screen .workshop-conversation,
+  #blacksmith-screen .workshop-equipment,
+  #blacksmith-screen .workshop-recipes { display: block; height: auto; margin-bottom: 12px; }
+  #blacksmith-screen .blacksmith-recipes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #blacksmith-screen .blacksmith-scene__viewport { min-height: 230px; }
+}
+
+@media (max-width: 520px) {
+  #blacksmith-screen::after { inset: 7px; }
+  #blacksmith-screen .forge-frame { inset: 10px; }
+  #blacksmith-screen .workshop-masthead { align-items: flex-start; gap: 13px; padding: 15px 18px; }
+  #blacksmith-screen .workshop-masthead h1 { font-size: 23px; }
+  #blacksmith-screen [data-back-from-blacksmith] { padding: 9px; font-size: 10px; }
+  #blacksmith-screen .workshop-layout { width: calc(100% - 22px); gap: 12px; margin-bottom: 24px; }
+  #blacksmith-screen .workshop-conversation, #blacksmith-screen .workshop-equipment, #blacksmith-screen .workshop-recipes { padding: 17px; }
+  #blacksmith-screen .equipment-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #blacksmith-screen .blacksmith-recipes { grid-template-columns: 1fr; }
+  #blacksmith-screen .blacksmith-recipe { grid-template-columns: 54px minmax(0, 1fr); }
+  #blacksmith-screen .workshop-backpack-grid { grid-template-columns: repeat(5, minmax(38px, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #blacksmith-screen *, #blacksmith-screen *::before, #blacksmith-screen *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
+
+/* Two-column workshop console: one continuous scene and one bounded tool window. */
+@media (min-width: 821px) {
+  html body #blacksmith-screen {
+    overflow: hidden;
+  }
+
+  html body #blacksmith-screen .workshop-layout {
+    grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
+    grid-template-areas: 'conversation equipment';
+    align-items: stretch;
+    height: calc(100dvh - 145px);
+    width: calc(100% - 64px);
+    min-height: 0;
+    max-width: none;
+    max-height: none;
+    gap: 20px;
+    padding: 18px 0 22px;
+    margin-block: 24px 25px;
+  }
+
+  html body #blacksmith-screen .workshop-conversation,
+  html body #blacksmith-screen .workshop-equipment {
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+  }
+
+  html body #blacksmith-screen .workshop-conversation {
+    display: flex;
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  html body #blacksmith-screen .workshop-conversation .blacksmith-scene {
+    display: flex;
+    flex: 1 1 auto;
+    align-self: stretch;
+    width: 100%;
+    min-height: 420px;
+    flex-direction: column;
+    margin-bottom: 14px;
+  }
+
+  html body #blacksmith-screen .blacksmith-scene__viewport {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    aspect-ratio: auto;
+  }
+
+  html body #blacksmith-screen .workshop-equipment {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 18px 20px;
+  }
+
+  html body #blacksmith-screen .workshop-recipes {
+    grid-area: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  html body #blacksmith-screen .workshop-recipes::before {
+    display: none;
+  }
+}
+
+#blacksmith-screen .workshop-tabs {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  flex: none;
+  gap: 7px;
+  padding: 7px;
+  border: 1px solid rgba(215, 174, 89, .34);
+  background: rgba(3, 7, 7, .76);
+}
+
+#blacksmith-screen .workshop-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#blacksmith-screen .workshop-tabs button::before {
+  width: 21px;
+  height: 21px;
+  flex: none;
+  background-position: center;
+  background-size: contain;
+  background-repeat: no-repeat;
+  content: '';
+  opacity: .82;
+  filter: sepia(.45) saturate(1.35) brightness(1.22) drop-shadow(0 2px 2px #000);
+}
+
+#blacksmith-screen .workshop-tabs button[data-workshop-tab='equipment']::before {
+  background-image: url('/assets/ui/lobby/icon-hero.svg');
+}
+
+#blacksmith-screen .workshop-tabs button[data-workshop-tab='inventory']::before {
+  background-image: url('/assets/ui/lobby/icon-inventory.svg');
+}
+
+#blacksmith-screen .workshop-tabs button[data-workshop-tab='craft']::before {
+  background-image: url('/assets/ui/forge/hammer-anvil-cta.svg');
+}
+
+#blacksmith-screen .workshop-tabs button[aria-selected='true'] {
+  color: #fff0c2;
+  border-color: var(--forge-gold-bright);
+  background: linear-gradient(180deg, #79501f, #362511);
+  box-shadow: inset 0 0 16px rgba(255, 204, 104, .16);
+}
+
+#blacksmith-screen .workshop-tab-body {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 10px;
+  overflow: hidden;
+  border-top: 1px solid rgba(215, 174, 89, .18);
+  background: rgba(2, 7, 7, .2);
+}
+
+#blacksmith-screen .workshop-tab-panel {
+  height: 100%;
+  min-height: 0;
+  padding: 18px 16px 20px;
+  overflow: auto;
+  scrollbar-color: rgba(215, 174, 89, .72) rgba(3, 7, 7, .65);
+  scrollbar-width: thin;
+}
+
+#blacksmith-screen .workshop-tab-panel[hidden] {
+  display: none !important;
+}
+
+#blacksmith-screen .workshop-tab-panel > .section-label:first-child {
+  margin-top: 2px;
+}
+
+#blacksmith-screen .workshop-tab-panel > h2 {
+  margin-top: 6px;
+}
+
+#blacksmith-screen .workshop-tab-panel .equipment-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 13px;
+}
+
+#blacksmith-screen .workshop-tab-panel .equipment-slot {
+  min-height: clamp(126px, 15vh, 154px);
+}
+
+#blacksmith-screen .workshop-tab-panel .equipment-slot:last-child {
+  grid-column: 2 / span 2;
+}
+
+#blacksmith-screen .workshop-tab-panel .workshop-backpack {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+#blacksmith-screen .workshop-tab-panel .workshop-backpack-grid {
+  grid-template-columns: repeat(6, minmax(58px, 1fr));
+  gap: 10px;
+}
+
+#blacksmith-screen .workshop-tab-panel .workshop-backpack-item {
+  min-height: 78px;
+}
+
+#blacksmith-screen .workshop-tab-panel .blacksmith-recipes {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 1100px) and (min-width: 821px) {
+  html body #blacksmith-screen .workshop-layout {
+    grid-template-columns: minmax(410px, 1fr) minmax(410px, 1fr);
+    width: calc(100% - 44px);
+  }
+
+  #blacksmith-screen .workshop-tab-panel .equipment-slot {
+    min-height: 104px;
+  }
+
+  #blacksmith-screen .workshop-tab-panel .blacksmith-recipes {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Final refinement: the forge scene owns the left column and its dialogue. */
+@media (min-width: 821px) {
+  html body #blacksmith-screen .workshop-layout {
+    grid-template-columns: minmax(0, 56fr) minmax(0, 44fr);
+    gap: 18px;
+    width: calc(100% - 72px);
+    height: calc(100dvh - 131px);
+    padding-block: 14px 18px;
+    margin-block: 18px 21px;
+  }
+
+  html body #blacksmith-screen .workshop-conversation {
+    padding: 10px;
+    background: rgba(3, 7, 7, .84);
+  }
+
+  html body #blacksmith-screen .workshop-conversation::before,
+  html body #blacksmith-screen .workshop-equipment::before {
+    display: none;
+  }
+
+  html body #blacksmith-screen .workshop-conversation .blacksmith-scene {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    border-color: rgba(215, 174, 89, .58);
+  }
+
+  html body #blacksmith-screen .blacksmith-scene__viewport {
+    position: absolute;
+    inset: 0;
+  }
+
+  html body #blacksmith-screen .blacksmith-scene__dialogue {
+    position: absolute;
+    z-index: 4;
+    right: 18px;
+    bottom: 18px;
+    left: 18px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 46%);
+    grid-template-areas: 'caption choices' 'message choices';
+    gap: 5px 16px;
+    align-items: end;
+    padding: 12px 14px;
+    border: 1px solid rgba(220, 177, 87, .62);
+    background: linear-gradient(100deg, rgba(3, 7, 7, .95), rgba(8, 12, 12, .88));
+    box-shadow: 0 12px 28px rgba(0, 0, 0, .5), inset 0 1px rgba(255, 226, 159, .08);
+  }
+
+  html body #blacksmith-screen .blacksmith-scene__dialogue figcaption {
+    grid-area: caption;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 10px;
+  }
+
+  html body #blacksmith-screen .blacksmith-scene__choices {
+    grid-area: choices;
+    min-width: 0;
+  }
+
+  html body #blacksmith-screen .blacksmith-scene__choices .section-label {
+    margin-bottom: 3px;
+    font-size: 8px;
+  }
+
+  html body #blacksmith-screen .blacksmith-scene__choices h2 {
+    margin: 0 0 8px;
+    font-size: clamp(17px, 1.25vw, 22px);
+  }
+
+  html body #blacksmith-screen .blacksmith-scene__choices > p:not(.section-label) {
+    margin: 0 0 8px;
+    color: var(--forge-muted);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  html body #blacksmith-screen .blacksmith-scene__choices .blacksmith-actions {
+    gap: 5px;
+    margin: 0;
+  }
+
+  html body #blacksmith-screen .blacksmith-scene__choices .blacksmith-actions button {
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+
+  html body #blacksmith-screen .blacksmith-scene__choices .blacksmith-actions button small {
+    font-size: 9px;
+  }
+
+  html body #blacksmith-screen .blacksmith-scene__dialogue .workshop-message {
+    grid-area: message;
+    min-height: 1em;
+    margin: 0;
+    font-size: 10px;
+  }
+
+  html body #blacksmith-screen .workshop-equipment {
+    padding: 10px 12px 12px;
+    background: linear-gradient(145deg, rgba(13, 20, 20, .96), rgba(3, 8, 8, .98));
+  }
+
+  html body #blacksmith-screen .workshop-tabs {
+    gap: 5px;
+    padding: 5px;
+  }
+
+  html body #blacksmith-screen .workshop-tabs button {
+    min-height: 40px;
+    gap: 6px;
+    padding: 6px 5px;
+    font-size: 11px;
+  }
+
+  html body #blacksmith-screen .workshop-tabs button::before {
+    width: 17px;
+    height: 17px;
+  }
+
+  html body #blacksmith-screen .workshop-tab-body {
+    margin-top: 7px;
+    border: 1px solid rgba(215, 174, 89, .16);
+    background: rgba(2, 7, 7, .32);
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel {
+    padding: 14px;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel > h2 {
+    margin-block: 4px 10px;
+    font-size: clamp(20px, 1.55vw, 26px);
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .equipment-grid {
+    grid-template-columns: repeat(4, 112px);
+    justify-content: center;
+    gap: 9px;
+    margin-top: 10px;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot,
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:last-child {
+    grid-column: auto;
+    width: 112px;
+    height: 112px;
+    min-height: 112px;
+    aspect-ratio: 1;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:last-child {
+    grid-column: 3;
+    justify-self: center;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot img {
+    width: 72%;
+    height: 72%;
+    max-width: 72%;
+    max-height: 72%;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .workshop-backpack-grid {
+    grid-template-columns: repeat(auto-fill, 64px);
+    justify-content: start;
+    gap: 8px;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .workshop-backpack-item {
+    width: 64px;
+    height: 64px;
+    min-height: 64px;
+    aspect-ratio: 1;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .workshop-backpack-empty {
+    display: block;
+    width: 64px;
+    height: 64px;
+    border: 1px solid rgba(109, 134, 132, .28);
+    background: linear-gradient(145deg, rgba(18, 27, 27, .52), rgba(4, 9, 9, .72));
+    box-shadow: inset 0 0 0 3px rgba(2, 6, 6, .52);
+  }
+
+  html body #blacksmith-screen .workshop-item-inspector {
+    max-width: 440px;
+    margin-top: 12px;
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 821px) {
+  html body #blacksmith-screen .workshop-tab-panel .equipment-grid {
+    grid-template-columns: repeat(3, 96px);
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot,
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:last-child {
+    width: 96px;
+    height: 96px;
+    min-height: 96px;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:last-child {
+    grid-column: 2;
+  }
+}
+
+/* Round two: compact utility panels, controlled grids and readable recipes. */
+@media (min-width: 821px) {
+  html body #blacksmith-screen[data-workshop-panel='equipment'] .workshop-equipment,
+  html body #blacksmith-screen[data-workshop-panel='inventory'] .workshop-equipment {
+    align-self: center;
+    height: auto;
+  }
+
+  html body #blacksmith-screen[data-workshop-panel='equipment'] .workshop-tab-body,
+  html body #blacksmith-screen[data-workshop-panel='inventory'] .workshop-tab-body {
+    flex: none;
+    height: auto;
+    overflow: visible;
+  }
+
+  html body #blacksmith-screen[data-workshop-panel='inventory'] .workshop-tab-body {
+    height: 310px;
+  }
+
+  html body #blacksmith-screen[data-workshop-panel='equipment'] .workshop-tab-panel,
+  html body #blacksmith-screen[data-workshop-panel='inventory'] .workshop-tab-panel {
+    height: auto;
+    overflow: visible;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .equipment-grid {
+    grid-template-columns: repeat(4, 100px);
+    gap: 8px;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot,
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:last-child {
+    width: 100px;
+    height: 100px;
+    min-height: 100px;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:nth-child(5),
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:nth-child(6),
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:nth-child(7) {
+    transform: translateX(54px);
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:nth-child(5) { grid-column: 1; }
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:nth-child(6) { grid-column: 2; }
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:nth-child(7) { grid-column: 3; }
+
+  html body #blacksmith-screen .workshop-tab-panel .workshop-backpack-grid {
+    grid-template-columns: repeat(7, 64px);
+    width: max-content;
+    max-width: 100%;
+    overflow: visible;
+  }
+
+  html body #blacksmith-screen[data-workshop-panel='craft'] .workshop-equipment,
+  html body #blacksmith-screen[data-workshop-panel='craft'] .workshop-tab-body {
+    height: 100%;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .blacksmith-recipes {
+    grid-auto-rows: auto;
+    align-items: stretch;
+  }
+
+  html body #blacksmith-screen .blacksmith-recipe {
+    align-content: start;
+    min-height: 268px;
+  }
+
+  html body #blacksmith-screen .blacksmith-recipe h3 {
+    min-height: 2.3em;
+    font-size: 14px;
+    line-height: 1.15;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  html body #blacksmith-screen .blacksmith-recipe__heading p {
+    min-height: 2.3em;
+    font-size: 10px;
+    line-height: 1.2;
+  }
+
+  html body #blacksmith-screen .blacksmith-ingredients {
+    align-content: start;
+  }
+
+  html body #blacksmith-screen .blacksmith-ingredient {
+    min-height: 32px;
+    align-items: center;
+    font-size: 8px;
+    line-height: 1.15;
+  }
+
+  html body #blacksmith-screen .blacksmith-ingredient span {
+    display: grid;
+    align-content: center;
+    min-height: 2.3em;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 821px) {
+  html body #blacksmith-screen .workshop-tab-panel .equipment-grid {
+    grid-template-columns: repeat(4, 96px);
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot,
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:last-child {
+    width: 96px;
+    height: 96px;
+    min-height: 96px;
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:nth-child(5),
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:nth-child(6),
+  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:nth-child(7) {
+    transform: translateX(52px);
+  }
+
+  html body #blacksmith-screen .workshop-tab-panel .workshop-backpack-grid {
+    grid-template-columns: repeat(6, 64px);
+  }
+
+  html body #blacksmith-screen[data-workshop-panel='inventory'] .workshop-tab-body {
+    height: 382px;
+  }
+}
+
+@media (max-width: 820px) {
+  #blacksmith-screen .workshop-equipment {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #blacksmith-screen .workshop-tab-body,
+  #blacksmith-screen .workshop-tab-panel {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  #blacksmith-screen .workshop-tab-panel .equipment-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  #blacksmith-screen .workshop-tab-panel .equipment-slot:last-child {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 520px) {
+  #blacksmith-screen .workshop-tabs {
+    gap: 4px;
+    padding: 5px;
+  }
+
+  #blacksmith-screen .workshop-tabs button {
+    min-height: 42px;
+    gap: 3px;
+    padding-inline: 2px;
+    font-size: 8px;
+  }
+
+  #blacksmith-screen .workshop-tabs button::before {
+    width: 14px;
+    height: 14px;
+  }
+
+  #blacksmith-screen .workshop-tab-panel {
+    padding-inline: 3px;
+  }
+
+  #blacksmith-screen .workshop-tab-panel .equipment-slot {
+    min-height: 92px;
+  }
+
+  #blacksmith-screen .workshop-tab-panel .workshop-backpack-grid {
+    grid-template-columns: repeat(4, minmax(48px, 1fr));
+  }
+
+  #blacksmith-screen .workshop-tab-panel .blacksmith-recipes {
+    grid-template-columns: 1fr;
+  }
+}

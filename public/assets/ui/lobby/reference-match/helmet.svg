@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="Elmo de aço envelhecido">
+ <defs><linearGradient id="m" x1=".12" y1=".08" x2=".88" y2=".92"><stop stop-color="#e5e0d2"/><stop offset=".22" stop-color="#848b8c"/><stop offset=".52" stop-color="#2d353b"/><stop offset=".76" stop-color="#9ca1a0"/><stop offset="1" stop-color="#171d22"/></linearGradient><linearGradient id="e" x1="0" x2="1"><stop stop-color="#2a3035"/><stop offset=".48" stop-color="#d5d2c7"/><stop offset="1" stop-color="#343a3e"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000" flood-opacity=".8"/></filter></defs>
+ <g filter="url(#s)" stroke="#11171b" stroke-width="3" stroke-linejoin="round">
+  <path fill="url(#m)" d="M80 14c-29 4-44 26-43 59l8 47 23 22 12-27 12 27 23-22 8-47c1-33-14-55-43-59Z"/>
+  <path fill="#1a2025" d="M42 71h29l9 12 9-12h29l-3 18-25 5-10 17-10-17-25-5Z"/>
+  <path fill="url(#e)" d="M75 17h10l5 74-10 19-10-19Z"/>
+  <path fill="#6c7476" d="m45 66 13-25 16-14-7 38Zm70 0-13-25-16-14 7 38Z"/>
+  <path fill="none" stroke="#d8d5c9" stroke-width="2" d="M44 68c2-22 14-39 31-45m41 45c-2-22-14-39-31-45"/>
+  <path fill="#252c31" d="m37 79 11 8 4 37-13-10Zm86 0-11 8-4 37 13-10Z"/>
+  <path fill="none" stroke="#716043" stroke-width="2" d="m49 100 10 4m52-4-10 4M76 34l8-3M74 54l12-4"/>
+ </g>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 150" preserveAspectRatio="none" aria-hidden="true">
+ <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#c49a58"/><stop offset=".18" stop-color="#8f642c"/><stop offset=".52" stop-color="#553517"/><stop offset=".82" stop-color="#996b30"/><stop offset="1" stop-color="#2c1b0d"/></linearGradient><linearGradient id="rim"><stop stop-color="#6b451f"/><stop offset=".48" stop-color="#e0b96c"/><stop offset="1" stop-color="#5a3717"/></linearGradient><filter id="s"><feDropShadow dy="6" stdDeviation="5" flood-color="#000" flood-opacity=".85"/></filter></defs>
+ <g fill-rule="evenodd">
+  <path fill="#17120d" stroke="#65451f" stroke-width="4" d="M58 14h644l24 26 25 8-15 27 15 27-25 8-24 26H58l-24-26-25-8 15-27L9 48l25-8Z"/>
+  <path fill="url(#g)" stroke="url(#rim)" stroke-width="5" d="M76 26h608l32 49-32 49H76L44 75Z"/>
+  <path fill="none" stroke="#e2bc72" stroke-opacity=".7" stroke-width="2" d="M84 34h592l26 41-26 41H84L58 75Z"/>
+  <path fill="#24170c" stroke="#9c7138" stroke-width="2" d="m35 40 12 20 17 15-17 15-12 20-3-27-16-8 16-8Zm690 0-12 20-17 15 17 15 12 20 3-27 16-8-16-8Z"/>
+  <path fill="#b88a48" d="m38 54 6 15 13 6-13 6-6 15-3-17-11-4 11-4Zm684 0-6 15-13 6 13 6 6 15 3-17 11-4-11-4Z"/>
+  <path fill="#36220f" d="m380 15 10 12-10 12-10-12Zm0 96 10 12-10 12-10-12Z"/>
+  <path fill="none" stroke="#c99b50" stroke-width="2" d="M96 42h568M96 108h568" opacity=".45"/>
+ </g>
+</svg>

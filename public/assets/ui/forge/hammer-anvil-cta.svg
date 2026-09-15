@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 96" fill="none">
+  <defs>
+    <linearGradient id="ctaGold" x1="22" y1="6" x2="101" y2="87" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF0B0"/>
+      <stop offset=".35" stop-color="#D8A74A"/>
+      <stop offset="1" stop-color="#80521F"/>
+    </linearGradient>
+    <linearGradient id="ctaIron" x1="25" y1="43" x2="93" y2="83" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6A7672"/>
+      <stop offset=".48" stop-color="#1B2423"/>
+      <stop offset="1" stop-color="#070B0C"/>
+    </linearGradient>
+  </defs>
+  <path d="m47 12 10-8 12 12-8 10-7-7-25 25-8-8Z" fill="url(#ctaGold)" stroke="#F2CE76" stroke-width="2" stroke-linejoin="round"/>
+  <path d="m24 43 8 8-6 7-9-9Z" fill="#563820" stroke="#D5A54A" stroke-width="2"/>
+  <path d="m43 48 11 11-20 22-11-11Z" fill="#6A4120" stroke="#DDB35B" stroke-width="2"/>
+  <path d="M22 60h32l8-8h34l-8 10H67l-6 7h31l8 9H60l-8 8H28l8-9H18Z" fill="url(#ctaIron)" stroke="url(#ctaGold)" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M44 86h42l-7 6H51Z" fill="#111817" stroke="#AD7A31" stroke-width="2"/>
+  <path d="m96 17 4 8 8 4-8 4-4 8-4-8-8-4 8-4Z" fill="#EAC164"/>
+  <circle cx="101" cy="48" r="3" fill="#E46D2C"/>
+</svg>

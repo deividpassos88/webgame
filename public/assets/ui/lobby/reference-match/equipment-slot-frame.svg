@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" preserveAspectRatio="none" aria-hidden="true">
+ <defs><linearGradient id="r"><stop stop-color="#282e31"/><stop offset=".45" stop-color="#9c8a68"/><stop offset=".62" stop-color="#3c4141"/><stop offset="1" stop-color="#171c20"/></linearGradient><filter id="s"><feDropShadow dy="3" stdDeviation="2" flood-opacity=".8"/></filter></defs>
+ <g filter="url(#s)" fill="none" stroke-linejoin="round">
+  <rect x="10" y="10" width="160" height="160" rx="3" fill="#11171b" fill-opacity=".28" stroke="#0b0f12" stroke-width="8"/>
+  <rect x="12" y="12" width="156" height="156" rx="2" stroke="url(#r)" stroke-width="3"/>
+  <rect x="19" y="19" width="142" height="142" stroke="#75664c" stroke-opacity=".55"/>
+  <g fill="#252b2e" stroke="#8b7653" stroke-width="2"><path d="M12 43V12h31l-9 8 10 5-19 5 5 19-10-10Z"/><path d="M168 43V12h-31l9 8-10 5 19 5-5 19 10-10Z"/><path d="M12 137v31h31l-9-8 10-5-19-5 5-19-10 10Z"/><path d="M168 137v31h-31l9-8-10-5 19-5-5-19 10 10Z"/></g>
+  <path stroke="#c09a5d" stroke-opacity=".55" d="m19 32 13-13m129 13-13-13M19 148l13 13m129-13-13 13"/>
+ </g>
+</svg>

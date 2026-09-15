@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<title>Calibração Manual de Armas</title>
+<style>
+  body { margin: 0; background: #111; color: #eee; font-family: monospace; }
+  #panel { position: fixed; top: 8px; left: 8px; z-index: 10; background: rgba(0,0,0,.85); padding: 12px; width: 560px; font-size: 13px; border: 1px solid #444; border-radius: 8px; }
+  h3 { margin: 4px 0 8px 0; }
+  .row { margin: 6px 0; }
+  .slider-row { display: flex; align-items: center; gap: 8px; }
+  .slider-row label { width: 52px; }
+  .slider-row input { flex: 1; }
+  .slider-row .val { width: 60px; text-align: right; color: #ffd97a; }
+  button { margin: 2px; padding: 6px 12px; font-size: 14px; cursor: pointer; }
+  .tab { padding: 8px 18px; font-weight: bold; }
+  .tab.active { background: #ffd97a; color: #000; }
+  #savedBox { background: #122; border: 1px dashed #666; padding: 8px; margin-top: 10px; white-space: pre-wrap; font-size: 12px; }
+  .saved-ok { color: #7f7; }
+  .pending { color: #f88; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h3>🔧 CALIBRAÇÃO MANUAL DE ARMAS — guerreiro_animado</h3>
+
+  <div class="row">
+    <button class="tab active" id="tab-sword">🗡️ ESPADA</button>
+    <button class="tab" id="tab-axe">🪓 MACHADO</button>
+  </div>
+
+  <div class="slider-row"><label>rot X</label><input type="range" min="-180" max="180" step="1" data-axis="rx"><span class="val"></span></div>
+  <div class="slider-row"><label>rot Y</label><input type="range" min="-180" max="180" step="1" data-axis="ry"><span class="val"></span></div>
+  <div class="slider-row"><label>rot Z</label><input type="range" min="-180" max="180" step="1" data-axis="rz"><span class="val"></span></div>
+  <div class="slider-row"><label>off X</label><input type="range" min="-50" max="50" step="1" data-axis="ox"><span class="val"></span></div>
+  <div class="slider-row"><label>off Y</label><input type="range" min="-50" max="50" step="1" data-axis="oy"><span class="val"></span></div>
+  <div class="slider-row"><label>off Z</label><input type="range" min="-50" max="50" step="1" data-axis="oz"><span class="val"></span></div>
+
+  <div class="row">
+    <button id="b-save">💾 1. SALVAR ESTA ARMA</button>
+    <button id="b-copy">📋 MOSTRAR CÓDIGO TS</button>
+  </div>
+  <div class="row">Testar animação:
+    <button class="anim">Parado</button>
+    <button class="anim">Correr</button>
+    <button class="anim">Ataque</button>
+  </div>
+
+  <div id="savedBox">Nada salvo ainda.</div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2a2a3a);
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.05, 100);
+camera.position.set(2.2, 1.9, 3.6);
+camera.lookAt(0, 1.15, 0);
+scene.add(new THREE.AmbientLight(0xffffff, 1.8));
+const d = new THREE.DirectionalLight(0xffffff, 2);
+d.position.set(3, 6, 4);
+scene.add(d);
+scene.add(new THREE.GridHelper(10, 20));
+
+const loader = new GLTFLoader();
+const draco = new DRACOLoader();
+draco.setDecoderPath('/node_modules/three/examples/jsm/libs/draco/');
+loader.setDRACOLoader(draco);
+
+// estado por arma (graus / centésimos de metro)
+// valores iniciais = rotação atual do jogo
+const store = {
+  sword: { rot: [-165, -105, 15], off: [0, 0, 0], saved: false },
+  axe:   { rot: [-165, -105, 15], off: [0, 0, 0], saved: false },
+};
+try {
+  const s = JSON.parse(localStorage.getItem('weapon-calibration') || 'null');
+  if (s) Object.assign(store.sword, s.sword), Object.assign(store.axe, s.axe);
+} catch {}
+
+let currentId = 'sword';
+let socketBone = null, pivot = null, character = null, mixer = null;
+let allClips = [];
+let tipL = null, buttL = null;
+const WEAPON_PATHS = {
+  sword: '/models/sword.glb',
+  axe: '/models/axe.glb',
+};
+const GRIP_FRACTION = 0.12;
+const DESIRED_LENGTH = { sword: 1.35, axe: 0.9 };
+
+function computeLocalBounds(rootObject) {
+  const box = new THREE.Box3();
+  rootObject.updateMatrixWorld(true);
+  let found = false;
+  rootObject.traverse((o) => {
+    if (!o.isMesh || !o.geometry || !o.geometry.boundingBox) return;
+    found = true;
+    const g = o.geometry.boundingBox.clone();
+    const rel = new THREE.Matrix4().copy(o.matrixWorld)
+      .premultiply(new THREE.Matrix4().copy(rootObject.matrixWorld).invert());
+    g.applyMatrix4(rel);
+    box.union(g);
+  });
+  return found ? box : null;
+}
+
+function equip(id) {
+  currentId = id;
+  $('#tab-sword').classList.toggle('active', id === 'sword');
+  $('#tab-axe').classList.toggle('active', id === 'axe');
+  if (pivot) pivot.removeFromParent();
+  const gltfScene = window['__weapon_' + id];
+  const model = gltfScene.clone(true);
+  model.updateMatrixWorld(true);
+  const bounds = computeLocalBounds(model);
+  const size = bounds.getSize(new THREE.Vector3());
+  const longest = Math.max(size.x, size.y, size.z);
+  const axis = size.x >= size.y && size.x >= size.z ? 'x' : size.y >= size.z ? 'y' : 'z';
+  const grip = bounds.getCenter(new THREE.Vector3());
+  grip[axis] = bounds.min[axis] + size[axis]*GRIP_FRACTION;
+  model.position.sub(grip);
+  model.updateMatrixWorld(true);
+  const toPivot = (p) => p.clone().applyMatrix4(model.matrixWorld);
+  const tipPoint = bounds.getCenter(new THREE.Vector3()); tipPoint[axis]=bounds.max[axis];
+  const buttPoint = bounds.getCenter(new THREE.Vector3()); buttPoint[axis]=bounds.min[axis];
+  tipL = toPivot(tipPoint);
+  buttL = toPivot(buttPoint);
+  const sws = socketBone.getWorldScale(new THREE.Vector3());
+  const s = DESIRED_LENGTH[id] / longest;
+  pivot = new THREE.Group();
+  pivot.scale.set(s/Math.max(Math.abs(sws.x),1e-4), s/Math.max(Math.abs(sws.y),1e-4), s/Math.max(Math.abs(sws.z),1e-4));
+  pivot.add(model);
+  socketBone.add(pivot);
+  applyState(store[id]);
+}
+
+function applyState(st) {
+  if (!pivot) return;
+  const r = Math.PI/180;
+  pivot.rotation.set(st.rot[0]*r, st.rot[1]*r, st.rot[2]*r);
+  pivot.position.set(st.off[0]/100, st.off[1]/100, st.off[2]/100);
+  // reflete nos sliders
+  $$('#panel input[type=range]').forEach(inp => {
+    const ax = inp.dataset.axis;
+    const v = ax[0]==='r' ? st.rot['xyz'.indexOf(ax[1])] : st.off['xyz'.indexOf(ax[1])];
+    inp.value = v;
+    inp.nextElementSibling.textContent = v;
+  });
+}
+
+function sliderChange() {
+  const st = store[currentId];
+  $$('#panel input[type=range]').forEach(inp => {
+    const ax = inp.dataset.axis;
+    const v = +inp.value;
+    if (ax[0]==='r') st.rot['xyz'.indexOf(ax[1])] = v; else st.off['xyz'.indexOf(ax[1])] = v;
+    inp.nextElementSibling.textContent = v;
+  });
+  applyState(st);
+}
+
+function updateSavedBox() {
+  const r=(v)=>`[${v.map(n=>(n*Math.PI/180).toFixed(4)).join(', ')}]`;
+  const o=(st)=>`[${st.off.map(n=>(n/100).toFixed(2)).join(', ')}]`;
+  const line = (id,label)=>{
+    const st=store[id];
+    return `${st.saved?'✅':'⏳'} ${label}: rotation: ${r(st.rot)}, offset: ${o(st)}`;
+  };
+  $('#savedBox').innerHTML =
+    `<div class="${store.sword.saved?'saved-ok':'pending'}">${line('sword','ESPADA')}</div>` +
+    `<div class="${store.axe.saved?'saved-ok':'pending'}">${line('axe','MACHADO')}</div>` +
+    `<div style="margin-top:6px;color:#aaa">Salve as duas armas e avise o assistente para aplicar no código.</div>`;
+}
+
+(async () => {
+  const charGltf = await loader.loadAsync('/models/Guerreiro/guerreiro_animado.glb');
+  character = charGltf.scene;
+  scene.add(character);
+  allClips = charGltf.animations;
+  mixer = new THREE.AnimationMixer(character);
+  character.traverse(o => { if (!socketBone && o.isBone && o.name==='mixamorigRightHand') socketBone = o; });
+
+  // começa no Parado (idle) para ver a pose real do jogo
+  const idleClip = allClips.find(c=>/^idle$/i.test(c.name));
+  if (idleClip) mixer.clipAction(idleClip).reset().play();
+
+  for (const id of ['sword','axe']) {
+    const g = await loader.loadAsync(WEAPON_PATHS[id]);
+    window['__weapon_' + id] = g.scene;
+  }
+  equip('sword');
+  updateSavedBox();
+
+  $('#tab-sword').onclick = () => equip('sword');
+  $('#tab-axe').onclick = () => equip('axe');
+  $$('#panel input[type=range]').forEach(inp => inp.addEventListener('input', sliderChange));
+  $('#b-save').onclick = () => {
+    store[currentId].saved = true;
+    localStorage.setItem('weapon-calibration', JSON.stringify(store));
+    updateSavedBox();
+  };
+  $('#b-copy').onclick = () => {
+    const r=(v)=>`[${v.map(n=>(n*Math.PI/180).toFixed(4)).join(', ')}]`;
+    const o=(st)=>`[${st.off.map(n=>(n/100).toFixed(2)).join(', ')}]`;
+    $('#savedBox').innerHTML =
+      `<pre>rotation: ${r(store.sword.rot)},\noffset: ${o(store.sword)},   // ESPADA\nrotation: ${r(store.axe.rot)},\noffset: ${o(store.axe)},   // MACHADO</pre>`;
+  };
+  $$('.anim').forEach(b => b.onclick = () => {
+    const map = { 'parado':/^idle$/i, 'correr':/^running$/i, 'ataque':/^ataque$/i };
+    const key = b.textContent.toLowerCase();
+    const rx = map[key === 'correr' ? 'correr' : key === 'ataque' ? 'ataque' : 'parado'];
+    const clip = allClips.find(c=>rx.test(c.name));
+    if (!clip) return;
+    mixer.stopAllAction();
+    mixer.clipAction(clip).reset().play();
+  });
+
+  const clock = new THREE.Clock();
+  (function animate(){
+    requestAnimationFrame(animate);
+    mixer.update(clock.getDelta());
+    renderer.render(scene, camera);
+  })();
+})();
+</script>
+</body>
+</html>

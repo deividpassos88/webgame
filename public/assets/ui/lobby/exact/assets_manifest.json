@@ -1,0 +1,22 @@
+{
+  "source_size": [
+    1672,
+    941
+  ],
+  "recommended_exact_strategy": {
+    "center": "Use 01_scene/center_scene_exact_composite.png as one image layer for exact visual fidelity.",
+    "layout": "Build panels, grids, controls, text and state logic with HTML/CSS.",
+    "icons": "Use transparent PNGs from folders 02-06; exact crops are also included.",
+    "ornaments": "Use optional exact crops from folder 07 if CSS is not visually close enough."
+  },
+  "folders": [
+    "01_scene",
+    "02_branding",
+    "03_nav_icons",
+    "04_equipment_icons",
+    "05_status_icons",
+    "06_inventory",
+    "07_decorative_optional",
+    "08_reference"
+  ]
+}

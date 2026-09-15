@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="Escudo clássico de aço">
+ <defs><linearGradient id="m" x1=".08" y1=".1" x2=".9" y2=".9"><stop stop-color="#e3dfd1"/><stop offset=".25" stop-color="#777e80"/><stop offset=".55" stop-color="#252c31"/><stop offset=".8" stop-color="#a0a4a1"/><stop offset="1" stop-color="#181e22"/></linearGradient><filter id="s"><feDropShadow dy="5" stdDeviation="3" flood-opacity=".85"/></filter></defs>
+ <g filter="url(#s)" stroke="#13191d" stroke-width="3" stroke-linejoin="round">
+  <path fill="url(#m)" d="M80 12c18 12 38 18 58 20l-5 55c-4 30-23 49-53 63-30-14-49-33-53-63l-5-55c20-2 40-8 58-20Z"/>
+  <path fill="#252c31" d="M80 25c14 9 29 14 45 17l-4 42c-3 23-17 38-41 50Z"/>
+  <path fill="#6e7678" d="M80 25C66 34 51 39 35 42l4 42c3 23 17 38 41 50Z"/>
+  <path fill="url(#m)" d="m80 34 9 35 29 10-29 9-9 35-9-35-29-9 29-10Z"/>
+  <path fill="none" stroke="#d5d2c6" stroke-width="2" d="M80 19c17 10 34 15 51 18l-5 48c-3 27-21 44-46 57M31 39c15-3 31-8 45-16"/>
+  <path fill="none" stroke="#7c6848" stroke-width="2" d="M48 49c-2 26 4 48 22 68m41-70c1 25-5 47-21 67"/>
+ </g>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="Calças de guerreiro">
+ <defs><linearGradient id="m" x1=".2" y1="0" x2=".8" y2="1"><stop stop-color="#b6b8b3"/><stop offset=".25" stop-color="#62686a"/><stop offset=".62" stop-color="#292f33"/><stop offset="1" stop-color="#7b8180"/></linearGradient><filter id="s"><feDropShadow dy="5" stdDeviation="3" flood-opacity=".85"/></filter></defs>
+ <g filter="url(#s)" stroke="#151a1e" stroke-width="3" stroke-linejoin="round">
+  <path fill="url(#m)" d="M43 22h74l-4 52-8 68H75l5-59-7 59H43l5-68Z"/>
+  <path fill="#272d31" d="M45 36h70l-2 18H47Z"/>
+  <path fill="none" stroke="#c5c4ba" stroke-width="2" d="M49 27h62M73 54l7 29m7-29-7 29M50 75c9 3 17 4 25 4m10 0c8 0 16-1 25-4"/>
+  <path fill="#343a3e" d="m48 74 27 5-7 21-22-3Zm64 0-27 5 7 21 22-3Z"/>
+  <path fill="none" stroke="#716348" stroke-width="3" d="M45 46h70"/>
+  <path fill="#a19270" d="M76 41h8v10h-8z"/>
+  <path fill="none" stroke="#777d7d" stroke-width="2" d="M48 111h22m20 0h20M46 124h23m22 0h17"/>
+ </g>
+</svg>

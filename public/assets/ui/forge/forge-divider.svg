@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 64" fill="none" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="dividerGold" x1="0" y1="0" x2="760" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5E3D1D" stop-opacity="0"/>
+      <stop offset=".14" stop-color="#A77430"/>
+      <stop offset=".5" stop-color="#F2D27C"/>
+      <stop offset=".86" stop-color="#A77430"/>
+      <stop offset="1" stop-color="#5E3D1D" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path d="M0 32h252l24-8 20 8h168l20-8 24 8h252" stroke="url(#dividerGold)" stroke-width="3"/>
+  <path d="m380 5 12 19 23 8-23 8-12 19-12-19-23-8 23-8Z" fill="#1A1711" stroke="#D8B45E" stroke-width="3"/>
+  <path d="m380 16 5 11 11 5-11 5-5 11-5-11-11-5 11-5Z" fill="#E1B85C"/>
+  <path d="m286 24 12-10 12 10-12 10ZM450 24l12-10 12 10-12 10Z" fill="#171A18" stroke="#9E7130" stroke-width="2"/>
+  <circle cx="256" cy="32" r="5" fill="#D6A84A"/>
+  <circle cx="504" cy="32" r="5" fill="#D6A84A"/>
+</svg>
