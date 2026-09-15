@@ -114,6 +114,37 @@ export function renderLobbyHotkeys(
     </section>`;
 }
 
+/**
+ * The reference hall shows a six-metric sheet in two columns. Crítico físico is
+ * surfaced simply as "Crítico" and Vitalidade replaces the pair of secondary
+ * rolls (Crítico mágico / Esquiva) that the reference panel does not list.
+ * The view model keeps its full seven-attribute contract for other surfaces.
+ */
+const LOBBY_STATUS_METRICS: readonly {
+  readonly key: string;
+  readonly label: string;
+}[] = [
+  { key: 'strength', label: 'Força' },
+  { key: 'attack', label: 'Ataque' },
+  { key: 'defense', label: 'Defesa' },
+  { key: 'agility', label: 'Agilidade' },
+  { key: 'criticalAttack', label: 'Crítico' },
+  { key: 'vitality', label: 'Vitalidade' },
+];
+
+function lobbyStatusMetrics(
+  status: CurrentCharacterStatusView
+): readonly { readonly label: string; readonly value: number }[] {
+  const byKey = new Map(status.attributes.map(({ key, value }) => [key as string, value]));
+  // Vitalidade is a derived reading: Strength is the attribute that grants the
+  // Warrior its health pool, so the sheet mirrors that investment.
+  const vitality = byKey.get('strength') ?? 0;
+  return LOBBY_STATUS_METRICS.map(({ key, label }) => ({
+    label,
+    value: key === 'vitality' ? vitality : byKey.get(key) ?? 0,
+  }));
+}
+
 export function renderLobbyCurrentStatus(status: CurrentCharacterStatusView): string {
   return `
     <section class="lobby-current-status" aria-labelledby="lobby-current-status-title">
@@ -124,7 +155,7 @@ export function renderLobbyCurrentStatus(status: CurrentCharacterStatusView): st
         <div><dt>Pontos disponíveis</dt><dd>${status.attributePointsRemaining}</dd></div>
       </dl>
       <dl class="lobby-current-status-grid">
-        ${status.attributes.map(({ label, value }) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}
+        ${lobbyStatusMetrics(status).map(({ label, value }) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}
       </dl>
       ${status.setBonus ? `<aside class="lobby-set-bonus" aria-label="Bônus de conjunto ativo">
         <span>Conjunto completo</span>

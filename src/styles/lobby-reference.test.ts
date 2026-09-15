@@ -18,10 +18,20 @@ describe('lobby reference composition', () => {
     expect(lobbyStyles).not.toContain('animation: lobby-start-border-orbit');
   });
 
-  it('locks the measured round-two desktop panel, banner and CTA geometry', () => {
-    expect(lobbyStyles).toContain('grid-template-columns: 397px minmax(0, 1fr) 446px');
-    expect(lobbyStyles).toMatch(/\.lobby-equipment \{[\s\S]*?margin: 30px 10px 12px 46px/);
-    expect(lobbyStyles).toMatch(/\.hero-stage-banner \{[\s\S]*?width: 150px;[\s\S]*?height: 434px/);
-    expect(lobbyStyles).toMatch(/\.lobby-start-action \.primary-action \{[\s\S]*?min-height: 136px/);
+  it('locks the exact-reference desktop grid measured against lobby.png', () => {
+    // The approved desktop composition is proportional, not fixed-pixel, so the
+    // three columns track the reference artwork at any desktop width.
+    expect(lobbyStyles).toContain('grid-template-columns: 23.026% 50% 26.974%');
+    expect(lobbyStyles).toContain('grid-template-rows: 8.82% 80.23% 10.95%');
+    // The CTA is the baked plaque positioned over the stage bottom.
+    expect(lobbyStyles).toMatch(/\.lobby-start-action \{[\s\S]*?top: 83\.53% !important/);
+    expect(lobbyStyles).toContain("url('/assets/ui/lobby/user-pack/start-button.png')");
+  });
+
+  it('dresses the header gear and the CTA swords mark added in the reference review', () => {
+    expect(lobbyStyles).toMatch(/\.lobby-settings-mark \{[\s\S]*?object-fit: contain/);
+    expect(lobbyStyles).toMatch(/\.lobby-start-icon \{[\s\S]*?object-fit: contain/);
+    // The desktop plaque already contains swords, so the DOM mark is hidden there.
+    expect(lobbyStyles).toMatch(/#start-game \.lobby-start-icon \{\s*display: none !important;/);
   });
 });

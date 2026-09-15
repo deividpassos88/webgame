@@ -2048,3 +2048,43 @@ html body #lobby-screen .lobby-footer-status small { color: #bdb8ad; font: 9px/1
   }
 }
 
+
+/*
+ * Reference review pass: the hall header carries a gold settings gear to the
+ * left of the discipline rule, and the CTA carries its own crossed-swords
+ * mark. Both are declared last so they win over the earlier shell layers.
+ */
+html body #lobby-screen .lobby-header-discipline {
+  grid-template-columns: auto 1px auto;
+}
+html body #lobby-screen .lobby-settings-mark {
+  width: 26px;
+  height: 26px;
+  opacity: .92;
+  object-fit: contain;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+html body #lobby-screen .lobby-settings-mark:hover {
+  opacity: 1;
+  transform: rotate(18deg);
+}
+
+html body #lobby-screen .lobby-start-action .primary-action .lobby-start-icon {
+  width: 34px;
+  height: 34px;
+  margin-right: 18px;
+  vertical-align: middle;
+  object-fit: contain;
+}
+
+@media (min-width: 1181px) {
+  /* The approved desktop CTA is a single baked plaque that already contains
+     its swords, so the DOM mark stays in the accessibility tree but hidden. */
+  html body #lobby-screen .lobby-start-action #start-game .lobby-start-icon {
+    display: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  html body #lobby-screen .lobby-settings-mark { width: 20px; height: 20px; }
+}

@@ -14,7 +14,7 @@ describe('craft reward presentation', () => {
 
     host.innerHTML = renderInventorySlotContent(item, 3);
 
-    expect(host.querySelector('img')?.getAttribute('src')).toBe('/items/craft/common/1.png');
+    expect(host.querySelector('img')?.getAttribute('src')).toBe('/items/craft/common/1.webp');
     expect(host.querySelector('img')?.getAttribute('alt')).toBe('');
     expect(host.querySelector('[data-item-quantity]')?.textContent).toBe('3');
   });
@@ -61,6 +61,6 @@ describe('craft reward presentation', () => {
     expect(inspector.querySelector('[data-craft-inspector-quantity]')?.textContent)
       .toBe('x3');
     expect(inspector.querySelector<HTMLImageElement>('img')?.src)
-      .toContain('/items/craft/common/1.png');
+      .toContain('/items/craft/common/1.webp');
   });
 });

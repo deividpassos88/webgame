@@ -39,7 +39,7 @@
           <button type="button" data-lobby-tab="skills" aria-pressed="false"><img src="/assets/ui/lobby/user-pack/nav-skills.png" alt=""><span>Skills</span></button>
           <button type="button" data-lobby-tab="blacksmith" aria-pressed="false"><img src="/assets/ui/lobby/user-pack/nav-workshop.png" alt=""><span>Oficina</span></button>
         </nav>
-        <div class="lobby-header-discipline" aria-hidden="true"><span>Disciplina</span><strong>Forja<br>lenda</strong></div>
+        <div class="lobby-header-discipline"><img class="lobby-settings-mark" src="/assets/ui/lobby/icon-settings.svg" alt="" aria-hidden="true"><span aria-hidden="true">Disciplina</span><strong aria-hidden="true">Forja<br>lenda</strong></div>
       </header>
       <aside class="lobby-equipment" aria-labelledby="lobby-equipment-title">
         <header class="lobby-equipment-heading"><p class="section-label">Equipamento</p><h2 id="lobby-equipment-title">Armadura e arma</h2></header>
@@ -79,7 +79,7 @@
         <div class="lobby-footer-status"><img src="/assets/ui/lobby/user-pack/footer-helmet.png" alt=""><i aria-hidden="true"></i><span id="lobby-status" role="status">Espada inicial pronta<br><small>5 skills disponíveis</small></span></div><q>Guerreiros não nascem prontos.<br>Eles se constroem.</q>
       </footer>
       <div class="lobby-start-action">
-        <button id="start-game" class="primary-action" type="button"><small>Entrar na masmorra</small><strong>Iniciar partida</strong></button>
+        <button id="start-game" class="primary-action" type="button"><img class="lobby-start-icon" src="/assets/ui/lobby/icon-crossed-swords.svg" alt="" aria-hidden="true"><small>Entrar na masmorra</small><strong>Iniciar partida</strong></button>
       </div>
     </section>
 
@@ -111,6 +111,7 @@
         <h3 id="craft-item-inspector-name" data-craft-inspector-name></h3>
         <p id="craft-item-inspector-copy" data-craft-inspector-copy></p>
         <output data-craft-inspector-quantity></output>
+        <button type="button" class="craft-inspector-equip" data-equip-inventory-item hidden>Equipar</button>
       </section>
     </section>
 

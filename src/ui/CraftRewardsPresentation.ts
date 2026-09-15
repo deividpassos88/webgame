@@ -59,16 +59,22 @@ export function renderEquipmentSlotContent(
     <span class="equipment-slot__label">${label}</span>`;
 }
 
+/** True when the inspector can present the item, i.e. craft materials and equipment. */
+export function isInspectableItem(item: InventoryItemDefinition | undefined): item is InventoryItemDefinition {
+  return isCraftMaterial(item) || (item?.kind === 'equipment' && Boolean(item.slot));
+}
+
 export function populateCraftInspector(
   inspector: HTMLElement,
   item: InventoryItemDefinition,
   quantity: number
 ): void {
-  if (!isCraftMaterial(item)) return;
-  inspector.dataset.rarity = item.rarity;
+  if (!isInspectableItem(item)) return;
+  const equipment = item.kind === 'equipment';
+  inspector.dataset.rarity = item.rarity ?? 'common';
   const image = inspector.querySelector<HTMLImageElement>('[data-craft-inspector-image]');
   if (image) {
-    image.src = item.iconSrc;
+    image.src = item.iconSrc ?? '';
     image.alt = `Ilustração de ${item.label}`;
   }
   const rarity = inspector.querySelector<HTMLElement>('[data-craft-inspector-rarity]');
@@ -76,9 +82,12 @@ export function populateCraftInspector(
   const name = inspector.querySelector<HTMLElement>('[data-craft-inspector-name]');
   if (name) name.textContent = item.label;
   const copy = inspector.querySelector<HTMLElement>('[data-craft-inspector-copy]');
-  if (copy) copy.textContent = 'Material de craft';
+  if (copy) copy.textContent = equipment ? item.description ?? 'Equipamento' : 'Material de craft';
   const amount = inspector.querySelector<HTMLOutputElement>('[data-craft-inspector-quantity]');
   if (amount) amount.textContent = `x${Math.max(1, Math.floor(quantity))}`;
+  // Equipping is an explicit confirmation so a stray click never swaps gear.
+  const equip = inspector.querySelector<HTMLButtonElement>('[data-equip-inventory-item]');
+  if (equip) equip.hidden = !equipment;
 }
 
 export function renderCraftRewardNotification(

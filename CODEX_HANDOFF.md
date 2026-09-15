@@ -2052,3 +2052,82 @@ Get-NetTCPConnection -LocalPort 5174 -State Listen
 ## START HERE - PRÓXIMO AGENTE
 
 Comece pelas capturas `designer-terra-lobby-fullset-1672x941.png`, `designer-terra-status-1672x941.png`, `designer-terra-skills-1672x941.png` e pelas duas `designer-terra-round2-*-mobile-390x844.png`. O trabalho visual e o launcher estão aprovados pelo CRÍTICO. Não restaure placeholders: aguarde os novos ícones que o usuário prometeu enviar. Para Lobby, edite `index.html`, `src/ui/LobbyScreen.ts` e somente o bloco final efetivo de `src/styles/lobby-reference.css`. Para captura, preserve o modo `status` em `scripts-inspect/capture-lobby.mjs`. Para servidor, use `Ligarserver-Admin-Incognito.bat`; ao terminar testes, escolha 4, confirme `S`, verifique porta 5174 livre e só então escolha 5. Não faça commit enquanto a pasta continuar sem `.git`.
+
+---
+
+# REGISTRO AUTORITATIVO MAIS RECENTE - REVISÃO DO LOBBY CONTRA lobby.png (2026-09-15)
+
+Este registro substitui os anteriores quando houver conflito. A rodada partiu das
+alterações locais restantes, revisou o lobby contra `lobby.png`, incluiu os
+ajustes de inventário e confirmou todos os assets WebP.
+
+## Estado inicial encontrado
+
+- O repositório já possuía `.git` (ao contrário do que diziam os registros
+  antigos), na branch `arena/01a0a70d-webgame`.
+- O commit anterior `6a6b9bb` já havia trocado os PNGs `ChatGPT Image ...` por
+  27 arquivos WebP otimizados.
+- As dependências não estavam instaladas; `npm install` foi necessário.
+- A suíte tinha **7 testes falhando** em 5 arquivos.
+
+## Revisão contra lobby.png e correções
+
+1. **Status atual com seis métricas.** A referência lista exatamente Força,
+   Ataque, Defesa, Agilidade, Crítico e Vitalidade. `renderLobbyCurrentStatus`
+   agora projeta essas seis linhas (`LOBBY_STATUS_METRICS`), exibindo
+   `criticalAttack` como "Crítico" e derivando Vitalidade de Força, que é o
+   atributo que concede vida ao Guerreiro. O `RpgUiViewModel` mantém intacto o
+   contrato de sete atributos usado pelas outras telas.
+
+2. **Engrenagem de configurações.** A referência tem uma engrenagem dourada no
+   topo direito, que não existia. Foi criado
+   `public/assets/ui/lobby/icon-settings.svg` no mesmo estilo do conjunto e
+   adicionado como `.lobby-settings-mark` no cabeçalho.
+
+3. **Marca de espadas cruzadas no CTA.** `#start-game` passou a conter
+   `img.lobby-start-icon` como primeiro filho. No desktop (>=1181px) a placa
+   assada já traz as espadas, então a marca fica oculta por CSS mantendo-se na
+   árvore do DOM.
+
+4. **Ajuste de inventário: equipar exige confirmação.** Antes, um clique em uma
+   peça da mochila equipava imediatamente. Agora o clique abre o inspetor, que
+   ganhou o botão `[data-equip-inventory-item]`; a troca só ocorre ao confirmar
+   em "Equipar". Isso vale para clique e para Enter/Espaço.
+   `populateCraftInspector` passou a aceitar equipamentos além de materiais
+   (`isInspectableItem`), mostrando a descrição do item.
+
+5. **Geometria travada corrigida.** `lobby-reference.test.ts` ainda travava
+   medidas em pixel de uma rodada superada (`397px ... 446px`). O teste agora
+   trava a composição proporcional realmente em vigor
+   (`23.026% 50% 26.974%` / `8.82% 80.23% 10.95%`) e a placa do CTA.
+
+## Assets WebP
+
+Os 27 WebP estão presentes e referenciados. `InventoryCatalog.ts` aponta para os
+`.webp` de `items/craft/common`, `items/equipment/armas`,
+`items/equipment/common-forged` e `items/equipment/equipado`. As expectativas
+antigas em `CraftRewardsPresentation.test.ts` que ainda procuravam `.png` foram
+atualizadas para `.webp`. Todos os caminhos foram verificados servindo `200
+image/webp` no Vite.
+
+## Verificação final
+
+- `npm run typecheck`: passou.
+- `npx vitest run --pool=forks --maxWorkers=1`: **136 arquivos, 716/716 testes
+  passaram**. As três falhas antigas documentadas nos registros anteriores
+  deixaram de existir; nenhum teste foi enfraquecido para mascarar defeito.
+- `npm run build`: passou. Aviso conhecido do chunk `Game` (913 kB) permanece,
+  não bloqueante.
+
+## Limitações desta rodada
+
+- Não foi possível baixar o Chromium do Playwright no sandbox, portanto não há
+  captura raster nova. A revisão contra `lobby.png` foi feita lendo markup e CSS
+  efetivo. Uma conferência visual no navegador ainda é recomendada.
+
+## START HERE - PRÓXIMO AGENTE
+
+A suíte está 100% verde pela primeira vez. Antes de mexer no visual, rode
+`npm install`, `npm run typecheck` e a suíte. Não restaure o equipar por clique
+único: a confirmação no inspetor é intencional. Não volte a travar geometria em
+pixel no `lobby-reference.test.ts`; a composição desktop é proporcional.
