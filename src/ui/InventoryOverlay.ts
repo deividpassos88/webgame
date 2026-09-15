@@ -19,6 +19,7 @@ import {
   itemTooltipDataAttributes,
   inventoryItemArt,
   populateCraftInspector,
+  isInspectableItem,
   renderEquipmentSlotContent,
 } from './CraftRewardsPresentation';
 import { bindItemTooltip } from './ItemTooltip';
@@ -59,7 +60,7 @@ export function renderInventoryBackpackContents(
     const isEquipment = item && item.kind === 'equipment' && item.slot;
     const equipLabel = isEquipment ? '<span class="equip-indicator">Equipar</span>' : '';
     return `
-      <button class="inventory-slot${item ? ' has-item' : ''}${isEquipment ? ' is-equipment' : ''}" type="button" data-inventory-index="${index}" ${item ? itemTooltipDataAttributes(item, quantity) : ''} ${item ? '' : 'disabled'} aria-label="${item ? `${item.label}, quantidade ${quantity}${isEquipment ? ', clique para equipar' : ''}` : `Espaço vazio ${index + 1}`}">
+      <button class="inventory-slot${item ? ' has-item' : ''}${isEquipment ? ' is-equipment' : ''}" type="button" data-inventory-index="${index}" ${item ? itemTooltipDataAttributes(item, quantity) : ''} ${item ? '' : 'disabled'} aria-label="${item ? `${item.label}, quantidade ${quantity}${isEquipment ? ', clique para abrir opções' : ''}` : `Espaço vazio ${index + 1}`}">
         ${item ? `${inventoryItemArt(item)}<span class="item-quantity">${quantity}</span><small>${item.label}</small>${equipLabel}` : ''}
       </button>`;
   }).join('');
@@ -91,6 +92,8 @@ export class InventoryOverlay {
   private readonly title = document.getElementById('character-title')!;
   private lastFocus: HTMLElement | null = null;
   private inspectorLastFocus: HTMLElement | null = null;
+  /** Backpack index awaiting an explicit Equipar confirmation, if any. */
+  private pendingEquipIndex: number | null = null;
   private activeMode: RpgOverlayMode = 'equipment';
 
   public constructor(
@@ -250,6 +253,10 @@ export class InventoryOverlay {
       )?.focus();
       return;
     }
+    if (target.closest('[data-equip-inventory-item]')) {
+      this.confirmEquipPendingItem();
+      return;
+    }
     const itemButton = target.closest<HTMLButtonElement>('[data-inventory-index]');
     if (itemButton) {
       const index = Number(itemButton.dataset.inventoryIndex);
@@ -259,6 +266,27 @@ export class InventoryOverlay {
     }
   };
 
+  /** Applies the equip only after the player confirms it in the inspector. */
+  private confirmEquipPendingItem(): void {
+    const index = this.pendingEquipIndex;
+    if (index === null) return;
+    const stack = this.store.snapshot().backpack[index];
+    const item = stack ? getInventoryItem(stack.itemId) : undefined;
+    if (!item || item.kind !== 'equipment' || !item.slot) {
+      this.pendingEquipIndex = null;
+      this.hideCraftInspector();
+      return;
+    }
+    const result = this.store.equip(index, item.slot as RpgEquipmentSlot);
+    this.message.textContent = result.kind === 'equipped'
+      ? `${item.label} equipado.`
+      : 'O item não é compatível com esse espaço.';
+    if (result.kind === 'equipped') this.options.onInventoryChanged();
+    this.pendingEquipIndex = null;
+    this.hideCraftInspector(false);
+    this.render();
+  }
+
   private activateStack(
     stack: InventoryStack,
     source: HTMLButtonElement,
@@ -266,6 +294,7 @@ export class InventoryOverlay {
   ): void {
     const item = getInventoryItem(stack.itemId);
     if (isCraftMaterial(item)) {
+      this.pendingEquipIndex = null;
       this.showCraftInspector(item, stack.quantity, source);
       return;
     }
@@ -275,14 +304,10 @@ export class InventoryOverlay {
         : 'Este item não pode ser equipado.';
       return;
     }
-    // Map legacy 'weapon' slot to canonical 'primaryWeapon' slot for equipment
-    const targetSlot = item.slot === 'weapon' ? 'weapon' : item.slot;
-    const result = this.store.equip(index, targetSlot as RpgEquipmentSlot);
-    this.message.textContent = result.kind === 'equipped'
-      ? `${item.label} equipado.`
-      : 'O item não é compatível com esse espaço.';
-    if (result.kind === 'equipped') this.options.onInventoryChanged();
-    this.render();
+    // Equipment opens the inspector first; the swap only happens once the
+    // player confirms with Equipar, so a misclick never replaces worn gear.
+    this.pendingEquipIndex = index;
+    this.showCraftInspector(item, stack.quantity, source);
   }
 
   private showCraftInspector(
@@ -299,6 +324,7 @@ export class InventoryOverlay {
   private hideCraftInspector(restoreFocus = true): void {
     if (this.craftInspector.classList.contains('hidden')) return;
     this.craftInspector.classList.add('hidden');
+    this.pendingEquipIndex = null;
     if (restoreFocus && this.inspectorLastFocus?.isConnected) this.inspectorLastFocus.focus();
     this.inspectorLastFocus = null;
   }
@@ -323,8 +349,11 @@ export class InventoryOverlay {
       if (itemButton) {
         const stack = this.store.snapshot().backpack[Number(itemButton.dataset.inventoryIndex)];
         const item = stack ? getInventoryItem(stack.itemId) : undefined;
-        if (stack && isCraftMaterial(item)) {
+        if (stack && isInspectableItem(item)) {
           event.preventDefault();
+          this.pendingEquipIndex = item.kind === 'equipment'
+            ? Number(itemButton.dataset.inventoryIndex)
+            : null;
           this.showCraftInspector(item, stack.quantity, itemButton);
           return;
         }
