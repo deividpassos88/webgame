@@ -32,7 +32,7 @@ describe('BlacksmithScreen', () => {
 
     expect(host.querySelector('[data-blacksmith-screen]')).not.toBeNull();
     expect(host.querySelector('[data-workshop-recipes]')?.classList.contains('is-locked')).toBe(true);
-    expect(host.querySelector('[data-workshop-equipment]')?.textContent).toContain('Arma primária');
+    expect(host.querySelector('[data-workshop-equipment]')?.textContent).toContain('Primária');
   });
 
   it('keeps equipment, inventory and craft content in one keyboard-reachable tabbed window', () => {

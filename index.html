@@ -30,59 +30,143 @@
     </section>
 
     <section id="lobby-screen" class="flow-screen hidden" aria-labelledby="lobby-title">
-      <div class="forge-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <header class="flow-masthead">
-        <div class="lobby-brand"><img class="warrior-crest" src="/assets/ui/lobby/user-pack/crest-w.png" alt=""><span><small>Fortaleza de Cinzafogo</small><strong id="lobby-title">Salão do Guerreiro</strong></span></div>
-        <nav class="lobby-tabs" aria-label="Seções do personagem">
-          <button type="button" data-lobby-tab="hero" aria-pressed="true"><img src="/assets/ui/lobby/user-pack/nav-hero.png" alt=""><span>Herói</span></button>
-          <button type="button" data-lobby-tab="inventory" aria-pressed="false"><img src="/assets/ui/lobby/user-pack/nav-inventory.png" alt=""><span>Inventário</span></button>
-          <button type="button" data-lobby-tab="skills" aria-pressed="false"><img src="/assets/ui/lobby/user-pack/nav-skills.png" alt=""><span>Skills</span></button>
-          <button type="button" data-lobby-tab="blacksmith" aria-pressed="false"><img src="/assets/ui/lobby/user-pack/nav-workshop.png" alt=""><span>Oficina</span></button>
+      <!-- Backdrop is drawn by the WebGL layer (LOBBY_BACKDROP_URL) so the
+           rotating 3D Warrior composites on top of it in the stage viewport. -->
+      <div class="arena-vignette" aria-hidden="true"></div>
+
+      <header class="arena-topbar">
+        <div class="arena-identity">
+          <span class="arena-sigil" aria-hidden="true"></span>
+          <span class="arena-identity__text">
+            <small>Masmorra de Guilda</small>
+            <strong id="lobby-title">Masmorra de Heróis</strong>
+          </span>
+        </div>
+
+        <nav class="arena-nav" aria-label="Seções do personagem">
+          <button type="button" class="arena-nav__btn" data-lobby-tab="hero" aria-pressed="true">
+            <img src="/assets/ui/lobby/arena/icons/hero.svg" alt="" aria-hidden="true"><span>Herói</span>
+          </button>
+          <button type="button" class="arena-nav__btn" data-lobby-tab="inventory" aria-pressed="false">
+            <img src="/assets/ui/lobby/arena/icons/inventory.svg" alt="" aria-hidden="true"><span>Inventário</span>
+          </button>
+          <button type="button" class="arena-nav__btn" data-lobby-tab="skills" aria-pressed="false">
+            <img src="/assets/ui/lobby/arena/icons/skills.svg" alt="" aria-hidden="true"><span>Skills</span>
+          </button>
+          <button type="button" class="arena-nav__btn" data-lobby-tab="blacksmith" aria-pressed="false">
+            <img src="/assets/ui/lobby/arena/icons/workshop.svg" alt="" aria-hidden="true"><span>Oficina</span>
+          </button>
         </nav>
-        <div class="lobby-header-discipline"><img class="lobby-settings-mark" src="/assets/ui/lobby/icon-settings.svg" alt="" aria-hidden="true"><span aria-hidden="true">Disciplina</span><strong aria-hidden="true">Forja<br>lenda</strong></div>
+
+        <button type="button" class="arena-settings" aria-label="Configurações">
+          <img class="lobby-settings-mark" src="/assets/ui/lobby/arena/icons/settings.svg" alt="" aria-hidden="true">
+        </button>
       </header>
-      <aside class="lobby-equipment" aria-labelledby="lobby-equipment-title">
-        <header class="lobby-equipment-heading"><p class="section-label">Equipamento</p><h2 id="lobby-equipment-title">Armadura e arma</h2></header>
-        <section id="lobby-equipment-panel" aria-label="Armadura e armas equipadas">
-          <div id="lobby-equipment-slots" class="equipment-grid"></div>
+
+      <!-- LEFT: equipment / status, tabbed inside one ornate frame -->
+      <aside class="lobby-equipment arena-panel arena-panel--left" data-lobby-equipment-view="equipment" aria-labelledby="lobby-equipment-title">
+        <!-- Single compact title; the "Equipamento" eyebrow above it was redundant. -->
+        <header class="arena-panel__head arena-panel__head--tight">
+          <h2 id="lobby-equipment-title">Equipamentos</h2>
+        </header>
+
+        <div class="lobby-equipment-tabs arena-subtabs" role="tablist" aria-label="Equipamento e status">
+          <button type="button" role="tab" id="lobby-equipment-tab" aria-controls="lobby-equipment-panel" aria-selected="true" data-lobby-equipment-view="equipment">
+            <img src="/assets/ui/lobby/arena/icons/equipment.svg" alt="" aria-hidden="true"><span>Equipamentos</span>
+          </button>
+          <button type="button" role="tab" id="lobby-status-tab" aria-controls="lobby-status-panel" aria-selected="false" tabindex="-1" data-lobby-equipment-view="status">
+            <img src="/assets/ui/lobby/arena/icons/status.svg" alt="" aria-hidden="true"><span>Status</span>
+          </button>
+        </div>
+
+        <section id="lobby-equipment-panel" role="tabpanel" aria-labelledby="lobby-equipment-tab" aria-label="Armadura e armas equipadas">
+          <div id="lobby-equipment-slots" class="equipment-grid arena-equip-grid"></div>
         </section>
-        <section id="lobby-status-panel" aria-label="Status atual do Guerreiro">
+
+        <section id="lobby-status-panel" role="tabpanel" aria-labelledby="lobby-status-tab" aria-label="Status atual do Guerreiro" hidden>
           <div id="lobby-current-status"></div>
         </section>
       </aside>
-      <main class="lobby-hero-stage" tabindex="0" aria-label="Prévia 3D do Guerreiro. Use as setas para girar e aproximar.">
-        <div class="hero-rank"><small>Classe selecionada</small><strong>Guerreiro</strong><span>Vanguarda • corpo a corpo • força</span></div>
-        <p class="hero-stage-quote" aria-hidden="true">A força<br>é a base<br>de todos<br>os caminhos.</p>
-        <aside class="hero-stage-banner" aria-hidden="true"><span></span><p>Mais que batalhas<br>forjamos lendas</p></aside>
-        <div class="hero-stage-platform" aria-hidden="true"></div>
-        <div class="hero-stage-marker"><span>Guerreiro</span><small>Arraste ou use ← → para girar · ↑ ↓ aproxima</small></div>
+
+      <!-- CENTER: Free Fire style hero stage. The 3D canvas renders behind this. -->
+      <main class="lobby-hero-stage arena-stage" tabindex="0" aria-label="Prévia 3D do Guerreiro. Arraste com o mouse para girar.">
+        <div class="arena-stage__title">
+          <small>Classe selecionada</small>
+          <strong>Guerreiro</strong>
+          <span>Vanguarda • corpo a corpo • força</span>
+        </div>
+        <div class="arena-stage__glow" aria-hidden="true"></div>
+        <p class="arena-stage__hint" aria-hidden="true">Arraste para girar</p>
       </main>
-      <aside class="lobby-detail-panel" data-lobby-view="inventory">
+
+      <!-- RIGHT: inventory / hero / skills -->
+      <aside class="lobby-detail-panel arena-panel arena-panel--right" data-lobby-view="inventory">
         <section id="lobby-panel-hero" data-lobby-panel="hero">
-          <p class="section-label">Classe selecionada</p>
-          <h2>Guerreiro</h2>
-          <dl class="warrior-summary"><div><dt>Vida</dt><dd>100</dd></div><div><dt>Energia</dt><dd>50</dd></div><div><dt>Arma</dt><dd>Espada</dd></div></dl>
+          <header class="arena-panel__head">
+            <p class="section-label">Classe selecionada</p>
+            <h2>Guerreiro</h2>
+          </header>
+          <dl class="warrior-summary arena-summary">
+            <div><dt>Vida</dt><dd>100</dd></div>
+            <div><dt>Energia</dt><dd>50</dd></div>
+            <div><dt>Arma</dt><dd>Espada</dd></div>
+          </dl>
         </section>
+
         <section id="lobby-panel-inventory" data-lobby-panel="inventory">
-          <div class="panel-heading"><div class="inventory-heading-title"><img src="/assets/ui/lobby/user-pack/inventory-header-bag.png" alt=""><h2>Itens armazenados</h2></div><div class="lobby-backpack-heading-actions"><span id="lobby-capacity" tabindex="-1" aria-label="Capacidade do inventário">0 / 20</span><div id="lobby-backpack-actions"></div></div></div>
-          <div class="lobby-inventory-tools"><label><span class="lobby-search-icon" aria-hidden="true"></span><input id="lobby-inventory-search" type="search" placeholder="Buscar item..." autocomplete="off"></label><select id="lobby-inventory-filter" aria-label="Filtrar itens"><option value="all">Todos</option><option value="equipment">Equipamentos</option><option value="material">Materiais</option></select><span class="lobby-grid-icon" aria-hidden="true"></span></div>
-          <div id="lobby-backpack" class="inventory-grid compact-grid"></div>
+          <header class="arena-panel__head arena-panel__head--row">
+            <div class="inventory-heading-title">
+              <img src="/assets/ui/lobby/arena/icons/inventory.svg" alt="" aria-hidden="true">
+              <h2>Itens armazenados</h2>
+            </div>
+            <div class="lobby-backpack-heading-actions">
+              <span id="lobby-capacity" tabindex="-1" aria-label="Capacidade do inventário">0 / 20</span>
+              <div id="lobby-backpack-actions"></div>
+            </div>
+          </header>
+
+          <div class="lobby-inventory-tools arena-tools">
+            <label class="arena-search">
+              <span class="lobby-search-icon" aria-hidden="true"></span>
+              <input id="lobby-inventory-search" type="search" placeholder="Buscar item..." autocomplete="off">
+            </label>
+            <select id="lobby-inventory-filter" aria-label="Filtrar itens">
+              <option value="all">Todos</option>
+              <option value="equipment">Equipamentos</option>
+              <option value="material">Materiais</option>
+            </select>
+          </div>
+
+          <div id="lobby-backpack" class="inventory-grid arena-bag-grid"></div>
         </section>
+
         <section id="lobby-panel-skills" data-lobby-panel="skills">
-          <p class="section-label">Progressão</p>
-          <h2>Cinco skills</h2>
+          <header class="arena-panel__head">
+            <p class="section-label">Progressão</p>
+            <h2>Cinco skills</h2>
+          </header>
           <div id="lobby-skills" class="lobby-skill-list"></div>
           <div id="lobby-hotkeys"></div>
         </section>
       </aside>
-      <footer class="lobby-footer">
-        <div class="lobby-footer-status"><img src="/assets/ui/lobby/user-pack/footer-helmet.png" alt=""><i aria-hidden="true"></i><span id="lobby-status" role="status">Espada inicial pronta<br><small>5 skills disponíveis</small></span></div><q>Guerreiros não nascem prontos.<br>Eles se constroem.</q>
-      </footer>
-      <div class="lobby-start-action">
-        <button id="start-game" class="primary-action" type="button"><img class="lobby-start-icon" src="/assets/ui/lobby/icon-crossed-swords.svg" alt="" aria-hidden="true"><small>Entrar na masmorra</small><strong>Iniciar partida</strong></button>
-      </div>
-    </section>
 
+      <!-- FOOTER: status line + animated CTA -->
+      <footer class="arena-footer">
+        <div class="arena-footer__status">
+          <span class="arena-footer__crest" aria-hidden="true"></span>
+          <span id="lobby-status" role="status">Espada inicial pronta<br><small>5 skills disponíveis</small></span>
+        </div>
+
+        <div class="lobby-start-action arena-cta">
+          <button id="start-game" class="primary-action arena-cta__btn" type="button">
+            <img class="lobby-start-icon" src="/assets/ui/lobby/arena/icons/play.svg" alt="" aria-hidden="true">
+            <span class="arena-cta__text"><small>Entrar na masmorra</small><strong>Iniciar partida</strong></span>
+          </button>
+        </div>
+
+        <q class="arena-footer__quote">Guerreiros não nascem prontos.<br>Eles se constroem.</q>
+      </footer>
+    </section>
     <section id="blacksmith-screen" class="flow-screen blacksmith-screen hidden" data-blacksmith-screen aria-labelledby="blacksmith-screen-title" aria-hidden="true"></section>
 
     <section id="character-overlay" class="rpg-overlay character-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="character-title">

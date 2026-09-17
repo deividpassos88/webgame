@@ -17,8 +17,8 @@ const EQUIPMENT_LABELS: Readonly<Record<UiEquipmentSlot, string>> = {
   pants: 'Calça',
   gloves: 'Luvas',
   boots: 'Botas',
-  secondaryWeapon: 'Arma secundária',
-  primaryWeapon: 'Arma primária',
+  secondaryWeapon: 'Segundária',
+  primaryWeapon: 'Primária',
 };
 
 export interface EquipmentSlotView {

@@ -1487,7 +1487,7 @@ html, body {
 .class-choice:hover { filter: brightness(1.12); transform: translateY(-2px); }
 
 @media (max-width: 1100px) {
-  #lobby-screen { grid-template-columns: 250px minmax(360px, 1fr) 330px; }
+  /* Columns are set by the arena skin's --panel-left/--panel-right. */
   .lobby-equipment,
   .lobby-detail-panel { margin-top: 12px; margin-bottom: 12px; padding: 15px; }
   .compact-grid { grid-template-columns: repeat(8, minmax(32px, 1fr)); }
@@ -3790,21 +3790,21 @@ body #lobby-screen .equipment-slot.is-equipped,
   .blacksmith-screen .blacksmith-ingredients { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* The dungeon action has its own center lane; the status remains in the footer. */
+/*
+ * The arena skin floats this button over the stage (see lobby-reference.css),
+ * so the old footer grid placement is left out: grid-column/row would be
+ * dead weight on a fixed-position element and only confuse future edits.
+ */
 #lobby-screen .lobby-start-action {
   z-index: 7;
-  grid-column: 2;
-  grid-row: 3;
   display: grid;
   place-items: center;
-  pointer-events: auto;
 }
 #lobby-screen .lobby-start-action .primary-action { min-width: min(260px, 100%); }
 #lobby-screen .lobby-footer { grid-row: 3; }
 #start-game:disabled { cursor: not-allowed; filter: grayscale(1); opacity: .56; }
 
 @media (max-width: 1180px) and (min-width: 901px) {
-  body #lobby-screen .lobby-start-action,
   body #lobby-screen .lobby-footer { grid-row: 4; }
 }
 

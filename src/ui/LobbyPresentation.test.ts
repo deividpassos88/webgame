@@ -44,7 +44,7 @@ describe('LobbyPresentation', () => {
     const texture = new THREE.Texture();
     configureLobbyBackdropTexture(texture);
 
-    expect(LOBBY_BACKDROP_URL).toBe('/assets/ui/lobby/reference-match/background-v2.png');
+    expect(LOBBY_BACKDROP_URL).toBe('/assets/ui/lobby/arena/backdrop-v4.webp');
     expect(texture.colorSpace).toBe(THREE.SRGBColorSpace);
     expect(texture.minFilter).toBe(THREE.LinearMipmapLinearFilter);
     expect(texture.magFilter).toBe(THREE.LinearFilter);

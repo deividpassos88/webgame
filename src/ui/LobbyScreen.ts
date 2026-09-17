@@ -165,26 +165,31 @@ export function renderLobbyCurrentStatus(status: CurrentCharacterStatusView): st
     </section>`;
 }
 
+/**
+ * Expansion is the 21st cell: visually identical to a bag slot, carrying a
+ * plain [+]. Its cost is revealed in a floating popup rendered outside the
+ * grid, so the scrolling list never clips or reflows it.
+ */
 export function renderLobbyBackpackExpansionControls(
   preparation: BackpackExpansionResult
 ): string {
-  const guildTokenAvailable = preparation.kind === 'expanded';
-  const availability = preparation.kind === 'capacity-maximum'
-    ? 'Limite de 60 espaços atingido.'
-    : guildTokenAvailable
-      ? 'Expanda a mochila em 5 espaços.'
-      : 'São necessários 30 Token da Guilda.';
+  const atMaximum = preparation.kind === 'capacity-maximum';
+  const label = atMaximum
+    ? 'Mochila no limite de 60 espaços.'
+    : 'Expandir mochila. Requer 30 Token da Guilda ou 5 CM.';
   return `
-    <div class="backpack-expansion-actions" role="group" aria-label="Expandir mochila">
-      <button class="backpack-expansion-option" type="button" data-expand-backpack="guild-token" ${guildTokenAvailable ? '' : 'disabled aria-disabled="true"'}>
-        <strong>+5 espaços</strong><small>30 Token da Guilda</small>
-      </button>
-      <button class="backpack-expansion-option is-unavailable" type="button" data-expand-backpack="cm" disabled aria-disabled="true">
-        <strong>5 CM — indisponível</strong><small>Carteira CM ainda não integrada.</small>
-      </button>
-      <p class="backpack-expansion-availability">${availability}</p>
-    </div>`;
+    <button class="inventory-slot backpack-expansion-add" type="button" data-expand-backpack="guild-token" aria-label="${label}" title="${label}" ${atMaximum ? 'disabled aria-disabled="true"' : ''}>
+      <span class="backpack-expansion-add__plus" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+      </span>
+    </button>`;
 }
+
+/** Cost copy shared by the expansion notification and its aria label. */
+export const BACKPACK_EXPANSION_REQUIREMENT =
+  'Para aumentar o inventário em +5 espaços: 30 Token da Guilda ou 5 CM.';
 
 interface RectLike {
   readonly left: number;
@@ -239,13 +244,8 @@ export function adjustLobbyPreview(
       handled: true,
     };
   }
-  if (key === 'ArrowUp' || key === 'ArrowDown') {
-    return {
-      rotation,
-      zoom: THREE.MathUtils.clamp(zoom + (key === 'ArrowUp' ? -0.35 : 0.35), 4.7, 8.2),
-      handled: true,
-    };
-  }
+  // Up/Down used to dolly the camera. The hero is now locked at one distance
+  // and only turns on the spot, so they are left unhandled.
   return { rotation, zoom, handled: false };
 }
 
@@ -297,6 +297,7 @@ export class LobbyScreen {
   private readonly blacksmithScreen: BlacksmithScreen;
   private pendingHotkeyAction: PlayerHotkeyAction | null = null;
   private hotkeyMessage = '';
+  private noticeTimer: number | null = null;
   private inventorySearchQuery = '';
   private inventoryFilter: 'all' | 'equipment' | 'material' = 'all';
   private backdropTexture: THREE.Texture | null = null;
@@ -490,7 +491,7 @@ export class LobbyScreen {
     const inventory = this.inventory.snapshot();
     const view = buildRpgUiViewModel(this.profile, inventory);
     const equipmentMarkup = view.equipment.map(({ slot, label, item }) => item
-      ? `<button class="equipment-slot is-equipped" type="button" data-lobby-equipped-slot="${slot}" aria-label="${label}: ${item.label}. Abrir ações do item.">
+      ? `<button class="equipment-slot is-equipped" type="button" data-lobby-equipped-slot="${slot}" data-rarity="${item.rarity ?? 'common'}" aria-label="${label}: ${item.label}. Abrir ações do item.">
           ${renderEquipmentSlotContent(slot, label, item)}
         </button>`
       : `<div class="equipment-slot" data-equipment-slot="${slot}" aria-label="${label}: Vazio">
@@ -500,12 +501,13 @@ export class LobbyScreen {
     document.getElementById('lobby-equipment-slots')!.innerHTML = equipmentMarkup;
     document.getElementById('lobby-current-status')!.innerHTML = renderLobbyCurrentStatus(view.currentStatus);
     document.getElementById('lobby-capacity')!.textContent = `${view.backpack.filter(({ item }) => item).length} / ${view.backpack.length}`;
-    document.getElementById('lobby-backpack-actions')!.innerHTML = renderLobbyBackpackExpansionControls(
-      prepareGuildTokenBackpackExpansion(this.profile, inventory)
-    );
+    // The [+] is appended as the final grid cell; the header slot stays empty.
+    document.getElementById('lobby-backpack-actions')!.innerHTML = '';
     document.getElementById('lobby-backpack')!.innerHTML = renderLobbyBackpackContents(
       this.profile,
       inventory
+    ) + renderLobbyBackpackExpansionControls(
+      prepareGuildTokenBackpackExpansion(this.profile, inventory)
     );
     this.syncInventoryTools();
     document.getElementById('lobby-skills')!.innerHTML = view.skills.map((skill) => `
@@ -1050,17 +1052,60 @@ export class LobbyScreen {
   private backpackExpansionClick = (event: Event): void => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-expand-backpack]');
     if (!button) return;
-    if (button.dataset.expandBackpack === 'cm') {
-      this.setLobbyStatus('A compra por CM está indisponível até a carteira ser integrada.');
+    if (button.disabled) {
+      this.showExpansionNotice(button, 'Mochila já está no limite de 60 espaços.');
       return;
     }
-    if (button.disabled) return;
+    // Always tell the player what expansion costs, whether or not it succeeds.
     const message = this.guildTokenBackpackExpansion?.()
       ?? 'A expansão da mochila está indisponível.';
     this.renderData();
     this.setLobbyStatus(message);
+    // renderData() rebuilt the grid, so anchor to the freshly rendered button.
+    const anchor = this.lobbyScreen?.querySelector<HTMLElement>('[data-expand-backpack]') ?? button;
+    this.showExpansionNotice(anchor, message);
     restoreBackpackExpansionFocus(this.lobbyScreen, 'lobby-capacity');
   };
+
+  /**
+   * Floating cost popup. It is appended to the lobby root (not the grid) and
+   * positioned against the button's viewport rect, so scrolling or clipping
+   * inside the bag never hides it.
+   */
+  private showExpansionNotice(anchor: HTMLElement, detail: string): void {
+    const host = this.lobbyScreen ?? document.body;
+    let popup = host.querySelector<HTMLElement>('[data-expansion-notice]');
+    if (!popup) {
+      popup = document.createElement('div');
+      popup.className = 'backpack-expansion-popup';
+      popup.setAttribute('data-expansion-notice', '');
+      popup.setAttribute('role', 'status');
+      popup.setAttribute('aria-live', 'polite');
+      host.appendChild(popup);
+    }
+    popup.innerHTML = `
+      <strong>Aumentar inventário</strong>
+      <span>+5 espaços por 30 Token da Guilda ou 5 CM</span>
+      <small>${detail}</small>`;
+    popup.classList.remove('hidden');
+
+    const rect = anchor.getBoundingClientRect();
+    const box = popup.getBoundingClientRect();
+    // Open to the left of the slot, nudged back inside the viewport if needed.
+    const left = Math.max(8, rect.left - box.width - 12);
+    const top = Math.min(
+      Math.max(8, rect.top + rect.height / 2 - box.height / 2),
+      Math.max(8, window.innerHeight - box.height - 8)
+    );
+    popup.style.left = `${left}px`;
+    popup.style.top = `${top}px`;
+
+    if (this.noticeTimer !== null) window.clearTimeout(this.noticeTimer);
+    this.noticeTimer = window.setTimeout(() => {
+      popup?.classList.add('hidden');
+      this.noticeTimer = null;
+    }, 5000);
+  }
 
   private setLobbyStatus(message: string): void {
     document.getElementById('lobby-status')!.textContent = message;
@@ -1081,11 +1126,14 @@ export class LobbyScreen {
 
   private pointerUp = (): void => { this.dragging = false; };
 
+  /**
+   * The wheel is swallowed on the stage so the page behind cannot scroll,
+   * but it no longer changes the camera distance: the hero holds one framing
+   * and only spins in place.
+   */
   private wheel = (event: WheelEvent): void => {
     if (this.lobbyScreen.classList.contains('hidden') && this.classScreen.classList.contains('hidden')) return;
     event.preventDefault();
-    this.zoom = THREE.MathUtils.clamp(this.zoom + event.deltaY * 0.002, 4.7, 8.2);
-    this.requestFrame();
   };
 
   private previewKeyDown = (event: KeyboardEvent): void => {
@@ -1176,6 +1224,10 @@ export class LobbyScreen {
   public dispose(): void {
     this.active = false;
     this.disposed = true;
+    if (this.noticeTimer !== null) {
+      window.clearTimeout(this.noticeTimer);
+      this.noticeTimer = null;
+    }
     cancelAnimationFrame(this.frameId);
     this.frameId = 0;
     this.unbind();
