@@ -39,6 +39,12 @@ import {
 } from '../profile/CharacterProgression';
 import { formatResourcePercent, resourcePercent } from './HudVitals';
 
+/**
+ * Floating combat text styles: damage dealt, health recovered and damage taken
+ * (already reduced by Defense, block rolls and dodge checks).
+ */
+export type FloatingDamageVariant = 'damage' | 'heal' | 'taken';
+
 /** Keyboard-initiated button clicks have `detail === 0` and are not attacks. */
 export function isPrimaryMouseClick(event: Pick<MouseEvent, 'button' | 'detail'>): boolean {
   return event.button === 0 && event.detail > 0;
@@ -569,9 +575,14 @@ export class HUD {
     document.getElementById('respawn-btn')!.addEventListener('click', callback);
   }
 
-  public spawnFloatingDamage(screenX: number, screenY: number, text: string, isHeal = false) {
+  public spawnFloatingDamage(
+    screenX: number,
+    screenY: number,
+    text: string,
+    variant: FloatingDamageVariant = 'damage'
+  ) {
     const el = document.createElement('div');
-    el.className = 'floating-damage' + (isHeal ? ' heal' : '');
+    el.className = 'floating-damage' + (variant === 'damage' ? '' : ` ${variant}`);
     el.textContent = text;
     el.style.left = `${screenX}px`;
     el.style.top = `${screenY}px`;

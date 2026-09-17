@@ -249,6 +249,68 @@ describe('lobby character preparation', () => {
     expect(markup).toContain('Esquiva');
   });
 
+  it('prints the strike damage the fight uses, not a decorative attack number', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.attributes = { ...createDefaultCharacterAttributes(), vitality: 10, attack: 5 };
+    const renderStatus = (LobbyScreenModule as unknown as {
+      renderLobbyCurrentStatus?: (status: unknown) => string;
+    }).renderLobbyCurrentStatus;
+
+    if (typeof renderStatus !== 'function') {
+      expect(typeof renderStatus).toBe('function');
+      return;
+    }
+
+    const statusOf = () =>
+      buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot()).currentStatus;
+    const unarmed = statusOf();
+    // The Attack reading has to be the damage of one strike: it is what the
+    // player compares against the floating numbers in the dungeon.
+    expect(unarmed.derived.attackDamage).toBe(5);
+    expect(renderStatus(unarmed)).toContain('<dt>Ataque</dt><dd>5</dd>');
+
+    profile.equipment.weapon = 'starter-sword';
+    profile.equipment.primaryWeapon = 'starter-sword';
+    const armed = statusOf();
+    expect(armed.derived.attackDamage).toBe(13);
+    expect(renderStatus(armed)).toContain('<dt>Ataque</dt><dd>13</dd>');
+  });
+
+  it('captions every status with its combat effect', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.attributes = {
+      ...createDefaultCharacterAttributes(),
+      vitality: 10,
+      attack: 5,
+      defense: 15,
+      agility: 10,
+    };
+    const renderStatus = (LobbyScreenModule as unknown as {
+      renderLobbyCurrentStatus?: (status: unknown) => string;
+    }).renderLobbyCurrentStatus;
+
+    if (typeof renderStatus !== 'function') {
+      expect(typeof renderStatus).toBe('function');
+      return;
+    }
+
+    const status = buildRpgUiViewModel(
+      profile,
+      InventoryStore.fromProfile(profile).snapshot()
+    ).currentStatus;
+    const markup = renderStatus(status);
+    // Defense 15 = 15/55 of reduction; the caption is what makes "Defesa"
+    // readable in combat.
+    expect(status.derived.damageReduction).toBeCloseTo(15 / 55);
+    expect(markup).toContain('lobby-current-status-hint');
+    expect(markup).toContain('+30 vida');
+    expect(markup).toContain('dano do golpe');
+    expect(markup).toContain(`-${Math.round((15 / 55) * 100)}% do dano`);
+    expect(markup).toContain('+2.5% velocidade');
+    expect(markup).toContain('0% de chance');
+    expect(markup).toContain('100 + 3/Vitalidade');
+  });
+
   it('labels weapon damage as Dano and keeps Ataque for the attribute', () => {
     // The sword grants flat damage, so its card must not promise attribute
     // points the status sheet would never show.

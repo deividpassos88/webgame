@@ -26,6 +26,23 @@ describe('arena lobby composition', () => {
     );
   });
 
+  it('keeps the lobby topbar clickable above the WebGL canvas', () => {
+    // #lobby-screen runs with pointer-events:none so the hall and the Warrior
+    // stay clickable through to the canvas; the panels re-enable the events.
+    // The topbar owns the nav (HEROI / INVENTARIO / SKILLS / OFICINA): without
+    // its own pointer-events:auto every tab silently ignored the mouse.
+    expect(lobbyStyles).toMatch(
+      /#lobby-screen \.arena-topbar \{[^}]*pointer-events: auto;/
+    );
+  });
+
+  it('captions every status metric with its combat effect', () => {
+    // The caption is the second line of the cell, so it needs the full width.
+    expect(lobbyStyles).toMatch(
+      /#lobby-screen \.lobby-current-status-hint \{[^}]*flex-basis: 100%;/
+    );
+  });
+
   it('keeps the stage transparent so the WebGL Warrior shows through', () => {
     expect(lobbyStyles).toMatch(/\.arena-stage \{[\s\S]*?background: transparent;/);
     // A grab cursor is the only rotation affordance; no auto-spin is declared.

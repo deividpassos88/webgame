@@ -223,8 +223,8 @@ describe('InventoryOverlay', () => {
 
     overlay.show('status');
     expect(panel()).toContain('Vida máxima130.0');
-    // Unarmed only the attribute bonus counts (0.2 damage per attack point).
-    expect(panel()).toContain('Dano físico1.0');
+    // Unarmed only the Attack points count (one point of damage each).
+    expect(panel()).toContain('Dano físico5.0');
 
     // Equips through the same inspector flow the player uses.
     overlay.show('backpack');
@@ -232,7 +232,7 @@ describe('InventoryOverlay', () => {
     document.querySelector<HTMLButtonElement>('[data-equip-inventory-item]')?.click();
     overlay.show('status');
     // The sword brings its own 8 damage into the same reading the fight uses.
-    expect(panel()).toContain('Dano físico9.0');
+    expect(panel()).toContain('Dano físico13.0');
     expect(root.dataset.characterMode).toBe('status');
   });
 });

@@ -101,3 +101,12 @@ describe('administrator debug-log placement', () => {
     expect(styles).toMatch(/#debug-log-panel\s*\{[^}]*bottom:\s*304px;/s);
   });
 });
+
+describe('floating combat numbers', () => {
+  it('styles the damage taken apart from the damage dealt and the heals', () => {
+    // The number that reaches the health bar is printed over the player, so the
+    // Defense reduction is readable during the fight.
+    expect(styles).toMatch(/\.floating-damage\.taken\s*\{[^}]*color:\s*#ffa14a;/s);
+    expect(styles).toMatch(/\.floating-damage\.heal\s*\{[^}]*color:\s*#4ade80;/s);
+  });
+});

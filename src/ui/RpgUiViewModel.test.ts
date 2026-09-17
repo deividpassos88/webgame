@@ -76,13 +76,14 @@ describe('RpgUiViewModel', () => {
 
     const unarmed = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
     expect(unarmed.currentStatus.derived.maxHealth).toBeCloseTo(130);
-    expect(unarmed.currentStatus.derived.attackDamage).toBeCloseTo(1);
+    // Unarmed only the Attack points count: one point of damage each.
+    expect(unarmed.currentStatus.derived.attackDamage).toBeCloseTo(5);
 
     profile.equipment.weapon = 'starter-sword';
     profile.equipment.primaryWeapon = 'starter-sword';
     const armed = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
-    // 8 from the sword + 0.2 per attack point.
-    expect(armed.currentStatus.derived.attackDamage).toBeCloseTo(9);
+    // 8 from the sword + 1 per attack point.
+    expect(armed.currentStatus.derived.attackDamage).toBeCloseTo(13);
     expect(armed.currentStatus.derived.maxHealth).toBeCloseTo(130);
     // The attack reading in the sheet carries the weapon damage too.
     expect(armed.currentStatus.attributes.find(({ key }) => key === 'attack')?.value).toBe(13);

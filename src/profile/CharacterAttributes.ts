@@ -38,8 +38,22 @@ const MAX_CRITICAL_CHANCE = 0.35;
 const MAX_DODGE_CHANCE = 0.25;
 /** Absolute health granted by one Vitality point. */
 const HEALTH_PER_VITALITY = 3;
-/** Flat bonus damage granted by one Attack point. */
-const DAMAGE_PER_ATTACK = 0.2;
+/**
+ * Flat damage granted by one Attack point.
+ *
+ * One point equals one point of damage on purpose: the sheet prints the Attack
+ * reading and the weapon damage as a single number, so that number has to be
+ * the damage the strike actually deals. At 0.2/point a geared warrior added
+ * less than one damage to a hit and every equipment upgrade disappeared in the
+ * combat rounding.
+ */
+const DAMAGE_PER_ATTACK = 1;
+/**
+ * Defense points needed to reach 50% damage reduction (before the 55% cap).
+ * The old denominator (160) turned a full set into ~9% reduction, which the
+ * player could not feel: a 12 damage hit landed as 11 instead of 12.
+ */
+const DEFENSE_REDUCTION_DENOMINATOR = 40;
 const BASE_CRITICAL_MULTIPLIER = 1.5;
 const MAX_CRITICAL_DAMAGE_BONUS = 1;
 const MAX_LIFE_STEAL = 0.15;
@@ -61,7 +75,7 @@ export interface DerivedCharacterStats {
    * replaced by Vitality: physical damage now comes from Attack alone.
    */
   readonly physicalDamageMultiplier: number;
-  /** Flat base-damage bonus from Attack. */
+  /** Flat strike damage added by the Attack points. */
   readonly baseAttackBonus: number;
   /** Defense converted to a capped damage-reduction fraction. */
   readonly damageReduction: number;
@@ -71,6 +85,10 @@ export interface DerivedCharacterStats {
   /** Base values resolved with the speed and damage bonuses. */
   readonly movementSpeed: number;
   readonly attackCooldown: number;
+  /**
+   * Damage of one strike before critical hits and distance falloff: the weapon
+   * base plus the Attack points. This is the number the status sheet prints.
+   */
   readonly attackDamage: number;
   /** Chance values are represented as fractions (0.35 = 35%). */
   readonly criticalAttackChance: number;
@@ -158,7 +176,8 @@ export function deriveCharacterStats(
   const maxHealthBonus = safe.vitality * HEALTH_PER_VITALITY;
   const physicalDamageMultiplier = 1;
   const baseAttackBonus = safe.attack * DAMAGE_PER_ATTACK;
-  const defenseReduction = safe.defense / (safe.defense + 160);
+  const defenseReduction =
+    safe.defense / (safe.defense + DEFENSE_REDUCTION_DENOMINATOR);
   const damageReduction = clamp(defenseReduction, 0, MAX_DEFENSE_REDUCTION);
   const movementSpeedMultiplier = 1 + Math.min(MAX_MOVEMENT_SPEED_BONUS, safe.agility * 0.0025);
   const attackSpeedMultiplier = 1 + Math.min(MAX_ATTACK_SPEED_BONUS, safe.agility * 0.002);

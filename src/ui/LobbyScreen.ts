@@ -154,19 +154,45 @@ function formatMetricValue(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+/**
+ * One-line reading of what each point does in combat. It is the caption under
+ * the number, so the player can tell a status from a decoration: "Defesa 17"
+ * alone said nothing, "-30% do dano recebido" tells the whole story.
+ */
+function lobbyStatusHints(
+  status: CurrentCharacterStatusView
+): Readonly<Record<string, string>> {
+  const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
+  const derived = status.derived;
+  return {
+    vitality: `+${Math.round(derived.maxHealthBonus)} vida`,
+    attack: 'dano do golpe',
+    defense: `-${percent(derived.damageReduction)} do dano`,
+    agility: `+${((derived.movementSpeedMultiplier - 1) * 100).toFixed(1)}% velocidade`,
+    criticalAttack: `${percent(derived.criticalAttackChance)} de chance`,
+    dodge: `${percent(derived.dodgeChance)} de anular`,
+  };
+}
+
 function lobbyStatusMetrics(
   status: CurrentCharacterStatusView
-): readonly { readonly label: string; readonly value: string | number }[] {
+): readonly { readonly label: string; readonly value: string | number; readonly hint: string }[] {
   const byKey = new Map(status.attributes.map(({ key, value }) => [key as string, value]));
+  const hints = lobbyStatusHints(status);
   const attributes = LOBBY_STATUS_METRICS.map(({ key, label }) => ({
     label,
     value: byKey.get(key) ?? 0,
+    hint: hints[key] ?? '',
   }));
   // The attack reading already carries the equipped weapon damage, so the
   // sheet only adds the life total next to the six attributes.
   return [
     ...attributes,
-    { label: 'Vida máxima', value: formatMetricValue(status.derived.maxHealth) },
+    {
+      label: 'Vida máxima',
+      value: formatMetricValue(status.derived.maxHealth),
+      hint: '100 + 3/Vitalidade',
+    },
   ];
 }
 
@@ -180,7 +206,7 @@ export function renderLobbyCurrentStatus(status: CurrentCharacterStatusView): st
         <div><dt>Pontos disponíveis</dt><dd>${status.attributePointsRemaining}</dd></div>
       </dl>
       <dl class="lobby-current-status-grid">
-        ${lobbyStatusMetrics(status).map(({ label, value }) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}
+        ${lobbyStatusMetrics(status).map(({ label, value, hint }) => `<div><dt>${label}</dt><dd>${value}</dd><small class="lobby-current-status-hint">${hint}</small></div>`).join('')}
       </dl>
       ${status.setBonus ? `<aside class="lobby-set-bonus" aria-label="Bônus de conjunto ativo">
         <span>Conjunto completo</span>

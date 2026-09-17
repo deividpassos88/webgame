@@ -65,8 +65,11 @@ describe('CharacterAttributes', () => {
     // Vitality is pure health now: 3 HP per point, no damage side effect.
     expect(stats.maxHealthBonus).toBeCloseTo(30);
     expect(stats.physicalDamageMultiplier).toBeCloseTo(1);
-    expect(stats.baseAttackBonus).toBeCloseTo(2);
-    expect(stats.damageReduction).toBeCloseTo(80 / 240);
+    // One Attack point is one point of strike damage: the status sheet prints
+    // the same number the weapon deals.
+    expect(stats.baseAttackBonus).toBeCloseTo(10);
+    // Defense 80 reaches 80/120 and is trimmed by the 55% cap.
+    expect(stats.damageReduction).toBeCloseTo(0.55);
     expect(stats.movementSpeedMultiplier).toBeCloseTo(1.25);
     expect(stats.attackSpeedMultiplier).toBeCloseTo(1.2);
     // 100 points produce 30%; the independent 35% cap still protects
@@ -95,7 +98,8 @@ describe('CharacterAttributes', () => {
     );
 
     expect(stats.maxHealth).toBeCloseTo(160);
-    expect(stats.attackDamage).toBeCloseTo(9);
+    // Base weapon damage 8 + 5 Attack points.
+    expect(stats.attackDamage).toBeCloseTo(13);
     expect(stats.movementSpeed).toBeCloseTo(4.5 * 1.125);
     expect(stats.attackCooldown).toBeCloseTo(0.67 / 1.1);
   });

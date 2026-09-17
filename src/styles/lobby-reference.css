@@ -101,6 +101,14 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, .55);
 }
 
+/*
+ * O shell do lobby roda com `pointer-events: none` (style.css) para o palco
+ * central deixar o clique chegar ao canvas. Os paineis reativam os eventos,
+ * mas o topbar nao — e nav/settings ficavam mortos para o mouse (o clique
+ * atravessava para o canvas). A barra e opaca, entao ela recebe os eventos.
+ */
+#lobby-screen .arena-topbar { pointer-events: auto; }
+
 #lobby-screen .arena-identity { display: flex; gap: 14px; align-items: center; }
 
 #lobby-screen .arena-sigil {
@@ -595,12 +603,25 @@ body #lobby-screen .arena-equip-grid .equipment-slot__art .inventory-item-art {
 }
 #lobby-screen .lobby-current-status dl div {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  row-gap: 3px;
   padding: 7px 9px;
   border: 1px solid rgba(212, 169, 79, .18);
   border-radius: 3px;
   background: linear-gradient(180deg, rgba(18, 24, 31, .9), rgba(9, 12, 16, .9));
+}
+/* Legenda do efeito em combate, na segunda linha da celula. */
+#lobby-screen .lobby-current-status-hint {
+  flex-basis: 100%;
+  overflow: hidden;
+  text-align: right;
+  color: var(--gold-dk);
+  font: 600 8.5px/1.25 'Consolas', monospace;
+  letter-spacing: .02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 #lobby-screen .lobby-current-status dt { color: var(--text-dim); font: 600 10px/1 'Segoe UI', sans-serif; }
 #lobby-screen .lobby-current-status dd { margin: 0; color: var(--gold-lt); font: 700 12px/1 'Consolas', monospace; }

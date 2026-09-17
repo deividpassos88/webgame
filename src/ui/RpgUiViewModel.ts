@@ -52,11 +52,15 @@ export interface CurrentCharacterStatusView {
    */
   readonly derived: {
     readonly maxHealth: number;
+    readonly maxHealthBonus: number;
     readonly attackDamage: number;
     readonly damageReduction: number;
     readonly criticalMultiplier: number;
+    readonly criticalAttackChance: number;
     readonly lifeStealFraction: number;
     readonly dodgeChance: number;
+    readonly movementSpeedMultiplier: number;
+    readonly attackSpeedMultiplier: number;
   };
 }
 
@@ -147,11 +151,15 @@ export function buildRpgUiViewModel(
     setBonus,
     derived: {
       maxHealth: derivedStats.maxHealth,
+      maxHealthBonus: derivedStats.maxHealthBonus,
       attackDamage: derivedStats.attackDamage,
       damageReduction: derivedStats.damageReduction,
       criticalMultiplier: derivedStats.criticalMultiplier,
+      criticalAttackChance: derivedStats.criticalAttackChance,
       lifeStealFraction: derivedStats.lifeStealFraction,
       dodgeChance: derivedStats.dodgeChance,
+      movementSpeedMultiplier: derivedStats.movementSpeedMultiplier,
+      attackSpeedMultiplier: derivedStats.attackSpeedMultiplier,
     },
   };
   return { equipment, backpack, skills, currentStatus };

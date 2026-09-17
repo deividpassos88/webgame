@@ -860,6 +860,14 @@ html, body {
   animation: floatUp 1s ease-out forwards;
   pointer-events: none;
 }
+/* Dano levado pelo jogador: laranja, para nao competir com o vermelho dos
+   golpes que ele acerta e para o efeito da Defesa ficar legivel no combate. */
+.floating-damage.taken {
+  color: #ffa14a;
+  font-size: 15px;
+  text-shadow: 0 0 8px rgba(255, 122, 26, 0.75);
+}
+
 .floating-damage.heal {
   color: #4ade80;
 }
