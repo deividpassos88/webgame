@@ -13,6 +13,7 @@ import * as LobbyScreenModule from './LobbyScreen';
 import { prepareGuildTokenBackpackExpansion } from '../inventory/BackpackExpansion';
 import { InventoryStore } from '../inventory/InventoryStore';
 import { createDefaultPlayerProfile } from '../profile/PlayerProfile';
+import type { InventoryStack } from '../profile/PlayerProfile';
 import { buildRpgUiViewModel } from './RpgUiViewModel';
 import * as InventoryOverlayModule from './InventoryOverlay';
 import type { CharacterAssetStore } from '../characters/CharacterAssetStore';
@@ -30,7 +31,7 @@ function mountLobbyRouteMarkup(): void {
         <div id="lobby-backpack"></div>
         <section id="lobby-item-actions" class="hidden" role="menu">
           <header><div id="lobby-item-actions-art"></div><div><p id="lobby-item-actions-title"></p><p id="lobby-item-actions-state"></p></div><button type="button" data-close-item-actions>✕</button></header>
-          <div><p id="lobby-item-actions-description"></p><p id="lobby-item-actions-stat"></p></div>
+          <div class="lobby-item-actions__details"><p id="lobby-item-actions-description"></p><p id="lobby-item-actions-stat"></p></div>
           <button type="button" data-item-action="equip">Equipar</button>
           <button type="button" data-item-action="upgrade">Aprimorar</button>
           <button type="button" data-item-action="destroy">Destruir</button>
@@ -552,6 +553,106 @@ describe('lobby character preparation', () => {
       .toContain('aprimoramento em desenvolvimento');
     expect(store.snapshot().backpack).toEqual([{ itemId: 'starter-sword', quantity: 1 }]);
     expect(document.getElementById('lobby-item-actions')?.classList.contains('hidden')).toBe(true);
+    lobby.dispose();
+  });
+
+  /** Mounts the lobby over a specific backpack so kind filtering can be tested. */
+  function mountLobbyWithBackpack(backpack: InventoryStack[]): {
+    lobby: LobbyScreen;
+    store: InventoryStore;
+  } {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    profile.backpack = backpack;
+    const store = InventoryStore.fromProfile(profile);
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      store
+    );
+    void lobby.show({
+      firstRun: false,
+      onClassConfirmed: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+      onHotkeysChanged: () => undefined,
+      onAutoBasicAttackChanged: () => undefined,
+      onLobbyInventoryChanged: () => undefined,
+      onBlacksmithLicensePurchase: () => ({ message: '' }),
+      onBlacksmithCraft: () => ({ message: '' }),
+    });
+    return { lobby, store };
+  }
+
+  it('offers only Destruir for a material in the backpack', () => {
+    const { lobby, store } = mountLobbyWithBackpack([{ itemId: 'runic-crystal', quantity: 4 }]);
+
+    document.querySelector<HTMLButtonElement>('[data-lobby-inventory-index="0"]')?.click();
+
+    const equip = document.querySelector<HTMLButtonElement>('[data-item-action="equip"]')!;
+    const upgrade = document.querySelector<HTMLButtonElement>('[data-item-action="upgrade"]')!;
+    const destroy = document.querySelector<HTMLButtonElement>('[data-item-action="destroy"]')!;
+    // Materials are not wearable: equip/upgrade must not even be offered.
+    expect(equip.hidden).toBe(true);
+    expect(upgrade.hidden).toBe(true);
+    expect(destroy.hidden).toBe(false);
+    expect(destroy.disabled).toBe(false);
+    // The keyboard/pointer focus must land on an action that is really there.
+    expect(document.activeElement).toBe(destroy);
+    // No lore and no attributes: the bordered details box must not stay empty.
+    expect(document.querySelector<HTMLElement>('.lobby-item-actions__details')?.hidden).toBe(true);
+
+    destroy.click();
+    document.querySelector<HTMLButtonElement>('[data-destroy-confirm]')?.click();
+
+    expect(store.snapshot().backpack).toEqual([]);
+    lobby.dispose();
+  });
+
+  it('offers the full action set for gear and restores it after a material was clicked', () => {
+    const { lobby } = mountLobbyWithBackpack([
+      { itemId: 'runic-crystal', quantity: 2 },
+      { itemId: 'starter-sword', quantity: 1 },
+    ]);
+
+    document.querySelector<HTMLButtonElement>('[data-lobby-inventory-index="0"]')?.click();
+    expect(document.querySelector<HTMLButtonElement>('[data-item-action="equip"]')?.hidden).toBe(true);
+
+    document.querySelector<HTMLButtonElement>('[data-lobby-inventory-index="1"]')?.click();
+
+    const equip = document.querySelector<HTMLButtonElement>('[data-item-action="equip"]')!;
+    const upgrade = document.querySelector<HTMLButtonElement>('[data-item-action="upgrade"]')!;
+    const destroy = document.querySelector<HTMLButtonElement>('[data-item-action="destroy"]')!;
+    expect(equip.hidden).toBe(false);
+    expect(equip.textContent).toBe('Equipar');
+    expect(upgrade.hidden).toBe(false);
+    expect(destroy.hidden).toBe(false);
+    expect(destroy.disabled).toBe(false);
+    expect(document.activeElement).toBe(equip);
+    // Gear keeps its details box: the sword has lore and an attack value.
+    expect(document.querySelector<HTMLElement>('.lobby-item-actions__details')?.hidden).toBe(false);
+    lobby.dispose();
+  });
+
+  it('shows Desequipar and Aprimorar for worn gear and disables destruction', () => {
+    const { lobby } = mountLobbyWithBackpack([{ itemId: 'starter-sword', quantity: 1 }]);
+
+    document.querySelector<HTMLButtonElement>('[data-lobby-inventory-index="0"]')?.click();
+    document.querySelector<HTMLButtonElement>('[data-item-action="equip"]')?.click();
+    document.querySelector<HTMLButtonElement>('[data-lobby-equipped-slot="primaryWeapon"]')?.click();
+
+    const equip = document.querySelector<HTMLButtonElement>('[data-item-action="equip"]')!;
+    expect(equip.hidden).toBe(false);
+    expect(equip.textContent).toBe('Desequipar');
+    expect(equip.classList.contains('is-unequip')).toBe(true);
+    expect(document.querySelector<HTMLButtonElement>('[data-item-action="upgrade"]')?.hidden).toBe(false);
+    const destroy = document.querySelector<HTMLButtonElement>('[data-item-action="destroy"]')!;
+    expect(destroy.hidden).toBe(false);
+    expect(destroy.disabled).toBe(true);
     lobby.dispose();
   });
 });

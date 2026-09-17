@@ -2313,6 +2313,11 @@ body #lobby-screen .lobby-footer { grid-column: 1 / -1; grid-row: 4; }
   font-family: 'Segoe UI', sans-serif;
 }
 .lobby-item-actions.hidden { display: none; }
+/*
+ * The action list is filtered by item kind (gear vs material/consumable), so a
+ * hidden action must not keep its grid row inside `.lobby-item-actions__list`.
+ */
+.lobby-item-actions [hidden] { display: none !important; }
 /* Slot selecionado: glow dourado discreto enquanto o menu está aberto. */
 .inventory-slot.is-selected {
   border-color: rgba(240, 219, 161, 0.9);

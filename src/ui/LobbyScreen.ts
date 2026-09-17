@@ -25,6 +25,7 @@ import {
   renderInventorySlotContent,
 } from './CraftRewardsPresentation';
 import { bindItemTooltip } from './ItemTooltip';
+import { resolveLobbyItemActionState } from './LobbyItemActions';
 import { restoreBackpackExpansionFocus } from './InventoryOverlay';
 import {
   BlacksmithScreen,
@@ -817,22 +818,41 @@ export class LobbyScreen {
     this.itemActionsTitle.textContent = item?.label ?? selection.itemId;
     this.itemActionsState.textContent = equipped ? 'Equipado' : 'Na mochila';
     this.itemActionsArt.innerHTML = item ? renderInventorySlotContent(item, 1) : '';
-    this.itemActionsDescription.textContent = item?.description ?? '';
+    const description = item?.description?.trim() ?? '';
+    this.itemActionsDescription.textContent = description;
     const stats = itemStatSummary(item);
     this.itemActionsStat.textContent = stats;
     this.itemActionsStat.hidden = !stats;
+    // Legacy materials carry neither lore nor attributes: the bordered details
+    // box would otherwise show up as an empty frame above the actions.
+    const detailsHost = this.itemActionsPanel.querySelector<HTMLElement>('.lobby-item-actions__details');
+    if (detailsHost) detailsHost.hidden = description.length === 0 && stats.length === 0;
+    /*
+     * The menu is filtered by item kind: gear offers equip/unequip and
+     * upgrade, materials and consumables offer destruction only. Hidden
+     * actions must not keep their grid row or receive focus.
+     */
+    const actions = resolveLobbyItemActionState(item?.kind, selection.location);
     const equipAction = this.itemActionsPanel.querySelector<HTMLButtonElement>('[data-item-action="equip"]');
     if (equipAction) {
-      equipAction.textContent = equipped ? 'Desequipar' : 'Equipar';
-      equipAction.classList.toggle('is-unequip', equipped);
+      equipAction.hidden = !actions.equipVisible;
+      if (actions.equipLabel) equipAction.textContent = actions.equipLabel;
+      equipAction.classList.toggle('is-unequip', actions.equipLabel === 'Desequipar');
     }
+    const upgradeAction = this.itemActionsPanel.querySelector<HTMLButtonElement>('[data-item-action="upgrade"]');
+    if (upgradeAction) upgradeAction.hidden = !actions.upgradeVisible;
     const destroyAction = this.itemActionsPanel.querySelector<HTMLButtonElement>('[data-item-action="destroy"]');
-    if (destroyAction) destroyAction.disabled = equipped;
+    if (destroyAction) {
+      destroyAction.hidden = !actions.destroyVisible;
+      destroyAction.disabled = actions.destroyDisabled;
+    }
     this.hideDestroyConfirm(false);
     source.classList.add('is-selected');
     this.itemActionsPanel.classList.remove('hidden');
     this.positionItemActions(source);
-    this.itemActionsPanel.querySelector<HTMLButtonElement>('[data-item-action="equip"]')?.focus();
+    this.itemActionsPanel
+      .querySelector<HTMLButtonElement>('[data-item-action]:not([hidden])')
+      ?.focus();
   }
 
   /**
