@@ -32,7 +32,12 @@ describe('BlacksmithScreen', () => {
 
     expect(host.querySelector('[data-blacksmith-screen]')).not.toBeNull();
     expect(host.querySelector('[data-workshop-recipes]')?.classList.contains('is-locked')).toBe(true);
-    expect(host.querySelector('[data-workshop-equipment]')?.textContent).toContain('Primária');
+    // The socket shows the picture only; the slot name reaches assistive tech
+    // through the aria-label.
+    const sockets = [...host.querySelectorAll<HTMLElement>('[data-workshop-equipment] [data-equipment-slot]')];
+    expect(sockets).toHaveLength(7);
+    expect(sockets.map((socket) => socket.getAttribute('aria-label')))
+      .toContain('Primária: Vazio');
   });
 
   it('keeps equipment, inventory and craft content in one keyboard-reachable tabbed window', () => {
@@ -84,6 +89,8 @@ describe('BlacksmithScreen', () => {
   it('shows available recipe materials in green and missing materials in red', () => {
     const profile = createDefaultPlayerProfile();
     profile.blacksmith.availableUntil = Date.now() + 36 * 60 * 60 * 1000;
+    // Exactly the five materials of the Draconic helmet recipe, so the helmet
+    // is ready while the gloves still miss two of theirs.
     profile.backpack = [
       { itemId: 'worn-draco-claw', quantity: 10 },
       { itemId: 'worn-draco-hide', quantity: 10 },
@@ -101,11 +108,14 @@ describe('BlacksmithScreen', () => {
     screen.show();
 
     const helmet = host.querySelector<HTMLElement>('[data-craft-recipe="common-forged-helmet"]')!.closest('.blacksmith-recipe')!;
-    const chest = host.querySelector<HTMLElement>('[data-craft-recipe="common-forged-chest"]')!.closest('.blacksmith-recipe')!;
+    const chest = host.querySelector<HTMLElement>('[data-craft-recipe="common-forged-gloves"]')!.closest('.blacksmith-recipe')!;
     expect(helmet.classList.contains('is-ready')).toBe(true);
     expect(helmet.querySelectorAll('.blacksmith-ingredient.is-available')).toHaveLength(5);
     expect(chest.classList.contains('is-incomplete')).toBe(true);
     expect(chest.querySelector('.blacksmith-ingredient.is-missing small')?.textContent).toBe('0 / 10');
+    // One flat list of the five Draconic recipes.
+    expect(host.querySelectorAll('[data-craft-recipe]')).toHaveLength(5);
+    expect(host.querySelector('.blacksmith-set')).toBeNull();
   });
 
   it('returns to the lobby through its explicit back callback', () => {
@@ -147,6 +157,8 @@ describe('BlacksmithScreen', () => {
     vi.useFakeTimers();
     const profile = createDefaultPlayerProfile();
     profile.blacksmith.availableUntil = Date.now() + 36 * 60 * 60 * 1000;
+    // Exactly the five materials of the Draconic helmet recipe, so the helmet
+    // is ready while the gloves still miss two of theirs.
     profile.backpack = [
       { itemId: 'worn-draco-claw', quantity: 10 },
       { itemId: 'worn-draco-hide', quantity: 10 },

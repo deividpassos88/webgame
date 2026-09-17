@@ -24,12 +24,13 @@ export const COMMON_CRAFT_MATERIAL_IDS = [
 const ingredients = (...itemIds: readonly (typeof COMMON_CRAFT_MATERIAL_IDS)[number][]) =>
   itemIds.map((itemId) => ({ itemId, quantity: 10 }));
 
+/** The forge sells the five-piece common line, one recipe per armor slot. */
 export const BLACKSMITH_RECIPES = [
-  { id: 'common-forged-helmet', outputItemId: 'common-forged-helmet', label: 'Capacete do Forjador Comum', ingredients: ingredients('worn-draco-claw', 'worn-draco-hide', 'black-horn-fragment', 'crimson-fang', 'serrated-rubra-scale') },
-  { id: 'common-forged-chest', outputItemId: 'common-forged-chest', label: 'Peitoral do Forjador Comum', ingredients: ingredients('worn-draco-claw', 'worn-draco-hide', 'volatile-draconic-essence', 'ossified-draco-ribs', 'verdant-draco-talisman') },
-  { id: 'common-forged-pants', outputItemId: 'common-forged-pants', label: 'Calca do Forjador Comum', ingredients: ingredients('worn-draco-hide', 'black-horn-fragment', 'volatile-draconic-essence', 'crimson-draco-talon', 'obsidian-draco-eye') },
-  { id: 'common-forged-gloves', outputItemId: 'common-forged-gloves', label: 'Luvas do Forjador Comum', ingredients: ingredients('worn-draco-claw', 'crimson-fang', 'serrated-rubra-scale', 'ossified-draco-ribs', 'crimson-draco-talon') },
-  { id: 'common-forged-boots', outputItemId: 'common-forged-boots', label: 'Botas do Forjador Comum', ingredients: ingredients('black-horn-fragment', 'crimson-fang', 'volatile-draconic-essence', 'verdant-draco-talisman', 'obsidian-draco-eye') },
+  { id: 'common-forged-helmet', outputItemId: 'common-forged-helmet', label: 'Draconic Helmet', ingredients: ingredients('worn-draco-claw', 'worn-draco-hide', 'black-horn-fragment', 'crimson-fang', 'serrated-rubra-scale') },
+  { id: 'common-forged-chest', outputItemId: 'common-forged-chest', label: 'Draconic Chestplate', ingredients: ingredients('worn-draco-claw', 'worn-draco-hide', 'volatile-draconic-essence', 'ossified-draco-ribs', 'verdant-draco-talisman') },
+  { id: 'common-forged-pants', outputItemId: 'common-forged-pants', label: 'Draconic Pants', ingredients: ingredients('worn-draco-hide', 'black-horn-fragment', 'volatile-draconic-essence', 'crimson-draco-talon', 'obsidian-draco-eye') },
+  { id: 'common-forged-gloves', outputItemId: 'common-forged-gloves', label: 'Draconic Gloves', ingredients: ingredients('worn-draco-claw', 'crimson-fang', 'serrated-rubra-scale', 'ossified-draco-ribs', 'crimson-draco-talon') },
+  { id: 'common-forged-boots', outputItemId: 'common-forged-boots', label: 'Draconic Boots', ingredients: ingredients('black-horn-fragment', 'crimson-fang', 'volatile-draconic-essence', 'verdant-draco-talisman', 'obsidian-draco-eye') },
 ] as const;
 
 export type BlacksmithRecipeId = (typeof BLACKSMITH_RECIPES)[number]['id'];

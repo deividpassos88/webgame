@@ -26,6 +26,40 @@ describe('arena lobby composition', () => {
     );
   });
 
+  it('brands the hall with its own guild sigil, shipped as a real asset', () => {
+    // The mark in front of "Masmorra de Herois" is the guild crest, not the
+    // equipment icon: the nav already owns the crossed swords.
+    expect(lobbyStyles).toMatch(
+      /#lobby-screen \.arena-sigil \{[^}]*guild-sigil\.svg/
+    );
+    const svg = readFileSync(
+      new URL('../../public/assets/ui/lobby/arena/icons/guild-sigil.svg', import.meta.url),
+      'utf8'
+    );
+    expect(svg.startsWith('<svg')).toBe(true);
+    // Ornate crest: stone ring, ember core and the two crossed swords.
+    expect(svg).toContain('viewBox="0 0 64 64"');
+    expect(svg).toContain('gsEmber');
+    for (const peca of ['gsRing', 'gsGold', 'gsGem']) expect(svg).toContain(peca);
+  });
+
+  it('keeps the lobby topbar clickable above the WebGL canvas', () => {
+    // #lobby-screen runs with pointer-events:none so the hall and the Warrior
+    // stay clickable through to the canvas; the panels re-enable the events.
+    // The topbar owns the nav (HEROI / INVENTARIO / SKILLS / OFICINA): without
+    // its own pointer-events:auto every tab silently ignored the mouse.
+    expect(lobbyStyles).toMatch(
+      /#lobby-screen \.arena-topbar \{[^}]*pointer-events: auto;/
+    );
+  });
+
+  it('captions every status metric with its combat effect', () => {
+    // The caption is the second line of the cell, so it needs the full width.
+    expect(lobbyStyles).toMatch(
+      /#lobby-screen \.lobby-current-status-hint \{[^}]*flex-basis: 100%;/
+    );
+  });
+
   it('keeps the stage transparent so the WebGL Warrior shows through', () => {
     expect(lobbyStyles).toMatch(/\.arena-stage \{[\s\S]*?background: transparent;/);
     // A grab cursor is the only rotation affordance; no auto-spin is declared.
@@ -69,14 +103,12 @@ describe('arena lobby composition', () => {
     expect(lobbyStyles).toMatch(
       /\.equipment-slot\.is-equipped::after \{[\s\S]*?transparent 215deg[\s\S]*?animation: arena-rarity-sweep/
     );
-    // Captions sit centred along the foot of the socket, in the serif face,
-    // and stay visible once a piece is equipped.
+    // The socket caption is gone: picture only, name in the aria-label.
+    expect(lobbyStyles).not.toContain('.equipment-slot__label');
+    // An empty socket shows the gray placeholder, smaller than the item art
+    // that replaces it once a piece is equipped.
     expect(lobbyStyles).toMatch(
-      /\.equipment-slot__label \{[\s\S]*?bottom: 3px;[\s\S]*?place-items: center;[\s\S]*?Georgia/
-    );
-    // An equipped socket drops its caption so the artwork owns the cell.
-    expect(lobbyStyles).toMatch(
-      /\.equipment-slot\.is-equipped \.equipment-slot__label \{[^}]*display: none/
+      /#lobby-screen \.arena-equip-grid \.equipment-slot__icon,[\s\S]*?width: 56% !important;/
     );
   });
 
@@ -132,5 +164,21 @@ describe('arena lobby composition', () => {
     expect(lobbyStyles).toMatch(
       /\.arena-bag-grid \.inventory-item-art \{[\s\S]*?width: 100%;[\s\S]*?height: 100%;[\s\S]*?object-fit: cover/
     );
+  });
+
+  it('keeps the viewport tooltip out of the shell grid', () => {
+    // The stacking helper runs on id specificity, so it also matched the
+    // tooltip that LobbyScreen appends inside the shell and overrode its
+    // `position: fixed`. As a grid item the card auto-placed in an implicit
+    // 4th row: the 1fr stage row was squeezed (601px -> 453px at 1386x761),
+    // the card was painted below the pointer, and the shell kept ~300px of
+    // script-scrollable overflow that scrolled the whole lobby up.
+    expect(lobbyStyles).toContain(
+      '#lobby-screen > *:not(.arena-vignette):not(.item-tooltip) { position: relative; z-index: 2; }'
+    );
+    expect(lobbyStyles).not.toMatch(/#lobby-screen > \*:not\(\.arena-vignette\) \{/);
+    // And the card itself stays viewport-anchored in the shared stylesheet.
+    const sharedStyles = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+    expect(sharedStyles).toMatch(/\.item-tooltip \{\s*position: fixed;/);
   });
 });

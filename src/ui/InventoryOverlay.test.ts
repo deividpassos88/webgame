@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { InventoryStore } from '../inventory/InventoryStore';
 import { createDefaultPlayerProfile } from '../profile/PlayerProfile';
+import { createDefaultCharacterAttributes } from '../profile/CharacterAttributes';
 import { InventoryOverlay } from './InventoryOverlay';
 import * as InventoryOverlayModule from './InventoryOverlay';
 
@@ -204,5 +205,34 @@ describe('InventoryOverlay', () => {
     expect(profile.attributes.attack).toBe(5);
     expect(profile.attributePointsRemaining).toBe(0);
     expect(persisted).toBe(1);
+  });
+
+  it('reads the current loadout in the Impacto atual panel instead of a fixed base', () => {
+    const root = mountInventoryMarkup();
+    const profile = createDefaultPlayerProfile();
+    profile.attributes = { ...createDefaultCharacterAttributes(), vitality: 10, attack: 5 };
+    const store = InventoryStore.fromProfile(profile);
+    const overlay = new InventoryOverlay(profile, store, {
+      onClose: () => undefined,
+      onInventoryChanged: () => undefined,
+      onStatusChanged: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+    });
+    // dt/dd pairs concatenate without a separator in textContent.
+    const panel = () => document.getElementById('status-derived-stats')?.textContent ?? '';
+
+    overlay.show('status');
+    expect(panel()).toContain('Vida máxima130.0');
+    // Unarmed only the Attack points count (one point of damage each).
+    expect(panel()).toContain('Dano físico5.0');
+
+    // Equips through the same inspector flow the player uses.
+    overlay.show('backpack');
+    root.querySelector<HTMLButtonElement>('[data-inventory-index="0"]')?.click();
+    document.querySelector<HTMLButtonElement>('[data-equip-inventory-item]')?.click();
+    overlay.show('status');
+    // The sword brings its own 8 damage into the same reading the fight uses.
+    expect(panel()).toContain('Dano físico13.0');
+    expect(root.dataset.characterMode).toBe('status');
   });
 });

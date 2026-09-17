@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultPlayerProfile } from '../profile/PlayerProfile';
+import { createDefaultCharacterAttributes } from '../profile/CharacterAttributes';
 import { InventoryStore } from '../inventory/InventoryStore';
 import { buildRpgUiViewModel } from './RpgUiViewModel';
 
@@ -26,7 +27,7 @@ describe('RpgUiViewModel', () => {
     expect(view.equipment.find(({ slot }) => slot === 'helmet')?.item).toBeNull();
     expect(view.equipment.find(({ slot }) => slot === 'primaryWeapon')?.item).toBeNull();
     expect(view.equipment.find(({ slot }) => slot === 'secondaryWeapon')?.item).toBeNull();
-    expect(view.backpack[0]?.item?.label).toBe('Espada do Recruta');
+    expect(view.backpack[0]?.item?.label).toBe('Sword Novice');
     expect(view.backpack[0]?.quantity).toBe(1);
     expect(view.backpack[1]?.item?.label).toBe('Cristal Rúnico');
     expect(view.backpack[1]?.quantity).toBe(4);
@@ -37,13 +38,15 @@ describe('RpgUiViewModel', () => {
     profile.progression = { level: 3, experience: 220 };
     profile.attributePointsRemaining = 4;
     profile.attributes = {
-      strength: 9,
+      vitality: 9,
       attack: 8,
       defense: 7,
       agility: 6,
       criticalAttack: 5,
-      criticalMagic: 4,
-      dodge: 3,
+      criticalDamage: 4,
+      lifeSteal: 3,
+      criticalMagic: 2,
+      dodge: 1,
     };
 
     const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
@@ -53,19 +56,40 @@ describe('RpgUiViewModel', () => {
         level: 3,
         attributePointsRemaining: 4,
         attributes: [
-          { label: 'Força', value: 9 },
+          { label: 'Vitalidade', value: 9 },
           { label: 'Ataque', value: 8 },
           { label: 'Defesa', value: 7 },
           { label: 'Agilidade', value: 6 },
           { label: 'Crítico físico', value: 5 },
-          { label: 'Crítico mágico', value: 4 },
-          { label: 'Esquiva', value: 3 },
+          { label: 'Dano crítico', value: 4 },
+          { label: 'Roubo de vida', value: 3 },
+          { label: 'Crítico mágico', value: 2 },
+          { label: 'Esquiva', value: 1 },
         ],
       },
     });
   });
 
-  it('exposes the active common forged set bonus for the lobby status panel', () => {
+  it('resolves the derived combat numbers from the equipped weapon and armor', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.attributes = { ...createDefaultCharacterAttributes(), vitality: 10, attack: 5 };
+
+    const unarmed = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
+    expect(unarmed.currentStatus.derived.maxHealth).toBeCloseTo(130);
+    // Unarmed only the Attack points count: one point of damage each.
+    expect(unarmed.currentStatus.derived.attackDamage).toBeCloseTo(5);
+
+    profile.equipment.weapon = 'starter-sword';
+    profile.equipment.primaryWeapon = 'starter-sword';
+    const armed = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
+    // 8 from the sword + 1 per attack point.
+    expect(armed.currentStatus.derived.attackDamage).toBeCloseTo(13);
+    expect(armed.currentStatus.derived.maxHealth).toBeCloseTo(130);
+    // The attack reading in the sheet carries the weapon damage too.
+    expect(armed.currentStatus.attributes.find(({ key }) => key === 'attack')?.value).toBe(13);
+  });
+
+  it('exposes the Draconic set bonus for the lobby status panel', () => {
     const profile = createDefaultPlayerProfile();
     Object.assign(profile.equipment, {
       helmet: 'common-forged-helmet',
@@ -78,13 +102,17 @@ describe('RpgUiViewModel', () => {
     const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
 
     expect(view.currentStatus.setBonus).toEqual({
-      label: 'Conjunto do Forjador Comum',
+      label: 'Conjunto Draconic',
       attributes: [
-        { label: 'Força', value: 2 },
+        { label: 'Vitalidade', value: 1 },
         { label: 'Ataque', value: 2 },
         { label: 'Defesa', value: 3 },
         { label: 'Agilidade', value: 2 },
       ],
     });
+
+    profile.equipment.boots = null;
+    const partial = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
+    expect(partial.currentStatus.setBonus).toBeNull();
   });
 });

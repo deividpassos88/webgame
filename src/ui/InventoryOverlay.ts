@@ -14,6 +14,7 @@ import {
   type CharacterAttributeKey,
 } from '../profile/CharacterAttributes';
 import { experienceProgressFor } from '../profile/CharacterProgression';
+import { attributesWithEquipment, equippedWeaponDamage } from '../equipment/EquipmentStatBonuses';
 import { buildRpgUiViewModel } from './RpgUiViewModel';
 import {
   itemTooltipDataAttributes,
@@ -144,7 +145,7 @@ export class InventoryOverlay {
     const view = buildRpgUiViewModel(this.profile, this.store.snapshot());
     this.equipment.innerHTML = view.equipment.map(({ slot, label, item }) => `
       <div class="equipment-slot${item ? ' is-equipped' : ''}" data-equipment-slot="${slot}" aria-label="${label}: ${item?.label ?? 'Vazio'}">
-        ${renderEquipmentSlotContent(slot, label, item)}
+        ${renderEquipmentSlotContent(slot, item)}
       </div>`).join('');
   }
 
@@ -183,9 +184,12 @@ export class InventoryOverlay {
       </div>`;
     }).join('');
 
-    const derived = deriveCharacterStats(this.profile.attributes, {
+    // The panel describes the loadout, so it must read the same equipped
+    // attributes and weapon damage the fight uses instead of bare attributes.
+    const equipment = this.store.snapshot().equipment;
+    const derived = deriveCharacterStats(attributesWithEquipment(this.profile.attributes, equipment), {
       maxHealth: 100,
-      attackDamage: 8,
+      attackDamage: equippedWeaponDamage(equipment),
       movementSpeed: 4.5,
       attackCooldown: 0.67,
     });
@@ -196,7 +200,9 @@ export class InventoryOverlay {
       ['Velocidade', `${derived.movementSpeed.toFixed(2)} m/s`],
       ['Recarga do ataque', `${derived.attackCooldown.toFixed(2)} s`],
       ['Crítico físico', `${(derived.criticalAttackChance * 100).toFixed(1)}%`],
+      ['Dano do crítico', `${derived.criticalMultiplier.toFixed(2)}×`],
       ['Crítico elemental', `${(derived.magicCriticalChance * 100).toFixed(1)}%`],
+      ['Roubo de vida', `${(derived.lifeStealFraction * 100).toFixed(1)}%`],
       ['Esquiva', `${(derived.dodgeChance * 100).toFixed(1)}%`],
     ].map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('');
 
@@ -370,12 +376,14 @@ const OVERLAY_HEADINGS: Readonly<Record<RpgOverlayMode, { eyebrow: string; title
 };
 
 const ATTRIBUTE_CONTENT: Readonly<Record<CharacterAttributeKey, { label: string; help: string }>> = {
-  strength: { label: 'Força', help: 'Amplifica dano físico e vida máxima.' },
-  attack: { label: 'Ataque', help: 'Adiciona dano base a cada golpe.' },
-  defense: { label: 'Defesa', help: 'Reduz o dano recebido, até 55%.' },
+  vitality: { label: 'Vitalidade', help: 'Adiciona 3 de vida máxima por ponto.' },
+  attack: { label: 'Ataque', help: 'Cada ponto soma 1 de dano no golpe.' },
+  defense: { label: 'Defesa', help: 'Reduz o dano recebido; 40 pontos já cortam metade (limite 55%).' },
   agility: { label: 'Agilidade', help: 'Aumenta movimento e velocidade de ataque.' },
-  criticalAttack: { label: 'Crítico de ataque', help: 'Chance de crítico físico de 1,5×.' },
+  criticalAttack: { label: 'Crítico de ataque', help: 'Chance de crítico físico.' },
+  criticalDamage: { label: 'Dano crítico', help: 'Aumenta o multiplicador do crítico (1,5× + 1% por ponto).' },
   criticalMagic: { label: 'Crítico mágico', help: 'Chance de crítico de fogo e gelo.' },
+  lifeSteal: { label: 'Roubo de vida', help: 'Recupera vida igual a 0,15% do dano causado por ponto (até 15%).' },
   dodge: { label: 'Esquiva', help: 'Chance de ignorar completamente um golpe.' },
 };
 

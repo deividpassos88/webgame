@@ -75,7 +75,18 @@
   pointer-events: none;
 }
 
-#lobby-screen > *:not(.arena-vignette) { position: relative; z-index: 2; }
+/*
+ * Raises the shell's layout children above the vignette (z-index: 1).
+ *
+ * Viewport popovers are excluded on purpose. `.item-tooltip` is appended
+ * inside the shell and declares `position: fixed` (style.css) plus inline
+ * viewport coordinates; forcing `position: relative` here would win on id
+ * specificity and turn the card into a grid item, which auto-places it in an
+ * implicit 4th row. That squeezed the 1fr stage row (601px -> 453px at
+ * 1386x761), drew the card hundreds of pixels below the pointer, and left the
+ * shell with ~300px of script-scrollable overflow.
+ */
+#lobby-screen > *:not(.arena-vignette):not(.item-tooltip) { position: relative; z-index: 2; }
 
 /* ============================== TOPBAR ============================== */
 
@@ -90,12 +101,25 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, .55);
 }
 
+/*
+ * O shell do lobby roda com `pointer-events: none` (style.css) para o palco
+ * central deixar o clique chegar ao canvas. Os paineis reativam os eventos,
+ * mas o topbar nao — e nav/settings ficavam mortos para o mouse (o clique
+ * atravessava para o canvas). A barra e opaca, entao ela recebe os eventos.
+ */
+#lobby-screen .arena-topbar { pointer-events: auto; }
+
 #lobby-screen .arena-identity { display: flex; gap: 14px; align-items: center; }
 
+/*
+ * Brasao da guilda: o portal gradeado da masmorra, desenhado para a marca
+ * "Masmorra de Herois". SVG proprio (guild-sigil.svg) em vez da espada
+ * cruzada do icone de equipamento, que repetia o simbolo da aba Inventario.
+ */
 #lobby-screen .arena-sigil {
-  width: 42px;
+  width: 46px;
   height: 46px;
-  background: url('/assets/ui/lobby/arena/icons/equipment.svg') center / contain no-repeat;
+  background: url('/assets/ui/lobby/arena/icons/guild-sigil.svg') center / contain no-repeat;
   filter: drop-shadow(0 0 8px rgba(212, 169, 79, .45));
 }
 
@@ -477,8 +501,7 @@ body #lobby-screen .arena-equip-grid .equipment-slot.is-equipped {
 }
 
 /* The item sits above both glow layers. */
-#lobby-screen .arena-equip-grid .equipment-slot__art,
-#lobby-screen .arena-equip-grid .equipment-slot__label { z-index: 1; }
+#lobby-screen .arena-equip-grid .equipment-slot__art { z-index: 1; }
 
 /*
  * With the plate gone the artwork uses the whole socket, exactly like a bag
@@ -518,45 +541,32 @@ body #lobby-screen .arena-equip-grid .equipment-slot__art .inventory-item-art {
   height: 52% !important;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  #lobby-screen .arena-equip-grid .equipment-slot.is-equipped::after { animation: none; }
+/*
+ * Placeholder of an empty socket: the gray piece that belongs there, smaller
+ * and dimmer than the item art a filled socket shows (84%, full opacity), so
+ * the two states stay apart at a glance. The frame, not the icon, owns the
+ * cell; the icons ship already desaturated, no filter needed here.
+ */
+#lobby-screen .arena-equip-grid .equipment-slot__icon,
+body #lobby-screen .arena-equip-grid .equipment-slot__icon {
+  box-sizing: border-box;
+  width: 56% !important;
+  height: 56% !important;
+  max-width: 56%;
+  max-height: 56%;
+  margin: 0;
+  object-fit: contain;
+  object-position: center;
+  opacity: .72;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .75));
+  transition: opacity 160ms ease;
+}
+#lobby-screen .arena-equip-grid .equipment-slot:hover .equipment-slot__icon {
+  opacity: .95;
 }
 
-/*
- * The caption used to sit in the plate's gold cartouche and was therefore
- * dark and tiny. It now runs along the foot of the socket, horizontally
- * centred, in the panel's serif face.
- */
-#lobby-screen .arena-equip-grid .equipment-slot__label {
-  position: absolute;
-  right: 2px;
-  bottom: 3px;
-  left: 2px;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  padding: 0 2px;
-  color: var(--gold);
-  font: 600 clamp(8px, .66vw, 10px) / 1.1 Georgia, 'Times New Roman', serif;
-  letter-spacing: .07em;
-  text-align: center;
-  text-shadow: 0 1px 4px #000, 0 0 8px rgba(0, 0, 0, .9);
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-/* An equipped piece fills the socket, so its caption would sit on the art. */
-/*
- * The caption stays visible when equipped, sitting over the foot of the
- * artwork with a gradient scrim for contrast. The old gold drop-shadow was
- * removed: it fought with the rarity light.
- */
-/*
- * The caption only labels an empty socket. Once a piece is equipped the icon
- * identifies it, so the name is dropped and the artwork gets the full cell;
- * the label text remains available through the button's aria-label.
- */
-#lobby-screen .arena-equip-grid .equipment-slot.is-equipped .equipment-slot__label {
-  display: none;
+@media (prefers-reduced-motion: reduce) {
+  #lobby-screen .arena-equip-grid .equipment-slot.is-equipped::after { animation: none; }
 }
 
 /* --- status sheet --- */
@@ -584,12 +594,25 @@ body #lobby-screen .arena-equip-grid .equipment-slot__art .inventory-item-art {
 }
 #lobby-screen .lobby-current-status dl div {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  row-gap: 3px;
   padding: 7px 9px;
   border: 1px solid rgba(212, 169, 79, .18);
   border-radius: 3px;
   background: linear-gradient(180deg, rgba(18, 24, 31, .9), rgba(9, 12, 16, .9));
+}
+/* Legenda do efeito em combate, na segunda linha da celula. */
+#lobby-screen .lobby-current-status-hint {
+  flex-basis: 100%;
+  overflow: hidden;
+  text-align: right;
+  color: var(--gold-dk);
+  font: 600 8.5px/1.25 'Consolas', monospace;
+  letter-spacing: .02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 #lobby-screen .lobby-current-status dt { color: var(--text-dim); font: 600 10px/1 'Segoe UI', sans-serif; }
 #lobby-screen .lobby-current-status dd { margin: 0; color: var(--gold-lt); font: 700 12px/1 'Consolas', monospace; }

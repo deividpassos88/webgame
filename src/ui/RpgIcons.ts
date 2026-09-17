@@ -5,6 +5,34 @@ import type { UiEquipmentSlot } from './RpgUiViewModel';
 const base = (paths: string) =>
   `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths}</svg>`;
 
+/**
+ * Painted art used by the empty equipment sockets: one piece per slot, so the
+ * player reads where the item goes instead of a generic outline. A socket with
+ * an item shows that item's art, never this placeholder.
+ *
+ * The seven files live in public/assets/ui/lobby/arena/slots and were cut out
+ * from the same bronze-line art direction as the equipped pieces.
+ */
+const EQUIPMENT_SLOT_ICON_SOURCES: Record<UiEquipmentSlot, string> = {
+  helmet: 'helmet',
+  chest: 'chest',
+  pants: 'pants',
+  gloves: 'gloves',
+  boots: 'boots',
+  primaryWeapon: 'sword',
+  secondaryWeapon: 'shield',
+};
+
+export function equipmentSlotIconSource(slot: UiEquipmentSlot): string {
+  const file = EQUIPMENT_SLOT_ICON_SOURCES[slot];
+  return `/assets/ui/lobby/arena/slots/${file}.png`;
+}
+
+/** Markup for the placeholder inside an empty socket. Decorative only. */
+export function equipmentSlotIcon(slot: UiEquipmentSlot): string {
+  return `<img class="equipment-slot__icon" src="${equipmentSlotIconSource(slot)}" alt="" aria-hidden="true" loading="lazy" decoding="async">`;
+}
+
 export function equipmentIcon(slot: UiEquipmentSlot): string {
   const icons: Record<UiEquipmentSlot, string> = {
     helmet: '<path d="M5 12a7 7 0 0 1 14 0v7h-5v-5h-4v5H5v-7Z"/><path d="M8 9h8"/>',

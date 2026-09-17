@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { getInventoryItem } from './InventoryCatalog';
 
 describe('final boss craft catalog', () => {
-  it('catalogues the starter sword as an unequipped recruit weapon with its art and base damage', () => {
+  it('catalogues the starter sword as an unequipped novice weapon with its art and base damage', () => {
     expect(getInventoryItem('starter-sword')).toMatchObject({
       id: 'starter-sword',
-      label: 'Espada do Recruta',
+      label: 'Sword Novice',
       kind: 'equipment',
       maxStack: 1,
       slot: 'weapon',
@@ -37,13 +37,13 @@ describe('final boss craft catalog', () => {
     }
   });
 
-  it('catalogues the five common forged equipment pieces with their compatible slots and supplied art', () => {
+  it('catalogues the five Draconic pieces with their tier label, slots and supplied art', () => {
     const expected = [
-      ['common-forged-helmet', 'Capacete do Forjador Comum', 'helmet', '/items/equipment/common-forged/helmet.webp'],
-      ['common-forged-chest', 'Peitoral do Forjador Comum', 'chest', '/items/equipment/common-forged/chest.webp'],
-      ['common-forged-pants', 'Calça do Forjador Comum', 'pants', '/items/equipment/common-forged/pants.webp'],
-      ['common-forged-gloves', 'Luvas do Forjador Comum', 'gloves', '/items/equipment/common-forged/gloves.webp'],
-      ['common-forged-boots', 'Botas do Forjador Comum', 'boots', '/items/equipment/common-forged/boots.webp'],
+      ['common-forged-helmet', 'Draconic Helmet [Common]', 'helmet', '/items/equipment/common-forged/helmet.webp'],
+      ['common-forged-chest', 'Draconic Chestplate [Common]', 'chest', '/items/equipment/common-forged/chest.webp'],
+      ['common-forged-pants', 'Draconic Pants [Common]', 'pants', '/items/equipment/common-forged/pants.webp'],
+      ['common-forged-gloves', 'Draconic Gloves [Common]', 'gloves', '/items/equipment/common-forged/gloves.webp'],
+      ['common-forged-boots', 'Draconic Boots [Common]', 'boots', '/items/equipment/common-forged/boots.webp'],
     ] as const;
 
     for (const [id, label, slot, iconSrc] of expected) {

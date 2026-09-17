@@ -5,6 +5,7 @@ import {
   adjustLobbyPreview,
   LobbyScreen,
   lobbyMotionPolicy,
+  itemStatSummary,
   renderLobbyHotkeys,
   resolveLobbyIdlePhase,
   resolveLobbyPreviewViewport,
@@ -13,7 +14,10 @@ import * as LobbyScreenModule from './LobbyScreen';
 import { prepareGuildTokenBackpackExpansion } from '../inventory/BackpackExpansion';
 import { InventoryStore } from '../inventory/InventoryStore';
 import { createDefaultPlayerProfile } from '../profile/PlayerProfile';
+import type { InventoryStack } from '../profile/PlayerProfile';
+import { createDefaultCharacterAttributes } from '../profile/CharacterAttributes';
 import { buildRpgUiViewModel } from './RpgUiViewModel';
+import { getInventoryItem } from '../inventory/InventoryCatalog';
 import * as InventoryOverlayModule from './InventoryOverlay';
 import type { CharacterAssetStore } from '../characters/CharacterAssetStore';
 
@@ -30,7 +34,7 @@ function mountLobbyRouteMarkup(): void {
         <div id="lobby-backpack"></div>
         <section id="lobby-item-actions" class="hidden" role="menu">
           <header><div id="lobby-item-actions-art"></div><div><p id="lobby-item-actions-title"></p><p id="lobby-item-actions-state"></p></div><button type="button" data-close-item-actions>✕</button></header>
-          <div><p id="lobby-item-actions-description"></p><p id="lobby-item-actions-stat"></p></div>
+          <div class="lobby-item-actions__details"><p id="lobby-item-actions-description"></p><p id="lobby-item-actions-stat"></p></div>
           <button type="button" data-item-action="equip">Equipar</button>
           <button type="button" data-item-action="upgrade">Aprimorar</button>
           <button type="button" data-item-action="destroy">Destruir</button>
@@ -217,7 +221,7 @@ describe('lobby character preparation', () => {
     const profile = createDefaultPlayerProfile();
     profile.progression = { level: 4, experience: 360 };
     profile.attributePointsRemaining = 2;
-    profile.attributes.strength = 11;
+    profile.attributes.vitality = 11;
     const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
     const renderStatus = (LobbyScreenModule as unknown as {
       renderLobbyCurrentStatus?: (status: unknown) => string;
@@ -233,16 +237,117 @@ describe('lobby character preparation', () => {
     expect(markup).toContain('Nível');
     expect(markup).toContain('4');
     expect(markup).toContain('Pontos disponíveis');
-    expect(markup).toContain('Força');
+    expect(markup).toContain('Vitalidade');
     expect(markup).toContain('11');
     expect(markup).toContain('Ataque');
     expect(markup).toContain('Defesa');
     expect(markup).toContain('Agilidade');
     expect(markup).toContain('Crítico');
-    expect(markup).toContain('Vitalidade');
     expect(markup).not.toContain('Crítico físico');
     expect(markup).not.toContain('Crítico mágico');
-    expect(markup).not.toContain('Esquiva');
+    // Esquiva joined the sheet; Crítico mágico deliberately stayed out.
+    expect(markup).toContain('Esquiva');
+  });
+
+  it('prints the strike damage the fight uses, not a decorative attack number', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.attributes = { ...createDefaultCharacterAttributes(), vitality: 10, attack: 5 };
+    const renderStatus = (LobbyScreenModule as unknown as {
+      renderLobbyCurrentStatus?: (status: unknown) => string;
+    }).renderLobbyCurrentStatus;
+
+    if (typeof renderStatus !== 'function') {
+      expect(typeof renderStatus).toBe('function');
+      return;
+    }
+
+    const statusOf = () =>
+      buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot()).currentStatus;
+    const unarmed = statusOf();
+    // The Attack reading has to be the damage of one strike: it is what the
+    // player compares against the floating numbers in the dungeon.
+    expect(unarmed.derived.attackDamage).toBe(5);
+    expect(renderStatus(unarmed)).toContain('<dt>Ataque</dt><dd>5</dd>');
+
+    profile.equipment.weapon = 'starter-sword';
+    profile.equipment.primaryWeapon = 'starter-sword';
+    const armed = statusOf();
+    expect(armed.derived.attackDamage).toBe(13);
+    expect(renderStatus(armed)).toContain('<dt>Ataque</dt><dd>13</dd>');
+  });
+
+  it('captions every status with its combat effect', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.attributes = {
+      ...createDefaultCharacterAttributes(),
+      vitality: 10,
+      attack: 5,
+      defense: 15,
+      agility: 10,
+    };
+    const renderStatus = (LobbyScreenModule as unknown as {
+      renderLobbyCurrentStatus?: (status: unknown) => string;
+    }).renderLobbyCurrentStatus;
+
+    if (typeof renderStatus !== 'function') {
+      expect(typeof renderStatus).toBe('function');
+      return;
+    }
+
+    const status = buildRpgUiViewModel(
+      profile,
+      InventoryStore.fromProfile(profile).snapshot()
+    ).currentStatus;
+    const markup = renderStatus(status);
+    // Defense 15 = 15/55 of reduction; the caption is what makes "Defesa"
+    // readable in combat.
+    expect(status.derived.damageReduction).toBeCloseTo(15 / 55);
+    expect(markup).toContain('lobby-current-status-hint');
+    expect(markup).toContain('+30 vida');
+    expect(markup).toContain('dano do golpe');
+    expect(markup).toContain(`-${Math.round((15 / 55) * 100)}% do dano`);
+    expect(markup).toContain('+2.5% velocidade');
+    expect(markup).toContain('0% de chance');
+    expect(markup).toContain('100 + 3/Vitalidade');
+  });
+
+  it('labels weapon damage as Dano and keeps Ataque for the attribute', () => {
+    // The sword grants flat damage, so its card must not promise attribute
+    // points the status sheet would never show.
+    expect(itemStatSummary(getInventoryItem('starter-sword'))).toBe('Dano +8');
+    expect(itemStatSummary(getInventoryItem('common-forged-gloves'))).toBe('Ataque +3');
+    expect(itemStatSummary(getInventoryItem('iron-shard'))).toBe('');
+    expect(itemStatSummary(undefined)).toBe('');
+  });
+
+  it('adds the equipped weapon bonus to the attack reading in the status sheet', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.attributes = { ...createDefaultCharacterAttributes(), vitality: 10, attack: 5 };
+    const renderStatus = (LobbyScreenModule as unknown as {
+      renderLobbyCurrentStatus?: (status: unknown) => string;
+    }).renderLobbyCurrentStatus;
+
+    if (typeof renderStatus !== 'function') {
+      expect(typeof renderStatus).toBe('function');
+      return;
+    }
+
+    const before = renderStatus(
+      buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot()).currentStatus
+    );
+    // Vitality is worth 3 HP a point; without a weapon the attack reading is
+    // only what was allocated.
+    expect(before).toContain('<dt>Vida máxima</dt><dd>130</dd>');
+    expect(before).toContain('<dt>Ataque</dt><dd>5</dd>');
+
+    profile.equipment.weapon = 'starter-sword';
+    profile.equipment.primaryWeapon = 'starter-sword';
+    const withSword = renderStatus(
+      buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot()).currentStatus
+    );
+    // The sword's own 8 damage shows up in the status, exactly as promised.
+    expect(withSword).toContain('<dt>Ataque</dt><dd>13</dd>');
+    expect(withSword).toContain('<dt>Vida máxima</dt><dd>130</dd>');
   });
 
   it('renders expansion as a bag-sized [+] cell', () => {
@@ -338,8 +443,9 @@ describe('lobby character preparation', () => {
 
     const popover = document.getElementById('lobby-item-actions')!;
     expect(popover.classList.contains('hidden')).toBe(false);
+    // The tier suffix renders in its own span, so the title reads the full name.
     expect(document.getElementById('lobby-item-actions-title')?.textContent)
-      .toBe('Espada do Recruta');
+      .toBe('Sword Novice');
     expect(store.snapshot().equipment.primaryWeapon).toBeNull();
     expect(store.snapshot().backpack).toEqual([{ itemId: 'starter-sword', quantity: 1 }]);
 
@@ -552,6 +658,106 @@ describe('lobby character preparation', () => {
       .toContain('aprimoramento em desenvolvimento');
     expect(store.snapshot().backpack).toEqual([{ itemId: 'starter-sword', quantity: 1 }]);
     expect(document.getElementById('lobby-item-actions')?.classList.contains('hidden')).toBe(true);
+    lobby.dispose();
+  });
+
+  /** Mounts the lobby over a specific backpack so kind filtering can be tested. */
+  function mountLobbyWithBackpack(backpack: InventoryStack[]): {
+    lobby: LobbyScreen;
+    store: InventoryStore;
+  } {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    profile.backpack = backpack;
+    const store = InventoryStore.fromProfile(profile);
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      store
+    );
+    void lobby.show({
+      firstRun: false,
+      onClassConfirmed: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+      onHotkeysChanged: () => undefined,
+      onAutoBasicAttackChanged: () => undefined,
+      onLobbyInventoryChanged: () => undefined,
+      onBlacksmithLicensePurchase: () => ({ message: '' }),
+      onBlacksmithCraft: () => ({ message: '' }),
+    });
+    return { lobby, store };
+  }
+
+  it('offers only Destruir for a material in the backpack', () => {
+    const { lobby, store } = mountLobbyWithBackpack([{ itemId: 'runic-crystal', quantity: 4 }]);
+
+    document.querySelector<HTMLButtonElement>('[data-lobby-inventory-index="0"]')?.click();
+
+    const equip = document.querySelector<HTMLButtonElement>('[data-item-action="equip"]')!;
+    const upgrade = document.querySelector<HTMLButtonElement>('[data-item-action="upgrade"]')!;
+    const destroy = document.querySelector<HTMLButtonElement>('[data-item-action="destroy"]')!;
+    // Materials are not wearable: equip/upgrade must not even be offered.
+    expect(equip.hidden).toBe(true);
+    expect(upgrade.hidden).toBe(true);
+    expect(destroy.hidden).toBe(false);
+    expect(destroy.disabled).toBe(false);
+    // The keyboard/pointer focus must land on an action that is really there.
+    expect(document.activeElement).toBe(destroy);
+    // No lore and no attributes: the bordered details box must not stay empty.
+    expect(document.querySelector<HTMLElement>('.lobby-item-actions__details')?.hidden).toBe(true);
+
+    destroy.click();
+    document.querySelector<HTMLButtonElement>('[data-destroy-confirm]')?.click();
+
+    expect(store.snapshot().backpack).toEqual([]);
+    lobby.dispose();
+  });
+
+  it('offers the full action set for gear and restores it after a material was clicked', () => {
+    const { lobby } = mountLobbyWithBackpack([
+      { itemId: 'runic-crystal', quantity: 2 },
+      { itemId: 'starter-sword', quantity: 1 },
+    ]);
+
+    document.querySelector<HTMLButtonElement>('[data-lobby-inventory-index="0"]')?.click();
+    expect(document.querySelector<HTMLButtonElement>('[data-item-action="equip"]')?.hidden).toBe(true);
+
+    document.querySelector<HTMLButtonElement>('[data-lobby-inventory-index="1"]')?.click();
+
+    const equip = document.querySelector<HTMLButtonElement>('[data-item-action="equip"]')!;
+    const upgrade = document.querySelector<HTMLButtonElement>('[data-item-action="upgrade"]')!;
+    const destroy = document.querySelector<HTMLButtonElement>('[data-item-action="destroy"]')!;
+    expect(equip.hidden).toBe(false);
+    expect(equip.textContent).toBe('Equipar');
+    expect(upgrade.hidden).toBe(false);
+    expect(destroy.hidden).toBe(false);
+    expect(destroy.disabled).toBe(false);
+    expect(document.activeElement).toBe(equip);
+    // Gear keeps its details box: the sword has lore and an attack value.
+    expect(document.querySelector<HTMLElement>('.lobby-item-actions__details')?.hidden).toBe(false);
+    lobby.dispose();
+  });
+
+  it('shows Desequipar and Aprimorar for worn gear and disables destruction', () => {
+    const { lobby } = mountLobbyWithBackpack([{ itemId: 'starter-sword', quantity: 1 }]);
+
+    document.querySelector<HTMLButtonElement>('[data-lobby-inventory-index="0"]')?.click();
+    document.querySelector<HTMLButtonElement>('[data-item-action="equip"]')?.click();
+    document.querySelector<HTMLButtonElement>('[data-lobby-equipped-slot="primaryWeapon"]')?.click();
+
+    const equip = document.querySelector<HTMLButtonElement>('[data-item-action="equip"]')!;
+    expect(equip.hidden).toBe(false);
+    expect(equip.textContent).toBe('Desequipar');
+    expect(equip.classList.contains('is-unequip')).toBe(true);
+    expect(document.querySelector<HTMLButtonElement>('[data-item-action="upgrade"]')?.hidden).toBe(false);
+    const destroy = document.querySelector<HTMLButtonElement>('[data-item-action="destroy"]')!;
+    expect(destroy.hidden).toBe(false);
+    expect(destroy.disabled).toBe(true);
     lobby.dispose();
   });
 });

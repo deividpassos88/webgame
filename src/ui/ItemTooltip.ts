@@ -1,5 +1,5 @@
 import { getInventoryItem, type InventoryItemDefinition } from '../inventory/InventoryCatalog';
-import { craftRarityLabel, inventoryItemArt } from './CraftRewardsPresentation';
+import { craftRarityLabel, inventoryItemArt, renderItemLabel } from './CraftRewardsPresentation';
 
 let nextTooltipId = 0;
 
@@ -21,7 +21,7 @@ export function renderItemTooltip(
     <div class="item-tooltip__art">${inventoryItemArt(item)}</div>
     <div class="item-tooltip__body">
       <p class="item-tooltip__rarity">${escapeHtml(rarity)}</p>
-      <h3 class="item-tooltip__title">${escapeHtml(item.label)}</h3>
+      <h3 class="item-tooltip__title">${renderItemLabel(item.label)}</h3>
       <p class="item-tooltip__description">${escapeHtml(description)}</p>
       <p class="item-tooltip__quantity">x${safeQuantity}</p>
     </div>`;
@@ -39,6 +39,15 @@ export function bindItemTooltip(host: HTMLElement): () => void {
   tooltip.setAttribute('role', 'tooltip');
   tooltip.setAttribute('aria-hidden', 'true');
   tooltip.hidden = true;
+  /*
+   * The card floats above the screen and is placed with inline left/top, so it
+   * must never take part in the host's layout. Some hosts are grid containers
+   * whose child rules would otherwise force `position: relative`, which turns
+   * the tooltip into an extra grid row (squeezing the screen) and interprets
+   * the viewport coordinates as an offset from that row. Keeping the position
+   * inline makes the contract independent of the host's stylesheet.
+   */
+  tooltip.style.position = 'fixed';
   host.append(tooltip);
 
   let activeTrigger: HTMLElement | null = null;

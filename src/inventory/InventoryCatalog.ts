@@ -30,7 +30,7 @@ export interface InventoryItemDefinition {
 export const INVENTORY_ITEMS = {
   'starter-sword': {
     id: 'starter-sword',
-    label: 'Espada do Recruta',
+    label: 'Sword Novice',
     kind: 'equipment',
     maxStack: 1,
     slot: 'weapon',
@@ -96,7 +96,7 @@ export const INVENTORY_ITEMS = {
   },
   'common-forged-helmet': {
     id: 'common-forged-helmet',
-    label: 'Capacete do Forjador Comum',
+    label: 'Draconic Helmet [Common]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -108,7 +108,7 @@ export const INVENTORY_ITEMS = {
   },
   'common-forged-chest': {
     id: 'common-forged-chest',
-    label: 'Peitoral do Forjador Comum',
+    label: 'Draconic Chestplate [Common]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -116,11 +116,13 @@ export const INVENTORY_ITEMS = {
     iconSrc: '/items/equipment/common-forged/chest.webp',
     equippedIconSrc: '/items/equipment/equipado/chest.png',
     description: 'Peitoral comum rebitado para absorver o impacto das investidas do draco.',
-    statBonuses: { strength: 3, defense: 4 },
+    // Strength became Vitality, whose points are worth ten times more health
+    // (3 HP each against 0.3), so the old three points carry over as one.
+    statBonuses: { vitality: 1, defense: 4 },
   },
   'common-forged-pants': {
     id: 'common-forged-pants',
-    label: 'Calça do Forjador Comum',
+    label: 'Draconic Pants [Common]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -132,7 +134,7 @@ export const INVENTORY_ITEMS = {
   },
   'common-forged-gloves': {
     id: 'common-forged-gloves',
-    label: 'Luvas do Forjador Comum',
+    label: 'Draconic Gloves [Common]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -144,7 +146,7 @@ export const INVENTORY_ITEMS = {
   },
   'common-forged-boots': {
     id: 'common-forged-boots',
-    label: 'Botas do Forjador Comum',
+    label: 'Draconic Boots [Common]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -316,6 +318,14 @@ export const INVENTORY_ITEMS = {
     iconSrc: '/items/craft/token-guild.png',
     maxStack: 999,
   },
+
+  /*
+   * Forged sets. The old "Comum Forjado" line carried 22 points spread over
+   * four attributes and changed almost nothing in combat, so it was split into
+   * two specialised lines: Predador (offence) and Muralha (defence). The
+   * catalog only declares the pieces; the five-piece bonus lives in
+   * equipment/EquipmentStatBonuses.ts so combat and UI read one definition.
+   */
 } as const satisfies Record<string, InventoryItemDefinition>;
 
 export type InventoryItemId = keyof typeof INVENTORY_ITEMS;

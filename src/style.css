@@ -860,6 +860,14 @@ html, body {
   animation: floatUp 1s ease-out forwards;
   pointer-events: none;
 }
+/* Dano levado pelo jogador: laranja, para nao competir com o vermelho dos
+   golpes que ele acerta e para o efeito da Defesa ficar legivel no combate. */
+.floating-damage.taken {
+  color: #ffa14a;
+  font-size: 15px;
+  text-shadow: 0 0 8px rgba(255, 122, 26, 0.75);
+}
+
 .floating-damage.heal {
   color: #4ade80;
 }
@@ -1702,6 +1710,18 @@ button:focus-visible,
   text-align: left;
 }
 .equipment-slot.is-equipped { border-color: #ffb800; color: #f2f2f0; }
+/*
+ * Empty sockets (in-game overlay and blacksmith panel) show the painted piece
+ * that belongs there, dimmed; an equipped item always overrides it with its
+ * own art.
+ */
+.equipment-slot .equipment-slot__art { display: grid; place-items: center; }
+.equipment-slot .equipment-slot__icon {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  opacity: .72;
+}
 .equipment-slot small,
 .equipment-slot strong { display: block; }
 .equipment-slot small { color: #8c938d; font-size: 9px; text-transform: uppercase; }
@@ -2313,6 +2333,11 @@ body #lobby-screen .lobby-footer { grid-column: 1 / -1; grid-row: 4; }
   font-family: 'Segoe UI', sans-serif;
 }
 .lobby-item-actions.hidden { display: none; }
+/*
+ * The action list is filtered by item kind (gear vs material/consumable), so a
+ * hidden action must not keep its grid row inside `.lobby-item-actions__list`.
+ */
+.lobby-item-actions [hidden] { display: none !important; }
 /* Slot selecionado: glow dourado discreto enquanto o menu está aberto. */
 .inventory-slot.is-selected {
   border-color: rgba(240, 219, 161, 0.9);
@@ -2344,11 +2369,10 @@ body #lobby-screen .lobby-footer { grid-column: 1 / -1; grid-row: 4; }
 .lobby-item-actions__title {
   overflow: hidden;
   color: #f0dba1;
-  font: 700 15px/1.12 Georgia, serif;
+  font: 700 13px/1.14 Georgia, serif;
   letter-spacing: 0;
-  text-overflow: ellipsis;
   text-transform: uppercase;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .lobby-item-actions__state {
   margin: 0;
@@ -3538,7 +3562,9 @@ body #lobby-screen #lobby-backpack .inventory-slot { min-width: 0; min-height: 8
 .item-tooltip__body { min-width: 0; }
 .item-tooltip__rarity,
 .item-tooltip__quantity { margin: 0; color: #e1bd68; font: 700 9px/1.1 Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
-.item-tooltip__title { margin: 4px 0 5px; color: #f0dba1; font: 700 18px/1.05 Georgia, serif; }
+.item-tooltip__title { margin: 4px 0 5px; color: #f0dba1; font: 700 15px/1.1 Georgia, serif; overflow-wrap: anywhere; }
+/* Tier em colchetes: menor e branco brilhante, igual em todas as superficies. */
+.item-label__tier { margin-left: 4px; color: #fff; font-size: .74em; font-weight: 600; letter-spacing: .02em; text-shadow: 0 0 7px rgba(255, 255, 255, .75); }
 .item-tooltip__description { margin: 0; color: #c6c9bf; font: 12px/1.35 'Segoe UI', sans-serif; }
 .item-tooltip__quantity { margin-top: 7px; color: #d9e3dc; }
 
@@ -3596,18 +3622,6 @@ body #lobby-screen .equipment-slot.is-equipped,
 .equipment-slot__art .is-equipped-art { width: 88%; height: 88%; object-fit: contain; filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.42)) drop-shadow(0 0 6px rgba(225, 189, 104, 0.14)); }
 .equipment-slot__art .inventory-item-glyph { display: grid; place-items: center; }
 .equipment-slot__art svg { width: 64%; height: 64%; fill: none; stroke: currentColor; stroke-width: 1.45; stroke-linecap: square; stroke-linejoin: miter; }
-.equipment-slot__label {
-  width: calc(100% + 12px);
-  margin-bottom: -3px;
-  padding: 4px 8px 3px;
-  border-top: 1px solid rgba(225, 189, 104, 0.14);
-  color: rgba(217, 219, 206, 0.55);
-  background: linear-gradient(90deg, rgba(4, 7, 10, 0.72), rgba(40, 34, 25, 0.58), rgba(4, 7, 10, 0.72));
-  font: 700 9px/1.1 Georgia, serif;
-  letter-spacing: .07em;
-  text-shadow: 0 1px #000;
-  text-transform: uppercase;
-}
 
 /* ---------- Oficina dedicada: terminal industrial de Cinzafogo ---------- */
 .blacksmith-screen {
@@ -3695,7 +3709,6 @@ body #lobby-screen .equipment-slot.is-equipped,
   box-shadow: none;
 }
 .blacksmith-screen .equipment-slot.is-equipped { border-color: rgba(255, 184, 0, 0.84); background: #171a12; }
-.blacksmith-screen .equipment-slot__label { border-radius: 0; background: #0b0c0a; font-family: Consolas, 'Courier New', monospace; }
 .workshop-recipes { display: grid; align-content: start; gap: 12px; overflow: auto; }
 .workshop-recipes > header { display: grid; gap: 5px; }
 .workshop-recipes.is-locked { opacity: .68; }
@@ -3730,7 +3743,6 @@ body #lobby-screen .equipment-slot.is-equipped,
 .blacksmith-screen .workshop-equipment { grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 7px; }
 .blacksmith-screen .equipment-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
 .blacksmith-screen .equipment-slot { min-height: 62px; padding: 3px; }
-.blacksmith-screen .equipment-slot__label { padding: 3px 4px 2px; font-size: 7px; }
 .blacksmith-screen .equipment-slot__art .is-equipped-art { width: 72%; height: 72%; }
 .workshop-backpack { display: grid; gap: 7px; min-width: 0; padding-top: 8px; border-top: 1px solid rgba(255, 184, 0, 0.32); }
 .workshop-backpack > header { display: flex; align-items: end; justify-content: space-between; gap: 8px; }
@@ -3925,7 +3937,6 @@ body #lobby-screen .equipment-slot.is-equipped,
   box-shadow: inset 0 1px rgba(255, 237, 187, .13), 0 0 14px rgba(213, 157, 57, .09);
 }
 .blacksmith-screen .equipment-slot__art svg { width: 55%; height: 55%; stroke: #aebbb7; }
-.blacksmith-screen .equipment-slot__label { width: calc(100% + 10px); border-radius: 0 0 7px 7px; }
 .blacksmith-screen .blacksmith-recipe {
   grid-template-columns: 68px minmax(0, 1fr) 88px;
   gap: 11px;

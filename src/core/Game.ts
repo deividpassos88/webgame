@@ -7,6 +7,7 @@ import { TrainingDummy } from '../entities/TrainingDummy';
 import { createBoss } from '../entities/Boss';
 import { Level } from '../world/Level';
 import { HUD } from '../ui/HUD';
+import type { FloatingDamageVariant } from '../ui/HUD';
 import { Logger } from '../utils/Logger';
 import { resolveGroundClickCombatAction } from './GroundClickCombatPolicy';
 import { CharacterAssetStore } from '../characters/CharacterAssetStore';
@@ -125,7 +126,7 @@ import { getTypedAttackBaseDamage, quantizeCombatDamage } from '../combat/Combat
 import { MiniBossSkillController } from '../combat/MiniBossSkillController';
 import { MiniBossSkillEffects } from '../effects/MiniBossSkillEffects';
 import { deriveCharacterStats, type DerivedCharacterStats } from '../profile/CharacterAttributes';
-import { attributesWithEquipment } from '../equipment/EquipmentStatBonuses';
+import { attributesWithEquipment, equippedWeaponDamage } from '../equipment/EquipmentStatBonuses';
 import { resolveCameraRelativeMovement } from '../entities/PlayerMovement';
 import { VictoryLobbyTransition } from './VictoryLobbyTransition';
 
@@ -144,11 +145,7 @@ export interface GameOptions {
 export function resolveEquippedBaseDamage(
   profile: Pick<PlayerProfile, 'equipment'>
 ): number {
-  const itemId = getPrimaryWeaponId(profile.equipment);
-  const item = itemId ? getInventoryItem(itemId) : undefined;
-  return item?.kind === 'equipment' && item.slot === 'weapon'
-    ? Math.max(0, item.baseDamage ?? 0)
-    : 0;
+  return equippedWeaponDamage(profile.equipment);
 }
 
 /**
@@ -751,6 +748,25 @@ export class Game {
     return quantizeCombatDamage(damage * (1 - stats.damageReduction));
   }
 
+  /**
+   * Life Steal returns part of the damage actually dealt as health. It is fed
+   * by the post-mitigation number so healing tracks real damage, and the heal
+   * never exceeds the missing health (no overheal).
+   */
+  private healFromLifeSteal(dealtDamage: number): void {
+    if (!this.player || this.player.isDead || dealtDamage <= 0) return;
+    const fraction = this.getCharacterStats().lifeStealFraction;
+    if (fraction <= 0) return;
+    const missing = this.player.maxHP - this.player.hp;
+    if (missing <= 0) return;
+    const previousHP = this.player.hp;
+    this.player.hp = Math.min(this.player.maxHP, this.player.hp + dealtDamage * fraction);
+    const recovered = this.player.hp - previousHP;
+    // The HUD reads hp/maxHP every frame; the floating number is what tells the
+    // player the heal came from the hit. Heals under 1 HP stay silent.
+    if (recovered >= 1) this.showFloatingDamage(this.player.root.position, recovered, 'heal');
+  }
+
   private openRpgOverlay(mode: RpgOverlayMode): void {
     if (!this.canAcceptGameplayInput()) return;
     this.flow.transition({ type: 'open-inventory' });
@@ -1332,6 +1348,7 @@ export class Game {
     const damage = this.resolveOutgoingDamage(rangedDamage, false);
     if (damage <= 0) return;
     record.enemy.takeDamage(damage);
+    this.healFromLifeSteal(damage);
     this.showFloatingDamage(target.position, damage);
     if (record.role === 'boss') {
       const values = getBossHealthHudValues(record.enemy);
@@ -1361,11 +1378,13 @@ export class Game {
     );
     const damageOrigin = resolveWarriorSkillAreaCenter(event.origin, event.forward, area);
 
+    let lifeStealDamage = 0;
     for (const record of targets) {
       const distance = damageOrigin.distanceTo(record.enemy.root.position);
       const rangedDamage = applyDistanceFalloff(baseDamage, distance, 'warrior');
       const damage = this.resolveOutgoingDamage(rangedDamage, elemental);
       if (damage <= 0) continue;
+      lifeStealDamage += damage;
       record.enemy.takeDamage(damage);
       if (skill.element && !record.enemy.isDead) {
         record.enemy.applyElementalHit(skill.element, Math.max(1, damage * 0.12));
@@ -1377,6 +1396,7 @@ export class Game {
       }
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
+    this.healFromLifeSteal(lifeStealDamage);
   }
 
   private handleEnemyDeath(record: CombatRecord): void {
@@ -1446,12 +1466,16 @@ export class Game {
       this.player.hp = Math.min(this.player.maxHP, this.player.hp + healAmount);
       const recovered = this.player.hp - previousHP;
       if (recovered > 0) {
-        this.showFloatingDamage(this.player.root.position, recovered, true);
+        this.showFloatingDamage(this.player.root.position, recovered, 'heal');
       }
     });
   }
 
-  private showFloatingDamage(worldPos: THREE.Vector3, amount: number, isHeal = false) {
+  private showFloatingDamage(
+    worldPos: THREE.Vector3,
+    amount: number,
+    variant: FloatingDamageVariant = 'damage'
+  ) {
     const pos = worldPos.clone();
     pos.y += 1.6;
     const screenPos = pos.project(this.cameraController.camera);
@@ -1460,8 +1484,8 @@ export class Game {
     this.hud.spawnFloatingDamage(
       x,
       y,
-      isHeal ? formatHealingAmount(amount) : `-${quantizeCombatDamage(amount)}`,
-      isHeal
+      variant === 'heal' ? formatHealingAmount(amount) : `-${quantizeCombatDamage(amount)}`,
+      variant
     );
   }
 
@@ -1509,6 +1533,7 @@ export class Game {
     if (deliveredDamage <= 0) return;
     const hpBeforeHit = this.player.hp;
     this.player.takeDamage(deliveredDamage);
+    this.showDamageTaken(deliveredDamage, hpBeforeHit);
     this.afterEnemyHitPlayer(hpBeforeHit, role);
   }
 
@@ -1517,6 +1542,7 @@ export class Game {
     if (deliveredDamage <= 0) return;
     const hpBeforeHit = this.player.hp;
     this.player.takeBossSkillDamage(deliveredDamage);
+    this.showDamageTaken(deliveredDamage, hpBeforeHit);
     this.afterEnemyHitPlayer(hpBeforeHit, 'boss');
   }
 
@@ -1525,7 +1551,18 @@ export class Game {
     if (deliveredDamage <= 0) return;
     const hpBeforeHit = this.player.hp;
     this.player.takeBossSkillDamage(deliveredDamage);
+    this.showDamageTaken(deliveredDamage, hpBeforeHit);
     this.afterEnemyHitPlayer(hpBeforeHit, 'mini-boss');
+  }
+
+  /**
+   * Prints the damage that actually reached the health bar. The number is the
+   * one Defense and the block rolls already reduced, so the player can read the
+   * effect of the equipment instead of guessing it from the bar.
+   */
+  private showDamageTaken(deliveredDamage: number, hpBeforeHit: number): void {
+    if (deliveredDamage <= 0 || this.player.hp >= hpBeforeHit) return;
+    this.showFloatingDamage(this.player.root.position, deliveredDamage, 'taken');
   }
 
   private afterEnemyHitPlayer(

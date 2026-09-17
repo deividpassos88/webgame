@@ -23,8 +23,10 @@ import {
   itemTooltipDataAttributes,
   renderEquipmentSlotContent,
   renderInventorySlotContent,
+  renderItemLabel,
 } from './CraftRewardsPresentation';
 import { bindItemTooltip } from './ItemTooltip';
+import { resolveLobbyItemActionState } from './LobbyItemActions';
 import { restoreBackpackExpansionFocus } from './InventoryOverlay';
 import {
   BlacksmithScreen,
@@ -55,18 +57,31 @@ export interface LobbyScreenOptions {
 export type BlacksmithLobbyActionResult = BlacksmithScreenActionResult;
 
 const ATTRIBUTE_LABELS: Readonly<Record<string, string>> = {
-  strength: 'Força',
+  vitality: 'Vitalidade',
   attack: 'Ataque',
   defense: 'Defesa',
   agility: 'Agilidade',
   criticalAttack: 'Crítico',
+  criticalDamage: 'Dano crítico',
   criticalMagic: 'Crítico mágico',
+  lifeSteal: 'Roubo de vida',
   dodge: 'Esquiva',
 };
 
-function itemStatSummary(item: InventoryItemDefinition | undefined): string {
+/**
+ * Player-facing stat line for an item. Weapon base damage is flat damage, so it
+ * reads as "Dano"; "Ataque" is reserved for the attribute point that the status
+ * sheet, the character overlay and the combat pipeline all share.
+ */
+export function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function itemStatSummary(item: InventoryItemDefinition | undefined): string {
   if (!item) return '';
-  const values = item.baseDamage ? [`Ataque +${item.baseDamage}`] : [];
+  // Weapon base damage is flat damage, not an attribute point: the sheet reads
+  // it as "Dano", while "Ataque" keeps meaning the allocated attribute.
+  const values = item.baseDamage ? [`Dano +${item.baseDamage}`] : [];
   for (const [attribute, amount] of Object.entries(item.statBonuses ?? {})) {
     if (amount) values.push(`${ATTRIBUTE_LABELS[attribute] ?? attribute} +${amount}`);
   }
@@ -115,34 +130,70 @@ export function renderLobbyHotkeys(
 }
 
 /**
- * The reference hall shows a six-metric sheet in two columns. Crítico físico is
- * surfaced simply as "Crítico" and Vitalidade replaces the pair of secondary
- * rolls (Crítico mágico / Esquiva) that the reference panel does not list.
- * The view model keeps its full seven-attribute contract for other surfaces.
+ * The reference hall shows a seven-metric sheet: the six attributes that answer
+ * for the build plus the life total that moves with gear. Ataque includes the
+ * equipped weapon damage, so wearing a sword shows its bonus right away.
+ * Crítico físico is surfaced simply as "Crítico"; the dedicated Critical Damage
+ * and Life Steal readings stay on the full sheet in the character overlay. The
+ * view model keeps its full nine-attribute contract for other surfaces.
  */
 const LOBBY_STATUS_METRICS: readonly {
   readonly key: string;
   readonly label: string;
 }[] = [
-  { key: 'strength', label: 'Força' },
+  { key: 'vitality', label: 'Vitalidade' },
   { key: 'attack', label: 'Ataque' },
   { key: 'defense', label: 'Defesa' },
   { key: 'agility', label: 'Agilidade' },
   { key: 'criticalAttack', label: 'Crítico' },
-  { key: 'vitality', label: 'Vitalidade' },
+  { key: 'dodge', label: 'Esquiva' },
 ];
+
+/** Keeps whole points whole and shows derived readings with one decimal. */
+function formatMetricValue(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+/**
+ * One-line reading of what each point does in combat. It is the caption under
+ * the number, so the player can tell a status from a decoration: "Defesa 17"
+ * alone said nothing, "-30% do dano recebido" tells the whole story.
+ */
+function lobbyStatusHints(
+  status: CurrentCharacterStatusView
+): Readonly<Record<string, string>> {
+  const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
+  const derived = status.derived;
+  return {
+    vitality: `+${Math.round(derived.maxHealthBonus)} vida`,
+    attack: 'dano do golpe',
+    defense: `-${percent(derived.damageReduction)} do dano`,
+    agility: `+${((derived.movementSpeedMultiplier - 1) * 100).toFixed(1)}% velocidade`,
+    criticalAttack: `${percent(derived.criticalAttackChance)} de chance`,
+    dodge: `${percent(derived.dodgeChance)} de anular`,
+  };
+}
 
 function lobbyStatusMetrics(
   status: CurrentCharacterStatusView
-): readonly { readonly label: string; readonly value: number }[] {
+): readonly { readonly label: string; readonly value: string | number; readonly hint: string }[] {
   const byKey = new Map(status.attributes.map(({ key, value }) => [key as string, value]));
-  // Vitalidade is a derived reading: Strength is the attribute that grants the
-  // Warrior its health pool, so the sheet mirrors that investment.
-  const vitality = byKey.get('strength') ?? 0;
-  return LOBBY_STATUS_METRICS.map(({ key, label }) => ({
+  const hints = lobbyStatusHints(status);
+  const attributes = LOBBY_STATUS_METRICS.map(({ key, label }) => ({
     label,
-    value: key === 'vitality' ? vitality : byKey.get(key) ?? 0,
+    value: byKey.get(key) ?? 0,
+    hint: hints[key] ?? '',
   }));
+  // The attack reading already carries the equipped weapon damage, so the
+  // sheet only adds the life total next to the six attributes.
+  return [
+    ...attributes,
+    {
+      label: 'Vida máxima',
+      value: formatMetricValue(status.derived.maxHealth),
+      hint: '100 + 3/Vitalidade',
+    },
+  ];
 }
 
 export function renderLobbyCurrentStatus(status: CurrentCharacterStatusView): string {
@@ -155,7 +206,7 @@ export function renderLobbyCurrentStatus(status: CurrentCharacterStatusView): st
         <div><dt>Pontos disponíveis</dt><dd>${status.attributePointsRemaining}</dd></div>
       </dl>
       <dl class="lobby-current-status-grid">
-        ${lobbyStatusMetrics(status).map(({ label, value }) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}
+        ${lobbyStatusMetrics(status).map(({ label, value, hint }) => `<div><dt>${label}</dt><dd>${value}</dd><small class="lobby-current-status-hint">${hint}</small></div>`).join('')}
       </dl>
       ${status.setBonus ? `<aside class="lobby-set-bonus" aria-label="Bônus de conjunto ativo">
         <span>Conjunto completo</span>
@@ -492,11 +543,10 @@ export class LobbyScreen {
     const view = buildRpgUiViewModel(this.profile, inventory);
     const equipmentMarkup = view.equipment.map(({ slot, label, item }) => item
       ? `<button class="equipment-slot is-equipped" type="button" data-lobby-equipped-slot="${slot}" data-rarity="${item.rarity ?? 'common'}" aria-label="${label}: ${item.label}. Abrir ações do item.">
-          ${renderEquipmentSlotContent(slot, label, item)}
+          ${renderEquipmentSlotContent(slot, item)}
         </button>`
       : `<div class="equipment-slot" data-equipment-slot="${slot}" aria-label="${label}: Vazio">
-          <span class="equipment-slot__art" aria-hidden="true"></span>
-          <span class="equipment-slot__label">${label}</span>
+          ${renderEquipmentSlotContent(slot, null)}
         </div>`).join('');
     document.getElementById('lobby-equipment-slots')!.innerHTML = equipmentMarkup;
     document.getElementById('lobby-current-status')!.innerHTML = renderLobbyCurrentStatus(view.currentStatus);
@@ -814,25 +864,44 @@ export class LobbyScreen {
     this.selectedStack = selection;
     const item = getInventoryItem(selection.itemId);
     const equipped = selection.location === 'equipment';
-    this.itemActionsTitle.textContent = item?.label ?? selection.itemId;
+    this.itemActionsTitle.innerHTML = item ? renderItemLabel(item.label) : escapeHtml(selection.itemId);
     this.itemActionsState.textContent = equipped ? 'Equipado' : 'Na mochila';
     this.itemActionsArt.innerHTML = item ? renderInventorySlotContent(item, 1) : '';
-    this.itemActionsDescription.textContent = item?.description ?? '';
+    const description = item?.description?.trim() ?? '';
+    this.itemActionsDescription.textContent = description;
     const stats = itemStatSummary(item);
     this.itemActionsStat.textContent = stats;
     this.itemActionsStat.hidden = !stats;
+    // Legacy materials carry neither lore nor attributes: the bordered details
+    // box would otherwise show up as an empty frame above the actions.
+    const detailsHost = this.itemActionsPanel.querySelector<HTMLElement>('.lobby-item-actions__details');
+    if (detailsHost) detailsHost.hidden = description.length === 0 && stats.length === 0;
+    /*
+     * The menu is filtered by item kind: gear offers equip/unequip and
+     * upgrade, materials and consumables offer destruction only. Hidden
+     * actions must not keep their grid row or receive focus.
+     */
+    const actions = resolveLobbyItemActionState(item?.kind, selection.location);
     const equipAction = this.itemActionsPanel.querySelector<HTMLButtonElement>('[data-item-action="equip"]');
     if (equipAction) {
-      equipAction.textContent = equipped ? 'Desequipar' : 'Equipar';
-      equipAction.classList.toggle('is-unequip', equipped);
+      equipAction.hidden = !actions.equipVisible;
+      if (actions.equipLabel) equipAction.textContent = actions.equipLabel;
+      equipAction.classList.toggle('is-unequip', actions.equipLabel === 'Desequipar');
     }
+    const upgradeAction = this.itemActionsPanel.querySelector<HTMLButtonElement>('[data-item-action="upgrade"]');
+    if (upgradeAction) upgradeAction.hidden = !actions.upgradeVisible;
     const destroyAction = this.itemActionsPanel.querySelector<HTMLButtonElement>('[data-item-action="destroy"]');
-    if (destroyAction) destroyAction.disabled = equipped;
+    if (destroyAction) {
+      destroyAction.hidden = !actions.destroyVisible;
+      destroyAction.disabled = actions.destroyDisabled;
+    }
     this.hideDestroyConfirm(false);
     source.classList.add('is-selected');
     this.itemActionsPanel.classList.remove('hidden');
     this.positionItemActions(source);
-    this.itemActionsPanel.querySelector<HTMLButtonElement>('[data-item-action="equip"]')?.focus();
+    this.itemActionsPanel
+      .querySelector<HTMLButtonElement>('[data-item-action]:not([hidden])')
+      ?.focus();
   }
 
   /**

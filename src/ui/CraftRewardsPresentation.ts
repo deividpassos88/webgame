@@ -5,7 +5,7 @@ import {
 } from '../inventory/InventoryCatalog';
 import type { InventoryStack } from '../profile/PlayerProfile';
 import type { UiEquipmentSlot } from './RpgUiViewModel';
-import { equipmentIcon, itemKindIcon } from './RpgIcons';
+import { equipmentSlotIcon, itemKindIcon } from './RpgIcons';
 
 export function craftRarityLabel(item: Pick<InventoryItemDefinition, 'rarity'>): string {
   if (item.rarity === 'rare') return 'Raro';
@@ -40,6 +40,24 @@ export function renderInventorySlotContent(
   return `${inventoryItemArt(item)}<span class="item-quantity" data-item-quantity>${Math.max(1, Math.floor(quantity))}</span>`;
 }
 
+/**
+ * Item names carry the tier in brackets ("Draconic Helmet [Common]"). Rendering
+ * splits that suffix into its own element so it can stay smaller and brighter
+ * than the name without repeating the markup in every surface.
+ */
+export function renderItemLabel(label: string): string {
+  const match = /^(.*?)\s*\[([^\]]+)\]$/.exec(label.trim());
+  if (!match) return escapeItemLabel(label);
+  return `${escapeItemLabel(match[1])}<span class="item-label__tier">[${escapeItemLabel(match[2])}]</span>`;
+}
+
+function escapeItemLabel(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 /** Supplies the stable data contract shared by every item tooltip trigger. */
 export function itemTooltipDataAttributes(
   item: Pick<InventoryItemDefinition, 'id'>,
@@ -48,15 +66,20 @@ export function itemTooltipDataAttributes(
   return `data-item-tooltip-id="${item.id}" data-item-tooltip-quantity="${Math.max(1, Math.floor(quantity))}"`;
 }
 
-/** Keeps equipment cards visual: equipped art in the center and one engraved slot label. */
+/**
+ * Keeps equipment cards visual: the centered art only.
+ *
+ * The socket used to print its name (CAPACETE, PEITORAL...) under the art.
+ * Every socket now carries a picture - the painted placeholder when empty, the
+ * item art when equipped - so the caption was dropped and the cell stays clean.
+ * The name still reaches assistive tech through the socket's aria-label.
+ */
 export function renderEquipmentSlotContent(
   slot: UiEquipmentSlot,
-  label: string,
   item: InventoryItemDefinition | null
 ): string {
   return `
-    <span class="equipment-slot__art">${item ? equippedItemArt(item) : equipmentIcon(slot)}</span>
-    <span class="equipment-slot__label">${label}</span>`;
+    <span class="equipment-slot__art"${item ? '' : ' aria-hidden="true"'}>${item ? equippedItemArt(item) : equipmentSlotIcon(slot)}</span>`;
 }
 
 /** True when the inspector can present the item, i.e. craft materials and equipment. */
