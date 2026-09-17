@@ -253,13 +253,12 @@ describe('lobby character preparation', () => {
     // The sword grants flat damage, so its card must not promise attribute
     // points the status sheet would never show.
     expect(itemStatSummary(getInventoryItem('starter-sword'))).toBe('Dano +8');
-    expect(itemStatSummary(getInventoryItem('predator-forged-gloves')))
-      .toBe('Ataque +3 · Dano crítico +3');
+    expect(itemStatSummary(getInventoryItem('common-forged-gloves'))).toBe('Ataque +3');
     expect(itemStatSummary(getInventoryItem('iron-shard'))).toBe('');
     expect(itemStatSummary(undefined)).toBe('');
   });
 
-  it('shows life total and attack damage so equipping a weapon moves the sheet', () => {
+  it('adds the equipped weapon bonus to the attack reading in the status sheet', () => {
     const profile = createDefaultPlayerProfile();
     profile.attributes = { ...createDefaultCharacterAttributes(), vitality: 10, attack: 5 };
     const renderStatus = (LobbyScreenModule as unknown as {
@@ -274,18 +273,18 @@ describe('lobby character preparation', () => {
     const before = renderStatus(
       buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot()).currentStatus
     );
-    // Vitality is worth 3 HP a point and an unarmed warrior only has the
-    // attribute bonus (0.2 damage per attack point).
+    // Vitality is worth 3 HP a point; without a weapon the attack reading is
+    // only what was allocated.
     expect(before).toContain('<dt>Vida máxima</dt><dd>130</dd>');
-    expect(before).toContain('<dt>Dano</dt><dd>1</dd>');
+    expect(before).toContain('<dt>Ataque</dt><dd>5</dd>');
 
     profile.equipment.weapon = 'starter-sword';
     profile.equipment.primaryWeapon = 'starter-sword';
     const withSword = renderStatus(
       buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot()).currentStatus
     );
-    // The sword adds its own 8 damage on top of the attribute bonus.
-    expect(withSword).toContain('<dt>Dano</dt><dd>9</dd>');
+    // The sword's own 8 damage shows up in the status, exactly as promised.
+    expect(withSword).toContain('<dt>Ataque</dt><dd>13</dd>');
     expect(withSword).toContain('<dt>Vida máxima</dt><dd>130</dd>');
   });
 
@@ -382,8 +381,9 @@ describe('lobby character preparation', () => {
 
     const popover = document.getElementById('lobby-item-actions')!;
     expect(popover.classList.contains('hidden')).toBe(false);
+    // The tier suffix renders in its own span, so the title reads the full name.
     expect(document.getElementById('lobby-item-actions-title')?.textContent)
-      .toBe('Espada do Recruta');
+      .toBe('Sword Novice');
     expect(store.snapshot().equipment.primaryWeapon).toBeNull();
     expect(store.snapshot().backpack).toEqual([{ itemId: 'starter-sword', quantity: 1 }]);
 

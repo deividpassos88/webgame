@@ -4,12 +4,6 @@ import {
   hasActiveLicense,
   type BlacksmithRecipeId,
 } from '../crafting/BlacksmithWorkshop';
-import {
-  EQUIPMENT_SETS,
-  activeEquipmentSet,
-  isEquipmentSetComplete,
-  type EquipmentSetDefinition,
-} from '../equipment/EquipmentStatBonuses';
 import { getInventoryItem } from '../inventory/InventoryCatalog';
 import type { InventorySnapshot, InventoryStore } from '../inventory/InventoryStore';
 import type { PlayerProfile } from '../profile/PlayerProfile';
@@ -200,47 +194,9 @@ export class BlacksmithScreen {
    * definition the combat pipeline applies.
    */
   private renderRecipes(inventory: InventorySnapshot): string {
-    const groups = EQUIPMENT_SETS.map((set) => {
-      const recipes = BLACKSMITH_RECIPES.filter((recipe) => recipe.setId === set.id);
-      if (recipes.length === 0) return '';
-      const complete = isEquipmentSetComplete(inventory.equipment, set);
-      return `<section class="blacksmith-set${complete ? ' is-complete' : ''}">
-        <header class="blacksmith-set__head">
-          <div>
-            <h3>${set.label}</h3>
-            <p>${set.tagline}</p>
-          </div>
-          <span>${complete ? 'Conjunto completo equipado' : 'Bônus de 5 peças'}</span>
-        </header>
-        <p class="blacksmith-set__bonus">${this.setBonusSummary(set)}</p>
-        <div class="blacksmith-recipes">${recipes.map((recipe) => this.renderRecipe(recipe, inventory)).join('')}</div>
-      </section>`;
-    }).join('');
-    return `${groups}${this.renderLegacyCraftingNotice(inventory)}`;
-  }
-
-  /** Bonus text shared with the status panel, using the same attribute labels. */
-  private setBonusSummary(set: EquipmentSetDefinition): string {
-    return Object.entries(set.bonus)
-      .filter(([, value]) => value)
-      .map(([key, value]) => `<span>${this.itemStatLabel(key)} +${value}</span>`)
-      .join('');
-  }
-
-  private itemStatLabel(attribute: string): string {
-    const labels: Readonly<Record<string, string>> = {
-      vitality: 'Vitalidade', attack: 'Ataque', defense: 'Defesa', agility: 'Agilidade',
-      criticalAttack: 'Crítico', criticalDamage: 'Dano crítico', lifeSteal: 'Roubo de vida',
-      criticalMagic: 'Crítico mágico', dodge: 'Esquiva',
-    };
-    return labels[attribute] ?? attribute;
-  }
-
-  private renderLegacyCraftingNotice(inventory: InventorySnapshot): string {
-    const legacy = ['common-forged-helmet', 'common-forged-chest', 'common-forged-pants', 'common-forged-gloves', 'common-forged-boots'];
-    const worn = legacy.filter((itemId) => Object.values(inventory.equipment).includes(itemId));
-    if (worn.length === 0) return '';
-    return `<p class="blacksmith-legacy">As peças do antigo conjunto Comum Forjado não dão mais bônus de conjunto. Forje uma das duas linhas acima para ganhar um bônus real.</p>`;
+    return `<div class="blacksmith-recipes">${BLACKSMITH_RECIPES
+      .map((recipe) => this.renderRecipe(recipe, inventory))
+      .join('')}</div>`;
   }
 
   private renderRecipe(recipe: (typeof BLACKSMITH_RECIPES)[number], inventory: InventorySnapshot): string {

@@ -27,7 +27,7 @@ describe('RpgUiViewModel', () => {
     expect(view.equipment.find(({ slot }) => slot === 'helmet')?.item).toBeNull();
     expect(view.equipment.find(({ slot }) => slot === 'primaryWeapon')?.item).toBeNull();
     expect(view.equipment.find(({ slot }) => slot === 'secondaryWeapon')?.item).toBeNull();
-    expect(view.backpack[0]?.item?.label).toBe('Espada do Recruta');
+    expect(view.backpack[0]?.item?.label).toBe('Sword Novice');
     expect(view.backpack[0]?.quantity).toBe(1);
     expect(view.backpack[1]?.item?.label).toBe('Cristal Rúnico');
     expect(view.backpack[1]?.quantity).toBe(4);
@@ -80,54 +80,33 @@ describe('RpgUiViewModel', () => {
 
     profile.equipment.weapon = 'starter-sword';
     profile.equipment.primaryWeapon = 'starter-sword';
-    profile.equipment.helmet = 'predator-forged-helmet';
     const armed = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
-    // 8 from the sword + 0.2 per attack point (5 allocated + 2 from the helm).
-    expect(armed.currentStatus.derived.attackDamage).toBeCloseTo(9.4);
+    // 8 from the sword + 0.2 per attack point.
+    expect(armed.currentStatus.derived.attackDamage).toBeCloseTo(9);
     expect(armed.currentStatus.derived.maxHealth).toBeCloseTo(130);
+    // The attack reading in the sheet carries the weapon damage too.
+    expect(armed.currentStatus.attributes.find(({ key }) => key === 'attack')?.value).toBe(13);
   });
 
-  it('exposes the active Predador set bonus for the lobby status panel', () => {
+  it('exposes the Draconic set bonus for the lobby status panel', () => {
     const profile = createDefaultPlayerProfile();
     Object.assign(profile.equipment, {
-      helmet: 'predator-forged-helmet',
-      chest: 'predator-forged-chest',
-      pants: 'predator-forged-pants',
-      gloves: 'predator-forged-gloves',
-      boots: 'predator-forged-boots',
+      helmet: 'common-forged-helmet',
+      chest: 'common-forged-chest',
+      pants: 'common-forged-pants',
+      gloves: 'common-forged-gloves',
+      boots: 'common-forged-boots',
     });
 
     const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
 
     expect(view.currentStatus.setBonus).toEqual({
-      label: 'Conjunto do Predador',
+      label: 'Conjunto Draconic',
       attributes: [
-        { label: 'Ataque', value: 6 },
-        { label: 'Crítico físico', value: 8 },
-        { label: 'Dano crítico', value: 12 },
-        { label: 'Roubo de vida', value: 4 },
-      ],
-    });
-  });
-
-  it('exposes the active Muralha set bonus and no bonus for a partial set', () => {
-    const profile = createDefaultPlayerProfile();
-    Object.assign(profile.equipment, {
-      helmet: 'bulwark-forged-helmet',
-      chest: 'bulwark-forged-chest',
-      pants: 'bulwark-forged-pants',
-      gloves: 'bulwark-forged-gloves',
-      boots: 'bulwark-forged-boots',
-    });
-
-    const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
-
-    expect(view.currentStatus.setBonus).toEqual({
-      label: 'Conjunto da Muralha',
-      attributes: [
-        { label: 'Vitalidade', value: 14 },
-        { label: 'Defesa', value: 16 },
-        { label: 'Esquiva', value: 8 },
+        { label: 'Vitalidade', value: 1 },
+        { label: 'Ataque', value: 2 },
+        { label: 'Defesa', value: 3 },
+        { label: 'Agilidade', value: 2 },
       ],
     });
 

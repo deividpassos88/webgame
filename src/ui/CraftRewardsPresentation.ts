@@ -40,6 +40,24 @@ export function renderInventorySlotContent(
   return `${inventoryItemArt(item)}<span class="item-quantity" data-item-quantity>${Math.max(1, Math.floor(quantity))}</span>`;
 }
 
+/**
+ * Item names carry the tier in brackets ("Draconic Helmet [Common]"). Rendering
+ * splits that suffix into its own element so it can stay smaller and brighter
+ * than the name without repeating the markup in every surface.
+ */
+export function renderItemLabel(label: string): string {
+  const match = /^(.*?)\s*\[([^\]]+)\]$/.exec(label.trim());
+  if (!match) return escapeItemLabel(label);
+  return `${escapeItemLabel(match[1])}<span class="item-label__tier">[${escapeItemLabel(match[2])}]</span>`;
+}
+
+function escapeItemLabel(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 /** Supplies the stable data contract shared by every item tooltip trigger. */
 export function itemTooltipDataAttributes(
   item: Pick<InventoryItemDefinition, 'id'>,

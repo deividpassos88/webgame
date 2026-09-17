@@ -4,9 +4,10 @@ import type { InventorySnapshot } from '../inventory/InventoryStore';
 import { deriveCharacterStats, type CharacterAttributeKey } from '../profile/CharacterAttributes';
 import type { CanonicalRpgEquipmentSlot, PlayerProfile } from '../profile/PlayerProfile';
 import {
-  activeEquipmentSet,
+  COMMON_FORGED_SET_BONUS,
   attributesWithEquipment,
   equippedWeaponDamage,
+  hasCommonForgedSet,
 } from '../equipment/EquipmentStatBonuses';
 
 export type UiEquipmentSlot = CanonicalRpgEquipmentSlot;
@@ -47,8 +48,7 @@ export interface CurrentCharacterStatusView {
   } | null;
   /**
    * Combat numbers for the current loadout, resolved with the same base values
-   * Game uses. The sheet reads them so equipping a sword changes "Dano" and
-   * vitality changes "Vida máxima", instead of only moving attribute points.
+   * Game uses, so the sheet can show the life total and the strike damage.
    */
   readonly derived: {
     readonly maxHealth: number;
@@ -120,16 +120,16 @@ export function buildRpgUiViewModel(
     ),
   }));
   const equippedAttributes = attributesWithEquipment(profile.attributes, inventory.equipment);
+  const weaponDamage = equippedWeaponDamage(inventory.equipment);
   const derivedStats = deriveCharacterStats(equippedAttributes, {
     ...LOBBY_COMBAT_BASE,
-    attackDamage: equippedWeaponDamage(inventory.equipment),
+    attackDamage: weaponDamage,
   });
-  const activeSet = activeEquipmentSet(inventory.equipment);
-  const setBonus = activeSet
+  const setBonus = hasCommonForgedSet(inventory.equipment)
     ? {
-      label: activeSet.label,
+      label: 'Conjunto Draconic',
       attributes: CURRENT_STATUS_ATTRIBUTES.flatMap(({ key, label }) => {
-        const value = activeSet.bonus[key] ?? 0;
+        const value = COMMON_FORGED_SET_BONUS[key] ?? 0;
         return value ? [{ label, value }] : [];
       }),
     }
@@ -140,7 +140,9 @@ export function buildRpgUiViewModel(
     attributes: CURRENT_STATUS_ATTRIBUTES.map(({ key, label }) => ({
       key,
       label,
-      value: equippedAttributes[key],
+      // The equipped weapon answers for the attack reading: wearing a sword
+      // shows its damage next to the allocated points instead of hiding it.
+      value: key === 'attack' ? equippedAttributes.attack + weaponDamage : equippedAttributes[key],
     })),
     setBonus,
     derived: {

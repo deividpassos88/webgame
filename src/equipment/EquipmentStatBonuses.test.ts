@@ -1,105 +1,68 @@
 import { describe, expect, it } from 'vitest';
 import {
-  EQUIPMENT_SETS,
-  activeEquipmentSet,
+  COMMON_FORGED_SET_BONUS,
   attributesWithEquipment,
-  describeSetBonus,
   equippedAttributeBonuses,
   equippedWeaponDamage,
-  isEquipmentSetComplete,
+  hasCommonForgedSet,
 } from './EquipmentStatBonuses';
 import { createDefaultCharacterAttributes } from '../profile/CharacterAttributes';
 import { createDefaultPlayerProfile, type PlayerEquipment } from '../profile/PlayerProfile';
 
-const PREDATOR = EQUIPMENT_SETS.find((set) => set.id === 'predator')!;
-const BULWARK = EQUIPMENT_SETS.find((set) => set.id === 'bulwark')!;
-
-function equipmentOf(set: typeof PREDATOR): PlayerEquipment {
-  return { ...createDefaultPlayerProfile().equipment, ...set.itemIds };
+function draconicSet(): PlayerEquipment {
+  return {
+    ...createDefaultPlayerProfile().equipment,
+    helmet: 'common-forged-helmet',
+    chest: 'common-forged-chest',
+    pants: 'common-forged-pants',
+    gloves: 'common-forged-gloves',
+    boots: 'common-forged-boots',
+  };
 }
 
-describe('forged equipment sets', () => {
-  it('publishes one offensive and one defensive line, each with five pieces', () => {
-    expect(EQUIPMENT_SETS.map((set) => set.id)).toEqual(['predator', 'bulwark']);
-    for (const set of EQUIPMENT_SETS) {
-      expect(Object.keys(set.itemIds)).toHaveLength(5);
-      expect(Object.values(set.itemIds).every((itemId) => itemId.length > 0)).toBe(true);
-    }
-  });
+describe('Draconic equipment set bonuses', () => {
+  it('adds the five-piece bonus only when the whole set is worn', () => {
+    const equipment = draconicSet();
 
-  it('activates the offensive line and stacks its five-piece bonus on the pieces', () => {
-    const equipment = equipmentOf(PREDATOR);
-
-    expect(isEquipmentSetComplete(equipment, PREDATOR)).toBe(true);
-    expect(activeEquipmentSet(equipment)?.id).toBe('predator');
-    // Pieces: 2+4+3+3+2 attack, 3+2 critical, 4+3 critical damage, 2 life steal.
-    // Set: +6 attack, +8 critical, +12 critical damage, +4 life steal.
+    expect(hasCommonForgedSet(equipment)).toBe(true);
+    // Pieces: 1 vitality, 2+4+3 defense, 1 agility, 3 attack, 3 agility.
+    // Set: +1 vitality, +2 attack, +3 defense, +2 agility.
     expect(equippedAttributeBonuses(equipment)).toMatchObject({
-      vitality: 0,
-      attack: 20,
-      defense: 0,
-      agility: 0,
-      criticalAttack: 13,
-      criticalDamage: 19,
-      lifeSteal: 6,
+      vitality: 2,
+      attack: 5,
+      defense: 12,
+      agility: 6,
     });
   });
 
-  it('activates the defensive line with health, mitigation and dodge', () => {
-    const equipment = equipmentOf(BULWARK);
-
-    expect(activeEquipmentSet(equipment)?.id).toBe('bulwark');
-    // Pieces: 4+6+5+3+4 vitality, 3+5+4+3 defense, 3 dodge.
-    // Set: +14 vitality, +16 defense, +8 dodge.
-    expect(equippedAttributeBonuses(equipment)).toMatchObject({
-      vitality: 36,
-      defense: 31,
-      agility: 0,
-      dodge: 11,
-      attack: 0,
-    });
-  });
-
-  it('grants no set bonus while a single piece is missing', () => {
-    const equipment = equipmentOf(PREDATOR);
+  it('grants piece stats without the set bonus while one slot is empty', () => {
+    const equipment = draconicSet();
     equipment.boots = null;
 
-    expect(isEquipmentSetComplete(equipment, PREDATOR)).toBe(false);
-    expect(activeEquipmentSet(equipment)).toBeNull();
-    // Only the four worn pieces count: 2+4+3+3 attack, 2+3+3 critical.
+    expect(hasCommonForgedSet(equipment)).toBe(false);
+    // Only the four worn pieces count: 1 vitality, defense 2+4+3, agility 1 + 3 attack.
     expect(equippedAttributeBonuses(equipment)).toMatchObject({
-      attack: 12,
-      criticalAttack: 5,
-      criticalDamage: 7,
-      lifeSteal: 0,
+      vitality: 1,
+      attack: 3,
+      defense: 9,
+      agility: 1,
     });
   });
 
-  it('keeps legacy common forged pieces valid gear without a set bonus', () => {
-    const equipment: PlayerEquipment = {
-      ...createDefaultPlayerProfile().equipment,
-      helmet: 'common-forged-helmet',
-      chest: 'common-forged-chest',
-      pants: 'common-forged-pants',
-      gloves: 'common-forged-gloves',
-      boots: 'common-forged-boots',
-    };
-
-    expect(activeEquipmentSet(equipment)).toBeNull();
-    // The old pieces keep their own stats, including the vitality inherited
-    // from the retired strength bonus.
-    expect(equippedAttributeBonuses(equipment)).toMatchObject({
-      vitality: 1, attack: 3, defense: 9, agility: 4,
-    });
+  it('keeps the retired strength bonus out of the new attribute set', () => {
+    expect(COMMON_FORGED_SET_BONUS).not.toHaveProperty('strength');
+    expect(Object.keys(COMMON_FORGED_SET_BONUS).sort()).toEqual([
+      'agility', 'attack', 'defense', 'vitality',
+    ]);
   });
 
   it('adds equipment bonuses on top of the allocated attributes', () => {
     const attributes = { ...createDefaultCharacterAttributes(), vitality: 20, attack: 10 };
-    const total = attributesWithEquipment(attributes, equipmentOf(BULWARK));
+    const total = attributesWithEquipment(attributes, draconicSet());
 
-    expect(total.vitality).toBe(56);
-    expect(total.attack).toBe(10);
-    expect(total.defense).toBe(31);
+    expect(total.vitality).toBe(22);
+    expect(total.attack).toBe(15);
+    expect(total.defense).toBe(12);
   });
 
   it('resolves the equipped weapon damage shared by the sheet and the fight', () => {
@@ -113,10 +76,12 @@ describe('forged equipment sets', () => {
     expect(equippedWeaponDamage({ ...equipment, weapon: 'runic-crystal' })).toBe(0);
   });
 
-  it('describes the bonus with the same labels the UI shows', () => {
-    const label = (key: string) => ({ attack: 'Ataque', criticalAttack: 'Crítico físico' }[key] ?? key);
+  it('keeps a mirrored legacy weapon slot from changing attribute bonuses', () => {
+    const base = { ...createDefaultPlayerProfile().equipment, helmet: 'common-forged-helmet' };
+    const single = { ...base, weapon: 'starter-sword' };
+    const mirrored: PlayerEquipment = { ...single, primaryWeapon: 'starter-sword' };
 
-    expect(describeSetBonus(PREDATOR, label)).toContain('Ataque +6');
-    expect(describeSetBonus(PREDATOR, label)).toContain('Crítico físico +8');
+    expect(equippedAttributeBonuses(mirrored)).toEqual(equippedAttributeBonuses(single));
+    expect(equippedAttributeBonuses(mirrored).attack).toBe(0);
   });
 });

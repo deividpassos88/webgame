@@ -7,11 +7,10 @@ import {
   getBlacksmithLicensePresentation,
   purchaseBlacksmithLicense,
 } from './BlacksmithWorkshop';
-import { EQUIPMENT_SETS } from '../equipment/EquipmentStatBonuses';
 import { createDefaultPlayerProfile } from '../profile/PlayerProfile';
 
 const NOW = 1_789_000_000_000;
-const PREDATOR_HELMET = 'predator-forged-helmet';
+const DRACONIC_HELMET = 'common-forged-helmet';
 
 function profileWithCommonMaterials() {
   const profile = createDefaultPlayerProfile();
@@ -27,22 +26,21 @@ describe('BlacksmithWorkshop', () => {
     });
   });
 
-  it('sells five recipes per forged set with ten-unit materials sharing the drop pool', () => {
-    expect(BLACKSMITH_RECIPES).toHaveLength(10);
-    expect(EQUIPMENT_SETS.map((set) => set.id)).toEqual(['predator', 'bulwark']);
+  it('defines five Draconic recipes with five ten-unit materials across the set', () => {
+    expect(BLACKSMITH_RECIPES).toHaveLength(5);
+    expect(BLACKSMITH_RECIPES.map((recipe) => recipe.label)).toEqual([
+      'Draconic Helmet',
+      'Draconic Chestplate',
+      'Draconic Pants',
+      'Draconic Gloves',
+      'Draconic Boots',
+    ]);
 
     const usedMaterials = new Set<string>();
-    for (const set of EQUIPMENT_SETS) {
-      const recipes = BLACKSMITH_RECIPES.filter((recipe) => recipe.setId === set.id);
-      expect(recipes).toHaveLength(5);
-      expect(recipes.map((recipe) => recipe.outputItemId).sort()).toEqual(
-        Object.values(set.itemIds).sort()
-      );
-      for (const recipe of recipes) {
-        expect(recipe.ingredients).toHaveLength(5);
-        expect(recipe.ingredients.every(({ quantity }) => quantity === 10)).toBe(true);
-        recipe.ingredients.forEach(({ itemId }) => usedMaterials.add(itemId));
-      }
+    for (const recipe of BLACKSMITH_RECIPES) {
+      expect(recipe.ingredients).toHaveLength(5);
+      expect(recipe.ingredients.every(({ quantity }) => quantity === 10)).toBe(true);
+      recipe.ingredients.forEach(({ itemId }) => usedMaterials.add(itemId));
     }
 
     expect([...usedMaterials].sort()).toEqual([...COMMON_CRAFT_MATERIAL_IDS].sort());
@@ -70,15 +68,15 @@ describe('BlacksmithWorkshop', () => {
     expect(result).toEqual({ kind: 'insufficient-guild-tokens', profile });
   });
 
-  it('crafts a Predador helmet into the backpack without auto-equipping it', () => {
+  it('crafts a Draconic helmet into the backpack without auto-equipping it', () => {
     const profile = profileWithCommonMaterials();
     profile.blacksmith.availableUntil = NOW + 1;
 
-    const result = craftBlacksmithRecipe(profile, PREDATOR_HELMET, NOW);
+    const result = craftBlacksmithRecipe(profile, DRACONIC_HELMET, NOW);
 
     expect(result.kind).toBe('crafted');
     if (result.kind !== 'crafted') return;
-    expect(result.profile.backpack).toContainEqual({ itemId: PREDATOR_HELMET, quantity: 1 });
+    expect(result.profile.backpack).toContainEqual({ itemId: DRACONIC_HELMET, quantity: 1 });
     expect(result.profile.backpack).toHaveLength(6);
     expect(result.profile.equipment.helmet).toBeNull();
   });
@@ -86,7 +84,7 @@ describe('BlacksmithWorkshop', () => {
   it('does not consume materials when the workshop license is expired', () => {
     const profile = profileWithCommonMaterials();
 
-    const result = craftBlacksmithRecipe(profile, PREDATOR_HELMET, NOW);
+    const result = craftBlacksmithRecipe(profile, DRACONIC_HELMET, NOW);
 
     expect(result).toEqual({ kind: 'license-expired', profile });
   });
@@ -106,17 +104,17 @@ describe('BlacksmithWorkshop', () => {
       { itemId: 'ancient-cloth', quantity: 1 },
     );
 
-    const result = craftBlacksmithRecipe(profile, PREDATOR_HELMET, NOW);
+    const result = craftBlacksmithRecipe(profile, DRACONIC_HELMET, NOW);
 
     expect(result.kind).toBe('crafted');
     if (result.kind !== 'crafted') return;
     expect(result.profile.backpack).toHaveLength(15);
-    expect(result.profile.backpack).toContainEqual({ itemId: PREDATOR_HELMET, quantity: 1 });
+    expect(result.profile.backpack).toContainEqual({ itemId: DRACONIC_HELMET, quantity: 1 });
     expect(result.profile.backpack.some((stack) => recipeIngredientIds(stack.itemId))).toBe(false);
   });
 });
 
 function recipeIngredientIds(itemId: string): boolean {
-  const recipe = BLACKSMITH_RECIPES.find((candidate) => candidate.id === PREDATOR_HELMET)!;
+  const recipe = BLACKSMITH_RECIPES.find((candidate) => candidate.id === DRACONIC_HELMET)!;
   return recipe.ingredients.some((ingredient) => ingredient.itemId === itemId);
 }

@@ -1,5 +1,5 @@
 import { getInventoryItem, type InventoryItemDefinition } from '../inventory/InventoryCatalog';
-import { craftRarityLabel, inventoryItemArt } from './CraftRewardsPresentation';
+import { craftRarityLabel, inventoryItemArt, renderItemLabel } from './CraftRewardsPresentation';
 
 let nextTooltipId = 0;
 
@@ -21,7 +21,7 @@ export function renderItemTooltip(
     <div class="item-tooltip__art">${inventoryItemArt(item)}</div>
     <div class="item-tooltip__body">
       <p class="item-tooltip__rarity">${escapeHtml(rarity)}</p>
-      <h3 class="item-tooltip__title">${escapeHtml(item.label)}</h3>
+      <h3 class="item-tooltip__title">${renderItemLabel(item.label)}</h3>
       <p class="item-tooltip__description">${escapeHtml(description)}</p>
       <p class="item-tooltip__quantity">x${safeQuantity}</p>
     </div>`;

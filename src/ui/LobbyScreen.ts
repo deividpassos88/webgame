@@ -23,6 +23,7 @@ import {
   itemTooltipDataAttributes,
   renderEquipmentSlotContent,
   renderInventorySlotContent,
+  renderItemLabel,
 } from './CraftRewardsPresentation';
 import { bindItemTooltip } from './ItemTooltip';
 import { resolveLobbyItemActionState } from './LobbyItemActions';
@@ -72,6 +73,10 @@ const ATTRIBUTE_LABELS: Readonly<Record<string, string>> = {
  * reads as "Dano"; "Ataque" is reserved for the attribute point that the status
  * sheet, the character overlay and the combat pipeline all share.
  */
+export function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 export function itemStatSummary(item: InventoryItemDefinition | undefined): string {
   if (!item) return '';
   // Weapon base damage is flat damage, not an attribute point: the sheet reads
@@ -125,12 +130,12 @@ export function renderLobbyHotkeys(
 }
 
 /**
- * The reference hall shows an eight-metric sheet in two columns: the six
- * attributes that answer for the build, plus the two combat readings that move
- * with gear (Vida máxima and Dano). Crítico físico is surfaced simply as
- * "Crítico"; the dedicated Critical Damage and Life Steal readings stay on the
- * full sheet in the character overlay. The view model keeps its full
- * nine-attribute contract for other surfaces.
+ * The reference hall shows a seven-metric sheet: the six attributes that answer
+ * for the build plus the life total that moves with gear. Ataque includes the
+ * equipped weapon damage, so wearing a sword shows its bonus right away.
+ * Crítico físico is surfaced simply as "Crítico"; the dedicated Critical Damage
+ * and Life Steal readings stay on the full sheet in the character overlay. The
+ * view model keeps its full nine-attribute contract for other surfaces.
  */
 const LOBBY_STATUS_METRICS: readonly {
   readonly key: string;
@@ -157,10 +162,11 @@ function lobbyStatusMetrics(
     label,
     value: byKey.get(key) ?? 0,
   }));
+  // The attack reading already carries the equipped weapon damage, so the
+  // sheet only adds the life total next to the six attributes.
   return [
     ...attributes,
     { label: 'Vida máxima', value: formatMetricValue(status.derived.maxHealth) },
-    { label: 'Dano', value: formatMetricValue(status.derived.attackDamage) },
   ];
 }
 
@@ -833,7 +839,7 @@ export class LobbyScreen {
     this.selectedStack = selection;
     const item = getInventoryItem(selection.itemId);
     const equipped = selection.location === 'equipment';
-    this.itemActionsTitle.textContent = item?.label ?? selection.itemId;
+    this.itemActionsTitle.innerHTML = item ? renderItemLabel(item.label) : escapeHtml(selection.itemId);
     this.itemActionsState.textContent = equipped ? 'Equipado' : 'Na mochila';
     this.itemActionsArt.innerHTML = item ? renderInventorySlotContent(item, 1) : '';
     const description = item?.description?.trim() ?? '';
