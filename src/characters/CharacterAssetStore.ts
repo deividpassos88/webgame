@@ -12,8 +12,12 @@ import {
   type CharacterId,
 } from './CharacterCatalog';
 
-const DRACO_DECODER_PATH =
-  'https://www.gstatic.com/draco/versioned/decoders/1.5.7/';
+/*
+ * The decoder ships with the app (public/draco, copied to /draco by Vite).
+ * It used to be fetched from a public CDN, which added a network dependency
+ * on every cold start and broke the models entirely when it was unreachable.
+ */
+const DRACO_DECODER_PATH = '/draco/';
 
 export type CharacterLoadProgress = (
   completed: number,

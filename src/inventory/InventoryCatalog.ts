@@ -186,7 +186,7 @@ export const INVENTORY_ITEMS = {
     kind: 'material',
     rarity: 'common',
     iconSrc: '/items/craft/common/1.webp',
-    description: 'Usada para forjar o Capacete, Peitoral e Luvas do Forjador Comum.',
+    description: 'Usada para forjar o Capacete, Peitoral e Luvas do Conjunto Comum de Criação de equipamentos.',
     maxStack: 99,
   },
   'worn-draco-hide': {
@@ -195,7 +195,7 @@ export const INVENTORY_ITEMS = {
     kind: 'material',
     rarity: 'common',
     iconSrc: '/items/craft/common/2.webp',
-    description: 'Usada para forjar o Capacete, Peitoral e Calca do Forjador Comum.',
+    description: 'Usada para forjar o Capacete, Peitoral e Calca do Conjunto Comum de Criação de equipamentos.',
     maxStack: 99,
   },
   'black-horn-fragment': {
@@ -204,7 +204,7 @@ export const INVENTORY_ITEMS = {
     kind: 'material',
     rarity: 'common',
     iconSrc: '/items/craft/common/3.webp',
-    description: 'Usado para forjar o Capacete, Calca e Botas do Forjador Comum.',
+    description: 'Usado para forjar o Capacete, Calca e Botas do Conjunto Comum de Criação de equipamentos.',
     maxStack: 99,
   },
   'crimson-fang': {
@@ -213,7 +213,7 @@ export const INVENTORY_ITEMS = {
     kind: 'material',
     rarity: 'common',
     iconSrc: '/items/craft/common/4.webp',
-    description: 'Usada para forjar o Capacete, Luvas e Botas do Forjador Comum.',
+    description: 'Usada para forjar o Capacete, Luvas e Botas do Conjunto Comum de Criação de equipamentos.',
     maxStack: 99,
   },
   'serrated-rubra-scale': {
@@ -222,7 +222,7 @@ export const INVENTORY_ITEMS = {
     kind: 'material',
     rarity: 'common',
     iconSrc: '/items/craft/common/5.webp',
-    description: 'Usada para forjar o Capacete e as Luvas do Forjador Comum.',
+    description: 'Usada para forjar o Capacete e as Luvas do Conjunto Comum de Criação de equipamentos.',
     maxStack: 99,
   },
   'volatile-draconic-essence': {
@@ -231,7 +231,7 @@ export const INVENTORY_ITEMS = {
     kind: 'material',
     rarity: 'common',
     iconSrc: '/items/craft/common/6.webp',
-    description: 'Usada para forjar o Peitoral, Calca e Botas do Forjador Comum.',
+    description: 'Usada para forjar o Peitoral, Calca e Botas do Conjunto Comum de Criação de equipamentos.',
     maxStack: 99,
   },
   'ossified-draco-ribs': {
@@ -240,7 +240,7 @@ export const INVENTORY_ITEMS = {
     kind: 'material',
     rarity: 'common',
     iconSrc: '/items/craft/common/7.webp',
-    description: 'Usadas para forjar o Peitoral e as Luvas do Forjador Comum.',
+    description: 'Usadas para forjar o Peitoral e as Luvas do Conjunto Comum de Criação de equipamentos.',
     maxStack: 99,
   },
   'verdant-draco-talisman': {
@@ -249,7 +249,7 @@ export const INVENTORY_ITEMS = {
     kind: 'material',
     rarity: 'common',
     iconSrc: '/items/craft/common/8.webp',
-    description: 'Usado para forjar o Peitoral e as Botas do Forjador Comum.',
+    description: 'Usado para forjar o Peitoral e as Botas do Conjunto Comum de Criação de equipamentos.',
     maxStack: 99,
   },
   'crimson-draco-talon': {
@@ -258,7 +258,7 @@ export const INVENTORY_ITEMS = {
     kind: 'material',
     rarity: 'common',
     iconSrc: '/items/craft/common/9.webp',
-    description: 'Usada para forjar a Calca e as Luvas do Forjador Comum.',
+    description: 'Usada para forjar a Calca e as Luvas do Conjunto Comum de Criação de equipamentos.',
     maxStack: 99,
   },
   'obsidian-draco-eye': {
@@ -267,7 +267,7 @@ export const INVENTORY_ITEMS = {
     kind: 'material',
     rarity: 'common',
     iconSrc: '/items/craft/common/10.webp',
-    description: 'Usado para forjar a Calca e as Botas do Forjador Comum.',
+    description: 'Usado para forjar a Calca e as Botas do Conjunto Comum de Criação de equipamentos.',
     maxStack: 99,
   },
   'fractured-draconic-heart': {

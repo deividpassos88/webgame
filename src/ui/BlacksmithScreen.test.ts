@@ -186,6 +186,43 @@ describe('BlacksmithScreen', () => {
     vi.advanceTimersByTime(3_800);
 
     expect(onCraft).toHaveBeenCalledWith('common-forged-helmet');
-    expect(host.querySelector('.workshop-craft-notification')?.textContent).toContain('Item Craftado com Sucesso');
+    const notification = host.querySelector('.workshop-craft-notification');
+    expect(notification?.textContent).toContain('Criada Com Sucesso');
+    expect(host.querySelector<HTMLImageElement>('.workshop-craft-notification__art')?.getAttribute('src'))
+      .toBe('/items/equipment/common-forged/helmet.webp');
+  });
+
+  it('reveals a recipe description only while its card is hovered or pinned', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.blacksmith.availableUntil = Date.now() + 36 * 60 * 60 * 1000;
+    profile.backpack = [{ itemId: 'worn-draco-claw', quantity: 10 }];
+    const host = mountWorkshop();
+    const screen = new BlacksmithScreen(host, profile, InventoryStore.fromProfile(profile), {
+      onLicensePurchase: () => ({ message: '' }),
+      onCraft: () => ({ message: '' }),
+      onBack: () => undefined,
+    });
+
+    screen.show();
+    const inspector = host.querySelector<HTMLElement>('[data-recipe-inspector]');
+    expect(inspector?.hidden).toBe(true);
+
+    const card = host.querySelector<HTMLElement>('[data-recipe-inspect="common-forged-helmet"]');
+    card?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    expect(inspector?.hidden).toBe(false);
+    expect(inspector?.textContent).toContain('Capacete comum criado na Forja de Cinzafogo');
+
+    card?.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+    expect(inspector?.hidden).toBe(true);
+
+    // Clicking pins the window so it survives the pointer leaving the card.
+    card?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(inspector?.hidden).toBe(false);
+    card?.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+    expect(inspector?.hidden).toBe(false);
+
+    card?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    card?.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+    expect(inspector?.hidden).toBe(true);
   });
 });

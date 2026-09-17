@@ -55,6 +55,8 @@ export class BlacksmithScreen {
   private notificationTimer: number | null = null;
   private craftNotification = '';
   private activePanel: BlacksmithPanel = 'equipment';
+  private hoveredRecipeId: BlacksmithRecipeId | null = null;
+  private pinnedRecipeId: BlacksmithRecipeId | null = null;
 
   public constructor(
     host: HTMLElement,
@@ -67,6 +69,9 @@ export class BlacksmithScreen {
       : this.createRoot(host);
     this.forge = BlacksmithForgePresentation.create();
     this.root.addEventListener('click', this.handleClick);
+    this.root.addEventListener('mouseover', this.handlePointerOver);
+    this.root.addEventListener('mouseout', this.handlePointerOut);
+    this.root.addEventListener('focusin', this.handlePointerOver);
   }
 
   public show(): void {
@@ -75,6 +80,8 @@ export class BlacksmithScreen {
     this.craftedRecipeId = null;
     this.selectedBackpackItemId = null;
     this.activePanel = 'equipment';
+    this.hoveredRecipeId = null;
+    this.pinnedRecipeId = null;
     this.root.classList.remove('hidden');
     this.root.setAttribute('aria-hidden', 'false');
     this.render();
@@ -88,6 +95,9 @@ export class BlacksmithScreen {
 
   public dispose(): void {
     this.root.removeEventListener('click', this.handleClick);
+    this.root.removeEventListener('mouseover', this.handlePointerOver);
+    this.root.removeEventListener('mouseout', this.handlePointerOut);
+    this.root.removeEventListener('focusin', this.handlePointerOver);
     this.clearTimers();
     this.forge?.dispose();
     this.hide();
@@ -144,14 +154,85 @@ export class BlacksmithScreen {
               ${this.renderBackpack(inventory)}
             </section>
             <section class="workshop-tab-panel workshop-recipes${isLicensed ? '' : ' is-locked'}" id="workshop-panel-craft" role="tabpanel" aria-labelledby="workshop-tab-craft" data-workshop-recipes aria-label="Receitas da oficina" ${this.activePanel === 'craft' ? '' : 'hidden'} ${isLicensed ? '' : 'aria-disabled="true"'}>
-              <header><p class="section-label">${isLicensed ? `Licença ativa · ${remainingHours}h restantes` : 'Receitas bloqueadas'}</p><h2>Peças do forjador</h2></header>
+              <header><p class="section-label">${isLicensed ? `Licença ativa · ${remainingHours}h restantes` : 'Receitas bloqueadas'}</p><h2>Criação de equipamentos</h2></header>
               ${recipes}
+              ${isLicensed ? '<aside class="workshop-recipe-inspector" id="workshop-recipe-inspector" data-recipe-inspector hidden></aside>' : ''}
             </section>
           </div>
         </section>
       </main>
-      ${this.craftNotification ? `<div class="workshop-craft-notification" role="status" aria-live="assertive"><span>Item Craftado com Sucesso</span><strong>${this.craftNotification}</strong><small>Ja esta na sua Mochila.</small></div>` : ''}`;
+      ${this.renderCraftNotification()}`;
     this.mountForge();
+    this.updateRecipeInspector();
+  }
+
+  /** Center-screen delivery toast: the crafted art above the success line. */
+  private renderCraftNotification(): string {
+    if (!this.craftNotification) return '';
+    const recipe = BLACKSMITH_RECIPES.find(({ id }) => id === this.craftedRecipeId);
+    const item = recipe ? getInventoryItem(recipe.outputItemId) : undefined;
+    return `<div class="workshop-craft-notification" role="status" aria-live="assertive">
+      <span class="workshop-craft-notification__halo" aria-hidden="true"></span>
+      <img class="workshop-craft-notification__art" src="${item?.iconSrc ?? ''}" alt="">
+      <strong>Criada Com Sucesso</strong>
+      <small>${this.craftNotification}</small>
+    </div>`;
+  }
+
+  /**
+   * Small floating panel that only exists while a recipe is hovered or pinned,
+   * so the craft list stays compact and the focus stays on the item art.
+   */
+  private updateRecipeInspector(): void {
+    const panel = this.root.querySelector<HTMLElement>('[data-recipe-inspector]');
+    if (!panel) return;
+    const recipeId = this.hoveredRecipeId ?? this.pinnedRecipeId;
+    const recipe = recipeId ? BLACKSMITH_RECIPES.find(({ id }) => id === recipeId) : undefined;
+    const card = recipeId
+      ? this.root.querySelector<HTMLElement>(`[data-recipe-inspect="${recipeId}"]`)
+      : null;
+    if (!recipe || !card) {
+      panel.hidden = true;
+      panel.innerHTML = '';
+      return;
+    }
+    const item = getInventoryItem(recipe.outputItemId);
+    const inventory = this.inventory.snapshot();
+    const canCraft = recipe.ingredients.every(
+      ({ itemId, quantity }) => this.itemQuantity(inventory, itemId) >= quantity,
+    );
+    const stats = this.itemStats(item);
+    panel.innerHTML = `
+      <img loading="lazy" src="${item?.iconSrc ?? ''}" alt="">
+      <div>
+        <strong>${recipe.label}</strong>
+        <small>${item?.description ?? 'Peça forjada na oficina de Cinzafogo.'}</small>
+        ${stats ? `<em>${stats}</em>` : ''}
+        <span class="${canCraft ? 'is-ready' : 'is-missing'}">${canCraft ? 'Materiais suficientes' : 'Materiais insuficientes'}</span>
+      </div>`;
+    panel.hidden = false;
+    this.positionRecipeInspector(panel, card);
+  }
+
+  /**
+   * Keeps the inspector beside the hovered card, flipping side when it would
+   * overflow and dropping below the card when the column is too narrow for
+   * either side (portrait tablets).
+   */
+  private positionRecipeInspector(panel: HTMLElement, card: HTMLElement): void {
+    const container = panel.parentElement;
+    if (!container) return;
+    const panelWidth = panel.offsetWidth || 214;
+    const gap = 10;
+    const fitsRight = card.offsetLeft + card.offsetWidth + gap + panelWidth <= container.clientWidth;
+    const fitsLeft = card.offsetLeft - panelWidth - gap >= 0;
+    let left = card.offsetLeft + card.offsetWidth + gap;
+    let top = card.offsetTop;
+    if (!fitsRight) left = fitsLeft ? card.offsetLeft - panelWidth - gap : Math.max(0, container.clientWidth - panelWidth);
+    if (!fitsRight && !fitsLeft) top = card.offsetTop + card.offsetHeight + gap;
+    const maxTop = Math.max(0, container.clientHeight - panel.offsetHeight);
+    panel.style.left = `${left}px`;
+    panel.style.top = `${Math.min(top, maxTop)}px`;
   }
 
   private renderConversation(
@@ -212,7 +293,7 @@ export class BlacksmithScreen {
         <span>${material?.label ?? itemId}<small>${available} / ${quantity}</small></span>
       </li>`;
     }).join('');
-    return `<article class="blacksmith-recipe${canCraft ? ' is-ready' : ' is-incomplete'}${this.crafting?.recipeId === recipe.id ? ' is-forging' : ''}">
+    return `<article class="blacksmith-recipe${canCraft ? ' is-ready' : ' is-incomplete'}${this.crafting?.recipeId === recipe.id ? ' is-forging' : ''}${this.pinnedRecipeId === recipe.id ? ' is-pinned' : ''}" data-recipe-inspect="${recipe.id}" tabindex="0" aria-describedby="workshop-recipe-inspector">
       <img class="blacksmith-recipe__art" loading="lazy" src="${item?.iconSrc ?? ''}" alt="">
       <div class="blacksmith-recipe__content">
         <div class="blacksmith-recipe__heading"><div><h3>${recipe.label}</h3><p>${this.itemStats(item)}</p></div><span>${canCraft ? 'Pronto para forjar' : 'Materiais insuficientes'}</span></div>
@@ -307,12 +388,45 @@ export class BlacksmithScreen {
     }
     const craftButton = target.closest<HTMLButtonElement>('[data-craft-recipe]');
     const recipeId = craftButton?.dataset.craftRecipe;
+    if (recipeId && BLACKSMITH_RECIPES.some((recipe) => recipe.id === recipeId)) {
+      this.startCraft(recipeId as BlacksmithRecipeId);
+      return;
+    }
+
+    // Clicking anywhere else on a card pins its description window; clicking
+    // the same card again releases it.
+    const inspectCard = target.closest<HTMLElement>('[data-recipe-inspect]');
+    const inspectRecipeId = inspectCard?.dataset.recipeInspect as BlacksmithRecipeId | undefined;
+    if (!inspectRecipeId || !BLACKSMITH_RECIPES.some((recipe) => recipe.id === inspectRecipeId)) return;
+    this.hoveredRecipeId = inspectRecipeId;
+    const isPinned = this.pinnedRecipeId === inspectRecipeId;
+    this.pinnedRecipeId = isPinned ? null : inspectRecipeId;
+    for (const card of this.root.querySelectorAll('[data-recipe-inspect]')) {
+      card.classList.toggle('is-pinned', card === inspectCard && !isPinned);
+    }
+    this.updateRecipeInspector();
+  };
+
+  /** Hover shows the description window; leaving falls back to the pinned card. */
+  private readonly handlePointerOver = (event: Event): void => {
+    const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-recipe-inspect]');
+    const recipeId = card?.dataset.recipeInspect as BlacksmithRecipeId | undefined;
     if (!recipeId || !BLACKSMITH_RECIPES.some((recipe) => recipe.id === recipeId)) return;
-    this.startCraft(recipeId as BlacksmithRecipeId);
+    if (this.hoveredRecipeId === recipeId) return;
+    this.hoveredRecipeId = recipeId;
+    this.updateRecipeInspector();
+  };
+
+  private readonly handlePointerOut = (event: Event): void => {
+    const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-recipe-inspect]');
+    if (!card || this.hoveredRecipeId !== card.dataset.recipeInspect) return;
+    this.hoveredRecipeId = null;
+    this.updateRecipeInspector();
   };
 
   private renderForgeScene(caption: string, conversation: string): string {
-    return `<figure class="blacksmith-scene" data-blacksmith-forge-scene>
+    const phase = this.crafting?.phase ?? 'idle';
+    return `<figure class="blacksmith-scene" data-blacksmith-forge-scene data-forge-phase="${phase}">
       <div class="blacksmith-scene__viewport" data-blacksmith-forge-viewport><span class="blacksmith-scene__fallback">Forja de Cinzafogo</span></div>
       <div class="blacksmith-scene__dialogue">
         <figcaption>${caption}</figcaption>

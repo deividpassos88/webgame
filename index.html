@@ -10,6 +10,16 @@
   <link rel="stylesheet" href="/src/styles/skills-reference.css" />
 </head>
 <body>
+  <!-- Tablets (from ~700px wide) and desktops only: the game renders WebGL in
+       real time and has no touch controls, so smaller screens get a notice. -->
+  <div class="unsupported-viewport">
+    <div>
+      <strong>Dragon Miner</strong>
+      <h2>Este jogo precisa de uma tela maior</h2>
+      <p>O Dragon Miner roda WebGL em tempo real e foi feito para tablets e computadores. Abra o jogo em um tablet (a partir de 700px de largura) ou no desktop.</p>
+    </div>
+  </div>
+
   <div id="app">
     <canvas id="game-canvas"></canvas>
 

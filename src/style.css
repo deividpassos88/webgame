@@ -27,6 +27,9 @@ html, body {
   height: 100%;
   display: block;
   cursor: crosshair;
+  /* Tablets are touch-first: keep drags as game input instead of page pan/zoom. */
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ---------- Character selection ---------- */
@@ -3360,7 +3363,7 @@ body #lobby-screen #lobby-backpack .inventory-slot { min-width: 0; min-height: 8
   .backpack-expansion-actions { grid-template-columns: 1fr; }
   .backpack-expansion-availability { grid-column: auto; }
   #lobby-backpack-actions .backpack-expansion-actions { display: grid; grid-template-columns: 1fr; width: 142px; }
-  body #lobby-screen #lobby-backpack { grid-template-columns: repeat(4, minmax(58px, 1fr)); }
+  body #lobby-screen #lobby-backpack { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 /* ---------- Final HUD: portrait, vital cards, ability art ---------- */
@@ -3503,7 +3506,7 @@ body #lobby-screen #lobby-backpack .inventory-slot { min-width: 0; min-height: 8
 }
 #combat-actions .combat-skill-card .skill-card-copy { display: grid; grid-column: 2; grid-row: 1; min-width: 0; gap: 4px; padding: 0 7px; }
 #combat-actions .combat-skill-card .skill-card-name { overflow: hidden; color: #f2dec0; font: 600 13px Georgia, serif; text-overflow: ellipsis; white-space: nowrap; }
-#combat-actions .combat-skill-card .skill-card-meta { color: #aeb8c4; font: 700 8px/1.2 Consolas, monospace; white-space: nowrap; }
+#combat-actions .combat-skill-card .skill-card-meta { overflow: hidden; color: #aeb8c4; font: 700 8px/1.2 Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
 #combat-actions .combat-skill-card kbd { grid-column: 3; grid-row: 1; align-self: end; min-width: 27px; min-height: 25px; padding: 2px 4px; border: 1px solid rgba(232, 202, 121, .72); border-radius: 5px; color: #fff1c7; background: linear-gradient(180deg, rgba(52, 65, 79, .92), rgba(15, 22, 30, .92)); font: 700 10px/1 Consolas, monospace; text-align: center; }
 #combat-actions .combat-skill-card .skill-cooldown { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
 #combat-actions .combat-skill-card .skill-card-copy,
@@ -3709,7 +3712,7 @@ body #lobby-screen .equipment-slot.is-equipped,
   box-shadow: none;
 }
 .blacksmith-screen .equipment-slot.is-equipped { border-color: rgba(255, 184, 0, 0.84); background: #171a12; }
-.workshop-recipes { display: grid; align-content: start; gap: 12px; overflow: auto; }
+.workshop-recipes { position: relative; display: grid; align-content: start; gap: 12px; overflow: auto; }
 .workshop-recipes > header { display: grid; gap: 5px; }
 .workshop-recipes.is-locked { opacity: .68; }
 .workshop-recipes__locked-copy { margin: 0; color: #b6baad; font: 12px/1.5 Consolas, 'Courier New', monospace; }
@@ -3722,7 +3725,7 @@ body #lobby-screen .equipment-slot.is-equipped,
   border-radius: 0;
   background: #10130e;
 }
-.blacksmith-screen .blacksmith-recipe > img { width: 50px; height: 50px; border-radius: 0; object-fit: contain; }
+.blacksmith-screen .blacksmith-recipe > img { width: clamp(72px, 7vw, 112px); height: clamp(72px, 7vw, 112px); border-radius: 4px; object-fit: contain; }
 .blacksmith-screen .blacksmith-recipe h3 { font-size: 12px; }
 .blacksmith-screen .blacksmith-recipe ul { color: #b6baad; font-family: Consolas, 'Courier New', monospace; }
 
@@ -3764,31 +3767,75 @@ body #lobby-screen .equipment-slot.is-equipped,
 .workshop-item-inspector em { width: fit-content; color: #c5f2e6; font: 700 9px Consolas, 'Courier New', monospace; font-style: normal; }
 .blacksmith-screen .blacksmith-recipes { gap: 7px; }
 .blacksmith-screen .blacksmith-recipe {
-  grid-template-columns: 64px minmax(0, 1fr) 94px;
-  gap: 9px;
-  padding: 8px;
+  grid-template-columns: clamp(72px, 7vw, 112px) minmax(0, 1fr) clamp(96px, 8vw, 120px);
+  gap: clamp(9px, 1.1vw, 14px);
+  padding: 12px 14px;
   border: 1px solid rgba(211, 221, 202, 0.28);
   border-left: 3px solid rgba(180, 70, 65, 0.82);
-  border-radius: 5px;
+  border-radius: 6px;
   background: linear-gradient(100deg, rgba(30, 20, 20, 0.86), rgba(14, 17, 14, 0.98));
+  cursor: pointer;
+  transition: border-color .18s ease, box-shadow .18s ease;
 }
+.blacksmith-screen .blacksmith-recipe:hover,
+.blacksmith-screen .blacksmith-recipe.is-pinned {
+  border-color: rgba(255, 192, 74, .78);
+  box-shadow: inset 0 0 26px rgba(255, 104, 30, .1), 0 0 18px rgba(255, 150, 45, .12);
+}
+.blacksmith-screen .blacksmith-recipe:focus-visible { outline: 1px solid rgba(255, 205, 102, .85); outline-offset: 2px; }
 .blacksmith-screen .blacksmith-recipe.is-ready { border-left-color: #54c7a5; background: linear-gradient(100deg, rgba(16, 57, 50, 0.72), rgba(14, 20, 16, 0.98)); }
-.blacksmith-screen .blacksmith-recipe__art { width: 62px; height: 62px; border: 1px solid rgba(255, 184, 0, 0.46); border-radius: 4px; object-fit: contain; background: rgba(4, 8, 7, 0.7); }
+.blacksmith-screen .blacksmith-recipe__art { width: clamp(72px, 7vw, 112px); height: clamp(72px, 7vw, 112px); border: 1px solid rgba(255, 184, 0, 0.46); border-radius: 4px; object-fit: contain; background: rgba(4, 8, 7, 0.7); }
 .blacksmith-recipe__content { display: grid; gap: 7px; min-width: 0; }
 .blacksmith-recipe__heading { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
-.blacksmith-recipe__heading h3 { color: #f4f0df; font-size: 13px; }
-.blacksmith-recipe__heading p { margin: 3px 0 0; color: #c8e8df; font: 700 9px Consolas, 'Courier New', monospace; }
+.blacksmith-recipe__heading h3 { color: #f4f0df; font-size: 16px; }
+.blacksmith-recipe__heading p { margin: 4px 0 0; color: #c8e8df; font: 700 10px Consolas, 'Courier New', monospace; }
 .blacksmith-recipe__heading > span { flex: 0 0 auto; padding: 3px 5px; border: 1px solid rgba(213, 79, 72, 0.48); border-radius: 3px; color: #ffaaa2; font: 700 8px Consolas, 'Courier New', monospace; }
 .blacksmith-recipe.is-ready .blacksmith-recipe__heading > span { border-color: rgba(84, 199, 165, 0.5); color: #a7f2d9; background: rgba(34, 107, 87, 0.28); }
 .blacksmith-screen .blacksmith-ingredients { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin: 0; padding: 0; list-style: none; }
-.blacksmith-ingredient { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 4px; align-items: center; min-width: 0; padding: 3px; border: 1px solid rgba(213, 79, 72, 0.36); border-radius: 3px; background: rgba(80, 22, 24, 0.22); }
+.blacksmith-ingredient { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 5px; align-items: center; min-width: 0; padding: 4px; border: 1px solid rgba(213, 79, 72, 0.36); border-radius: 3px; background: rgba(80, 22, 24, 0.22); }
 .blacksmith-ingredient.is-available { border-color: rgba(84, 199, 165, 0.45); background: rgba(27, 103, 82, 0.22); }
-.blacksmith-ingredient img { width: 22px; height: 22px; object-fit: contain; }
+.blacksmith-ingredient img { width: 30px; height: 30px; object-fit: contain; }
 .blacksmith-ingredient span { overflow: hidden; color: #d6d8ce; font: 8px/1.15 Consolas, 'Courier New', monospace; text-overflow: ellipsis; white-space: nowrap; }
 .blacksmith-ingredient small { display: block; margin-top: 2px; color: #ff9b94; font: 700 8px Consolas, 'Courier New', monospace; }
 .blacksmith-ingredient.is-available small { color: #9be7cc; }
-.blacksmith-screen .blacksmith-recipe button { align-self: center; min-height: 40px; padding: 7px; border-radius: 4px; font-size: 10px; }
+.blacksmith-screen .blacksmith-recipe button { align-self: center; min-height: 46px; padding: 9px; border-radius: 4px; font-size: 11px; }
 .blacksmith-screen .blacksmith-recipe button.is-unavailable { border-color: rgba(213, 79, 72, 0.46); color: #d18b86; background: rgba(54, 23, 23, 0.42); }
+/*
+ * Floating description window for the craft list: it only exists while a
+ * recipe is hovered or clicked, and is parked beside the hovered card.
+ */
+.workshop-recipe-inspector {
+  position: absolute;
+  z-index: 6;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 9px;
+  width: 214px;
+  padding: 10px;
+  border: 1px solid rgba(255, 205, 102, .58);
+  border-radius: 7px;
+  background: linear-gradient(145deg, rgba(32, 23, 12, .93), rgba(9, 14, 13, .95));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .5);
+  pointer-events: none;
+  animation: workshop-inspector-in .16s ease-out both;
+}
+.workshop-recipe-inspector[hidden] { display: none; }
+.workshop-recipe-inspector img {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  border: 1px solid rgba(255, 184, 0, .42);
+  border-radius: 4px;
+  background: rgba(4, 8, 7, .7);
+}
+.workshop-recipe-inspector > div { display: grid; gap: 3px; min-width: 0; }
+.workshop-recipe-inspector strong { overflow: hidden; color: #f7e9bd; font: 700 11px/1.25 Consolas, 'Courier New', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.workshop-recipe-inspector small { color: #c6d5cd; font: 9px/1.4 Consolas, 'Courier New', monospace; }
+.workshop-recipe-inspector em { color: #c8f2e4; font: 700 9px Consolas, 'Courier New', monospace; font-style: normal; }
+.workshop-recipe-inspector span { width: fit-content; padding: 2px 5px; border: 1px solid rgba(213, 79, 72, .48); border-radius: 3px; color: #ffaaa2; font: 700 8px Consolas, 'Courier New', monospace; }
+.workshop-recipe-inspector span.is-ready { border-color: rgba(84, 199, 165, .5); color: #a7f2d9; background: rgba(34, 107, 87, .28); }
+@keyframes workshop-inspector-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .workshop-recipe-inspector { animation: none; } }
 @media (max-width: 1180px) {
   .blacksmith-screen .workshop-layout { grid-template-columns: minmax(220px, .65fr) minmax(0, 1.35fr); }
   .blacksmith-screen .workshop-recipes { grid-column: 1 / -1; }
@@ -3796,8 +3843,9 @@ body #lobby-screen .equipment-slot.is-equipped,
 @media (max-width: 760px) {
   .blacksmith-screen .workshop-layout { grid-template-columns: 1fr; padding: 10px; }
   .blacksmith-screen .workshop-recipes { grid-column: auto; }
-  .blacksmith-screen .blacksmith-recipe { grid-template-columns: 54px minmax(0, 1fr); }
-  .blacksmith-screen .blacksmith-recipe__art { width: 52px; height: 52px; }
+  .blacksmith-screen .blacksmith-recipe { grid-template-columns: clamp(64px, 9vw, 88px) minmax(0, 1fr); gap: 10px; }
+  .blacksmith-screen .blacksmith-recipe > img,
+  .blacksmith-screen .blacksmith-recipe__art { width: clamp(64px, 9vw, 88px); height: clamp(64px, 9vw, 88px); }
   .blacksmith-screen .blacksmith-recipe button { grid-column: 1 / -1; }
   .blacksmith-screen .blacksmith-ingredients { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -3938,16 +3986,16 @@ body #lobby-screen .equipment-slot.is-equipped,
 }
 .blacksmith-screen .equipment-slot__art svg { width: 55%; height: 55%; stroke: #aebbb7; }
 .blacksmith-screen .blacksmith-recipe {
-  grid-template-columns: 68px minmax(0, 1fr) 88px;
-  gap: 11px;
+  grid-template-columns: clamp(72px, 7vw, 112px) minmax(0, 1fr) clamp(96px, 8vw, 120px);
+  gap: clamp(9px, 1.1vw, 14px);
   min-height: 92px;
-  padding: 10px;
+  padding: 12px clamp(9px, 1vw, 14px);
   border-radius: 8px;
   border-left-width: 4px;
   background: linear-gradient(100deg, rgba(64, 21, 24, .52), rgba(10, 15, 16, .94) 48%);
 }
 .blacksmith-screen .blacksmith-recipe.is-ready { background: linear-gradient(100deg, rgba(19, 83, 66, .58), rgba(10, 17, 16, .94) 48%); }
-.blacksmith-screen .blacksmith-recipe__art { width: 66px; height: 66px; border-radius: 7px; }
+.blacksmith-screen .blacksmith-recipe__art { width: clamp(72px, 7vw, 112px); height: clamp(72px, 7vw, 112px); border-radius: 7px; }
 .blacksmith-recipe__heading { align-items: center; }
 .blacksmith-recipe__heading > span { border-radius: 999px; }
 .blacksmith-screen .blacksmith-ingredients { gap: 6px; }
@@ -3959,10 +4007,10 @@ body #lobby-screen .equipment-slot.is-equipped,
   background: linear-gradient(145deg, rgba(98, 27, 30, .34), rgba(40, 15, 18, .5));
 }
 .blacksmith-ingredient.is-available { background: linear-gradient(145deg, rgba(35, 121, 92, .38), rgba(13, 53, 43, .54)); }
-.blacksmith-ingredient img { width: 25px; height: 25px; }
+.blacksmith-ingredient img { width: 30px; height: 30px; }
 .blacksmith-ingredient span { color: #e2e8e4; font-size: 8px; }
 .blacksmith-ingredient small { font-size: 9px; }
-.blacksmith-screen .blacksmith-recipe button { min-height: 44px; border-radius: 6px; }
+.blacksmith-screen .blacksmith-recipe button { min-height: 48px; border-radius: 6px; }
 .blacksmith-screen .workshop-conversation .blacksmith-scene {
   display: grid;
   grid-template-rows: minmax(220px, 1fr) auto;
@@ -4016,29 +4064,71 @@ body #lobby-screen .equipment-slot.is-equipped,
   filter: saturate(.4);
   opacity: .72;
 }
+/*
+ * Delivery toast: sits in the middle of the page over an almost transparent
+ * panel, showing the crafted item art with the success line right below it.
+ */
 .workshop-craft-notification {
   position: fixed;
   z-index: 90;
   top: 50%;
   left: 50%;
   display: grid;
-  min-width: min(360px, calc(100vw - 36px));
-  gap: 6px;
-  padding: 19px 28px;
-  border: 1px solid rgba(255, 205, 102, .92);
-  border-radius: 10px;
-  color: #fff0c9;
-  background:
-    linear-gradient(145deg, rgba(50, 30, 13, .96), rgba(10, 17, 17, .97)),
-    #0b0d0d;
-  box-shadow: 0 20px 55px rgba(0, 0, 0, .55), inset 0 1px rgba(255, 242, 192, .2), 0 0 28px rgba(255, 129, 37, .2);
+  justify-items: center;
+  min-width: min(320px, calc(100vw - 36px));
+  gap: 8px;
+  padding: 24px 34px 26px;
+  border: 1px solid rgba(255, 205, 102, .3);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(46, 26, 10, .18), rgba(8, 15, 17, .24));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .3), 0 0 44px rgba(255, 132, 38, .14);
   font-family: Consolas, 'Courier New', monospace;
   text-align: center;
   transform: translate(-50%, -50%);
+  backdrop-filter: blur(3px) saturate(115%);
+  animation: workshop-craft-pop .38s ease-out both;
 }
-.workshop-craft-notification span { color: #ffbf52; font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
-.workshop-craft-notification strong { color: #fff5db; font-size: 18px; }
-.workshop-craft-notification small { color: #c9d7d1; font-size: 11px; }
+.workshop-craft-notification__halo {
+  position: absolute;
+  inset: -28%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 143, 43, .2), transparent 62%);
+  animation: workshop-craft-halo 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+.workshop-craft-notification__art {
+  position: relative;
+  width: 108px;
+  height: 108px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 16px rgba(255, 148, 46, .6));
+  animation: workshop-craft-art .5s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+.workshop-craft-notification strong {
+  position: relative;
+  color: #ffe9b3;
+  font-size: 21px;
+  letter-spacing: .06em;
+  text-shadow: 0 0 18px rgba(255, 138, 40, .55);
+}
+.workshop-craft-notification small { position: relative; color: #dcd0ae; font-size: 11px; opacity: .82; }
+@keyframes workshop-craft-pop {
+  from { opacity: 0; transform: translate(-50%, -46%) scale(.94); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes workshop-craft-halo {
+  0%, 100% { opacity: .55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+@keyframes workshop-craft-art {
+  from { opacity: 0; transform: scale(.7) rotate(-8deg); }
+  to { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workshop-craft-notification,
+  .workshop-craft-notification__halo,
+  .workshop-craft-notification__art { animation: none; }
+}
 
 /* ---------- Oficina: bancada cinematica e layout de forja ---------- */
 @media (min-width: 1181px) {
@@ -4075,27 +4165,69 @@ body #lobby-screen .equipment-slot.is-equipped,
   border-color: rgba(244, 165, 65, .72);
   box-shadow: inset 0 1px rgba(255, 235, 186, .12), 0 14px 30px rgba(0, 0, 0, .28);
 }
+/*
+ * The painted bench (with the anvil) is a background layer: the WebGL canvas
+ * is transparent, so the smith always composites in front of it. Zoom in and
+ * shift the framing so the anvil sits closer to the middle of the scene.
+ * Tune --forge-backdrop-zoom / --forge-backdrop-y to reframe it.
+ */
 .blacksmith-screen .blacksmith-scene__viewport {
-  background:
-    linear-gradient(90deg, rgba(3, 5, 6, .64), transparent 24% 76%, rgba(3, 5, 6, .64)),
-    linear-gradient(0deg, rgba(2, 5, 6, .08), rgba(6, 10, 12, .16)),
-    url('/blacksmith/forge-bench-background.png') center center / cover no-repeat;
+  --forge-backdrop-zoom: 1.5;
+  --forge-backdrop-y: 88%;
+  --forge-spark-x: 50%;
+  --forge-spark-y: 58%;
+  background-color: #05080a;
+  background-image:
+    linear-gradient(90deg, rgba(3, 5, 6, .62), transparent 22% 78%, rgba(3, 5, 6, .62)),
+    linear-gradient(0deg, rgba(2, 5, 6, .12), rgba(6, 10, 12, .1)),
+    url('/blacksmith/forge-bench-background.png');
+  background-repeat: no-repeat;
+  background-position: center var(--forge-backdrop-y);
+  background-size: auto calc(100% * var(--forge-backdrop-zoom));
 }
 .blacksmith-screen .blacksmith-scene__viewport::before {
   z-index: 0;
   border: 0;
   background: linear-gradient(180deg, rgba(4, 6, 8, .04), rgba(4, 6, 8, .22));
 }
+/* Heat bloom that follows the hammer hand while the smith is forging. */
 .blacksmith-screen .blacksmith-scene__viewport::after {
   position: absolute;
   z-index: 2;
   inset: 0;
-  background: url('/blacksmith/forge-bench-background.png') center center / cover no-repeat;
-  clip-path: inset(60% 0 0);
+  background:
+    radial-gradient(circle at var(--forge-spark-x) var(--forge-spark-y), rgba(255, 176, 74, .5), rgba(255, 96, 20, .18) 24%, transparent 48%),
+    radial-gradient(ellipse 60% 34% at 50% 96%, rgba(255, 118, 28, .16), transparent 70%);
+  opacity: 0;
+  mix-blend-mode: screen;
   content: '';
+  transition: opacity .35s ease;
   pointer-events: none;
 }
+.blacksmith-screen .blacksmith-scene[data-forge-phase='working'] .blacksmith-scene__viewport::after {
+  opacity: 1;
+  animation: forge-spark-pulse .92s ease-in-out infinite;
+}
+@keyframes forge-spark-pulse {
+  0%, 100% { opacity: .5; }
+  16% { opacity: 1; }
+  42% { opacity: .68; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .blacksmith-screen .blacksmith-scene[data-forge-phase='working'] .blacksmith-scene__viewport::after { animation: none; opacity: .8; }
+}
 .blacksmith-screen .blacksmith-scene__canvas { z-index: 1; }
+.blacksmith-screen .blacksmith-scene__dialogue {
+  position: relative;
+  z-index: 3;
+  padding: 10px 12px 12px;
+  border-top: 1px solid rgba(255, 184, 0, .18);
+  background: linear-gradient(180deg, rgba(7, 12, 13, .26), rgba(7, 12, 13, .44));
+  backdrop-filter: blur(2px);
+}
+.blacksmith-screen .blacksmith-scene__dialogue h2,
+.blacksmith-screen .blacksmith-scene__dialogue p,
+.blacksmith-screen .blacksmith-scene figcaption { text-shadow: 0 1px 7px rgba(0, 0, 0, .8); }
 .blacksmith-screen .blacksmith-scene figcaption {
   position: relative;
   z-index: 3;
@@ -4157,4 +4289,30 @@ body #lobby-screen .equipment-slot.is-equipped,
   .blacksmith-screen .workshop-layout { grid-template-columns: minmax(230px, .7fr) minmax(0, 1.3fr); }
   .blacksmith-screen .workshop-recipes { grid-column: 1 / -1; }
   .blacksmith-screen .workshop-conversation .blacksmith-scene { min-height: 270px; }
+}
+
+/* ---------- Telas sem suporte (celulares) ---------- */
+/*
+ * O jogo roda WebGL em tempo real e o alvo são tablets (a partir de ~700px de
+ * largura) e desktops. Abaixo disso mostramos um aviso em vez de uma UI
+ * comprimida e sem controle de toque.
+ */
+.unsupported-viewport { display: none; }
+@media (max-width: 699px), (max-height: 479px) {
+  .unsupported-viewport {
+    position: fixed;
+    z-index: 999;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 30px;
+    background: radial-gradient(circle at 50% 28%, #16222d, #05080b 72%);
+    color: #e8dcc2;
+    font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+    text-align: center;
+  }
+  .unsupported-viewport > div { display: grid; gap: 12px; max-width: 430px; }
+  .unsupported-viewport strong { color: #f0d79a; font-size: 12px; letter-spacing: .22em; text-transform: uppercase; }
+  .unsupported-viewport h2 { margin: 0; color: #f4e6bd; font-size: 21px; }
+  .unsupported-viewport p { margin: 0; color: #b6ad97; font-size: 14px; line-height: 1.55; }
 }

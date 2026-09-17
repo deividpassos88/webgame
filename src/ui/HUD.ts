@@ -54,7 +54,7 @@ export function renderCombatActionMarkup(hotkeys: PlayerHotkeys = DEFAULT_PLAYER
   return `
     <button class="skill-slot combat-skill-card attack-slot" type="button" data-basic-attack aria-label="Ataque básico">
       <img class="skill-art" src="${warriorSkillAsset('ataque_basico')}" alt="">
-      <span class="skill-card-copy"><strong class="skill-card-name">Ataque básico</strong><small class="skill-card-meta">Clique esquerdo · Livre</small></span>
+      <span class="skill-card-copy"><strong class="skill-card-name" title="Ataque básico">Ataque básico</strong><small class="skill-card-meta">Clique esquerdo · Livre</small></span>
       <kbd>Mouse</kbd>
     </button>
     <button class="combat-target-button" type="button" data-cycle-target aria-label="Target: selecionar o proximo monstro. Tecla Q">
@@ -64,7 +64,7 @@ export function renderCombatActionMarkup(hotkeys: PlayerHotkeys = DEFAULT_PLAYER
       <button class="skill-slot combat-skill-card" type="button" data-warrior-skill="${skill.id}" aria-label="${skill.label}, tecla ${skill.input}, custo ${skill.energyCost} de energia">
         <span class="skill-cooldown" aria-hidden="true"></span>
         <img class="skill-art" src="${warriorSkillAsset(skill.id)}" alt="">
-        <span class="skill-card-copy"><strong class="skill-card-name">${skill.label}</strong><small class="skill-card-meta">${skill.energyCost} energia · ${skill.cooldown.toFixed(1)}s recarga</small></span>
+        <span class="skill-card-copy"><strong class="skill-card-name" title="${skill.label}">${skill.label}</strong><small class="skill-card-meta">${skill.energyCost} energia · ${skill.cooldown.toFixed(1)}s recarga</small></span>
         <kbd data-action-hotkey="${skill.id}">${displayPlayerHotkey(hotkeys[skill.id])}</kbd>
       </button>`).join('')}`;
 }
