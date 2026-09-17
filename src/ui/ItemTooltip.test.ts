@@ -51,6 +51,25 @@ describe('item tooltip', () => {
     unbind();
   });
 
+  it('floats the tooltip instead of letting a host layout own it', () => {
+    // The lobby shell is a grid container and its `> *` stacking rule would
+    // otherwise force `position: relative` on the card, turning it into an
+    // implicit extra grid row that squeezes the stage row and gives the shell
+    // scrollable overflow. The card is placed with viewport coordinates, so it
+    // must stay fixed no matter which host binds it.
+    const host = document.createElement('section');
+    host.style.display = 'grid';
+    document.body.append(host);
+    const unbind = bindItemTooltip(host);
+    const tooltip = host.querySelector<HTMLElement>('[data-item-tooltip]');
+
+    expect(tooltip?.style.position).toBe('fixed');
+    // Still one game-owned node inside the host, as the rest of the UI expects.
+    expect(tooltip?.parentElement).toBe(host);
+    unbind();
+    expect(host.querySelector('[data-item-tooltip]')).toBeNull();
+  });
+
   it('shows and hides the tooltip from pointer entry and exit', () => {
     const host = document.createElement('section');
     host.innerHTML = '<button type="button" data-item-tooltip-id="ossified-draco-ribs" data-item-tooltip-quantity="3">Costelas</button>';

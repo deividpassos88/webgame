@@ -133,4 +133,20 @@ describe('arena lobby composition', () => {
       /\.arena-bag-grid \.inventory-item-art \{[\s\S]*?width: 100%;[\s\S]*?height: 100%;[\s\S]*?object-fit: cover/
     );
   });
+
+  it('keeps the viewport tooltip out of the shell grid', () => {
+    // The stacking helper runs on id specificity, so it also matched the
+    // tooltip that LobbyScreen appends inside the shell and overrode its
+    // `position: fixed`. As a grid item the card auto-placed in an implicit
+    // 4th row: the 1fr stage row was squeezed (601px -> 453px at 1386x761),
+    // the card was painted below the pointer, and the shell kept ~300px of
+    // script-scrollable overflow that scrolled the whole lobby up.
+    expect(lobbyStyles).toContain(
+      '#lobby-screen > *:not(.arena-vignette):not(.item-tooltip) { position: relative; z-index: 2; }'
+    );
+    expect(lobbyStyles).not.toMatch(/#lobby-screen > \*:not\(\.arena-vignette\) \{/);
+    // And the card itself stays viewport-anchored in the shared stylesheet.
+    const sharedStyles = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+    expect(sharedStyles).toMatch(/\.item-tooltip \{\s*position: fixed;/);
+  });
 });

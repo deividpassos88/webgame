@@ -39,6 +39,15 @@ export function bindItemTooltip(host: HTMLElement): () => void {
   tooltip.setAttribute('role', 'tooltip');
   tooltip.setAttribute('aria-hidden', 'true');
   tooltip.hidden = true;
+  /*
+   * The card floats above the screen and is placed with inline left/top, so it
+   * must never take part in the host's layout. Some hosts are grid containers
+   * whose child rules would otherwise force `position: relative`, which turns
+   * the tooltip into an extra grid row (squeezing the screen) and interprets
+   * the viewport coordinates as an offset from that row. Keeping the position
+   * inline makes the contract independent of the host's stylesheet.
+   */
+  tooltip.style.position = 'fixed';
   host.append(tooltip);
 
   let activeTrigger: HTMLElement | null = null;
