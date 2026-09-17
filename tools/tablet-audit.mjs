@@ -104,8 +104,37 @@ const auditScript = () => {
     }
   }
 
+  /*
+   * Layout invariants for the lobby shell. Overflow alone is not enough: the
+   * pre-arena fallback used to collapse the three-column grid into a stack
+   * that still fit the viewport, so it looked "clean" while being broken.
+   */
+  const lobbyShell = document.querySelector('#lobby-screen');
+  const lobbyLayout = lobbyShell
+    ? {
+        columns: getComputedStyle(lobbyShell).gridTemplateColumns,
+        areas: {
+          left: getComputedStyle(document.querySelector('.lobby-equipment') ?? lobbyShell).gridArea,
+          stage: getComputedStyle(document.querySelector('.lobby-hero-stage') ?? lobbyShell).gridArea,
+          right: getComputedStyle(document.querySelector('.lobby-detail-panel') ?? lobbyShell).gridArea,
+        },
+      }
+    : null;
+  // Track list tokenizer: `minmax(0px, 1fr)` contains a space, so a plain
+  // split() would count it as two tracks.
+  const tracks = (lobbyLayout?.columns ?? '').match(/(?:minmax|fit-content|repeat)\([^)]*\)|\S+/g) ?? [];
+  const lobbyBroken = lobbyLayout
+    ? !(tracks.length === 3
+      && !tracks.some((track) => /^0(?:px)?$/.test(track))
+      && lobbyLayout.areas.left === 'left'
+      && lobbyLayout.areas.stage === 'stage'
+      && lobbyLayout.areas.right === 'right')
+    : false;
+
   return {
     viewport: { w: vw, h: vh },
+    lobbyLayout,
+    lobbyBroken,
     documentOverflow: {
       scrollWidth: doc.scrollWidth,
       clientWidth: doc.clientWidth,

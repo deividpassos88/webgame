@@ -8,3 +8,4 @@ artifacts/
 node_modules/
 # Temporary sandbox live-preview config (never versioned)
 vite.preview.config.ts
+vite.admin.config.ts

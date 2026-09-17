@@ -718,8 +718,13 @@ body #lobby-screen .arena-equip-grid .equipment-slot__icon {
 }
 
 #lobby-screen .lobby-backpack-heading-actions { display: flex; flex: 0 1 auto; gap: 8px; align-items: center; min-width: 0; }
-#lobby-screen .inventory-heading-title { min-width: 0; }
-#lobby-screen .inventory-heading-title h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#lobby-screen .inventory-heading-title { min-width: 0; flex-wrap: wrap; }
+/*
+ * Wrap instead of ellipsising: on a 290px panel (iPad Pro portrait) the full
+ * title does not fit on one line, and a clipped "ITENS ARMAZENA…" reads as a
+ * bug. It only ever wraps on narrow panels — wide ones have room for one line.
+ */
+#lobby-screen .inventory-heading-title h2 { overflow: visible; overflow-wrap: anywhere; white-space: normal; }
 #lobby-screen #lobby-capacity {
   padding: 4px 9px;
   border: 1px solid rgba(212, 169, 79, .35);

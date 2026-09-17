@@ -2293,24 +2293,14 @@ body #lobby-screen .hero-stage-marker {
   -webkit-backdrop-filter: blur(14px);
 }
 
-@media (max-width: 1180px) and (min-width: 901px) {
-  body #lobby-screen {
-    grid-template-columns: minmax(245px, 290px) minmax(430px, 1fr);
-    grid-template-rows: auto minmax(540px, 1fr) auto auto;
-    overflow-y: auto;
-  }
-
-  body #lobby-screen .flow-masthead { grid-column: 1 / -1; }
-  body #lobby-screen .lobby-equipment { grid-column: 1; grid-row: 2; }
-  body #lobby-screen .lobby-hero-stage { grid-column: 2; grid-row: 2; }
-  body #lobby-screen .lobby-detail-panel {
-    grid-column: 1 / -1;
-    grid-row: 3;
-    grid-template-columns: minmax(180px, 0.65fr) minmax(300px, 1.2fr) minmax(360px, 1.5fr);
-    overflow: visible;
-  }
-body #lobby-screen .lobby-footer { grid-column: 1 / -1; grid-row: 4; }
-}
+/*
+ * Removed: a legacy (pre-arena) `@media (max-width: 1180px) and (min-width: 901px)`
+ * block used to re-grid #lobby-screen into two columns and push
+ * .lobby-detail-panel to a full-width third row. Its `body #lobby-screen`
+ * prefix outranked the arena skin, so every landscape/portrait tablet in the
+ * 901-1180px band fell back to that broken stack. The skin owns the layout
+ * now through --panel-left/--panel-right and named grid areas.
+ */
 
 /* ---------- Menu contextual de ações de item (mochila do lobby) ---------- */
 .lobby-item-actions {
@@ -3861,12 +3851,8 @@ body #lobby-screen .equipment-slot.is-equipped,
   place-items: center;
 }
 #lobby-screen .lobby-start-action .primary-action { min-width: min(260px, 100%); }
-#lobby-screen .lobby-footer { grid-row: 3; }
 #start-game:disabled { cursor: not-allowed; filter: grayscale(1); opacity: .56; }
 
-@media (max-width: 1180px) and (min-width: 901px) {
-  body #lobby-screen .lobby-footer { grid-row: 4; }
-}
 
 /* ---------- Refinamentos: combate, ADM e oficina ---------- */
 #combat-actions .combat-target-button {
@@ -4298,7 +4284,8 @@ body #lobby-screen .equipment-slot.is-equipped,
  * comprimida e sem controle de toque.
  */
 .unsupported-viewport { display: none; }
-@media (max-width: 699px), (max-height: 479px) {
+/* Phone-sized only, and dismissible: it must never trap the player. */
+@media (max-width: 639px), (max-height: 429px) {
   .unsupported-viewport {
     position: fixed;
     z-index: 999;
@@ -4311,7 +4298,20 @@ body #lobby-screen .equipment-slot.is-equipped,
     font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
     text-align: center;
   }
-  .unsupported-viewport > div { display: grid; gap: 12px; max-width: 430px; }
+  .unsupported-viewport > div { display: grid; gap: 12px; justify-items: center; max-width: 430px; }
+  .unsupported-viewport__continue {
+    margin-top: 4px;
+    padding: 11px 20px;
+    border: 1px solid rgba(240, 215, 154, .62);
+    border-radius: 4px;
+    background: rgba(20, 27, 21, .9);
+    color: #f4e6bd;
+    font: 700 12px/1 'Segoe UI', Roboto, system-ui, sans-serif;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .unsupported-viewport__continue:hover { border-color: #f0d79a; background: #2b2a1c; }
   .unsupported-viewport strong { color: #f0d79a; font-size: 12px; letter-spacing: .22em; text-transform: uppercase; }
   .unsupported-viewport h2 { margin: 0; color: #f4e6bd; font-size: 21px; }
   .unsupported-viewport p { margin: 0; color: #b6ad97; font-size: 14px; line-height: 1.55; }
