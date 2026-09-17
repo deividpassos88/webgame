@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const WEAPON_NODE = /(sword|axe|weapon|espada|machado|shield|escudo)/i;
 
-export const LOBBY_BACKDROP_URL = '/assets/ui/lobby/reference-match/background-v2.png';
+export const LOBBY_BACKDROP_URL = '/assets/ui/lobby/arena/backdrop-v4.webp';
 
 export const LOBBY_LIGHTING = {
   key: { color: 0xffffff, intensity: 5.6 },

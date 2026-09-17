@@ -104,10 +104,13 @@ describe('lobby preview keyboard control', () => {
     expect(adjustLobbyPreview(right.rotation, right.zoom, 'ArrowLeft').rotation).toBeCloseTo(0);
   });
 
-  it('zooms inside the 4.7 to 8.2 bounds and ignores unrelated keys', () => {
-    expect(adjustLobbyPreview(0, 4.7, 'ArrowUp').zoom).toBe(4.7);
-    expect(adjustLobbyPreview(0, 8.2, 'ArrowDown').zoom).toBe(8.2);
+  it('holds one camera distance: only turning is handled', () => {
+    // Up/Down used to dolly the camera; the hero is now pinned at one framing.
+    expect(adjustLobbyPreview(0, 6, 'ArrowUp')).toEqual({ rotation: 0, zoom: 6, handled: false });
+    expect(adjustLobbyPreview(0, 6, 'ArrowDown')).toEqual({ rotation: 0, zoom: 6, handled: false });
     expect(adjustLobbyPreview(1, 6, 'Enter')).toEqual({ rotation: 1, zoom: 6, handled: false });
+    // Turning still works, and leaves the distance untouched.
+    expect(adjustLobbyPreview(0, 6, 'ArrowRight').zoom).toBe(6);
   });
 });
 
@@ -242,7 +245,7 @@ describe('lobby character preparation', () => {
     expect(markup).not.toContain('Esquiva');
   });
 
-  it('renders the Guild Token expansion action and keeps CM unavailable', () => {
+  it('renders expansion as a bag-sized [+] cell', () => {
     const profile = createDefaultPlayerProfile();
     profile.backpack = [{ itemId: 'guild-token', quantity: 30 }];
     const preparation = prepareGuildTokenBackpackExpansion(
@@ -259,12 +262,50 @@ describe('lobby character preparation', () => {
     }
 
     const markup = renderControls(preparation);
+    // A single affordance replaces the two permanent option cards.
     expect(markup).toContain('data-expand-backpack="guild-token"');
-    expect(markup).toContain('+5 espaços');
-    expect(markup).toContain('30 Token da Guilda');
-    expect(markup).toContain('data-expand-backpack="cm"');
-    expect(markup).toContain('5 CM — indisponível');
-    expect(markup).toMatch(/data-expand-backpack="cm"[^>]*disabled/);
+    // The [+] is the 21st cell, so it must inherit the bag slot styling.
+    expect(markup).toContain('class="inventory-slot backpack-expansion-add"');
+    expect(markup).toContain('backpack-expansion-add__plus');
+    expect(markup).not.toContain('data-expand-backpack="cm"');
+    // The cost still reaches the player, through the button's accessible name.
+    expect(markup).toContain('30 Token da Guilda ou 5 CM');
+  });
+
+  it('announces what the player needs when the [+] expansion is pressed', () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    const store = InventoryStore.fromProfile(profile);
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      store
+    );
+    void lobby.show({
+      firstRun: false,
+      onClassConfirmed: () => undefined,
+      onGuildTokenBackpackExpansion: () => 'Token da Guilda insuficiente.',
+      onHotkeysChanged: () => undefined,
+      onAutoBasicAttackChanged: () => undefined,
+      onBlacksmithLicensePurchase: () => ({ message: '' }),
+      onBlacksmithCraft: () => ({ message: '' }),
+    });
+
+    // The popup does not exist until the player asks for it.
+    expect(document.querySelector('[data-expansion-notice]')).toBeNull();
+
+    document.querySelector<HTMLButtonElement>('[data-expand-backpack]')!.click();
+
+    const notice = document.querySelector<HTMLElement>('[data-expansion-notice]')!;
+    expect(notice).not.toBeNull();
+    expect(notice.classList.contains('hidden')).toBe(false);
+    expect(notice.textContent).toContain('30 Token da Guilda ou 5 CM');
+    lobby.dispose();
   });
 
   it('only opens the shared action popover when a backpack item is clicked', () => {
