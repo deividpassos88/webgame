@@ -14,6 +14,7 @@ import {
   type CharacterAttributeKey,
 } from '../profile/CharacterAttributes';
 import { experienceProgressFor } from '../profile/CharacterProgression';
+import { attributesWithEquipment, equippedWeaponDamage } from '../equipment/EquipmentStatBonuses';
 import { buildRpgUiViewModel } from './RpgUiViewModel';
 import {
   itemTooltipDataAttributes,
@@ -183,9 +184,12 @@ export class InventoryOverlay {
       </div>`;
     }).join('');
 
-    const derived = deriveCharacterStats(this.profile.attributes, {
+    // The panel describes the loadout, so it must read the same equipped
+    // attributes and weapon damage the fight uses instead of bare attributes.
+    const equipment = this.store.snapshot().equipment;
+    const derived = deriveCharacterStats(attributesWithEquipment(this.profile.attributes, equipment), {
       maxHealth: 100,
-      attackDamage: 8,
+      attackDamage: equippedWeaponDamage(equipment),
       movementSpeed: 4.5,
       attackCooldown: 0.67,
     });

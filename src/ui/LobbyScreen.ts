@@ -67,9 +67,16 @@ const ATTRIBUTE_LABELS: Readonly<Record<string, string>> = {
   dodge: 'Esquiva',
 };
 
-function itemStatSummary(item: InventoryItemDefinition | undefined): string {
+/**
+ * Player-facing stat line for an item. Weapon base damage is flat damage, so it
+ * reads as "Dano"; "Ataque" is reserved for the attribute point that the status
+ * sheet, the character overlay and the combat pipeline all share.
+ */
+export function itemStatSummary(item: InventoryItemDefinition | undefined): string {
   if (!item) return '';
-  const values = item.baseDamage ? [`Ataque +${item.baseDamage}`] : [];
+  // Weapon base damage is flat damage, not an attribute point: the sheet reads
+  // it as "Dano", while "Ataque" keeps meaning the allocated attribute.
+  const values = item.baseDamage ? [`Dano +${item.baseDamage}`] : [];
   for (const [attribute, amount] of Object.entries(item.statBonuses ?? {})) {
     if (amount) values.push(`${ATTRIBUTE_LABELS[attribute] ?? attribute} +${amount}`);
   }
@@ -118,10 +125,12 @@ export function renderLobbyHotkeys(
 }
 
 /**
- * The reference hall shows a six-metric sheet in two columns. Crítico físico is
- * surfaced simply as "Crítico"; the dedicated Critical Damage and Life Steal
- * readings stay on the full sheet in the character overlay.
- * The view model keeps its full nine-attribute contract for other surfaces.
+ * The reference hall shows an eight-metric sheet in two columns: the six
+ * attributes that answer for the build, plus the two combat readings that move
+ * with gear (Vida máxima and Dano). Crítico físico is surfaced simply as
+ * "Crítico"; the dedicated Critical Damage and Life Steal readings stay on the
+ * full sheet in the character overlay. The view model keeps its full
+ * nine-attribute contract for other surfaces.
  */
 const LOBBY_STATUS_METRICS: readonly {
   readonly key: string;
@@ -135,14 +144,24 @@ const LOBBY_STATUS_METRICS: readonly {
   { key: 'dodge', label: 'Esquiva' },
 ];
 
+/** Keeps whole points whole and shows derived readings with one decimal. */
+function formatMetricValue(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
 function lobbyStatusMetrics(
   status: CurrentCharacterStatusView
-): readonly { readonly label: string; readonly value: number }[] {
+): readonly { readonly label: string; readonly value: string | number }[] {
   const byKey = new Map(status.attributes.map(({ key, value }) => [key as string, value]));
-  return LOBBY_STATUS_METRICS.map(({ key, label }) => ({
+  const attributes = LOBBY_STATUS_METRICS.map(({ key, label }) => ({
     label,
     value: byKey.get(key) ?? 0,
   }));
+  return [
+    ...attributes,
+    { label: 'Vida máxima', value: formatMetricValue(status.derived.maxHealth) },
+    { label: 'Dano', value: formatMetricValue(status.derived.attackDamage) },
+  ];
 }
 
 export function renderLobbyCurrentStatus(status: CurrentCharacterStatusView): string {

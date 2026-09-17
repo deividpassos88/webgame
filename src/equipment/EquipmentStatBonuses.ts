@@ -72,10 +72,42 @@ export function isEquipmentSetComplete(
   return EQUIPMENT_SET_SLOTS.every((slot) => equipment[slot] === set.itemIds[slot]);
 }
 
+/**
+ * Every worn slot, in the order the bonuses are summed. The legacy `weapon`
+ * field is read through the same fallback the combat pipeline uses so a profile
+ * that mirrors one item in `weapon` and `primaryWeapon` never counts it twice.
+ */
+function wornItemIds(equipment: PlayerEquipment): readonly string[] {
+  const weapon = equipment.primaryWeapon ?? equipment.weapon ?? null;
+  const itemIds = [
+    equipment.helmet,
+    equipment.chest,
+    equipment.pants,
+    equipment.gloves,
+    equipment.boots,
+    weapon,
+    equipment.secondaryWeapon,
+  ];
+  return itemIds.filter((itemId): itemId is string => Boolean(itemId));
+}
+
+/**
+ * Weapon damage handed to the combat pipeline. The lobby sheet, the character
+ * overlay and Game resolve the same number, so equipping (or removing) a sword
+ * always moves the "Dano" reading by its base damage.
+ */
+export function equippedWeaponDamage(equipment: PlayerEquipment): number {
+  const itemId = equipment.primaryWeapon ?? equipment.weapon ?? null;
+  const item = itemId ? getInventoryItem(itemId) : undefined;
+  return item?.kind === 'equipment' && item.slot === 'weapon'
+    ? Math.max(0, item.baseDamage ?? 0)
+    : 0;
+}
+
 /** Total attribute bonus from every worn piece plus the completed set. */
 export function equippedAttributeBonuses(equipment: PlayerEquipment): CharacterAttributes {
   const bonuses = createDefaultCharacterAttributes();
-  for (const itemId of Object.values(equipment)) {
+  for (const itemId of wornItemIds(equipment)) {
     const stats = itemId ? getInventoryItem(itemId)?.statBonuses : undefined;
     if (!stats) continue;
     for (const key of ATTRIBUTE_KEYS) bonuses[key] += stats[key] ?? 0;

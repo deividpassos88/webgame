@@ -5,6 +5,7 @@ import {
   attributesWithEquipment,
   describeSetBonus,
   equippedAttributeBonuses,
+  equippedWeaponDamage,
   isEquipmentSetComplete,
 } from './EquipmentStatBonuses';
 import { createDefaultCharacterAttributes } from '../profile/CharacterAttributes';
@@ -99,6 +100,17 @@ describe('forged equipment sets', () => {
     expect(total.vitality).toBe(56);
     expect(total.attack).toBe(10);
     expect(total.defense).toBe(31);
+  });
+
+  it('resolves the equipped weapon damage shared by the sheet and the fight', () => {
+    const equipment = { ...createDefaultPlayerProfile().equipment, weapon: 'starter-sword' };
+
+    expect(equippedWeaponDamage(equipment)).toBe(8);
+    // The legacy mirror cannot add the same sword twice, and unequipping it
+    // takes the damage back to zero.
+    expect(equippedWeaponDamage({ ...equipment, primaryWeapon: 'starter-sword' })).toBe(8);
+    expect(equippedWeaponDamage({ ...equipment, weapon: null })).toBe(0);
+    expect(equippedWeaponDamage({ ...equipment, weapon: 'runic-crystal' })).toBe(0);
   });
 
   it('describes the bonus with the same labels the UI shows', () => {

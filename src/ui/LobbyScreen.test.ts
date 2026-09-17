@@ -5,6 +5,7 @@ import {
   adjustLobbyPreview,
   LobbyScreen,
   lobbyMotionPolicy,
+  itemStatSummary,
   renderLobbyHotkeys,
   resolveLobbyIdlePhase,
   resolveLobbyPreviewViewport,
@@ -14,7 +15,9 @@ import { prepareGuildTokenBackpackExpansion } from '../inventory/BackpackExpansi
 import { InventoryStore } from '../inventory/InventoryStore';
 import { createDefaultPlayerProfile } from '../profile/PlayerProfile';
 import type { InventoryStack } from '../profile/PlayerProfile';
+import { createDefaultCharacterAttributes } from '../profile/CharacterAttributes';
 import { buildRpgUiViewModel } from './RpgUiViewModel';
+import { getInventoryItem } from '../inventory/InventoryCatalog';
 import * as InventoryOverlayModule from './InventoryOverlay';
 import type { CharacterAssetStore } from '../characters/CharacterAssetStore';
 
@@ -244,6 +247,46 @@ describe('lobby character preparation', () => {
     expect(markup).not.toContain('Crítico mágico');
     // Esquiva joined the sheet; Crítico mágico deliberately stayed out.
     expect(markup).toContain('Esquiva');
+  });
+
+  it('labels weapon damage as Dano and keeps Ataque for the attribute', () => {
+    // The sword grants flat damage, so its card must not promise attribute
+    // points the status sheet would never show.
+    expect(itemStatSummary(getInventoryItem('starter-sword'))).toBe('Dano +8');
+    expect(itemStatSummary(getInventoryItem('predator-forged-gloves')))
+      .toBe('Ataque +3 · Dano crítico +3');
+    expect(itemStatSummary(getInventoryItem('iron-shard'))).toBe('');
+    expect(itemStatSummary(undefined)).toBe('');
+  });
+
+  it('shows life total and attack damage so equipping a weapon moves the sheet', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.attributes = { ...createDefaultCharacterAttributes(), vitality: 10, attack: 5 };
+    const renderStatus = (LobbyScreenModule as unknown as {
+      renderLobbyCurrentStatus?: (status: unknown) => string;
+    }).renderLobbyCurrentStatus;
+
+    if (typeof renderStatus !== 'function') {
+      expect(typeof renderStatus).toBe('function');
+      return;
+    }
+
+    const before = renderStatus(
+      buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot()).currentStatus
+    );
+    // Vitality is worth 3 HP a point and an unarmed warrior only has the
+    // attribute bonus (0.2 damage per attack point).
+    expect(before).toContain('<dt>Vida máxima</dt><dd>130</dd>');
+    expect(before).toContain('<dt>Dano</dt><dd>1</dd>');
+
+    profile.equipment.weapon = 'starter-sword';
+    profile.equipment.primaryWeapon = 'starter-sword';
+    const withSword = renderStatus(
+      buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot()).currentStatus
+    );
+    // The sword adds its own 8 damage on top of the attribute bonus.
+    expect(withSword).toContain('<dt>Dano</dt><dd>9</dd>');
+    expect(withSword).toContain('<dt>Vida máxima</dt><dd>130</dd>');
   });
 
   it('renders expansion as a bag-sized [+] cell', () => {

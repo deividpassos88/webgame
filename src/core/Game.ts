@@ -125,7 +125,7 @@ import { getTypedAttackBaseDamage, quantizeCombatDamage } from '../combat/Combat
 import { MiniBossSkillController } from '../combat/MiniBossSkillController';
 import { MiniBossSkillEffects } from '../effects/MiniBossSkillEffects';
 import { deriveCharacterStats, type DerivedCharacterStats } from '../profile/CharacterAttributes';
-import { attributesWithEquipment } from '../equipment/EquipmentStatBonuses';
+import { attributesWithEquipment, equippedWeaponDamage } from '../equipment/EquipmentStatBonuses';
 import { resolveCameraRelativeMovement } from '../entities/PlayerMovement';
 import { VictoryLobbyTransition } from './VictoryLobbyTransition';
 
@@ -144,11 +144,7 @@ export interface GameOptions {
 export function resolveEquippedBaseDamage(
   profile: Pick<PlayerProfile, 'equipment'>
 ): number {
-  const itemId = getPrimaryWeaponId(profile.equipment);
-  const item = itemId ? getInventoryItem(itemId) : undefined;
-  return item?.kind === 'equipment' && item.slot === 'weapon'
-    ? Math.max(0, item.baseDamage ?? 0)
-    : 0;
+  return equippedWeaponDamage(profile.equipment);
 }
 
 /**

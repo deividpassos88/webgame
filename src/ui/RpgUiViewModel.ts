@@ -1,11 +1,12 @@
 import { WARRIOR_SKILLS } from '../combat/WarriorSkillCatalog';
 import { getInventoryItem, type InventoryItemDefinition } from '../inventory/InventoryCatalog';
 import type { InventorySnapshot } from '../inventory/InventoryStore';
-import type { CharacterAttributeKey } from '../profile/CharacterAttributes';
+import { deriveCharacterStats, type CharacterAttributeKey } from '../profile/CharacterAttributes';
 import type { CanonicalRpgEquipmentSlot, PlayerProfile } from '../profile/PlayerProfile';
 import {
   activeEquipmentSet,
   attributesWithEquipment,
+  equippedWeaponDamage,
 } from '../equipment/EquipmentStatBonuses';
 
 export type UiEquipmentSlot = CanonicalRpgEquipmentSlot;
@@ -44,7 +45,27 @@ export interface CurrentCharacterStatusView {
     readonly label: string;
     readonly attributes: readonly { readonly label: string; readonly value: number }[];
   } | null;
+  /**
+   * Combat numbers for the current loadout, resolved with the same base values
+   * Game uses. The sheet reads them so equipping a sword changes "Dano" and
+   * vitality changes "Vida máxima", instead of only moving attribute points.
+   */
+  readonly derived: {
+    readonly maxHealth: number;
+    readonly attackDamage: number;
+    readonly damageReduction: number;
+    readonly criticalMultiplier: number;
+    readonly lifeStealFraction: number;
+    readonly dodgeChance: number;
+  };
 }
+
+/** Base combat values shared with Game so the sheet and the fight cannot drift. */
+const LOBBY_COMBAT_BASE = {
+  maxHealth: 100,
+  movementSpeed: 4.5,
+  attackCooldown: 0.67,
+} as const;
 
 export type WarriorSkillView = (typeof WARRIOR_SKILLS)[number] & {
   readonly stars: readonly boolean[];
@@ -99,6 +120,10 @@ export function buildRpgUiViewModel(
     ),
   }));
   const equippedAttributes = attributesWithEquipment(profile.attributes, inventory.equipment);
+  const derivedStats = deriveCharacterStats(equippedAttributes, {
+    ...LOBBY_COMBAT_BASE,
+    attackDamage: equippedWeaponDamage(inventory.equipment),
+  });
   const activeSet = activeEquipmentSet(inventory.equipment);
   const setBonus = activeSet
     ? {
@@ -118,6 +143,14 @@ export function buildRpgUiViewModel(
       value: equippedAttributes[key],
     })),
     setBonus,
+    derived: {
+      maxHealth: derivedStats.maxHealth,
+      attackDamage: derivedStats.attackDamage,
+      damageReduction: derivedStats.damageReduction,
+      criticalMultiplier: derivedStats.criticalMultiplier,
+      lifeStealFraction: derivedStats.lifeStealFraction,
+      dodgeChance: derivedStats.dodgeChance,
+    },
   };
   return { equipment, backpack, skills, currentStatus };
 }

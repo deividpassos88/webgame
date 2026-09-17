@@ -300,7 +300,8 @@ export class BlacksmithScreen {
       criticalAttack: 'Crítico', criticalDamage: 'Dano crítico', lifeSteal: 'Roubo de vida',
       criticalMagic: 'Crítico mágico', dodge: 'Esquiva',
     };
-    const values = item.baseDamage ? [`Ataque +${item.baseDamage}`] : [];
+    // Flat weapon damage reads as "Dano"; "Ataque" is the attribute.
+    const values = item.baseDamage ? [`Dano +${item.baseDamage}`] : [];
     for (const [attribute, value] of Object.entries(item.statBonuses ?? {})) {
       if (value) values.push(`${labels[attribute] ?? attribute} +${value}`);
     }

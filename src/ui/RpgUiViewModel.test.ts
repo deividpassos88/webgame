@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultPlayerProfile } from '../profile/PlayerProfile';
+import { createDefaultCharacterAttributes } from '../profile/CharacterAttributes';
 import { InventoryStore } from '../inventory/InventoryStore';
 import { buildRpgUiViewModel } from './RpgUiViewModel';
 
@@ -67,6 +68,23 @@ describe('RpgUiViewModel', () => {
         ],
       },
     });
+  });
+
+  it('resolves the derived combat numbers from the equipped weapon and armor', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.attributes = { ...createDefaultCharacterAttributes(), vitality: 10, attack: 5 };
+
+    const unarmed = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
+    expect(unarmed.currentStatus.derived.maxHealth).toBeCloseTo(130);
+    expect(unarmed.currentStatus.derived.attackDamage).toBeCloseTo(1);
+
+    profile.equipment.weapon = 'starter-sword';
+    profile.equipment.primaryWeapon = 'starter-sword';
+    profile.equipment.helmet = 'predator-forged-helmet';
+    const armed = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
+    // 8 from the sword + 0.2 per attack point (5 allocated + 2 from the helm).
+    expect(armed.currentStatus.derived.attackDamage).toBeCloseTo(9.4);
+    expect(armed.currentStatus.derived.maxHealth).toBeCloseTo(130);
   });
 
   it('exposes the active Predador set bonus for the lobby status panel', () => {
