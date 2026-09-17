@@ -37,7 +37,10 @@ describe('arena lobby composition', () => {
       'utf8'
     );
     expect(svg.startsWith('<svg')).toBe(true);
-    expect(svg).toContain('viewBox="0 0 44 48"');
+    // Ornate crest: stone ring, ember core and the two crossed swords.
+    expect(svg).toContain('viewBox="0 0 64 64"');
+    expect(svg).toContain('gsEmber');
+    for (const peca of ['gsRing', 'gsGold', 'gsGem']) expect(svg).toContain(peca);
   });
 
   it('keeps the lobby topbar clickable above the WebGL canvas', () => {

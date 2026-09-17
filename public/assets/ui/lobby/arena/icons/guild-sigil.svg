@@ -1,44 +1,121 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 48" fill="none" role="img" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true">
   <defs>
-    <linearGradient id="guildGold" x1="22" y1="2" x2="22" y2="48" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F9EBBE"/>
-      <stop offset=".45" stop-color="#D4A94F"/>
-      <stop offset="1" stop-color="#8A6524"/>
+    <linearGradient id="gsGold" x1="32" y1="0" x2="32" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF7D8"/><stop offset=".32" stop-color="#EFC95F"/>
+      <stop offset=".66" stop-color="#B8852A"/><stop offset="1" stop-color="#6B460F"/>
     </linearGradient>
-    <linearGradient id="guildStone" x1="22" y1="4" x2="22" y2="46" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1C2531"/>
-      <stop offset="1" stop-color="#080B10"/>
+    <linearGradient id="gsGoldEdge" x1="18" y1="6" x2="46" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F9EAB8"/><stop offset=".55" stop-color="#C79A38"/><stop offset="1" stop-color="#7A5313"/>
     </linearGradient>
-    <radialGradient id="guildDepth" cx="22" cy="38" r="16" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#B3122E" stop-opacity=".6"/>
-      <stop offset="1" stop-color="#B3122E" stop-opacity="0"/>
+    <linearGradient id="gsStone" x1="32" y1="14" x2="32" y2="50" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#333C48"/><stop offset=".5" stop-color="#161C24"/><stop offset="1" stop-color="#070A0E"/>
+    </linearGradient>
+    <linearGradient id="gsRing" x1="32" y1="2" x2="32" y2="62" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2A323C"/><stop offset=".5" stop-color="#101620"/><stop offset="1" stop-color="#05080C"/>
+    </linearGradient>
+    <radialGradient id="gsEmber" cx="32" cy="33" r="24" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF9A38"/><stop offset=".28" stop-color="#E31B1B"/>
+      <stop offset=".62" stop-color="#8E0B16"/><stop offset="1" stop-color="#2A0207"/>
     </radialGradient>
-    <clipPath id="guildDoor">
-      <path d="M10 46V24a12 12 0 0 1 24 0v22Z"/>
-    </clipPath>
+    <radialGradient id="gsHalo" cx="32" cy="32" r="32" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF6A2A" stop-opacity=".38"/><stop offset=".6" stop-color="#C1121F" stop-opacity=".12"/>
+      <stop offset="1" stop-color="#C1121F" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="gsGem" cx=".5" cy=".33" r=".75">
+      <stop stop-color="#FFF2C8"/><stop offset=".3" stop-color="#FF4B36"/><stop offset="1" stop-color="#8E0F22"/>
+    </radialGradient>
   </defs>
 
-  <!-- Corpo de pedra do portal, com o vao escuro da masmorra. -->
-  <path d="M5 46V22a17 17 0 0 1 34 0v24Z" fill="url(#guildStone)"/>
-  <path d="M10 46V24a12 12 0 0 1 24 0v22Z" fill="#05070A"/>
+  <circle cx="32" cy="32" r="32" fill="url(#gsHalo)"/>
 
-  <g clip-path="url(#guildDoor)">
-    <!-- Brasa vermelha subindo das profundezas. -->
-    <rect x="10" y="16" width="24" height="30" fill="url(#guildDepth)"/>
-    <!-- Grade levadica: tres barras verticais e duas travessas. -->
-    <g stroke="url(#guildGold)" stroke-width="1.5" stroke-linecap="round">
-      <path d="M15.4 14v32M22 14v32M28.6 14v32"/>
-      <path d="M7 27.5h30M7 35.5h30"/>
-    </g>
+  <!-- aro de pedra, miolo em brasa -->
+  <circle cx="32" cy="32" r="28.6" fill="url(#gsRing)"/>
+  <circle cx="32" cy="32" r="28.6" stroke="url(#gsGold)" stroke-width="1.5"/>
+  <circle cx="32" cy="32" r="22.8" fill="url(#gsEmber)"/>
+  <circle cx="32" cy="32" r="23.1" stroke="#FF6A22" stroke-width="1" opacity=".75"/>
+  <circle cx="32" cy="32" r="22.6" stroke="url(#gsGoldEdge)" stroke-width="1"/>
+
+  <g>
+    <path d="M19.6 26.4 L24.2 23.2 L26.6 28.0 L30.4 22.4" stroke="#FFB03A" stroke-width=".7" opacity=".5" stroke-linecap="round" fill="none"/>
+    <path d="M44.6 24.8 L40.8 29.2 L43.4 32.0 L38.8 36.4" stroke="#FFB03A" stroke-width=".7" opacity=".5" stroke-linecap="round" fill="none"/>
+    <path d="M23.0 41.4 L27.6 38.6 L30.2 42.0 L34.6 37.8" stroke="#FFB03A" stroke-width=".7" opacity=".5" stroke-linecap="round" fill="none"/>
+    <path d="M38.4 44.0 L41.6 40.6 L45.0 42.8 L46.2 39.0" stroke="#FFB03A" stroke-width=".7" opacity=".5" stroke-linecap="round" fill="none"/>
   </g>
 
-  <!-- Moldura dourada do portal. -->
-  <path d="M5 46V22a17 17 0 0 1 34 0v24" stroke="url(#guildGold)" stroke-width="2.3" stroke-linecap="round"/>
-  <!-- Rebites da cantaria. -->
-  <circle cx="10" cy="10" r="1.5" fill="url(#guildGold)" stroke="#4A3413" stroke-width=".8"/>
-  <circle cx="34" cy="10" r="1.5" fill="url(#guildGold)" stroke="#4A3413" stroke-width=".8"/>
-  <!-- Chave do arco: a coroa da guilda. -->
-  <path d="M22 2.6 26 8.4l-4 5.8-4-5.8Z" fill="url(#guildGold)" stroke="#4A3413" stroke-width="1" stroke-linejoin="round"/>
-  <!-- Base de pedra, que assenta o brasao na linha do texto. -->
-  <rect x="2.6" y="44.6" width="38.8" height="3.4" rx="1.7" fill="url(#guildGold)" stroke="#4A3413" stroke-width=".9"/>
+  <!-- medalhao central, atras das laminas -->
+  <path d="M32 14.8 41.0 30.4 32 45.6 23.0 30.4Z" fill="url(#gsStone)" stroke="url(#gsGoldEdge)" stroke-width="1.05" stroke-linejoin="round"/>
+  <path d="M32 19.4 37.6 30.4 32 41.4 26.4 30.4Z" fill="#0B0F14" stroke="url(#gsGoldEdge)" stroke-width=".8" stroke-linejoin="round"/>
+  <g stroke="url(#gsGold)" stroke-width="2.1" stroke-linecap="round">
+    <path d="M32 17.8 32 11.6"/>
+    <path d="M32 42.8 32 50.8"/>
+    <path d="M18.8 30.4 13.4 30.4"/>
+    <path d="M45.2 30.4 50.6 30.4"/>
+  </g>
+
+  <!-- espadas cruzadas -->
+  <!-- espada a +42 graus -->
+  <polygon points="49.06,8.65 48.69,10.33 48.07,12.07 45.64,15.66 41.11,21.00 38.24,24.33 37.84,24.78 34.60,21.06 37.61,17.85 42.45,12.78 45.77,9.99 47.43,9.20 49.06,8.65" fill="url(#gsGold)" stroke="#5B4118" stroke-width="0.85" stroke-linejoin="round"/>
+  <polygon points="46.65,11.33 44.42,14.56 40.10,19.42 36.88,22.85 36.22,22.25 39.29,18.69 43.67,13.89 46.65,11.33" fill="#FFF6D2" opacity=".5"/>
+  <polygon points="47.33,10.05 42.71,13.69 37.50,19.10 35.78,20.78 36.42,21.35 37.39,19.00 42.30,13.32 46.10,8.95" fill="#FFFBE8" opacity=".45"/>
+  <polygon points="47.72,12.01 45.52,15.28 40.94,20.58 38.01,23.99 37.55,23.98 36.54,23.08 36.74,22.86 39.75,19.51 44.44,14.31 47.05,11.41" fill="#5C3D0D" opacity=".5"/>
+  <polygon points="31.06,28.64 31.37,31.74 29.35,27.10" fill="url(#gsGoldEdge)" stroke="#5B4118" stroke-width="0.95" stroke-linejoin="round"/>
+  <polygon points="32.70,28.77 34.33,28.89 36.09,29.93 37.17,31.72 37.34,33.48 36.77,34.86 35.49,34.78 34.38,33.78 34.08,32.16 33.56,30.35 32.71,29.05" fill="url(#gsGold)" stroke="#5B4118" stroke-width="0.85" stroke-linejoin="round"/>
+  <polygon points="33.23,29.52 35.58,31.09 36.68,33.16 36.03,34.19 34.27,33.15" fill="#6B460F" opacity=".45"/>
+  <polygon points="32.77,28.83 34.45,28.46 36.04,29.09 34.53,29.88" fill="url(#gsGoldEdge)" stroke="#5B4118" stroke-width="0.6" stroke-linejoin="round"/>
+  <polygon points="30.77,27.03 30.47,25.41 29.25,23.78 27.36,22.89 25.59,22.91 24.29,23.61 24.49,24.88 25.61,25.88 27.24,26.01 29.10,26.34 30.48,27.04" fill="url(#gsGold)" stroke="#5B4118" stroke-width="0.85" stroke-linejoin="round"/>
+  <polygon points="29.96,26.57 28.15,24.40 25.98,23.53 25.03,24.28 26.25,25.92" fill="#6B460F" opacity=".45"/>
+  <polygon points="30.69,26.96 30.89,25.25 30.10,23.73 29.47,25.32" fill="url(#gsGoldEdge)" stroke="#5B4118" stroke-width="0.6" stroke-linejoin="round"/>
+  <polygon points="30.39,29.38 30.44,30.90 28.92,31.02 28.88,29.50" fill="url(#gsGem)" stroke="#4A3413" stroke-width="0.65" stroke-linejoin="round"/>
+  <polygon points="29.78,33.13 29.62,33.53 24.00,39.77 24.15,39.23" fill="#12161C" stroke="#4A3413" stroke-width="0.7" stroke-linejoin="round"/>
+  <polygon points="26.73,30.39 26.35,30.59 20.73,36.83 21.25,36.62" fill="#12161C" stroke="#4A3413" stroke-width="0.7" stroke-linejoin="round"/>
+  <polygon points="29.60,33.11 23.78,39.57" fill="#0C1014" stroke="#0C1014" stroke-width="0.4" stroke-linejoin="round"/>
+  <polygon points="26.77,30.56 20.95,37.03" fill="#0C1014" stroke="#0C1014" stroke-width="0.4" stroke-linejoin="round"/>
+  <polygon points="28.85,34.31 29.42,33.68 26.22,30.81 25.65,31.44" fill="url(#gsGoldEdge)" stroke="#5B4118" stroke-width="0.45" stroke-linejoin="round"/>
+  <polygon points="26.97,36.40 27.54,35.76 24.35,32.89 23.78,33.52" fill="url(#gsGoldEdge)" stroke="#5B4118" stroke-width="0.45" stroke-linejoin="round"/>
+  <polygon points="25.10,38.48 25.67,37.84 22.47,34.97 21.90,35.60" fill="url(#gsGoldEdge)" stroke="#5B4118" stroke-width="0.45" stroke-linejoin="round"/>
+  <polygon points="22.10,38.60 22.87,42.52 18.62,42.46 18.11,38.24" fill="url(#gsGold)" stroke="#5B4118" stroke-width="0.95" stroke-linejoin="round"/>
+  <polygon points="21.70,39.04 21.90,41.65 19.09,41.94 19.08,39.11" fill="url(#gsGem)" stroke="#4A3413" stroke-width="0.65" stroke-linejoin="round"/>
+  <polygon points="21.29,39.49 21.20,41.02 19.55,41.42 19.78,39.75" fill="#FFF3C4" stroke="none" stroke-width="0.3" stroke-linejoin="round"/>
+  <!-- espada a -42 graus -->
+  <polygon points="14.94,8.65 16.57,9.20 18.23,9.99 21.55,12.78 26.39,17.85 29.40,21.06 29.81,21.50 25.76,24.33 22.89,21.00 18.36,15.66 15.93,12.07 15.31,10.33 14.94,8.65" fill="url(#gsGold)" stroke="#5B4118" stroke-width="0.85" stroke-linejoin="round"/>
+  <polygon points="17.35,11.33 20.33,13.89 24.71,18.69 27.78,22.25 27.12,22.85 23.90,19.42 19.58,14.56 17.35,11.33" fill="#FFF6D2" opacity=".5"/>
+  <polygon points="16.15,10.52 19.29,15.50 24.12,21.24 25.61,23.12 26.25,22.55 24.01,21.34 18.88,15.87 14.92,11.62" fill="#FFFBE8" opacity=".45"/>
+  <polygon points="18.14,10.34 21.16,12.87 25.95,17.97 29.04,21.25 28.98,21.71 27.98,22.61 27.78,22.39 24.77,19.04 20.08,13.84 17.47,10.94" fill="#5C3D0D" opacity=".5"/>
+  <polygon points="32.94,28.64 36.05,28.66 31.23,30.18" fill="url(#gsGoldEdge)" stroke="#5B4118" stroke-width="0.95" stroke-linejoin="round"/>
+  <polygon points="33.23,27.03 33.53,25.41 34.75,23.78 36.64,22.89 38.41,22.91 39.71,23.61 39.51,24.88 38.39,25.88 36.76,26.01 34.90,26.34 33.52,27.04" fill="url(#gsGold)" stroke="#5B4118" stroke-width="0.85" stroke-linejoin="round"/>
+  <polygon points="34.04,26.57 35.85,24.40 38.02,23.53 38.97,24.28 37.75,25.92" fill="#6B460F" opacity=".45"/>
+  <polygon points="33.31,26.96 33.11,25.25 33.90,23.73 34.53,25.32" fill="url(#gsGoldEdge)" stroke="#5B4118" stroke-width="0.6" stroke-linejoin="round"/>
+  <polygon points="31.30,28.77 29.67,28.89 27.91,29.93 26.83,31.72 26.66,33.48 27.23,34.86 28.51,34.78 29.62,33.78 29.92,32.16 30.44,30.35 31.29,29.05" fill="url(#gsGold)" stroke="#5B4118" stroke-width="0.85" stroke-linejoin="round"/>
+  <polygon points="30.77,29.52 28.42,31.09 27.32,33.16 27.97,34.19 29.73,33.15" fill="#6B460F" opacity=".45"/>
+  <polygon points="31.23,28.83 29.55,28.46 27.96,29.09 29.47,29.88" fill="url(#gsGoldEdge)" stroke="#5B4118" stroke-width="0.6" stroke-linejoin="round"/>
+  <polygon points="33.61,29.38 35.12,29.50 35.08,31.02 33.56,30.90" fill="url(#gsGem)" stroke="#4A3413" stroke-width="0.65" stroke-linejoin="round"/>
+  <polygon points="37.27,30.39 37.65,30.59 43.27,36.83 42.75,36.62" fill="#12161C" stroke="#4A3413" stroke-width="0.7" stroke-linejoin="round"/>
+  <polygon points="34.22,33.13 34.38,33.53 40.00,39.77 39.85,39.23" fill="#12161C" stroke="#4A3413" stroke-width="0.7" stroke-linejoin="round"/>
+  <polygon points="37.23,30.56 43.05,37.03" fill="#0C1014" stroke="#0C1014" stroke-width="0.4" stroke-linejoin="round"/>
+  <polygon points="34.40,33.11 40.22,39.57" fill="#0C1014" stroke="#0C1014" stroke-width="0.4" stroke-linejoin="round"/>
+  <polygon points="38.35,31.44 37.78,30.81 34.58,33.68 35.15,34.31" fill="url(#gsGoldEdge)" stroke="#5B4118" stroke-width="0.45" stroke-linejoin="round"/>
+  <polygon points="40.22,33.52 39.65,32.89 36.46,35.76 37.03,36.40" fill="url(#gsGoldEdge)" stroke="#5B4118" stroke-width="0.45" stroke-linejoin="round"/>
+  <polygon points="42.10,35.60 41.53,34.97 38.33,37.84 38.90,38.48" fill="url(#gsGoldEdge)" stroke="#5B4118" stroke-width="0.45" stroke-linejoin="round"/>
+  <polygon points="41.90,38.60 45.89,38.24 45.38,42.46 41.13,42.52" fill="url(#gsGold)" stroke="#5B4118" stroke-width="0.95" stroke-linejoin="round"/>
+  <polygon points="42.30,39.04 44.92,39.11 44.91,41.94 42.10,41.65" fill="url(#gsGem)" stroke="#4A3413" stroke-width="0.65" stroke-linejoin="round"/>
+  <polygon points="42.71,39.49 44.22,39.75 44.45,41.42 42.80,41.02" fill="#FFF3C4" stroke="none" stroke-width="0.3" stroke-linejoin="round"/>
+
+  <!-- pontoes cardeais -->
+  <g fill="url(#gsGold)" stroke="#5B4118" stroke-width=".9" stroke-linejoin="round">
+    <path d="M32 1.4 34.6 8.4 32 12.4 29.4 8.4Z"/>
+    <path d="M32 62.6 34.6 55.6 32 51.6 29.4 55.6Z"/>
+    <path d="M1.4 32 8.4 29.4 12.4 32 8.4 34.6Z"/>
+    <path d="M62.6 32 55.6 29.4 51.6 32 55.6 34.6Z"/>
+  </g>
+  <g fill="url(#gsGoldEdge)" stroke="#4A3413" stroke-width=".6" stroke-linejoin="round">
+    <path d="M52.4 11.6 54.2 13.6 52.4 15.6 50.6 13.6Z"/>
+    <path d="M11.6 11.6 13.4 13.6 11.6 15.6 9.8 13.6Z"/>
+    <path d="M52.4 48.4 54.2 50.4 52.4 52.4 50.6 50.4Z"/>
+    <path d="M11.6 48.4 13.4 50.4 11.6 52.4 9.8 50.4Z"/>
+  </g>
+
+  <!-- gema central por cima de tudo -->
+  <path d="M32 24.6 38.4 30.4 32 36.4 25.6 30.4Z" fill="url(#gsGem)" stroke="url(#gsGold)" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M32 27.8 35.2 30.4 32 33.2 28.8 30.4Z" fill="#FFE7B4" opacity=".5"/>
+  <path d="M32 29.4 33.6 30.4 32 31.4 30.4 30.4Z" fill="#FFFDF4"/>
 </svg>
