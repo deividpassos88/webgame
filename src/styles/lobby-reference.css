@@ -537,6 +537,30 @@ body #lobby-screen .arena-equip-grid .equipment-slot__art .inventory-item-art {
   height: 52% !important;
 }
 
+/*
+ * Placeholder of an empty socket: the painted piece that belongs there, dimmed
+ * so an equipped item (full opacity, 84%) reads as the stronger state at a
+ * glance. Sizing is slightly smaller than the equipped art for the same
+ * reason; the frame, not the icon, is the point of the empty cell.
+ */
+#lobby-screen .arena-equip-grid .equipment-slot__icon,
+body #lobby-screen .arena-equip-grid .equipment-slot__icon {
+  box-sizing: border-box;
+  width: 68% !important;
+  height: 68% !important;
+  max-width: 68%;
+  max-height: 68%;
+  margin: 0;
+  object-fit: contain;
+  object-position: center;
+  opacity: .62;
+  filter: saturate(.9) drop-shadow(0 2px 6px rgba(0, 0, 0, .75));
+  transition: opacity 160ms ease;
+}
+#lobby-screen .arena-equip-grid .equipment-slot:hover .equipment-slot__icon {
+  opacity: .88;
+}
+
 @media (prefers-reduced-motion: reduce) {
   #lobby-screen .arena-equip-grid .equipment-slot.is-equipped::after { animation: none; }
 }

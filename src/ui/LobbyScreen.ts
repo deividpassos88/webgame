@@ -546,8 +546,7 @@ export class LobbyScreen {
           ${renderEquipmentSlotContent(slot, label, item)}
         </button>`
       : `<div class="equipment-slot" data-equipment-slot="${slot}" aria-label="${label}: Vazio">
-          <span class="equipment-slot__art" aria-hidden="true"></span>
-          <span class="equipment-slot__label">${label}</span>
+          ${renderEquipmentSlotContent(slot, label, null)}
         </div>`).join('');
     document.getElementById('lobby-equipment-slots')!.innerHTML = equipmentMarkup;
     document.getElementById('lobby-current-status')!.innerHTML = renderLobbyCurrentStatus(view.currentStatus);

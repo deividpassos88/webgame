@@ -5,7 +5,7 @@ import {
 } from '../inventory/InventoryCatalog';
 import type { InventoryStack } from '../profile/PlayerProfile';
 import type { UiEquipmentSlot } from './RpgUiViewModel';
-import { equipmentIcon, itemKindIcon } from './RpgIcons';
+import { equipmentSlotIcon, itemKindIcon } from './RpgIcons';
 
 export function craftRarityLabel(item: Pick<InventoryItemDefinition, 'rarity'>): string {
   if (item.rarity === 'rare') return 'Raro';
@@ -73,7 +73,7 @@ export function renderEquipmentSlotContent(
   item: InventoryItemDefinition | null
 ): string {
   return `
-    <span class="equipment-slot__art">${item ? equippedItemArt(item) : equipmentIcon(slot)}</span>
+    <span class="equipment-slot__art"${item ? '' : ' aria-hidden="true"'}>${item ? equippedItemArt(item) : equipmentSlotIcon(slot)}</span>
     <span class="equipment-slot__label">${label}</span>`;
 }
 

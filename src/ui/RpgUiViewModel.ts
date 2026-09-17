@@ -12,7 +12,7 @@ import {
 
 export type UiEquipmentSlot = CanonicalRpgEquipmentSlot;
 
-const EQUIPMENT_LABELS: Readonly<Record<UiEquipmentSlot, string>> = {
+export const EQUIPMENT_LABELS: Readonly<Record<UiEquipmentSlot, string>> = {
   helmet: 'Capacete',
   chest: 'Peitoral',
   pants: 'Calça',

@@ -1,13 +1,57 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
+import { existsSync } from 'node:fs';
 import { getInventoryItem } from '../inventory/InventoryCatalog';
 import {
+  renderEquipmentSlotContent,
   renderInventorySlotContent,
   populateCraftInspector,
   renderCraftRewardNotification,
 } from './CraftRewardsPresentation';
+import { equipmentSlotIconSource } from './RpgIcons';
+import { EQUIPMENT_LABELS } from './RpgUiViewModel';
+import type { UiEquipmentSlot } from './RpgUiViewModel';
 
 describe('craft reward presentation', () => {
+  it('fills every empty equipment socket with the icon of the piece that belongs there', () => {
+    const slots = Object.keys(EQUIPMENT_LABELS) as UiEquipmentSlot[];
+    // All seven sockets of the equipment grid, including both hands.
+    expect(slots).toHaveLength(7);
+
+    for (const slot of slots) {
+      const host = document.createElement('div');
+      host.innerHTML = renderEquipmentSlotContent(slot, EQUIPMENT_LABELS[slot], null);
+      const icon = host.querySelector<HTMLImageElement>('.equipment-slot__icon');
+
+      expect(icon, `${slot} sem icone de slot vazio`).not.toBeNull();
+      expect(icon?.getAttribute('src')).toBe(equipmentSlotIconSource(slot));
+      expect(host.querySelector('.equipment-slot__label')?.textContent).toBe(EQUIPMENT_LABELS[slot]);
+      // The slot icon is decoration; the socket itself carries the aria-label.
+      expect(icon?.getAttribute('alt')).toBe('');
+      expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
+  it('shows the painted icon files shipped with the game, not a missing asset', () => {
+    for (const slot of Object.keys(EQUIPMENT_LABELS) as UiEquipmentSlot[]) {
+      const source = equipmentSlotIconSource(slot);
+      expect(source.startsWith('/assets/')).toBe(true);
+      expect(existsSync(`${process.cwd()}/public${source}`), `${source} ausente em public/`).toBe(true);
+    }
+  });
+
+  it('replaces the placeholder with the equipped art once an item fills the socket', () => {
+    const equipado = getInventoryItem('common-forged-helmet')!;
+    const comItem = document.createElement('div');
+    comItem.innerHTML = renderEquipmentSlotContent('helmet', EQUIPMENT_LABELS.helmet, equipado);
+
+    expect(comItem.querySelector('.equipment-slot__icon')).toBeNull();
+    // Armor pieces use the art cut out for the body; the equipped icon wins.
+    const esperado = equipado.equippedIconSrc ?? equipado.iconSrc;
+    expect(comItem.querySelector('img')?.getAttribute('src')).toBe(esperado);
+    expect(comItem.querySelector('.equipment-slot__label')?.textContent).toBe(EQUIPMENT_LABELS.helmet);
+  });
+
   it('renders the real craft artwork and quantity for backpack surfaces', () => {
     const item = getInventoryItem('worn-draco-claw')!;
     const host = document.createElement('div');
