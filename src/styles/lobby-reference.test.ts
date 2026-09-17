@@ -86,14 +86,12 @@ describe('arena lobby composition', () => {
     expect(lobbyStyles).toMatch(
       /\.equipment-slot\.is-equipped::after \{[\s\S]*?transparent 215deg[\s\S]*?animation: arena-rarity-sweep/
     );
-    // Captions sit centred along the foot of the socket, in the serif face,
-    // and stay visible once a piece is equipped.
+    // The socket caption is gone: picture only, name in the aria-label.
+    expect(lobbyStyles).not.toContain('.equipment-slot__label');
+    // An empty socket shows the gray placeholder, smaller than the item art
+    // that replaces it once a piece is equipped.
     expect(lobbyStyles).toMatch(
-      /\.equipment-slot__label \{[\s\S]*?bottom: 3px;[\s\S]*?place-items: center;[\s\S]*?Georgia/
-    );
-    // An equipped socket drops its caption so the artwork owns the cell.
-    expect(lobbyStyles).toMatch(
-      /\.equipment-slot\.is-equipped \.equipment-slot__label \{[^}]*display: none/
+      /#lobby-screen \.arena-equip-grid \.equipment-slot__icon,[\s\S]*?width: 56% !important;/
     );
   });
 

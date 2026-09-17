@@ -145,7 +145,7 @@ export class InventoryOverlay {
     const view = buildRpgUiViewModel(this.profile, this.store.snapshot());
     this.equipment.innerHTML = view.equipment.map(({ slot, label, item }) => `
       <div class="equipment-slot${item ? ' is-equipped' : ''}" data-equipment-slot="${slot}" aria-label="${label}: ${item?.label ?? 'Vazio'}">
-        ${renderEquipmentSlotContent(slot, label, item)}
+        ${renderEquipmentSlotContent(slot, item)}
       </div>`).join('');
   }
 

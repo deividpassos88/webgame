@@ -66,15 +66,20 @@ export function itemTooltipDataAttributes(
   return `data-item-tooltip-id="${item.id}" data-item-tooltip-quantity="${Math.max(1, Math.floor(quantity))}"`;
 }
 
-/** Keeps equipment cards visual: equipped art in the center and one engraved slot label. */
+/**
+ * Keeps equipment cards visual: the centered art only.
+ *
+ * The socket used to print its name (CAPACETE, PEITORAL...) under the art.
+ * Every socket now carries a picture - the painted placeholder when empty, the
+ * item art when equipped - so the caption was dropped and the cell stays clean.
+ * The name still reaches assistive tech through the socket's aria-label.
+ */
 export function renderEquipmentSlotContent(
   slot: UiEquipmentSlot,
-  label: string,
   item: InventoryItemDefinition | null
 ): string {
   return `
-    <span class="equipment-slot__art"${item ? '' : ' aria-hidden="true"'}>${item ? equippedItemArt(item) : equipmentSlotIcon(slot)}</span>
-    <span class="equipment-slot__label">${label}</span>`;
+    <span class="equipment-slot__art"${item ? '' : ' aria-hidden="true"'}>${item ? equippedItemArt(item) : equipmentSlotIcon(slot)}</span>`;
 }
 
 /** True when the inspector can present the item, i.e. craft materials and equipment. */

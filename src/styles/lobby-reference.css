@@ -496,8 +496,7 @@ body #lobby-screen .arena-equip-grid .equipment-slot.is-equipped {
 }
 
 /* The item sits above both glow layers. */
-#lobby-screen .arena-equip-grid .equipment-slot__art,
-#lobby-screen .arena-equip-grid .equipment-slot__label { z-index: 1; }
+#lobby-screen .arena-equip-grid .equipment-slot__art { z-index: 1; }
 
 /*
  * With the plate gone the artwork uses the whole socket, exactly like a bag
@@ -538,68 +537,31 @@ body #lobby-screen .arena-equip-grid .equipment-slot__art .inventory-item-art {
 }
 
 /*
- * Placeholder of an empty socket: the painted piece that belongs there, dimmed
- * so an equipped item (full opacity, 84%) reads as the stronger state at a
- * glance. Sizing is slightly smaller than the equipped art for the same
- * reason; the frame, not the icon, is the point of the empty cell.
+ * Placeholder of an empty socket: the gray piece that belongs there, smaller
+ * and dimmer than the item art a filled socket shows (84%, full opacity), so
+ * the two states stay apart at a glance. The frame, not the icon, owns the
+ * cell; the icons ship already desaturated, no filter needed here.
  */
 #lobby-screen .arena-equip-grid .equipment-slot__icon,
 body #lobby-screen .arena-equip-grid .equipment-slot__icon {
   box-sizing: border-box;
-  width: 68% !important;
-  height: 68% !important;
-  max-width: 68%;
-  max-height: 68%;
+  width: 56% !important;
+  height: 56% !important;
+  max-width: 56%;
+  max-height: 56%;
   margin: 0;
   object-fit: contain;
   object-position: center;
-  opacity: .62;
-  filter: saturate(.9) drop-shadow(0 2px 6px rgba(0, 0, 0, .75));
+  opacity: .72;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .75));
   transition: opacity 160ms ease;
 }
 #lobby-screen .arena-equip-grid .equipment-slot:hover .equipment-slot__icon {
-  opacity: .88;
+  opacity: .95;
 }
 
 @media (prefers-reduced-motion: reduce) {
   #lobby-screen .arena-equip-grid .equipment-slot.is-equipped::after { animation: none; }
-}
-
-/*
- * The caption used to sit in the plate's gold cartouche and was therefore
- * dark and tiny. It now runs along the foot of the socket, horizontally
- * centred, in the panel's serif face.
- */
-#lobby-screen .arena-equip-grid .equipment-slot__label {
-  position: absolute;
-  right: 2px;
-  bottom: 3px;
-  left: 2px;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  padding: 0 2px;
-  color: var(--gold);
-  font: 600 clamp(8px, .66vw, 10px) / 1.1 Georgia, 'Times New Roman', serif;
-  letter-spacing: .07em;
-  text-align: center;
-  text-shadow: 0 1px 4px #000, 0 0 8px rgba(0, 0, 0, .9);
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-/* An equipped piece fills the socket, so its caption would sit on the art. */
-/*
- * The caption stays visible when equipped, sitting over the foot of the
- * artwork with a gradient scrim for contrast. The old gold drop-shadow was
- * removed: it fought with the rarity light.
- */
-/*
- * The caption only labels an empty socket. Once a piece is equipped the icon
- * identifies it, so the name is dropped and the artwork gets the full cell;
- * the label text remains available through the button's aria-label.
- */
-#lobby-screen .arena-equip-grid .equipment-slot.is-equipped .equipment-slot__label {
-  display: none;
 }
 
 /* --- status sheet --- */

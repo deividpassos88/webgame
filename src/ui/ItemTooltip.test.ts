@@ -130,15 +130,13 @@ describe('item tooltip', () => {
   });
 
   it('uses one large equipment card composition without a duplicated item label', () => {
-    const markup = renderEquipmentSlotContent(
-      'primaryWeapon',
-      'Arma primária',
-      getInventoryItem('starter-sword')!
-    );
+    const markup = renderEquipmentSlotContent('primaryWeapon', getInventoryItem('starter-sword')!);
     const host = document.createElement('div');
     host.innerHTML = markup;
 
-    expect(host.querySelector('.equipment-slot__label')?.textContent).toBe('Arma primária');
+    // The socket shows the art alone; its name lives in the aria-label the
+    // surfaces build around this markup.
+    expect(host.querySelector('.equipment-slot__label')).toBeNull();
     expect(host.querySelector('img')?.getAttribute('src')).toBe('/items/equipment/equipado/sword.webp');
     expect(host.querySelector('strong')).toBeNull();
   });

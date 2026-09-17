@@ -543,10 +543,10 @@ export class LobbyScreen {
     const view = buildRpgUiViewModel(this.profile, inventory);
     const equipmentMarkup = view.equipment.map(({ slot, label, item }) => item
       ? `<button class="equipment-slot is-equipped" type="button" data-lobby-equipped-slot="${slot}" data-rarity="${item.rarity ?? 'common'}" aria-label="${label}: ${item.label}. Abrir ações do item.">
-          ${renderEquipmentSlotContent(slot, label, item)}
+          ${renderEquipmentSlotContent(slot, item)}
         </button>`
       : `<div class="equipment-slot" data-equipment-slot="${slot}" aria-label="${label}: Vazio">
-          ${renderEquipmentSlotContent(slot, label, null)}
+          ${renderEquipmentSlotContent(slot, null)}
         </div>`).join('');
     document.getElementById('lobby-equipment-slots')!.innerHTML = equipmentMarkup;
     document.getElementById('lobby-current-status')!.innerHTML = renderLobbyCurrentStatus(view.currentStatus);

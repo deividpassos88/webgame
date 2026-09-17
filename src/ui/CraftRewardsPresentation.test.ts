@@ -20,12 +20,13 @@ describe('craft reward presentation', () => {
 
     for (const slot of slots) {
       const host = document.createElement('div');
-      host.innerHTML = renderEquipmentSlotContent(slot, EQUIPMENT_LABELS[slot], null);
+      host.innerHTML = renderEquipmentSlotContent(slot, null);
       const icon = host.querySelector<HTMLImageElement>('.equipment-slot__icon');
 
       expect(icon, `${slot} sem icone de slot vazio`).not.toBeNull();
       expect(icon?.getAttribute('src')).toBe(equipmentSlotIconSource(slot));
-      expect(host.querySelector('.equipment-slot__label')?.textContent).toBe(EQUIPMENT_LABELS[slot]);
+      // The socket name is gone from the cell: the picture answers for it.
+      expect(host.querySelector('.equipment-slot__label')).toBeNull();
       // The slot icon is decoration; the socket itself carries the aria-label.
       expect(icon?.getAttribute('alt')).toBe('');
       expect(icon?.getAttribute('aria-hidden')).toBe('true');
@@ -43,13 +44,13 @@ describe('craft reward presentation', () => {
   it('replaces the placeholder with the equipped art once an item fills the socket', () => {
     const equipado = getInventoryItem('common-forged-helmet')!;
     const comItem = document.createElement('div');
-    comItem.innerHTML = renderEquipmentSlotContent('helmet', EQUIPMENT_LABELS.helmet, equipado);
+    comItem.innerHTML = renderEquipmentSlotContent('helmet', equipado);
 
     expect(comItem.querySelector('.equipment-slot__icon')).toBeNull();
     // Armor pieces use the art cut out for the body; the equipped icon wins.
     const esperado = equipado.equippedIconSrc ?? equipado.iconSrc;
     expect(comItem.querySelector('img')?.getAttribute('src')).toBe(esperado);
-    expect(comItem.querySelector('.equipment-slot__label')?.textContent).toBe(EQUIPMENT_LABELS.helmet);
+    expect(comItem.querySelector('.equipment-slot__label')).toBeNull();
   });
 
   it('renders the real craft artwork and quantity for backpack surfaces', () => {

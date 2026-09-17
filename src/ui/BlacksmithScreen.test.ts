@@ -32,7 +32,12 @@ describe('BlacksmithScreen', () => {
 
     expect(host.querySelector('[data-blacksmith-screen]')).not.toBeNull();
     expect(host.querySelector('[data-workshop-recipes]')?.classList.contains('is-locked')).toBe(true);
-    expect(host.querySelector('[data-workshop-equipment]')?.textContent).toContain('Primária');
+    // The socket shows the picture only; the slot name reaches assistive tech
+    // through the aria-label.
+    const sockets = [...host.querySelectorAll<HTMLElement>('[data-workshop-equipment] [data-equipment-slot]')];
+    expect(sockets).toHaveLength(7);
+    expect(sockets.map((socket) => socket.getAttribute('aria-label')))
+      .toContain('Primária: Vazio');
   });
 
   it('keeps equipment, inventory and craft content in one keyboard-reachable tabbed window', () => {
