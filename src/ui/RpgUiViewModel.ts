@@ -4,9 +4,8 @@ import type { InventorySnapshot } from '../inventory/InventoryStore';
 import type { CharacterAttributeKey } from '../profile/CharacterAttributes';
 import type { CanonicalRpgEquipmentSlot, PlayerProfile } from '../profile/PlayerProfile';
 import {
+  activeEquipmentSet,
   attributesWithEquipment,
-  COMMON_FORGED_SET_BONUS,
-  hasCommonForgedSet,
 } from '../equipment/EquipmentStatBonuses';
 
 export type UiEquipmentSlot = CanonicalRpgEquipmentSlot;
@@ -62,11 +61,13 @@ const CURRENT_STATUS_ATTRIBUTES: readonly {
   readonly key: CharacterAttributeKey;
   readonly label: string;
 }[] = [
-  { key: 'strength', label: 'Força' },
+  { key: 'vitality', label: 'Vitalidade' },
   { key: 'attack', label: 'Ataque' },
   { key: 'defense', label: 'Defesa' },
   { key: 'agility', label: 'Agilidade' },
   { key: 'criticalAttack', label: 'Crítico físico' },
+  { key: 'criticalDamage', label: 'Dano crítico' },
+  { key: 'lifeSteal', label: 'Roubo de vida' },
   { key: 'criticalMagic', label: 'Crítico mágico' },
   { key: 'dodge', label: 'Esquiva' },
 ];
@@ -98,11 +99,12 @@ export function buildRpgUiViewModel(
     ),
   }));
   const equippedAttributes = attributesWithEquipment(profile.attributes, inventory.equipment);
-  const setBonus = hasCommonForgedSet(inventory.equipment)
+  const activeSet = activeEquipmentSet(inventory.equipment);
+  const setBonus = activeSet
     ? {
-      label: 'Conjunto do Forjador Comum',
+      label: activeSet.label,
       attributes: CURRENT_STATUS_ATTRIBUTES.flatMap(({ key, label }) => {
-        const value = COMMON_FORGED_SET_BONUS[key] ?? 0;
+        const value = activeSet.bonus[key] ?? 0;
         return value ? [{ label, value }] : [];
       }),
     }

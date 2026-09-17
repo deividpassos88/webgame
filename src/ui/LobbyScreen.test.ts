@@ -218,7 +218,7 @@ describe('lobby character preparation', () => {
     const profile = createDefaultPlayerProfile();
     profile.progression = { level: 4, experience: 360 };
     profile.attributePointsRemaining = 2;
-    profile.attributes.strength = 11;
+    profile.attributes.vitality = 11;
     const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
     const renderStatus = (LobbyScreenModule as unknown as {
       renderLobbyCurrentStatus?: (status: unknown) => string;
@@ -234,16 +234,16 @@ describe('lobby character preparation', () => {
     expect(markup).toContain('Nível');
     expect(markup).toContain('4');
     expect(markup).toContain('Pontos disponíveis');
-    expect(markup).toContain('Força');
+    expect(markup).toContain('Vitalidade');
     expect(markup).toContain('11');
     expect(markup).toContain('Ataque');
     expect(markup).toContain('Defesa');
     expect(markup).toContain('Agilidade');
     expect(markup).toContain('Crítico');
-    expect(markup).toContain('Vitalidade');
     expect(markup).not.toContain('Crítico físico');
     expect(markup).not.toContain('Crítico mágico');
-    expect(markup).not.toContain('Esquiva');
+    // Esquiva joined the sheet; Crítico mágico deliberately stayed out.
+    expect(markup).toContain('Esquiva');
   });
 
   it('renders expansion as a bag-sized [+] cell', () => {

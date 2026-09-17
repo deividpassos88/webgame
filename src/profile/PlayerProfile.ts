@@ -31,9 +31,17 @@ import {
 
 /** The key stays stable so existing browser saves can be upgraded in place. */
 export const PROFILE_STORAGE_KEY = 'dragon-miner.profile.v1';
-export const PROFILE_SCHEMA_VERSION = 10 as const;
+export const PROFILE_SCHEMA_VERSION = 11 as const;
+/**
+ * Schema ten used `strength` (health + physical damage) as a player attribute.
+ * Schema eleven replaces it with `vitality` and adds `criticalDamage` and
+ * `lifeSteal`, so the attribute key set changed and those profiles need the
+ * migration below before `readAttributes` accepts them.
+ */
 export const PREVIOUS_CURRENT_PROFILE_SCHEMA_VERSION = 9 as const;
 export const PREVIOUS_PROFILE_SCHEMA_VERSION = 8 as const;
+/** Schema ten is the only one whose attributes still carried `strength`. */
+export const STRENGTH_ATTRIBUTE_SCHEMA_VERSION = 10 as const;
 export const PREVIOUS_PREVIOUS_PROFILE_SCHEMA_VERSION = 7 as const;
 export const OLDER_PROFILE_SCHEMA_VERSION = 6 as const;
 export const LEGACY_PROFILE_SCHEMA_VERSION = 5 as const;
@@ -210,6 +218,11 @@ export function loadPlayerProfile(storage = browserStorage()): ProfileLoadResult
   try {
     const parsed: unknown = JSON.parse(stored);
     if (isPlayerProfile(parsed)) return { kind: 'loaded', profile: parsed };
+    if (isStrengthAttributeProfile(parsed)) {
+      const migrated = migrateStrengthAttributeProfile(parsed);
+      savePlayerProfile(migrated, storage);
+      return { kind: 'loaded', profile: migrated };
+    }
     if (isVersionNineProfile(parsed)) {
       const migrated = migrateVersionNineProfile(parsed);
       savePlayerProfile(migrated, storage);
@@ -377,6 +390,65 @@ function isPlayerProfile(value: unknown): value is PlayerProfile {
   if (!isSkillStars(value.skillStars)) return false;
   const progression = value.progression;
   return isProgression(progression) && isCurrentAttributeAllocation(value, progression);
+}
+
+/**
+ * Schema ten is the last profile whose attributes carried `strength`. It is
+ * detected by shape (every other field already matches the current schema) so
+ * the attribute rework does not throw away an existing save.
+ */
+function isStrengthAttributeProfile(value: unknown): value is StrengthAttributePlayerProfile {
+  if (!isRecord(value)) return false;
+  if (value.schemaVersion !== STRENGTH_ATTRIBUTE_SCHEMA_VERSION) return false;
+  if (value.selectedClass !== 'paladin') return false;
+  if (!isCanonicalEquipment(value.equipment)) return false;
+  const backpackCapacity = value.backpackCapacity;
+  if (!isBackpackCapacity(backpackCapacity)) return false;
+  if (!isBackpack(value.backpack, backpackCapacity)) return false;
+  if (!isGuildVault(value.guildVault)) return false;
+  if (!isPlayerHotkeys(value.hotkeys)) return false;
+  if (typeof value.autoBasicAttack !== 'boolean') return false;
+  if (!isBlacksmithAccess(value.blacksmith)) return false;
+  if (!isSkillStars(value.skillStars)) return false;
+  const progression = value.progression;
+  if (!isProgression(progression)) return false;
+  return readStrengthAttributes(value.attributes) !== undefined
+    && hasStrengthAttributeAllocation(value, progression);
+}
+
+/** Legacy attribute object: same budget rules, `strength` instead of the new keys. */
+function readStrengthAttributes(value: unknown): Record<string, number> | undefined {
+  if (!isRecord(value)) return undefined;
+  if (!hasExactKeys(value, LEGACY_ATTRIBUTE_KEYS)) return undefined;
+  const attributes: Record<string, number> = {};
+  for (const key of LEGACY_ATTRIBUTE_KEYS) {
+    const raw = value[key];
+    if (!Number.isInteger(raw) || (raw as number) < 0 || (raw as number) > TOTAL_ATTRIBUTE_POINTS) {
+      return undefined;
+    }
+    attributes[key] = raw as number;
+  }
+  return attributes;
+}
+
+/**
+ * Schema ten already spent only the points earned through progression, so the
+ * legacy allocation has to satisfy the same rule the current schema enforces
+ * (otherwise the migrated profile could not be written back).
+ */
+function hasStrengthAttributeAllocation(
+  value: Record<string, unknown>,
+  progression: CharacterProgression
+): boolean {
+  const attributes = readStrengthAttributes(value.attributes);
+  if (!attributes) return false;
+  const total = LEGACY_ATTRIBUTE_KEYS.reduce((sum, key) => sum + attributes[key], 0);
+  const remaining = value.attributePointsRemaining;
+  const earned = (progression.level - 1) * 5;
+  if (!Number.isInteger(remaining) || remaining !== earned - total || (remaining as number) < 0) {
+    return false;
+  }
+  return value.attributesConfirmed === false;
 }
 
 /** Schema nine predates an unequipped starter sword for new profiles. */
@@ -620,9 +692,11 @@ function isCurrentAttributeAllocation(
 }
 
 function isLegacyAttributeAllocation(value: Record<string, unknown>): boolean {
-  const attributes = readAttributes(value.attributes);
+  // Versions before schema eleven carried `strength`, so this reader must not
+  // use the current key set.
+  const attributes = readStrengthAttributes(value.attributes);
   if (!attributes) return false;
-  const total = totalCharacterAttributePoints(attributes);
+  const total = LEGACY_ATTRIBUTE_KEYS.reduce((sum, key) => sum + attributes[key], 0);
   const remaining = value.attributePointsRemaining;
   if (!Number.isInteger(remaining) || remaining !== TOTAL_ATTRIBUTE_POINTS - total) return false;
   if (typeof value.attributesConfirmed !== 'boolean') return false;
@@ -778,6 +852,35 @@ function migrateVersionEightProfile(previous: VersionEightPlayerProfile): Player
     ...previous,
     schemaVersion: PROFILE_SCHEMA_VERSION,
     blacksmith: { availableUntil: null },
+  };
+}
+
+/**
+ * Carries a save forward through the attribute rework: Strength becomes
+ * Vitality point for point (health was already its job) and the two new
+ * attributes start at zero. The invested budget is preserved, so the player
+ * keeps every point they already spent.
+ */
+function migrateStrengthAttributeProfile(previous: StrengthAttributePlayerProfile): PlayerProfile {
+  const legacy = previous.attributes;
+  const attributes: CharacterAttributes = {
+    ...createDefaultCharacterAttributes(),
+    vitality: legacy.strength,
+    attack: legacy.attack,
+    defense: legacy.defense,
+    agility: legacy.agility,
+    criticalAttack: legacy.criticalAttack,
+    criticalMagic: legacy.criticalMagic,
+    dodge: legacy.dodge,
+  };
+  return {
+    ...previous,
+    schemaVersion: PROFILE_SCHEMA_VERSION,
+    attributes,
+    attributesConfirmed: false,
+    equipment: { ...previous.equipment },
+    backpack: previous.backpack.map((stack) => ({ ...stack })),
+    guildVault: previous.guildVault.map((stack) => ({ ...stack })),
   };
 }
 
@@ -943,6 +1046,22 @@ interface VersionEightPlayerProfile extends Omit<PlayerProfile, 'schemaVersion' 
 interface VersionNinePlayerProfile extends Omit<PlayerProfile, 'schemaVersion'> {
   schemaVersion: typeof PREVIOUS_CURRENT_PROFILE_SCHEMA_VERSION;
 }
+
+interface StrengthAttributePlayerProfile extends Omit<PlayerProfile, 'schemaVersion' | 'attributes'> {
+  schemaVersion: typeof STRENGTH_ATTRIBUTE_SCHEMA_VERSION;
+  attributes: Record<(typeof LEGACY_ATTRIBUTE_KEYS)[number], number>;
+}
+
+/** Attribute keys accepted by schema ten and older. */
+const LEGACY_ATTRIBUTE_KEYS = [
+  'strength',
+  'attack',
+  'defense',
+  'agility',
+  'criticalAttack',
+  'criticalMagic',
+  'dodge',
+] as const;
 
 function safePointCount(value: number): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;

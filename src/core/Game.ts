@@ -751,6 +751,25 @@ export class Game {
     return quantizeCombatDamage(damage * (1 - stats.damageReduction));
   }
 
+  /**
+   * Life Steal returns part of the damage actually dealt as health. It is fed
+   * by the post-mitigation number so healing tracks real damage, and the heal
+   * never exceeds the missing health (no overheal).
+   */
+  private healFromLifeSteal(dealtDamage: number): void {
+    if (!this.player || this.player.isDead || dealtDamage <= 0) return;
+    const fraction = this.getCharacterStats().lifeStealFraction;
+    if (fraction <= 0) return;
+    const missing = this.player.maxHP - this.player.hp;
+    if (missing <= 0) return;
+    const previousHP = this.player.hp;
+    this.player.hp = Math.min(this.player.maxHP, this.player.hp + dealtDamage * fraction);
+    const recovered = this.player.hp - previousHP;
+    // The HUD reads hp/maxHP every frame; the floating number is what tells the
+    // player the heal came from the hit. Heals under 1 HP stay silent.
+    if (recovered >= 1) this.showFloatingDamage(this.player.root.position, recovered, true);
+  }
+
   private openRpgOverlay(mode: RpgOverlayMode): void {
     if (!this.canAcceptGameplayInput()) return;
     this.flow.transition({ type: 'open-inventory' });
@@ -1332,6 +1351,7 @@ export class Game {
     const damage = this.resolveOutgoingDamage(rangedDamage, false);
     if (damage <= 0) return;
     record.enemy.takeDamage(damage);
+    this.healFromLifeSteal(damage);
     this.showFloatingDamage(target.position, damage);
     if (record.role === 'boss') {
       const values = getBossHealthHudValues(record.enemy);
@@ -1361,11 +1381,13 @@ export class Game {
     );
     const damageOrigin = resolveWarriorSkillAreaCenter(event.origin, event.forward, area);
 
+    let lifeStealDamage = 0;
     for (const record of targets) {
       const distance = damageOrigin.distanceTo(record.enemy.root.position);
       const rangedDamage = applyDistanceFalloff(baseDamage, distance, 'warrior');
       const damage = this.resolveOutgoingDamage(rangedDamage, elemental);
       if (damage <= 0) continue;
+      lifeStealDamage += damage;
       record.enemy.takeDamage(damage);
       if (skill.element && !record.enemy.isDead) {
         record.enemy.applyElementalHit(skill.element, Math.max(1, damage * 0.12));
@@ -1377,6 +1399,7 @@ export class Game {
       }
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
+    this.healFromLifeSteal(lifeStealDamage);
   }
 
   private handleEnemyDeath(record: CombatRecord): void {

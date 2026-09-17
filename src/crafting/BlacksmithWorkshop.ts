@@ -24,12 +24,23 @@ export const COMMON_CRAFT_MATERIAL_IDS = [
 const ingredients = (...itemIds: readonly (typeof COMMON_CRAFT_MATERIAL_IDS)[number][]) =>
   itemIds.map((itemId) => ({ itemId, quantity: 10 }));
 
+/**
+ * Recipes are grouped by set so the forge can list one block per line and show
+ * what completing it grants. The old "Comum Forjado" recipes were replaced by
+ * the two specialised lines (Predador / Muralha); the legacy items stay in the
+ * catalog so gear already stored in a profile keeps working.
+ */
 export const BLACKSMITH_RECIPES = [
-  { id: 'common-forged-helmet', outputItemId: 'common-forged-helmet', label: 'Capacete do Forjador Comum', ingredients: ingredients('worn-draco-claw', 'worn-draco-hide', 'black-horn-fragment', 'crimson-fang', 'serrated-rubra-scale') },
-  { id: 'common-forged-chest', outputItemId: 'common-forged-chest', label: 'Peitoral do Forjador Comum', ingredients: ingredients('worn-draco-claw', 'worn-draco-hide', 'volatile-draconic-essence', 'ossified-draco-ribs', 'verdant-draco-talisman') },
-  { id: 'common-forged-pants', outputItemId: 'common-forged-pants', label: 'Calca do Forjador Comum', ingredients: ingredients('worn-draco-hide', 'black-horn-fragment', 'volatile-draconic-essence', 'crimson-draco-talon', 'obsidian-draco-eye') },
-  { id: 'common-forged-gloves', outputItemId: 'common-forged-gloves', label: 'Luvas do Forjador Comum', ingredients: ingredients('worn-draco-claw', 'crimson-fang', 'serrated-rubra-scale', 'ossified-draco-ribs', 'crimson-draco-talon') },
-  { id: 'common-forged-boots', outputItemId: 'common-forged-boots', label: 'Botas do Forjador Comum', ingredients: ingredients('black-horn-fragment', 'crimson-fang', 'volatile-draconic-essence', 'verdant-draco-talisman', 'obsidian-draco-eye') },
+  { id: 'predator-forged-helmet', setId: 'predator', outputItemId: 'predator-forged-helmet', label: 'Elmo do Predador', ingredients: ingredients('crimson-fang', 'crimson-draco-talon', 'worn-draco-claw', 'black-horn-fragment', 'volatile-draconic-essence') },
+  { id: 'predator-forged-chest', setId: 'predator', outputItemId: 'predator-forged-chest', label: 'Peitoral do Predador', ingredients: ingredients('crimson-fang', 'crimson-draco-talon', 'volatile-draconic-essence', 'serrated-rubra-scale', 'obsidian-draco-eye') },
+  { id: 'predator-forged-pants', setId: 'predator', outputItemId: 'predator-forged-pants', label: 'Calça do Predador', ingredients: ingredients('crimson-fang', 'worn-draco-hide', 'crimson-draco-talon', 'volatile-draconic-essence', 'serrated-rubra-scale') },
+  { id: 'predator-forged-gloves', setId: 'predator', outputItemId: 'predator-forged-gloves', label: 'Manoplas do Predador', ingredients: ingredients('crimson-fang', 'worn-draco-claw', 'crimson-draco-talon', 'obsidian-draco-eye', 'volatile-draconic-essence') },
+  { id: 'predator-forged-boots', setId: 'predator', outputItemId: 'predator-forged-boots', label: 'Grevas do Predador', ingredients: ingredients('worn-draco-hide', 'crimson-draco-talon', 'serrated-rubra-scale', 'worn-draco-claw', 'crimson-fang') },
+  { id: 'bulwark-forged-helmet', setId: 'bulwark', outputItemId: 'bulwark-forged-helmet', label: 'Elmo da Muralha', ingredients: ingredients('ossified-draco-ribs', 'black-horn-fragment', 'serrated-rubra-scale', 'obsidian-draco-eye', 'worn-draco-hide') },
+  { id: 'bulwark-forged-chest', setId: 'bulwark', outputItemId: 'bulwark-forged-chest', label: 'Peitoral da Muralha', ingredients: ingredients('ossified-draco-ribs', 'black-horn-fragment', 'obsidian-draco-eye', 'serrated-rubra-scale', 'verdant-draco-talisman') },
+  { id: 'bulwark-forged-pants', setId: 'bulwark', outputItemId: 'bulwark-forged-pants', label: 'Calça da Muralha', ingredients: ingredients('ossified-draco-ribs', 'worn-draco-hide', 'black-horn-fragment', 'verdant-draco-talisman', 'serrated-rubra-scale') },
+  { id: 'bulwark-forged-gloves', setId: 'bulwark', outputItemId: 'bulwark-forged-gloves', label: 'Manoplas da Muralha', ingredients: ingredients('ossified-draco-ribs', 'black-horn-fragment', 'worn-draco-claw', 'obsidian-draco-eye', 'worn-draco-hide') },
+  { id: 'bulwark-forged-boots', setId: 'bulwark', outputItemId: 'bulwark-forged-boots', label: 'Grevas da Muralha', ingredients: ingredients('ossified-draco-ribs', 'black-horn-fragment', 'serrated-rubra-scale', 'verdant-draco-talisman', 'obsidian-draco-eye') },
 ] as const;
 
 export type BlacksmithRecipeId = (typeof BLACKSMITH_RECIPES)[number]['id'];

@@ -20,12 +20,14 @@ describe('Game victory reset', () => {
     profile.guildVault = [{ itemId: 'guild-token', quantity: 3 }];
     profile.progression = { level: 3, experience: 220 };
     profile.attributes = {
-      strength: 3,
+      vitality: 3,
       attack: 2,
       defense: 1,
       agility: 1,
       criticalAttack: 1,
+      criticalDamage: 1,
       criticalMagic: 1,
+      lifeSteal: 0,
       dodge: 0,
     };
     profile.attributePointsRemaining = 1;
@@ -45,12 +47,14 @@ describe('Game victory reset', () => {
     expect(saved).toMatchObject({
       progression: { level: 1, experience: 0 },
       attributes: {
-        strength: 0,
+        vitality: 0,
         attack: 0,
         defense: 0,
         agility: 0,
         criticalAttack: 0,
+        criticalDamage: 0,
         criticalMagic: 0,
+        lifeSteal: 0,
         dodge: 0,
       },
       attributePointsRemaining: 0,

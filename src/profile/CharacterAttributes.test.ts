@@ -12,49 +12,59 @@ import {
 describe('CharacterAttributes', () => {
   it('creates a zeroed allocation for every supported attribute', () => {
     expect(createDefaultCharacterAttributes()).toEqual({
-      strength: 0,
+      vitality: 0,
       attack: 0,
       defense: 0,
       agility: 0,
       criticalAttack: 0,
+      criticalDamage: 0,
       criticalMagic: 0,
+      lifeSteal: 0,
       dodge: 0,
     });
-    expect(ATTRIBUTE_KEYS).toHaveLength(7);
+    // Nine attributes since the Força -> Vitalidade rework.
+    expect(ATTRIBUTE_KEYS).toHaveLength(9);
+    expect(ATTRIBUTE_KEYS).toContain('vitality');
+    expect(ATTRIBUTE_KEYS).not.toContain('strength');
   });
 
   it('normalizes malformed values without allowing negative or fractional points', () => {
     const malformed: Partial<Record<CharacterAttributeKey, unknown>> = {
-      strength: 4.9,
+      vitality: 4.9,
       attack: -2,
       defense: 999,
       agility: 'fast',
     };
 
     expect(normalizeCharacterAttributes(malformed)).toEqual({
-      strength: 4,
+      vitality: 4,
       attack: 0,
       defense: 100,
       agility: 0,
       criticalAttack: 0,
+      criticalDamage: 0,
       criticalMagic: 0,
+      lifeSteal: 0,
       dodge: 0,
     });
   });
 
   it('derives the approved warrior formulas and caps from the allocation', () => {
     const stats = deriveCharacterStats({
-      strength: 10,
+      vitality: 10,
       attack: 10,
       defense: 80,
       agility: 100,
       criticalAttack: 100,
+      criticalDamage: 100,
       criticalMagic: 50,
+      lifeSteal: 100,
       dodge: 100,
     });
 
-    expect(stats.maxHealthBonus).toBeCloseTo(3);
-    expect(stats.physicalDamageMultiplier).toBeCloseTo(1.05);
+    // Vitality is pure health now: 3 HP per point, no damage side effect.
+    expect(stats.maxHealthBonus).toBeCloseTo(30);
+    expect(stats.physicalDamageMultiplier).toBeCloseTo(1);
     expect(stats.baseAttackBonus).toBeCloseTo(2);
     expect(stats.damageReduction).toBeCloseTo(80 / 240);
     expect(stats.movementSpeedMultiplier).toBeCloseTo(1.25);
@@ -63,17 +73,28 @@ describe('CharacterAttributes', () => {
     // callers that later support bonuses outside the allocation budget.
     expect(stats.criticalAttackChance).toBeCloseTo(0.3);
     expect(stats.magicCriticalChance).toBeCloseTo(0.15);
-    expect(stats.criticalMultiplier).toBeCloseTo(1.5);
+    // Critical Damage: 1.5x base + 1% per point, capped at +100%.
+    expect(stats.criticalMultiplier).toBeCloseTo(2.5);
+    // Life Steal: 0.15% per point, capped at 15%.
+    expect(stats.lifeStealFraction).toBeCloseTo(0.15);
     expect(stats.dodgeChance).toBeCloseTo(0.25);
+  });
+
+  it('caps life steal and critical damage below their maximum allocations', () => {
+    const base = createDefaultCharacterAttributes();
+    const stats = deriveCharacterStats({ ...base, criticalDamage: 250, lifeSteal: 400 });
+
+    expect(stats.criticalMultiplier).toBeCloseTo(2.5);
+    expect(stats.lifeStealFraction).toBeCloseTo(0.15);
   });
 
   it('resolves derived values against caller-provided base combat stats', () => {
     const stats = deriveCharacterStats(
-      { strength: 20, attack: 5, defense: 0, agility: 50, criticalAttack: 0, criticalMagic: 0, dodge: 0 },
+      { vitality: 20, attack: 5, defense: 0, agility: 50, criticalAttack: 0, criticalDamage: 0, criticalMagic: 0, lifeSteal: 0, dodge: 0 },
       { maxHealth: 100, attackDamage: 8, movementSpeed: 4.5, attackCooldown: 0.67 }
     );
 
-    expect(stats.maxHealth).toBeCloseTo(106);
+    expect(stats.maxHealth).toBeCloseTo(160);
     expect(stats.attackDamage).toBeCloseTo(9);
     expect(stats.movementSpeed).toBeCloseTo(4.5 * 1.125);
     expect(stats.attackCooldown).toBeCloseTo(0.67 / 1.1);

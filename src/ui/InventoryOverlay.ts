@@ -196,7 +196,9 @@ export class InventoryOverlay {
       ['Velocidade', `${derived.movementSpeed.toFixed(2)} m/s`],
       ['Recarga do ataque', `${derived.attackCooldown.toFixed(2)} s`],
       ['Crítico físico', `${(derived.criticalAttackChance * 100).toFixed(1)}%`],
+      ['Dano do crítico', `${derived.criticalMultiplier.toFixed(2)}×`],
       ['Crítico elemental', `${(derived.magicCriticalChance * 100).toFixed(1)}%`],
+      ['Roubo de vida', `${(derived.lifeStealFraction * 100).toFixed(1)}%`],
       ['Esquiva', `${(derived.dodgeChance * 100).toFixed(1)}%`],
     ].map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('');
 
@@ -370,12 +372,14 @@ const OVERLAY_HEADINGS: Readonly<Record<RpgOverlayMode, { eyebrow: string; title
 };
 
 const ATTRIBUTE_CONTENT: Readonly<Record<CharacterAttributeKey, { label: string; help: string }>> = {
-  strength: { label: 'Força', help: 'Amplifica dano físico e vida máxima.' },
+  vitality: { label: 'Vitalidade', help: 'Adiciona 3 de vida máxima por ponto.' },
   attack: { label: 'Ataque', help: 'Adiciona dano base a cada golpe.' },
   defense: { label: 'Defesa', help: 'Reduz o dano recebido, até 55%.' },
   agility: { label: 'Agilidade', help: 'Aumenta movimento e velocidade de ataque.' },
-  criticalAttack: { label: 'Crítico de ataque', help: 'Chance de crítico físico de 1,5×.' },
+  criticalAttack: { label: 'Crítico de ataque', help: 'Chance de crítico físico.' },
+  criticalDamage: { label: 'Dano crítico', help: 'Aumenta o multiplicador do crítico (1,5× + 1% por ponto).' },
   criticalMagic: { label: 'Crítico mágico', help: 'Chance de crítico de fogo e gelo.' },
+  lifeSteal: { label: 'Roubo de vida', help: 'Recupera vida igual a 0,15% do dano causado por ponto (até 15%).' },
   dodge: { label: 'Esquiva', help: 'Chance de ignorar completamente um golpe.' },
 };
 

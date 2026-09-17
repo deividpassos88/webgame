@@ -78,18 +78,18 @@ describe('BlacksmithScreen', () => {
     host.querySelector<HTMLButtonElement>('[data-buy-blacksmith-license]')?.click();
 
     expect(host.querySelector('[data-workshop-recipes]')?.classList.contains('is-locked')).toBe(false);
-    expect(host.querySelector('[data-craft-recipe="common-forged-helmet"]')).not.toBeNull();
+    expect(host.querySelector('[data-craft-recipe="predator-forged-helmet"]')).not.toBeNull();
   });
 
   it('shows available recipe materials in green and missing materials in red', () => {
     const profile = createDefaultPlayerProfile();
     profile.blacksmith.availableUntil = Date.now() + 36 * 60 * 60 * 1000;
     profile.backpack = [
-      { itemId: 'worn-draco-claw', quantity: 10 },
-      { itemId: 'worn-draco-hide', quantity: 10 },
-      { itemId: 'black-horn-fragment', quantity: 10 },
       { itemId: 'crimson-fang', quantity: 10 },
-      { itemId: 'serrated-rubra-scale', quantity: 10 },
+      { itemId: 'crimson-draco-talon', quantity: 10 },
+      { itemId: 'worn-draco-claw', quantity: 10 },
+      { itemId: 'black-horn-fragment', quantity: 10 },
+      { itemId: 'volatile-draconic-essence', quantity: 10 },
     ];
     const host = mountWorkshop();
     const screen = new BlacksmithScreen(host, profile, InventoryStore.fromProfile(profile), {
@@ -100,12 +100,65 @@ describe('BlacksmithScreen', () => {
 
     screen.show();
 
-    const helmet = host.querySelector<HTMLElement>('[data-craft-recipe="common-forged-helmet"]')!.closest('.blacksmith-recipe')!;
-    const chest = host.querySelector<HTMLElement>('[data-craft-recipe="common-forged-chest"]')!.closest('.blacksmith-recipe')!;
+    const helmet = host.querySelector<HTMLElement>('[data-craft-recipe="predator-forged-helmet"]')!.closest('.blacksmith-recipe')!;
+    const chest = host.querySelector<HTMLElement>('[data-craft-recipe="predator-forged-gloves"]')!.closest('.blacksmith-recipe')!;
     expect(helmet.classList.contains('is-ready')).toBe(true);
     expect(helmet.querySelectorAll('.blacksmith-ingredient.is-available')).toHaveLength(5);
     expect(chest.classList.contains('is-incomplete')).toBe(true);
     expect(chest.querySelector('.blacksmith-ingredient.is-missing small')?.textContent).toBe('0 / 10');
+    // Recipes are grouped per set, so the missing piece still sits under the
+    // Predador block instead of a flat list.
+    expect(helmet.closest('.blacksmith-set')?.querySelector('h3')?.textContent).toBe('Conjunto do Predador');
+  });
+
+  it('shows both forged lines with their five-piece bonus and flags a complete set', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.blacksmith.availableUntil = Date.now() + 36 * 60 * 60 * 1000;
+    Object.assign(profile.equipment, {
+      helmet: 'predator-forged-helmet',
+      chest: 'predator-forged-chest',
+      pants: 'predator-forged-pants',
+      gloves: 'predator-forged-gloves',
+      boots: 'predator-forged-boots',
+    });
+    const host = mountWorkshop();
+    const screen = new BlacksmithScreen(host, profile, InventoryStore.fromProfile(profile), {
+      onLicensePurchase: () => ({ message: '' }),
+      onCraft: () => ({ message: '' }),
+      onBack: () => undefined,
+    });
+
+    screen.show();
+
+    const predator = [...host.querySelectorAll<HTMLElement>('.blacksmith-set')]
+      .find((block) => block.querySelector('h3')?.textContent === 'Conjunto do Predador')!;
+    const bulwark = [...host.querySelectorAll<HTMLElement>('.blacksmith-set')]
+      .find((block) => block.querySelector('h3')?.textContent === 'Conjunto da Muralha')!;
+    expect(predator.classList.contains('is-complete')).toBe(true);
+    expect(predator.textContent).toContain('Conjunto completo equipado');
+    expect(predator.querySelectorAll('[data-craft-recipe]')).toHaveLength(5);
+    expect(predator.querySelector('.blacksmith-set__bonus')?.textContent).toContain('Ataque +6');
+    expect(bulwark.classList.contains('is-complete')).toBe(false);
+    expect(bulwark.querySelector('h3')?.textContent).toBe('Conjunto da Muralha');
+    expect(bulwark.querySelector('.blacksmith-set__bonus')?.textContent).toContain('Vitalidade +14');
+  });
+
+  it('warns when the retired common forged set is still worn', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.blacksmith.availableUntil = Date.now() + 36 * 60 * 60 * 1000;
+    profile.equipment.helmet = 'common-forged-helmet';
+    const host = mountWorkshop();
+    const screen = new BlacksmithScreen(host, profile, InventoryStore.fromProfile(profile), {
+      onLicensePurchase: () => ({ message: '' }),
+      onCraft: () => ({ message: '' }),
+      onBack: () => undefined,
+    });
+
+    screen.show();
+
+    const notice = host.querySelector('.blacksmith-legacy');
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toContain('não dão mais bônus de conjunto');
   });
 
   it('returns to the lobby through its explicit back callback', () => {
@@ -137,7 +190,7 @@ describe('BlacksmithScreen', () => {
     screen.show();
     profile.blacksmith.availableUntil = 0;
 
-    host.querySelector<HTMLButtonElement>('[data-craft-recipe="common-forged-helmet"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-craft-recipe="predator-forged-helmet"]')?.click();
 
     expect(host.querySelector('[data-workshop-recipes]')?.classList.contains('is-locked')).toBe(true);
     expect(host.querySelector('[data-craft-recipe]')).toBeNull();
@@ -148,16 +201,16 @@ describe('BlacksmithScreen', () => {
     const profile = createDefaultPlayerProfile();
     profile.blacksmith.availableUntil = Date.now() + 36 * 60 * 60 * 1000;
     profile.backpack = [
-      { itemId: 'worn-draco-claw', quantity: 10 },
-      { itemId: 'worn-draco-hide', quantity: 10 },
-      { itemId: 'black-horn-fragment', quantity: 10 },
       { itemId: 'crimson-fang', quantity: 10 },
-      { itemId: 'serrated-rubra-scale', quantity: 10 },
+      { itemId: 'crimson-draco-talon', quantity: 10 },
+      { itemId: 'worn-draco-claw', quantity: 10 },
+      { itemId: 'black-horn-fragment', quantity: 10 },
+      { itemId: 'volatile-draconic-essence', quantity: 10 },
     ];
     const host = mountWorkshop();
     const onCraft = vi.fn(() => ({
       message: 'Capacete criado e guardado na mochila.',
-      craftedRecipeId: 'common-forged-helmet' as const,
+      craftedRecipeId: 'predator-forged-helmet' as const,
     }));
     const screen = new BlacksmithScreen(host, profile, InventoryStore.fromProfile(profile), {
       onLicensePurchase: () => ({ message: '' }),
@@ -166,14 +219,14 @@ describe('BlacksmithScreen', () => {
     });
 
     screen.show();
-    host.querySelector<HTMLButtonElement>('[data-craft-recipe="common-forged-helmet"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-craft-recipe="predator-forged-helmet"]')?.click();
     expect(onCraft).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(15_000);
     expect(onCraft).not.toHaveBeenCalled();
     vi.advanceTimersByTime(3_800);
 
-    expect(onCraft).toHaveBeenCalledWith('common-forged-helmet');
+    expect(onCraft).toHaveBeenCalledWith('predator-forged-helmet');
     expect(host.querySelector('.workshop-craft-notification')?.textContent).toContain('Item Craftado com Sucesso');
   });
 });

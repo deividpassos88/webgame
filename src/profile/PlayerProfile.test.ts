@@ -73,12 +73,14 @@ describe('PlayerProfile progression', () => {
     expect(profile.backpack).toEqual([{ itemId: 'starter-sword', quantity: 1 }]);
     expect(profile.progression).toEqual({ level: 1, experience: 0 });
     expect(profile.attributes).toEqual({
-      strength: 0,
+      vitality: 0,
       attack: 0,
       defense: 0,
       agility: 0,
       criticalAttack: 0,
+      criticalDamage: 0,
       criticalMagic: 0,
+      lifeSteal: 0,
       dodge: 0,
     });
     expect(profile.attributePointsRemaining).toBe(0);
@@ -94,12 +96,14 @@ describe('PlayerProfile progression', () => {
     profile.guildVault.push({ itemId: 'guild-token', quantity: 3 });
     profile.progression = { level: 3, experience: 270 };
     profile.attributes = {
-      strength: 10,
+      vitality: 10,
       attack: 5,
       defense: 4,
       agility: 3,
       criticalAttack: 2,
+      criticalDamage: 1,
       criticalMagic: 1,
+      lifeSteal: 1,
       dodge: 1,
     };
     profile.attributePointsRemaining = 6;
@@ -134,18 +138,65 @@ describe('PlayerProfile progression', () => {
     expect(JSON.parse(storage.value!).schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
   });
 
+  it('migrates a schema-ten save from strength into vitality without losing its build', () => {
+    // Level five earns twenty points, so a fully spent schema-ten build has
+    // exactly the same budget the current schema expects.
+    const schemaTen = {
+      ...createDefaultPlayerProfile(),
+      schemaVersion: 10,
+      progression: { level: 5, experience: 400 },
+      attributes: {
+        strength: 8,
+        attack: 6,
+        defense: 2,
+        agility: 1,
+        criticalAttack: 1,
+        criticalMagic: 1,
+        dodge: 1,
+      },
+      attributePointsRemaining: 0,
+    };
+    const storage = memoryStorage(JSON.stringify(schemaTen));
+    const result = loadPlayerProfile(storage);
+
+    expect(result.kind).toBe('loaded');
+    expect(result.profile.schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
+    // Strength points become vitality point for point; the two new attributes
+    // start at zero so the allocation stays inside the shared budget.
+    expect(result.profile.attributes).toEqual({
+      vitality: 8,
+      attack: 6,
+      defense: 2,
+      agility: 1,
+      criticalAttack: 1,
+      criticalDamage: 0,
+      criticalMagic: 1,
+      lifeSteal: 0,
+      dodge: 1,
+    });
+    expect(result.profile.attributePointsRemaining).toBe(0);
+    expect(JSON.parse(storage.value!).schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
+  });
+
   it('moves legacy backpack overflow into the Guild Vault without losing equipment', () => {
     const legacy = versionThreeProfile();
-    const schemaTenCatalogAdditions = new Set([
+    // Items the legacy save could not have known (schema ten essences and the
+    // Predador/Muralha set pieces); the legacy backpack guard only accepts
+    // thirty stacks, so the fixture stays inside the pre-overflow catalog.
+    const postLegacyCatalogAdditions = new Set([
       'volatile-draconic-essence',
       'ossified-draco-ribs',
       'verdant-draco-talisman',
       'crimson-draco-talon',
       'obsidian-draco-eye',
+      ...['helmet', 'chest', 'pants', 'gloves', 'boots'].flatMap((slot) => [
+        `predator-forged-${slot}`,
+        `bulwark-forged-${slot}`,
+      ]),
     ]);
     const itemIds = [
       ...Object.keys(INVENTORY_ITEMS).filter(
-        (itemId) => itemId !== 'starter-sword' && !schemaTenCatalogAdditions.has(itemId)
+        (itemId) => itemId !== 'starter-sword' && !postLegacyCatalogAdditions.has(itemId)
       ),
       'starter-sword',
     ];

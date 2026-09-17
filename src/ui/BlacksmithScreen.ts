@@ -4,6 +4,12 @@ import {
   hasActiveLicense,
   type BlacksmithRecipeId,
 } from '../crafting/BlacksmithWorkshop';
+import {
+  EQUIPMENT_SETS,
+  activeEquipmentSet,
+  isEquipmentSetComplete,
+  type EquipmentSetDefinition,
+} from '../equipment/EquipmentStatBonuses';
 import { getInventoryItem } from '../inventory/InventoryCatalog';
 import type { InventorySnapshot, InventoryStore } from '../inventory/InventoryStore';
 import type { PlayerProfile } from '../profile/PlayerProfile';
@@ -188,29 +194,76 @@ export class BlacksmithScreen {
     return `<button type="button" id="workshop-tab-${panel}" role="tab" data-workshop-tab="${panel}" aria-selected="${selected}" aria-controls="workshop-panel-${panel}">${label}</button>`;
   }
 
+  /**
+   * Recipes are listed one block per set so the player sees what completing a
+   * line grants before spending materials. The bonus text comes from the same
+   * definition the combat pipeline applies.
+   */
   private renderRecipes(inventory: InventorySnapshot): string {
-    return `<div class="blacksmith-recipes">${BLACKSMITH_RECIPES.map((recipe) => {
-      const item = getInventoryItem(recipe.outputItemId);
-      const canCraft = recipe.ingredients.every(({ itemId, quantity }) => this.itemQuantity(inventory, itemId) >= quantity);
-      const canStartCraft = canCraft && !this.crafting;
-      const ingredients = recipe.ingredients.map(({ itemId, quantity }) => {
-        const material = getInventoryItem(itemId);
-        const available = this.itemQuantity(inventory, itemId);
-        const availableClass = available >= quantity ? ' is-available' : ' is-missing';
-        return `<li class="blacksmith-ingredient${availableClass}">
-          <img loading="lazy" src="${material?.iconSrc ?? ''}" alt="">
-          <span>${material?.label ?? itemId}<small>${available} / ${quantity}</small></span>
-        </li>`;
-      }).join('');
-      return `<article class="blacksmith-recipe${canCraft ? ' is-ready' : ' is-incomplete'}${this.crafting?.recipeId === recipe.id ? ' is-forging' : ''}">
-        <img class="blacksmith-recipe__art" loading="lazy" src="${item?.iconSrc ?? ''}" alt="">
-        <div class="blacksmith-recipe__content">
-          <div class="blacksmith-recipe__heading"><div><h3>${recipe.label}</h3><p>${this.itemStats(item)}</p></div><span>${canCraft ? 'Pronto para forjar' : 'Materiais insuficientes'}</span></div>
-          <ul class="blacksmith-ingredients">${ingredients}</ul>
-        </div>
-        <button type="button" class="${canStartCraft ? '' : 'is-unavailable'}" data-craft-recipe="${recipe.id}" ${this.crafting ? 'disabled aria-disabled="true"' : canCraft ? '' : 'aria-disabled="true"'}>${this.crafting?.recipeId === recipe.id ? 'Forjando...' : canCraft ? 'Forjar' : 'Indisponível'}</button>
-      </article>`;
-    }).join('')}</div>`;
+    const groups = EQUIPMENT_SETS.map((set) => {
+      const recipes = BLACKSMITH_RECIPES.filter((recipe) => recipe.setId === set.id);
+      if (recipes.length === 0) return '';
+      const complete = isEquipmentSetComplete(inventory.equipment, set);
+      return `<section class="blacksmith-set${complete ? ' is-complete' : ''}">
+        <header class="blacksmith-set__head">
+          <div>
+            <h3>${set.label}</h3>
+            <p>${set.tagline}</p>
+          </div>
+          <span>${complete ? 'Conjunto completo equipado' : 'Bônus de 5 peças'}</span>
+        </header>
+        <p class="blacksmith-set__bonus">${this.setBonusSummary(set)}</p>
+        <div class="blacksmith-recipes">${recipes.map((recipe) => this.renderRecipe(recipe, inventory)).join('')}</div>
+      </section>`;
+    }).join('');
+    return `${groups}${this.renderLegacyCraftingNotice(inventory)}`;
+  }
+
+  /** Bonus text shared with the status panel, using the same attribute labels. */
+  private setBonusSummary(set: EquipmentSetDefinition): string {
+    return Object.entries(set.bonus)
+      .filter(([, value]) => value)
+      .map(([key, value]) => `<span>${this.itemStatLabel(key)} +${value}</span>`)
+      .join('');
+  }
+
+  private itemStatLabel(attribute: string): string {
+    const labels: Readonly<Record<string, string>> = {
+      vitality: 'Vitalidade', attack: 'Ataque', defense: 'Defesa', agility: 'Agilidade',
+      criticalAttack: 'Crítico', criticalDamage: 'Dano crítico', lifeSteal: 'Roubo de vida',
+      criticalMagic: 'Crítico mágico', dodge: 'Esquiva',
+    };
+    return labels[attribute] ?? attribute;
+  }
+
+  private renderLegacyCraftingNotice(inventory: InventorySnapshot): string {
+    const legacy = ['common-forged-helmet', 'common-forged-chest', 'common-forged-pants', 'common-forged-gloves', 'common-forged-boots'];
+    const worn = legacy.filter((itemId) => Object.values(inventory.equipment).includes(itemId));
+    if (worn.length === 0) return '';
+    return `<p class="blacksmith-legacy">As peças do antigo conjunto Comum Forjado não dão mais bônus de conjunto. Forje uma das duas linhas acima para ganhar um bônus real.</p>`;
+  }
+
+  private renderRecipe(recipe: (typeof BLACKSMITH_RECIPES)[number], inventory: InventorySnapshot): string {
+    const item = getInventoryItem(recipe.outputItemId);
+    const canCraft = recipe.ingredients.every(({ itemId, quantity }) => this.itemQuantity(inventory, itemId) >= quantity);
+    const canStartCraft = canCraft && !this.crafting;
+    const ingredients = recipe.ingredients.map(({ itemId, quantity }) => {
+      const material = getInventoryItem(itemId);
+      const available = this.itemQuantity(inventory, itemId);
+      const availableClass = available >= quantity ? ' is-available' : ' is-missing';
+      return `<li class="blacksmith-ingredient${availableClass}">
+        <img loading="lazy" src="${material?.iconSrc ?? ''}" alt="">
+        <span>${material?.label ?? itemId}<small>${available} / ${quantity}</small></span>
+      </li>`;
+    }).join('');
+    return `<article class="blacksmith-recipe${canCraft ? ' is-ready' : ' is-incomplete'}${this.crafting?.recipeId === recipe.id ? ' is-forging' : ''}">
+      <img class="blacksmith-recipe__art" loading="lazy" src="${item?.iconSrc ?? ''}" alt="">
+      <div class="blacksmith-recipe__content">
+        <div class="blacksmith-recipe__heading"><div><h3>${recipe.label}</h3><p>${this.itemStats(item)}</p></div><span>${canCraft ? 'Pronto para forjar' : 'Materiais insuficientes'}</span></div>
+        <ul class="blacksmith-ingredients">${ingredients}</ul>
+      </div>
+      <button type="button" class="${canStartCraft ? '' : 'is-unavailable'}" data-craft-recipe="${recipe.id}" ${this.crafting ? 'disabled aria-disabled="true"' : canCraft ? '' : 'aria-disabled="true"'}>${this.crafting?.recipeId === recipe.id ? 'Forjando...' : canCraft ? 'Forjar' : 'Indisponível'}</button>
+    </article>`;
   }
 
   private renderBackpack(inventory: InventorySnapshot): string {
@@ -243,7 +296,9 @@ export class BlacksmithScreen {
   private itemStats(item: ReturnType<typeof getInventoryItem>): string {
     if (!item) return '';
     const labels: Readonly<Record<string, string>> = {
-      strength: 'Força', attack: 'Ataque', defense: 'Defesa', agility: 'Agilidade',
+      vitality: 'Vitalidade', attack: 'Ataque', defense: 'Defesa', agility: 'Agilidade',
+      criticalAttack: 'Crítico', criticalDamage: 'Dano crítico', lifeSteal: 'Roubo de vida',
+      criticalMagic: 'Crítico mágico', dodge: 'Esquiva',
     };
     const values = item.baseDamage ? [`Ataque +${item.baseDamage}`] : [];
     for (const [attribute, value] of Object.entries(item.statBonuses ?? {})) {

@@ -56,12 +56,14 @@ export interface LobbyScreenOptions {
 export type BlacksmithLobbyActionResult = BlacksmithScreenActionResult;
 
 const ATTRIBUTE_LABELS: Readonly<Record<string, string>> = {
-  strength: 'Força',
+  vitality: 'Vitalidade',
   attack: 'Ataque',
   defense: 'Defesa',
   agility: 'Agilidade',
   criticalAttack: 'Crítico',
+  criticalDamage: 'Dano crítico',
   criticalMagic: 'Crítico mágico',
+  lifeSteal: 'Roubo de vida',
   dodge: 'Esquiva',
 };
 
@@ -117,32 +119,29 @@ export function renderLobbyHotkeys(
 
 /**
  * The reference hall shows a six-metric sheet in two columns. Crítico físico is
- * surfaced simply as "Crítico" and Vitalidade replaces the pair of secondary
- * rolls (Crítico mágico / Esquiva) that the reference panel does not list.
- * The view model keeps its full seven-attribute contract for other surfaces.
+ * surfaced simply as "Crítico"; the dedicated Critical Damage and Life Steal
+ * readings stay on the full sheet in the character overlay.
+ * The view model keeps its full nine-attribute contract for other surfaces.
  */
 const LOBBY_STATUS_METRICS: readonly {
   readonly key: string;
   readonly label: string;
 }[] = [
-  { key: 'strength', label: 'Força' },
+  { key: 'vitality', label: 'Vitalidade' },
   { key: 'attack', label: 'Ataque' },
   { key: 'defense', label: 'Defesa' },
   { key: 'agility', label: 'Agilidade' },
   { key: 'criticalAttack', label: 'Crítico' },
-  { key: 'vitality', label: 'Vitalidade' },
+  { key: 'dodge', label: 'Esquiva' },
 ];
 
 function lobbyStatusMetrics(
   status: CurrentCharacterStatusView
 ): readonly { readonly label: string; readonly value: number }[] {
   const byKey = new Map(status.attributes.map(({ key, value }) => [key as string, value]));
-  // Vitalidade is a derived reading: Strength is the attribute that grants the
-  // Warrior its health pool, so the sheet mirrors that investment.
-  const vitality = byKey.get('strength') ?? 0;
   return LOBBY_STATUS_METRICS.map(({ key, label }) => ({
     label,
-    value: key === 'vitality' ? vitality : byKey.get(key) ?? 0,
+    value: byKey.get(key) ?? 0,
   }));
 }
 
