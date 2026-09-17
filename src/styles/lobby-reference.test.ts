@@ -26,6 +26,20 @@ describe('arena lobby composition', () => {
     );
   });
 
+  it('brands the hall with its own guild sigil, shipped as a real asset', () => {
+    // The mark in front of "Masmorra de Herois" is the guild crest, not the
+    // equipment icon: the nav already owns the crossed swords.
+    expect(lobbyStyles).toMatch(
+      /#lobby-screen \.arena-sigil \{[^}]*guild-sigil\.svg/
+    );
+    const svg = readFileSync(
+      new URL('../../public/assets/ui/lobby/arena/icons/guild-sigil.svg', import.meta.url),
+      'utf8'
+    );
+    expect(svg.startsWith('<svg')).toBe(true);
+    expect(svg).toContain('viewBox="0 0 44 48"');
+  });
+
   it('keeps the lobby topbar clickable above the WebGL canvas', () => {
     // #lobby-screen runs with pointer-events:none so the hall and the Warrior
     // stay clickable through to the canvas; the panels re-enable the events.

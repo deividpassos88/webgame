@@ -111,10 +111,15 @@
 
 #lobby-screen .arena-identity { display: flex; gap: 14px; align-items: center; }
 
+/*
+ * Brasao da guilda: o portal gradeado da masmorra, desenhado para a marca
+ * "Masmorra de Herois". SVG proprio (guild-sigil.svg) em vez da espada
+ * cruzada do icone de equipamento, que repetia o simbolo da aba Inventario.
+ */
 #lobby-screen .arena-sigil {
   width: 42px;
   height: 46px;
-  background: url('/assets/ui/lobby/arena/icons/equipment.svg') center / contain no-repeat;
+  background: url('/assets/ui/lobby/arena/icons/guild-sigil.svg') center / contain no-repeat;
   filter: drop-shadow(0 0 8px rgba(212, 169, 79, .45));
 }
 
