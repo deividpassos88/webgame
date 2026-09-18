@@ -573,12 +573,12 @@ export class HUD {
   public updateBossHealth(hp: number, maxHp: number) {
     // Boss de 5 barras: a barra atual drena e troca de cor
     // (verde -> verde claro -> roxo -> vermelho escuro -> vermelho claro).
-    // O rotulo dentro da barra mostra "[ 5x  100% ]" -> "[ 4x  100% ]" ...
+    // No canto dentro da barra: apenas a contagem de barras restantes (5x..1x),
+    // diminuindo conforme o boss perde vida.
     const layer = resolveBossBarLayer(hp, maxHp);
     this.bossHealthFill.style.width = `${layer.fill * 100}%`;
     this.bossHealthFill.style.background = layer.color;
-    this.bossBarLabel.textContent =
-      `[ ${layer.barsRemaining}x  ${Math.round(layer.fill * 100)}% ]`;
+    this.bossBarLabel.textContent = layer.barsRemaining > 0 ? `${layer.barsRemaining}x` : '';
   }
 
   public showMiniBossHealth() {

@@ -672,15 +672,13 @@ html, body {
 }
 .boss-bar-label {
   position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
   font-family: 'Cinzel', Georgia, 'Times New Roman', serif;
   font-weight: 700;
   font-size: 14px;
-  letter-spacing: .14em;
+  letter-spacing: .06em;
   color: #fff7e0;
   text-shadow: 0 1px 2px #000, 0 0 8px rgba(0, 0, 0, .85);
   pointer-events: none;
