@@ -684,24 +684,25 @@ html, body {
   background: linear-gradient(180deg, #a01414, #4a0808);
 }
 
-/* 5 barras do boss: pips mostram as vidas restantes na cor de cada barra. */
-.boss-bar-pips {
+/* Rotulo dentro da barra do boss: "[ 5x  100% ]" -> "[ 4x ... ]" ... "[ 1x ]".
+ * Fonte de jogo (Cinzel, carregada no index.html; Georgia como fallback). */
+.boss-bar {
+  position: relative;
+}
+.boss-bar-label {
+  position: absolute;
+  inset: 0;
   display: flex;
-  gap: 5px;
+  align-items: center;
   justify-content: center;
-  margin-top: 5px;
-}
-.boss-bar-pips span {
-  width: 14px;
-  height: 5px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, .14);
-  box-shadow: 0 0 4px rgba(0, 0, 0, .6);
-  transition: background .25s ease-out;
-}
-.boss-bar-pips span.is-current {
-  outline: 1px solid rgba(255, 255, 255, .55);
-  outline-offset: 1px;
+  gap: 10px;
+  font-family: 'Cinzel', Georgia, 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: .14em;
+  color: #fff7e0;
+  text-shadow: 0 1px 2px #000, 0 0 8px rgba(0, 0, 0, .85);
+  pointer-events: none;
 }
 
 /* Barra de vida dos mini-bosses (dourada, menor que a do boss final).

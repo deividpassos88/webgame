@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dragon Miner - Dungeon Crawler</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap"
+    rel="stylesheet"
+  />
   <link rel="stylesheet" href="/src/style.css" />
   <link rel="stylesheet" href="/src/styles/lobby-reference.css" />
   <link rel="stylesheet" href="/src/styles/forge-reference.css" />
@@ -246,8 +252,8 @@
           <div class="boss-name">DRAGON OVERLORD</div>
           <div class="health-bar-bg boss-bar">
             <div id="boss-health-fill" class="health-bar-fill boss-fill"></div>
+            <div id="boss-health-label" class="boss-bar-label" aria-hidden="true">[ 5x  100% ]</div>
           </div>
-          <div id="boss-bar-pips" class="boss-bar-pips" aria-hidden="true"></div>
         </div>
         <div id="mini-boss-health-container" class="hidden">
           <div class="boss-name mini-boss-name">MINI-BOSS</div>

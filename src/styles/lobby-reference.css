@@ -118,8 +118,8 @@
  * drop-shadow acompanha a silhueta do emblema gracas ao alpha.
  */
 #lobby-screen .arena-sigil {
-  width: 56px;
-  height: 56px;
+  width: 62px;
+  height: 62px;
   background: url('/assets/ui/lobby/arena/icons/guild-emblem.png') center / contain no-repeat;
   filter: drop-shadow(0 0 8px rgba(212, 169, 79, .45));
 }
@@ -163,8 +163,8 @@
 }
 
 #lobby-screen .arena-nav__btn img {
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   /* Os icones agora sao PNG pintados (ouro + gemas), nao tracados SVG:
      um pouco mais de presencia que o antigo .72 monocromatico. */
   opacity: .88;
@@ -332,7 +332,7 @@
   cursor: pointer;
   transition: all 180ms ease;
 }
-#lobby-screen .arena-subtabs button img { width: 22px; height: 22px; opacity: .88; }
+#lobby-screen .arena-subtabs button img { width: 26px; height: 26px; opacity: .88; }
 #lobby-screen .arena-subtabs button:hover { border-color: rgba(212, 169, 79, .6); color: var(--gold-lt); }
 #lobby-screen .arena-subtabs button[aria-selected='true'] {
   border-color: var(--gold);
@@ -710,7 +710,7 @@ body #lobby-screen .arena-equip-grid .equipment-slot__icon {
 #lobby-screen .lobby-detail-panel[data-lobby-view='skills'] #lobby-panel-skills { display: flex; }
 
 #lobby-screen .inventory-heading-title { display: flex; gap: 9px; align-items: center; }
-#lobby-screen .inventory-heading-title img { width: 26px; height: 26px; }
+#lobby-screen .inventory-heading-title img { width: 30px; height: 30px; }
 #lobby-screen .inventory-heading-title h2 {
   margin: 0;
   color: var(--gold-lt);
@@ -876,8 +876,8 @@ body #lobby-screen .arena-equip-grid .equipment-slot__icon {
 
 #lobby-screen .arena-footer__status { display: flex; gap: 12px; align-items: center; }
 #lobby-screen .arena-footer__crest {
-  width: 40px;
-  height: 40px;
+  width: 46px;
+  height: 46px;
   background: url('/assets/ui/lobby/arena/icons/hero.png') center / contain no-repeat;
   opacity: .9;
 }
@@ -939,8 +939,8 @@ body #lobby-screen .arena-equip-grid .equipment-slot__icon {
 }
 
 #lobby-screen .arena-cta__btn .lobby-start-icon {
-  width: 42px;
-  height: 42px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
   filter: drop-shadow(0 0 6px rgba(247, 228, 168, .5));
   transition: transform 300ms ease;
@@ -1072,7 +1072,7 @@ body #lobby-screen .arena-equip-grid .equipment-slot__icon {
   }
   #lobby-screen .arena-cta__text strong { font-size: 18px; }
   #lobby-screen .arena-cta__text small { font-size: 8.5px; }
-  #lobby-screen .arena-cta__btn .lobby-start-icon { width: 34px; height: 34px; }
+  #lobby-screen .arena-cta__btn .lobby-start-icon { width: 40px; height: 40px; }
   /* The quote is the first thing to go when the footer gets tight. */
   #lobby-screen .arena-footer__quote { display: none; }
   #lobby-screen .arena-footer { grid-template-columns: 1fr; padding: 0 20px; }
