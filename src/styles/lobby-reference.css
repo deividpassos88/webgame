@@ -488,8 +488,13 @@ body #lobby-screen .arena-equip-grid .equipment-slot.is-equipped {
   filter:
     drop-shadow(0 0 4px var(--rarity-glow))
     drop-shadow(0 0 9px var(--rarity-glow));
-  -webkit-mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  /* Recorta o cometa para a faixa da borda: shorthand sem composite e,
+   * como fallback, os longhands (mask-composite / -webkit-mask-composite)
+   * que os navegadores mais antigos entendem. */
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
   animation: arena-rarity-sweep 1.9s linear infinite;
 }
 
@@ -569,7 +574,13 @@ body #lobby-screen .arena-equip-grid .equipment-slot__icon {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Sem o cometa girando, o aro permanece aceso (mais forte) para o
+   * slot equipado continuar lendo o brilho branco na borda. */
   #lobby-screen .arena-equip-grid .equipment-slot.is-equipped::after { animation: none; }
+  #lobby-screen .arena-equip-grid .equipment-slot.is-equipped::before {
+    border: 1px solid var(--rarity-glow);
+    box-shadow: 0 0 10px var(--rarity-soft), inset 0 0 8px var(--rarity-soft);
+  }
 }
 
 /* --- status sheet --- */
