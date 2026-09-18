@@ -1,9 +1,18 @@
 import {
-  BLACKSMITH_RECIPES,
+  findBlacksmithRecipe,
   getBlacksmithLicensePresentation,
   hasActiveLicense,
+  recipesForLine,
+  type BlacksmithRecipe,
   type BlacksmithRecipeId,
 } from '../crafting/BlacksmithWorkshop';
+import {
+  CRAFT_LINES,
+  DEFAULT_CRAFT_LINE,
+  isCraftLineId,
+  resolveCraftLine,
+  type CraftLineId,
+} from '../crafting/CraftLine';
 import { getInventoryItem } from '../inventory/InventoryCatalog';
 import type { InventorySnapshot, InventoryStore } from '../inventory/InventoryStore';
 import type { PlayerProfile } from '../profile/PlayerProfile';
@@ -57,6 +66,7 @@ export class BlacksmithScreen {
   private activePanel: BlacksmithPanel = 'equipment';
   private hoveredRecipeId: BlacksmithRecipeId | null = null;
   private pinnedRecipeId: BlacksmithRecipeId | null = null;
+  private craftLine: CraftLineId = DEFAULT_CRAFT_LINE;
 
   public constructor(
     host: HTMLElement,
@@ -72,6 +82,7 @@ export class BlacksmithScreen {
     this.root.addEventListener('mouseover', this.handlePointerOver);
     this.root.addEventListener('mouseout', this.handlePointerOut);
     this.root.addEventListener('focusin', this.handlePointerOver);
+    this.root.addEventListener('change', this.handleChange);
   }
 
   public show(): void {
@@ -82,6 +93,7 @@ export class BlacksmithScreen {
     this.activePanel = 'equipment';
     this.hoveredRecipeId = null;
     this.pinnedRecipeId = null;
+    this.craftLine = DEFAULT_CRAFT_LINE;
     this.root.classList.remove('hidden');
     this.root.setAttribute('aria-hidden', 'false');
     this.render();
@@ -98,6 +110,7 @@ export class BlacksmithScreen {
     this.root.removeEventListener('mouseover', this.handlePointerOver);
     this.root.removeEventListener('mouseout', this.handlePointerOut);
     this.root.removeEventListener('focusin', this.handlePointerOver);
+    this.root.removeEventListener('change', this.handleChange);
     this.clearTimers();
     this.forge?.dispose();
     this.hide();
@@ -127,6 +140,7 @@ export class BlacksmithScreen {
     const recipes = isLicensed
       ? this.renderRecipes(inventory)
       : `<p class="workshop-recipes__locked-copy">Converse com o ferreiro para consultar as receitas.</p>`;
+    const craftLinePicker = isLicensed ? this.renderCraftLinePicker() : '';
 
     this.root.innerHTML = `
       <div class="forge-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
@@ -155,6 +169,7 @@ export class BlacksmithScreen {
             </section>
             <section class="workshop-tab-panel workshop-recipes${isLicensed ? '' : ' is-locked'}" id="workshop-panel-craft" role="tabpanel" aria-labelledby="workshop-tab-craft" data-workshop-recipes aria-label="Receitas da oficina" ${this.activePanel === 'craft' ? '' : 'hidden'} ${isLicensed ? '' : 'aria-disabled="true"'}>
               <header><p class="section-label">${isLicensed ? `Licença ativa · ${remainingHours}h restantes` : 'Receitas bloqueadas'}</p><h2>Criação de equipamentos</h2></header>
+              ${craftLinePicker}
               ${recipes}
               ${isLicensed ? '<aside class="workshop-recipe-inspector" id="workshop-recipe-inspector" data-recipe-inspector hidden></aside>' : ''}
             </section>
@@ -169,7 +184,7 @@ export class BlacksmithScreen {
   /** Center-screen delivery toast: the crafted art above the success line. */
   private renderCraftNotification(): string {
     if (!this.craftNotification) return '';
-    const recipe = BLACKSMITH_RECIPES.find(({ id }) => id === this.craftedRecipeId);
+    const recipe = findBlacksmithRecipe(this.craftedRecipeId ?? '');
     const item = recipe ? getInventoryItem(recipe.outputItemId) : undefined;
     return `<div class="workshop-craft-notification" role="status" aria-live="assertive">
       <span class="workshop-craft-notification__halo" aria-hidden="true"></span>
@@ -187,7 +202,7 @@ export class BlacksmithScreen {
     const panel = this.root.querySelector<HTMLElement>('[data-recipe-inspector]');
     if (!panel) return;
     const recipeId = this.hoveredRecipeId ?? this.pinnedRecipeId;
-    const recipe = recipeId ? BLACKSMITH_RECIPES.find(({ id }) => id === recipeId) : undefined;
+    const recipe = recipeId ? findBlacksmithRecipe(recipeId) : undefined;
     const card = recipeId
       ? this.root.querySelector<HTMLElement>(`[data-recipe-inspect="${recipeId}"]`)
       : null;
@@ -243,9 +258,7 @@ export class BlacksmithScreen {
   ): string {
     const forgeCaption = this.getForgeCaption(isLicensed, remainingHours);
     if (isLicensed) {
-      const crafted = this.craftedRecipeId
-        ? BLACKSMITH_RECIPES.find(({ id }) => id === this.craftedRecipeId)
-        : null;
+      const crafted = this.craftedRecipeId ? findBlacksmithRecipe(this.craftedRecipeId) : null;
       return this.renderForgeScene(forgeCaption, `
         <p class="section-label">Oficina licenciada</p>
         <h2>O que vamos forjar?</h2>
@@ -274,13 +287,29 @@ export class BlacksmithScreen {
    * line grants before spending materials. The bonus text comes from the same
    * definition the combat pipeline applies.
    */
+  /**
+   * Dropdown that picks which line the forge works on. It is a native select so
+   * the platform draws the down arrow and the keyboard behaviour for free.
+   */
+  private renderCraftLinePicker(): string {
+    const line = resolveCraftLine(this.craftLine);
+    const options = CRAFT_LINES.map(({ id, label, materialCost }) => `<option value="${id}"${id === line.id ? ' selected' : ''}>${label} · ${materialCost} de cada material</option>`).join('');
+    return `<div class="workshop-craft-line" data-craft-line="${line.id}">
+      <label class="workshop-craft-line__label" for="workshop-craft-line-select">Tipo de criação</label>
+      <div class="workshop-craft-line__control">
+        <select id="workshop-craft-line-select" data-craft-line-select aria-label="Tipo de criação"${this.crafting ? ' disabled' : ''}>${options}</select>
+      </div>
+      <p class="workshop-craft-line__hint"><strong>${line.tag}</strong> · ${line.focus} Cada peça consome ${line.materialCost} de cada material.</p>
+    </div>`;
+  }
+
   private renderRecipes(inventory: InventorySnapshot): string {
-    return `<div class="blacksmith-recipes">${BLACKSMITH_RECIPES
+    return `<div class="blacksmith-recipes">${recipesForLine(this.craftLine)
       .map((recipe) => this.renderRecipe(recipe, inventory))
       .join('')}</div>`;
   }
 
-  private renderRecipe(recipe: (typeof BLACKSMITH_RECIPES)[number], inventory: InventorySnapshot): string {
+  private renderRecipe(recipe: BlacksmithRecipe, inventory: InventorySnapshot): string {
     const item = getInventoryItem(recipe.outputItemId);
     const canCraft = recipe.ingredients.every(({ itemId, quantity }) => this.itemQuantity(inventory, itemId) >= quantity);
     const canStartCraft = canCraft && !this.crafting;
@@ -293,7 +322,7 @@ export class BlacksmithScreen {
         <span>${material?.label ?? itemId}<small>${available} / ${quantity}</small></span>
       </li>`;
     }).join('');
-    return `<article class="blacksmith-recipe${canCraft ? ' is-ready' : ' is-incomplete'}${this.crafting?.recipeId === recipe.id ? ' is-forging' : ''}${this.pinnedRecipeId === recipe.id ? ' is-pinned' : ''}" data-recipe-inspect="${recipe.id}" tabindex="0" aria-describedby="workshop-recipe-inspector">
+    return `<article class="blacksmith-recipe${canCraft ? ' is-ready' : ' is-incomplete'}${this.crafting?.recipeId === recipe.id ? ' is-forging' : ''}${this.pinnedRecipeId === recipe.id ? ' is-pinned' : ''}" data-recipe-inspect="${recipe.id}" data-craft-line="${recipe.line}" tabindex="0" aria-describedby="workshop-recipe-inspector">
       <img class="blacksmith-recipe__art" loading="lazy" src="${item?.iconSrc ?? ''}" alt="">
       <div class="blacksmith-recipe__content">
         <div class="blacksmith-recipe__heading"><div><h3>${recipe.label}</h3><p>${this.itemStats(item)}</p></div><span>${canCraft ? 'Pronto para forjar' : 'Materiais insuficientes'}</span></div>
@@ -388,7 +417,7 @@ export class BlacksmithScreen {
     }
     const craftButton = target.closest<HTMLButtonElement>('[data-craft-recipe]');
     const recipeId = craftButton?.dataset.craftRecipe;
-    if (recipeId && BLACKSMITH_RECIPES.some((recipe) => recipe.id === recipeId)) {
+    if (recipeId && findBlacksmithRecipe(recipeId)) {
       this.startCraft(recipeId as BlacksmithRecipeId);
       return;
     }
@@ -397,7 +426,7 @@ export class BlacksmithScreen {
     // the same card again releases it.
     const inspectCard = target.closest<HTMLElement>('[data-recipe-inspect]');
     const inspectRecipeId = inspectCard?.dataset.recipeInspect as BlacksmithRecipeId | undefined;
-    if (!inspectRecipeId || !BLACKSMITH_RECIPES.some((recipe) => recipe.id === inspectRecipeId)) return;
+    if (!inspectRecipeId || !findBlacksmithRecipe(inspectRecipeId)) return;
     this.hoveredRecipeId = inspectRecipeId;
     const isPinned = this.pinnedRecipeId === inspectRecipeId;
     this.pinnedRecipeId = isPinned ? null : inspectRecipeId;
@@ -407,11 +436,27 @@ export class BlacksmithScreen {
     this.updateRecipeInspector();
   };
 
+  /**
+   * Switching the line swaps the whole recipe list. It is blocked mid-forge so
+   * the piece being hammered never disappears from under the player.
+   */
+  private readonly handleChange = (event: Event): void => {
+    const select = (event.target as HTMLElement | null)?.closest<HTMLSelectElement>('[data-craft-line-select]');
+    const value = select?.value;
+    if (!select || !value || !isCraftLineId(value) || value === this.craftLine) return;
+    if (this.crafting) return;
+    this.craftLine = value;
+    this.hoveredRecipeId = null;
+    this.pinnedRecipeId = null;
+    this.render();
+    this.root.querySelector<HTMLSelectElement>('[data-craft-line-select]')?.focus();
+  };
+
   /** Hover shows the description window; leaving falls back to the pinned card. */
   private readonly handlePointerOver = (event: Event): void => {
     const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-recipe-inspect]');
     const recipeId = card?.dataset.recipeInspect as BlacksmithRecipeId | undefined;
-    if (!recipeId || !BLACKSMITH_RECIPES.some((recipe) => recipe.id === recipeId)) return;
+    if (!recipeId || !findBlacksmithRecipe(recipeId)) return;
     if (this.hoveredRecipeId === recipeId) return;
     this.hoveredRecipeId = recipeId;
     this.updateRecipeInspector();
@@ -441,7 +486,7 @@ export class BlacksmithScreen {
     if (this.crafting?.phase === 'delivery') return 'A peca esta pronta. O ferreiro se prepara para entrega-la.';
     if (this.crafting?.phase === 'complete') return 'A peca foi entregue e guardada na mochila.';
     if (this.craftedRecipeId) {
-      return `${BLACKSMITH_RECIPES.find(({ id }) => id === this.craftedRecipeId)?.label ?? 'Peca'} pronta na mochila.`;
+      return `${findBlacksmithRecipe(this.craftedRecipeId)?.label ?? 'Peca'} pronta na mochila.`;
     }
     if (isLicensed) return `Sua licenca esta ativa por mais ${remainingHours}h.`;
     if (this.mode === 'payment') return 'O trabalho exige uma licenca da guilda.';
@@ -469,7 +514,7 @@ export class BlacksmithScreen {
       this.render();
       return;
     }
-    const recipe = BLACKSMITH_RECIPES.find(({ id }) => id === recipeId);
+    const recipe = findBlacksmithRecipe(recipeId);
     const inventory = this.inventory.snapshot();
     if (!recipe || !recipe.ingredients.every(({ itemId, quantity }) => this.itemQuantity(inventory, itemId) >= quantity)) {
       this.message = 'Materiais insuficientes para iniciar esta forja.';
@@ -505,7 +550,7 @@ export class BlacksmithScreen {
       this.render();
       return;
     }
-    const recipe = BLACKSMITH_RECIPES.find(({ id }) => id === result.craftedRecipeId);
+    const recipe = findBlacksmithRecipe(result.craftedRecipeId);
     this.crafting.phase = 'complete';
     this.craftedRecipeId = result.craftedRecipeId;
     this.selectedBackpackItemId = recipe?.outputItemId ?? null;

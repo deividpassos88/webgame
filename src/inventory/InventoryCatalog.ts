@@ -1,5 +1,6 @@
 import type { RpgEquipmentSlot } from '../profile/PlayerProfile';
 import type { CharacterAttributes } from '../profile/CharacterAttributes';
+import type { CraftLineId } from '../crafting/CraftLine';
 
 export type InventoryItemKind = 'equipment' | 'material' | 'consumable';
 export type InventoryItemRarity = 'common' | 'rare' | 'guild';
@@ -23,6 +24,11 @@ export interface InventoryItemDefinition {
   readonly description?: string;
   /** Weapon damage contributed only while this item is equipped. */
   readonly baseDamage?: number;
+  /**
+   * Workshop line this piece belongs to. Only set on forged armor, whose two
+   * variants share the slot but not the stat spread nor the material cost.
+   */
+  readonly craftLine?: CraftLineId;
   /** Persistent attribute bonuses granted while this equipment is worn. */
   readonly statBonuses?: Partial<CharacterAttributes>;
 }
@@ -37,7 +43,8 @@ export const INVENTORY_ITEMS = {
     iconSrc: '/items/equipment/armas/sword.webp',
     equippedIconSrc: '/items/equipment/equipado/sword.webp',
     description: 'Uma espada de treino confiável, entregue à recruta da guilda.',
-    baseDamage: 8,
+    // Nerfed from 8 to 4: the novice weapon was out-damaging the first forged drops.
+    baseDamage: 4,
   },
   'iron-helmet': {
     id: 'iron-helmet',
@@ -94,68 +101,150 @@ export const INVENTORY_ITEMS = {
     description: 'Botas de ferro com sola firme para atravessar terreno hostil.',
     statBonuses: { agility: 1 },
   },
+  /*
+   * ============ FORGED LINE - DEFENSE (10 units of each material) ============
+   * Every piece carries Defense as its main stat, so the whole set stacks armor
+   * no matter which slot the player forges first.
+   */
   'common-forged-helmet': {
     id: 'common-forged-helmet',
-    label: 'Draconic Helmet [Common]',
+    label: 'Draconic Helmet [DEF]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
     slot: 'helmet',
+    craftLine: 'defense',
     iconSrc: '/items/equipment/common-forged/helmet.webp',
     equippedIconSrc: '/items/equipment/equipado/helmet.png',
-    description: 'Capacete comum criado na Forja de Cinzafogo. Protege contra estilhacos e golpes rasos.',
-    statBonuses: { defense: 2 },
+    description: 'Capacete comum criado na Forja de Cinzafogo. Protege contra estilhaços e golpes rasos.',
+    statBonuses: { defense: 3, vitality: 1 },
   },
   'common-forged-chest': {
     id: 'common-forged-chest',
-    label: 'Draconic Chestplate [Common]',
+    label: 'Draconic Chestplate [DEF]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
     slot: 'chest',
+    craftLine: 'defense',
     iconSrc: '/items/equipment/common-forged/chest.webp',
     equippedIconSrc: '/items/equipment/equipado/chest.png',
     description: 'Peitoral comum rebitado para absorver o impacto das investidas do draco.',
     // Strength became Vitality, whose points are worth ten times more health
     // (3 HP each against 0.3), so the old three points carry over as one.
-    statBonuses: { vitality: 1, defense: 4 },
+    statBonuses: { vitality: 1, defense: 5 },
   },
   'common-forged-pants': {
     id: 'common-forged-pants',
-    label: 'Draconic Pants [Common]',
+    label: 'Draconic Pants [DEF]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
     slot: 'pants',
+    craftLine: 'defense',
     iconSrc: '/items/equipment/common-forged/pants.webp',
     equippedIconSrc: '/items/equipment/equipado/pants.png',
-    description: 'Calca comum de placas leves, feita para manter a guarda em combate prolongado.',
-    statBonuses: { defense: 3, agility: 1 },
+    description: 'Calça comum de placas leves, feita para manter a guarda em combate prolongado.',
+    statBonuses: { defense: 4, vitality: 1 },
   },
   'common-forged-gloves': {
     id: 'common-forged-gloves',
-    label: 'Draconic Gloves [Common]',
+    label: 'Draconic Gloves [DEF]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
     slot: 'gloves',
+    craftLine: 'defense',
     iconSrc: '/items/equipment/common-forged/gloves.webp',
     equippedIconSrc: '/items/equipment/equipado/gloves.png',
-    description: 'Luvas comuns que firmam a empunhadura e transferem melhor a forca do golpe.',
-    statBonuses: { attack: 3 },
+    description: 'Luvas comuns que fecham a guarda e desviam o golque que passaria pela lamina.',
+    statBonuses: { defense: 3, agility: 1 },
   },
   'common-forged-boots': {
     id: 'common-forged-boots',
-    label: 'Draconic Boots [Common]',
+    label: 'Draconic Boots [DEF]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
     slot: 'boots',
+    craftLine: 'defense',
     iconSrc: '/items/equipment/common-forged/boots.webp',
     equippedIconSrc: '/items/equipment/equipado/boots.png',
-    description: 'Botas comuns com sola reforcada para avancar entre pedras e cinzas.',
-    statBonuses: { agility: 3 },
+    description: 'Botas comuns com sola reforçada para avançar entre pedras e cinzas.',
+    statBonuses: { defense: 3, agility: 2 },
   },
+
+  /*
+   * ============ FORGED LINE - ATTACK (15 units of each material) ============
+   * The expensive line: every piece carries Attack, paid for with five extra
+   * units of each material.
+   */
+  'common-forged-helmet-atk': {
+    id: 'common-forged-helmet-atk',
+    label: 'Draconic Helmet [ATK]',
+    kind: 'equipment',
+    rarity: 'common',
+    maxStack: 1,
+    slot: 'helmet',
+    craftLine: 'attack',
+    iconSrc: '/items/equipment/common-forged/helmet.webp',
+    equippedIconSrc: '/items/equipment/equipado/helmet.png',
+    description: 'Capacete de criação ofensiva: viseira estreita para mirar o ponto fraco do draco.',
+    statBonuses: { attack: 3, agility: 1 },
+  },
+  'common-forged-chest-atk': {
+    id: 'common-forged-chest-atk',
+    label: 'Draconic Chestplate [ATK]',
+    kind: 'equipment',
+    rarity: 'common',
+    maxStack: 1,
+    slot: 'chest',
+    craftLine: 'attack',
+    iconSrc: '/items/equipment/common-forged/chest.webp',
+    equippedIconSrc: '/items/equipment/equipado/chest.png',
+    description: 'Peitoral de criação ofensiva: mais leve, devolve o peso da armadura ao golpe.',
+    statBonuses: { attack: 4, vitality: 1 },
+  },
+  'common-forged-pants-atk': {
+    id: 'common-forged-pants-atk',
+    label: 'Draconic Pants [ATK]',
+    kind: 'equipment',
+    rarity: 'common',
+    maxStack: 1,
+    slot: 'pants',
+    craftLine: 'attack',
+    iconSrc: '/items/equipment/common-forged/pants.webp',
+    equippedIconSrc: '/items/equipment/equipado/pants.png',
+    description: 'Calça de criação ofensiva: articulada para fechar o espaço sem perder o passo.',
+    statBonuses: { attack: 3, agility: 2 },
+  },
+  'common-forged-gloves-atk': {
+    id: 'common-forged-gloves-atk',
+    label: 'Draconic Gloves [ATK]',
+    kind: 'equipment',
+    rarity: 'common',
+    maxStack: 1,
+    slot: 'gloves',
+    craftLine: 'attack',
+    iconSrc: '/items/equipment/common-forged/gloves.webp',
+    equippedIconSrc: '/items/equipment/equipado/gloves.png',
+    description: 'Luvas de criação ofensiva: firmam a empunhadura e transferem melhor a força do golpe.',
+    statBonuses: { attack: 4 },
+  },
+  'common-forged-boots-atk': {
+    id: 'common-forged-boots-atk',
+    label: 'Draconic Boots [ATK]',
+    kind: 'equipment',
+    rarity: 'common',
+    maxStack: 1,
+    slot: 'boots',
+    craftLine: 'attack',
+    iconSrc: '/items/equipment/common-forged/boots.webp',
+    equippedIconSrc: '/items/equipment/equipado/boots.png',
+    description: 'Botas de criação ofensiva: sola leve para alcançar o draco antes que ele reaja.',
+    statBonuses: { attack: 3, agility: 2 },
+  },
+
   'runic-crystal': {
     id: 'runic-crystal',
     label: 'Cristal Rúnico',

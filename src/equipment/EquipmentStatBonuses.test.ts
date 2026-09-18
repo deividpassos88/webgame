@@ -1,22 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import {
-  COMMON_FORGED_SET_BONUS,
   attributesWithEquipment,
   equippedAttributeBonuses,
+  equippedForgedSetLine,
   equippedWeaponDamage,
+  FORGED_SET_BONUS,
   hasCommonForgedSet,
 } from './EquipmentStatBonuses';
 import { createDefaultCharacterAttributes } from '../profile/CharacterAttributes';
 import { createDefaultPlayerProfile, type PlayerEquipment } from '../profile/PlayerProfile';
 
-function draconicSet(): PlayerEquipment {
+function draconicSet(suffix = ''): PlayerEquipment {
   return {
     ...createDefaultPlayerProfile().equipment,
-    helmet: 'common-forged-helmet',
-    chest: 'common-forged-chest',
-    pants: 'common-forged-pants',
-    gloves: 'common-forged-gloves',
-    boots: 'common-forged-boots',
+    helmet: `common-forged-helmet${suffix}`,
+    chest: `common-forged-chest${suffix}`,
+    pants: `common-forged-pants${suffix}`,
+    gloves: `common-forged-gloves${suffix}`,
+    boots: `common-forged-boots${suffix}`,
   };
 }
 
@@ -25,14 +26,35 @@ describe('Draconic equipment set bonuses', () => {
     const equipment = draconicSet();
 
     expect(hasCommonForgedSet(equipment)).toBe(true);
-    // Pieces: 1 vitality, 2+4+3 defense, 1 agility, 3 attack, 3 agility.
-    // Set: +1 vitality, +2 attack, +3 defense, +2 agility.
+    expect(equippedForgedSetLine(equipment)).toBe('defense');
+    // Pieces (DEF): defense 3+5+4+3+3, vitality 1+1+1, agility 1+2.
+    // Set (DEF): +2 vitality, +7 defense, +1 agility.
+    expect(equippedAttributeBonuses(equipment)).toMatchObject({
+      vitality: 5,
+      defense: 25,
+      agility: 4,
+    });
+  });
+
+  it('adds the offensive five-piece bonus when the whole ATK set is worn', () => {
+    const equipment = draconicSet('-atk');
+
+    expect(equippedForgedSetLine(equipment)).toBe('attack');
+    // Pieces (ATK): attack 3+4+3+4+3, vitality 1, agility 1+2+2.
+    // Set (ATK): +1 vitality, +7 attack, +2 agility.
     expect(equippedAttributeBonuses(equipment)).toMatchObject({
       vitality: 2,
-      attack: 5,
-      defense: 12,
-      agility: 6,
+      attack: 24,
+      agility: 7,
     });
+  });
+
+  it('grants no set bonus while the armor mixes the two lines', () => {
+    const equipment = draconicSet();
+    equipment.gloves = 'common-forged-gloves-atk';
+
+    expect(equippedForgedSetLine(equipment)).toBeNull();
+    expect(hasCommonForgedSet(equipment)).toBe(false);
   });
 
   it('grants piece stats without the set bonus while one slot is empty', () => {
@@ -40,38 +62,40 @@ describe('Draconic equipment set bonuses', () => {
     equipment.boots = null;
 
     expect(hasCommonForgedSet(equipment)).toBe(false);
-    // Only the four worn pieces count: 1 vitality, defense 2+4+3, agility 1 + 3 attack.
+    // Only the four worn pieces count: vitality 1+1+1, defense 3+5+4+3, agility 1.
     expect(equippedAttributeBonuses(equipment)).toMatchObject({
-      vitality: 1,
-      attack: 3,
-      defense: 9,
+      vitality: 3,
+      defense: 15,
       agility: 1,
     });
   });
 
   it('keeps the retired strength bonus out of the new attribute set', () => {
-    expect(COMMON_FORGED_SET_BONUS).not.toHaveProperty('strength');
-    expect(Object.keys(COMMON_FORGED_SET_BONUS).sort()).toEqual([
-      'agility', 'attack', 'defense', 'vitality',
-    ]);
+    for (const bonus of Object.values(FORGED_SET_BONUS)) {
+      expect(bonus).not.toHaveProperty('strength');
+    }
+    // Each line leans on its own attribute and never grants both at once.
+    expect(FORGED_SET_BONUS.defense.defense ?? 0).toBeGreaterThan(FORGED_SET_BONUS.defense.attack ?? 0);
+    expect(FORGED_SET_BONUS.attack.attack ?? 0).toBeGreaterThan(FORGED_SET_BONUS.attack.defense ?? 0);
   });
 
   it('adds equipment bonuses on top of the allocated attributes', () => {
     const attributes = { ...createDefaultCharacterAttributes(), vitality: 20, attack: 10 };
     const total = attributesWithEquipment(attributes, draconicSet());
 
-    expect(total.vitality).toBe(22);
-    expect(total.attack).toBe(15);
-    expect(total.defense).toBe(12);
+    // 20 allocated vitality + 5 from the DEF set, 10 attack, 25 defense.
+    expect(total.vitality).toBe(25);
+    expect(total.attack).toBe(10);
+    expect(total.defense).toBe(25);
   });
 
   it('resolves the equipped weapon damage shared by the sheet and the fight', () => {
     const equipment = { ...createDefaultPlayerProfile().equipment, weapon: 'starter-sword' };
 
-    expect(equippedWeaponDamage(equipment)).toBe(8);
+    expect(equippedWeaponDamage(equipment)).toBe(4);
     // The legacy mirror cannot add the same sword twice, and unequipping it
     // takes the damage back to zero.
-    expect(equippedWeaponDamage({ ...equipment, primaryWeapon: 'starter-sword' })).toBe(8);
+    expect(equippedWeaponDamage({ ...equipment, primaryWeapon: 'starter-sword' })).toBe(4);
     expect(equippedWeaponDamage({ ...equipment, weapon: null })).toBe(0);
     expect(equippedWeaponDamage({ ...equipment, weapon: 'runic-crystal' })).toBe(0);
   });

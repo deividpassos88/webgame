@@ -98,7 +98,7 @@ describe('CharacterAttributes', () => {
     );
 
     expect(stats.maxHealth).toBeCloseTo(160);
-    // Base weapon damage 8 + 5 Attack points.
+    // Base weapon damage 4 + 5 Attack points.
     expect(stats.attackDamage).toBeCloseTo(13);
     expect(stats.movementSpeed).toBeCloseTo(4.5 * 1.125);
     expect(stats.attackCooldown).toBeCloseTo(0.67 / 1.1);

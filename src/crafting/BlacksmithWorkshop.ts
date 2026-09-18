@@ -1,3 +1,4 @@
+import { CRAFT_LINES, type CraftLineId } from './CraftLine';
 import { getInventoryItem } from '../inventory/InventoryCatalog';
 import type { InventoryStack, PlayerProfile } from '../profile/PlayerProfile';
 
@@ -21,25 +22,71 @@ export const COMMON_CRAFT_MATERIAL_IDS = [
   'volatile-draconic-essence', 'ossified-draco-ribs', 'verdant-draco-talisman', 'crimson-draco-talon', 'obsidian-draco-eye',
 ] as const;
 
-const ingredients = (...itemIds: readonly (typeof COMMON_CRAFT_MATERIAL_IDS)[number][]) =>
-  itemIds.map((itemId) => ({ itemId, quantity: 10 }));
-
-/** The forge sells the five-piece common line, one recipe per armor slot. */
-export const BLACKSMITH_RECIPES = [
-  { id: 'common-forged-helmet', outputItemId: 'common-forged-helmet', label: 'Draconic Helmet', ingredients: ingredients('worn-draco-claw', 'worn-draco-hide', 'black-horn-fragment', 'crimson-fang', 'serrated-rubra-scale') },
-  { id: 'common-forged-chest', outputItemId: 'common-forged-chest', label: 'Draconic Chestplate', ingredients: ingredients('worn-draco-claw', 'worn-draco-hide', 'volatile-draconic-essence', 'ossified-draco-ribs', 'verdant-draco-talisman') },
-  { id: 'common-forged-pants', outputItemId: 'common-forged-pants', label: 'Draconic Pants', ingredients: ingredients('worn-draco-hide', 'black-horn-fragment', 'volatile-draconic-essence', 'crimson-draco-talon', 'obsidian-draco-eye') },
-  { id: 'common-forged-gloves', outputItemId: 'common-forged-gloves', label: 'Draconic Gloves', ingredients: ingredients('worn-draco-claw', 'crimson-fang', 'serrated-rubra-scale', 'ossified-draco-ribs', 'crimson-draco-talon') },
-  { id: 'common-forged-boots', outputItemId: 'common-forged-boots', label: 'Draconic Boots', ingredients: ingredients('black-horn-fragment', 'crimson-fang', 'volatile-draconic-essence', 'verdant-draco-talisman', 'obsidian-draco-eye') },
+/**
+ * One entry per armor slot. The two craft lines share the material list and
+ * differ only in the cost per material and in the item they output, so the
+ * slot table is declared once and expanded below.
+ */
+const SLOT_RECIPES = [
+  { slot: 'helmet', label: 'Draconic Helmet', materials: ['worn-draco-claw', 'worn-draco-hide', 'black-horn-fragment', 'crimson-fang', 'serrated-rubra-scale'] },
+  { slot: 'chest', label: 'Draconic Chestplate', materials: ['worn-draco-claw', 'worn-draco-hide', 'volatile-draconic-essence', 'ossified-draco-ribs', 'verdant-draco-talisman'] },
+  { slot: 'pants', label: 'Draconic Pants', materials: ['worn-draco-hide', 'black-horn-fragment', 'volatile-draconic-essence', 'crimson-draco-talon', 'obsidian-draco-eye'] },
+  { slot: 'gloves', label: 'Draconic Gloves', materials: ['worn-draco-claw', 'crimson-fang', 'serrated-rubra-scale', 'ossified-draco-ribs', 'crimson-draco-talon'] },
+  { slot: 'boots', label: 'Draconic Boots', materials: ['black-horn-fragment', 'crimson-fang', 'volatile-draconic-essence', 'verdant-draco-talisman', 'obsidian-draco-eye'] },
 ] as const;
 
+export type BlacksmithSlotRecipeId = (typeof SLOT_RECIPES)[number]['slot'];
+
+/**
+ * The output of a slot recipe. The defensive line keeps the historical ids so
+ * profiles saved before the two lines existed stay valid; the offensive line
+ * adds the `-atk` suffix.
+ */
+function outputItemId(slot: BlacksmithSlotRecipeId, line: CraftLineId): string {
+  return line === 'attack' ? `common-forged-${slot}-atk` : `common-forged-${slot}`;
+}
+
+/** The forge sells the five-piece common line in both ATK and DEF variants. */
+export const BLACKSMITH_RECIPES = CRAFT_LINES.flatMap((line) =>
+  SLOT_RECIPES.map((slotRecipe) => ({
+    id: `${outputItemId(slotRecipe.slot, line.id)}:${line.id}`,
+    line: line.id,
+    slot: slotRecipe.slot,
+    outputItemId: outputItemId(slotRecipe.slot, line.id),
+    label: `${slotRecipe.label} [${line.tag}]`,
+    ingredients: slotRecipe.materials.map((itemId) => ({
+      itemId: itemId as (typeof COMMON_CRAFT_MATERIAL_IDS)[number],
+      quantity: line.materialCost,
+    })),
+  })),
+) as readonly BlacksmithRecipe[];
+
+export interface BlacksmithRecipe {
+  readonly id: string;
+  readonly line: CraftLineId;
+  readonly slot: BlacksmithSlotRecipeId;
+  readonly outputItemId: string;
+  readonly label: string;
+  readonly ingredients: readonly { readonly itemId: string; readonly quantity: number }[];
+}
+
 export type BlacksmithRecipeId = (typeof BLACKSMITH_RECIPES)[number]['id'];
+
+/** Every recipe of one line, in the slot order the catalog lists them. */
+export function recipesForLine(line: CraftLineId): readonly BlacksmithRecipe[] {
+  return BLACKSMITH_RECIPES.filter((recipe) => recipe.line === line);
+}
+
+export function findBlacksmithRecipe(recipeId: string): BlacksmithRecipe | undefined {
+  return BLACKSMITH_RECIPES.find((recipe) => recipe.id === recipeId);
+}
+
 export type BlacksmithPurchaseResult =
   | { readonly kind: 'purchased'; readonly profile: PlayerProfile }
   | { readonly kind: 'license-active'; readonly profile: PlayerProfile }
   | { readonly kind: 'insufficient-guild-tokens'; readonly profile: PlayerProfile };
 export type BlacksmithCraftResult =
-  | { readonly kind: 'crafted'; readonly profile: PlayerProfile; readonly recipe: (typeof BLACKSMITH_RECIPES)[number] }
+  | { readonly kind: 'crafted'; readonly profile: PlayerProfile; readonly recipe: BlacksmithRecipe }
   | { readonly kind: 'license-expired'; readonly profile: PlayerProfile }
   | { readonly kind: 'insufficient-materials'; readonly profile: PlayerProfile }
   | { readonly kind: 'backpack-full'; readonly profile: PlayerProfile }
@@ -71,7 +118,7 @@ export function craftBlacksmithRecipe(
   recipeId: string,
   now: number
 ): BlacksmithCraftResult {
-  const recipe = BLACKSMITH_RECIPES.find((candidate) => candidate.id === recipeId);
+  const recipe = findBlacksmithRecipe(recipeId);
   if (!recipe) return { kind: 'unknown-recipe', profile };
   if (!hasActiveLicense(profile, now)) return { kind: 'license-expired', profile };
   if (!recipe.ingredients.every(({ itemId, quantity }) => countItem(profile.backpack, itemId) >= quantity)) {
@@ -118,11 +165,16 @@ function spendItem(
   quantity: number
 ): InventoryStack[] {
   let remaining = quantity;
-  return stacks.flatMap((stack) => {
-    if (stack.itemId !== itemId || remaining === 0) return [{ ...stack }];
-    const spent = Math.min(stack.quantity, remaining);
-    remaining -= spent;
-    const nextQuantity = stack.quantity - spent;
-    return nextQuantity > 0 ? [{ ...stack, quantity: nextQuantity }] : [];
-  });
+  const next: InventoryStack[] = [];
+  for (const stack of stacks) {
+    if (stack.itemId !== itemId || remaining === 0) {
+      next.push(stack);
+      continue;
+    }
+    const consumed = Math.min(stack.quantity, remaining);
+    remaining -= consumed;
+    const leftover = stack.quantity - consumed;
+    if (leftover > 0) next.push({ ...stack, quantity: leftover });
+  }
+  return next;
 }

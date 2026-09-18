@@ -3706,6 +3706,56 @@ body #lobby-screen .equipment-slot.is-equipped,
 .workshop-recipes > header { display: grid; gap: 5px; }
 .workshop-recipes.is-locked { opacity: .68; }
 .workshop-recipes__locked-copy { margin: 0; color: #b6baad; font: 12px/1.5 Consolas, 'Courier New', monospace; }
+/* ---------- Seletor de linha de criação (ATK / DEF) ---------- */
+/*
+ * A native <select> keeps the platform's down arrow and keyboard handling; the
+ * caret below is drawn on top of it so the control matches the forge palette.
+ */
+.workshop-craft-line { display: grid; gap: 6px; padding: 8px 9px; border: 1px solid rgba(211, 221, 202, .22); background: rgba(12, 16, 13, .86); }
+.workshop-craft-line__label { color: #e3a959; font: 700 10px/1 Consolas, monospace; letter-spacing: .14em; text-transform: uppercase; }
+.workshop-craft-line__control { position: relative; display: block; }
+.workshop-craft-line__control::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid #e0a553;
+  border-bottom: 2px solid #e0a553;
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+.workshop-craft-line select {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 32px 8px 10px;
+  border: 1px solid #b77c38;
+  border-radius: 0;
+  color: #f8e4bb;
+  background: linear-gradient(135deg, #3a2417, #171d24);
+  font: 600 12px Consolas, monospace;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.workshop-craft-line select:hover:not(:disabled) { border-color: #f0c170; color: #fff7df; }
+.workshop-craft-line select:disabled { opacity: .55; cursor: not-allowed; }
+.workshop-craft-line select:focus-visible { outline: 2px solid #f0c170; outline-offset: 1px; }
+.workshop-craft-line select option { color: #f8e4bb; background: #171d24; }
+.workshop-craft-line__hint { margin: 0; color: #b6baad; font: 11px/1.5 Consolas, 'Courier New', monospace; }
+.workshop-craft-line__hint strong { color: #e3a959; letter-spacing: .08em; }
+/* Each line gets its own accent so the list reads as ATK or DEF at a glance. */
+.workshop-craft-line[data-craft-line='attack'] { border-color: rgba(224, 106, 58, .5); }
+.workshop-craft-line[data-craft-line='attack'] .workshop-craft-line__label,
+.workshop-craft-line[data-craft-line='attack'] .workshop-craft-line__hint strong { color: #f0925f; }
+.workshop-craft-line[data-craft-line='attack'] select { border-color: #a1502c; }
+.workshop-craft-line[data-craft-line='defense'] { border-color: rgba(120, 176, 214, .45); }
+.workshop-craft-line[data-craft-line='defense'] .workshop-craft-line__label,
+.workshop-craft-line[data-craft-line='defense'] .workshop-craft-line__hint strong { color: #8fc6ec; }
+.workshop-craft-line[data-craft-line='defense'] select { border-color: #3f6d90; }
+.blacksmith-recipe[data-craft-line='attack'] { border-left: 3px solid rgba(224, 106, 58, .8); }
+.blacksmith-recipe[data-craft-line='defense'] { border-left: 3px solid rgba(120, 176, 214, .75); }
 .blacksmith-screen .blacksmith-recipes { gap: 8px; }
 .blacksmith-screen .blacksmith-recipe {
   grid-template-columns: 54px minmax(0, 1fr) auto;

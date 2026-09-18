@@ -4,10 +4,11 @@ import type { InventorySnapshot } from '../inventory/InventoryStore';
 import { deriveCharacterStats, type CharacterAttributeKey } from '../profile/CharacterAttributes';
 import type { CanonicalRpgEquipmentSlot, PlayerProfile } from '../profile/PlayerProfile';
 import {
-  COMMON_FORGED_SET_BONUS,
   attributesWithEquipment,
+  equippedForgedSetLine,
   equippedWeaponDamage,
-  hasCommonForgedSet,
+  forgedSetLabel,
+  FORGED_SET_BONUS,
 } from '../equipment/EquipmentStatBonuses';
 
 export type UiEquipmentSlot = CanonicalRpgEquipmentSlot;
@@ -129,11 +130,15 @@ export function buildRpgUiViewModel(
     ...LOBBY_COMBAT_BASE,
     attackDamage: weaponDamage,
   });
-  const setBonus = hasCommonForgedSet(inventory.equipment)
+  // The sheet names the worn line: both forged sets grant five-piece bonuses,
+  // but each one leans on a different attribute.
+  const setLine = equippedForgedSetLine(inventory.equipment);
+  const setBonusLabel = forgedSetLabel(setLine);
+  const setBonus = setLine && setBonusLabel
     ? {
-      label: 'Conjunto Draconic',
+      label: setBonusLabel,
       attributes: CURRENT_STATUS_ATTRIBUTES.flatMap(({ key, label }) => {
-        const value = COMMON_FORGED_SET_BONUS[key] ?? 0;
+        const value = FORGED_SET_BONUS[setLine][key] ?? 0;
         return value ? [{ label, value }] : [];
       }),
     }

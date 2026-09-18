@@ -11,7 +11,7 @@ describe('final boss craft catalog', () => {
       slot: 'weapon',
       iconSrc: '/items/equipment/armas/sword.webp',
       description: 'Uma espada de treino confiável, entregue à recruta da guilda.',
-      baseDamage: 8,
+      baseDamage: 4,
     });
   });
 
@@ -37,26 +37,44 @@ describe('final boss craft catalog', () => {
     }
   });
 
-  it('catalogues the five Draconic pieces with their tier label, slots and supplied art', () => {
+  it('catalogues both forged lines with their line tag, slots and supplied art', () => {
     const expected = [
-      ['common-forged-helmet', 'Draconic Helmet [Common]', 'helmet', '/items/equipment/common-forged/helmet.webp'],
-      ['common-forged-chest', 'Draconic Chestplate [Common]', 'chest', '/items/equipment/common-forged/chest.webp'],
-      ['common-forged-pants', 'Draconic Pants [Common]', 'pants', '/items/equipment/common-forged/pants.webp'],
-      ['common-forged-gloves', 'Draconic Gloves [Common]', 'gloves', '/items/equipment/common-forged/gloves.webp'],
-      ['common-forged-boots', 'Draconic Boots [Common]', 'boots', '/items/equipment/common-forged/boots.webp'],
+      ['common-forged-helmet', 'Draconic Helmet [DEF]', 'helmet', 'defense'],
+      ['common-forged-chest', 'Draconic Chestplate [DEF]', 'chest', 'defense'],
+      ['common-forged-pants', 'Draconic Pants [DEF]', 'pants', 'defense'],
+      ['common-forged-gloves', 'Draconic Gloves [DEF]', 'gloves', 'defense'],
+      ['common-forged-boots', 'Draconic Boots [DEF]', 'boots', 'defense'],
+      ['common-forged-helmet-atk', 'Draconic Helmet [ATK]', 'helmet', 'attack'],
+      ['common-forged-chest-atk', 'Draconic Chestplate [ATK]', 'chest', 'attack'],
+      ['common-forged-pants-atk', 'Draconic Pants [ATK]', 'pants', 'attack'],
+      ['common-forged-gloves-atk', 'Draconic Gloves [ATK]', 'gloves', 'attack'],
+      ['common-forged-boots-atk', 'Draconic Boots [ATK]', 'boots', 'attack'],
     ] as const;
 
-    for (const [id, label, slot, iconSrc] of expected) {
+    for (const [id, label, slot, craftLine] of expected) {
       expect(getInventoryItem(id)).toMatchObject({
         id,
         label,
         kind: 'equipment',
         rarity: 'common',
         slot,
+        craftLine,
         maxStack: 1,
-        iconSrc,
+        iconSrc: `/items/equipment/common-forged/${slot}.webp`,
         equippedIconSrc: `/items/equipment/equipado/${slot}.png`,
       });
+    }
+  });
+
+  it('focuses every defensive piece on Defense and every offensive piece on Attack', () => {
+    for (const slot of ['helmet', 'chest', 'pants', 'gloves', 'boots'] as const) {
+      const defense = getInventoryItem(`common-forged-${slot}`);
+      const attack = getInventoryItem(`common-forged-${slot}-atk`);
+
+      expect(defense?.statBonuses?.defense ?? 0).toBeGreaterThan(0);
+      expect(defense?.statBonuses?.defense ?? 0).toBeGreaterThan(defense?.statBonuses?.attack ?? 0);
+      expect(attack?.statBonuses?.attack ?? 0).toBeGreaterThan(0);
+      expect(attack?.statBonuses?.attack ?? 0).toBeGreaterThan(attack?.statBonuses?.defense ?? 0);
     }
   });
 

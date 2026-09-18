@@ -25,7 +25,7 @@ describe('Game campaign progression contract', () => {
     profileWithStarterSwordEquipped.equipment.primaryWeapon = 'starter-sword';
 
     expect(resolveEquippedBaseDamage(profileWithSwordOnlyInBackpack)).toBe(0);
-    expect(resolveEquippedBaseDamage(profileWithStarterSwordEquipped)).toBe(8);
+    expect(resolveEquippedBaseDamage(profileWithStarterSwordEquipped)).toBe(4);
   });
 
   it('renders the five-times fatigue reserve as a percentage of 500', () => {
