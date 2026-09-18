@@ -10,8 +10,11 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 const REGULAR_ENEMY_PATH = '/models/Monstros/fase%201-1/monstro_normal.glb';
 const ARCHER_ENEMY_PATH = '/models/Monstros/fase%201-1/monster_arch.glb';
 const GUARDIAN_ENEMY_PATH = '/models/Monstros/fase%201-1/monstro_guardiao.glb';
-const DRACO_DECODER_PATH =
-  'https://www.gstatic.com/draco/versioned/decoders/1.5.7/';
+/*
+ * Bundled decoder (public/draco -> /draco): no CDN round-trip on cold start
+ * and no hard dependency on an external host for the models to load.
+ */
+const DRACO_DECODER_PATH = '/draco/';
 
 export interface EnemyModelLoader {
   loadAsync(path: string): Promise<GLTF>;

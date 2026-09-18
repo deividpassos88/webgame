@@ -25,7 +25,7 @@ describe('item tooltip', () => {
     host.innerHTML = markup;
 
     expect(host.querySelector('.item-tooltip__description')?.textContent)
-      .toBe('Usada para forjar o Capacete, Peitoral e Calca do Forjador Comum.');
+      .toBe('Usada para forjar o Capacete, Peitoral e Calca do Conjunto Comum de Criação de equipamentos.');
   });
 
   it('shows one game-owned tooltip for a focused or hovered item and hides it on exit', () => {

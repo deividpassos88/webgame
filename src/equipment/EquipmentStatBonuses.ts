@@ -6,26 +6,57 @@ import {
 } from '../profile/CharacterAttributes';
 import type { PlayerEquipment } from '../profile/PlayerProfile';
 
-/** The common forged line, worn as a full set. */
-const COMMON_FORGE_SET_IDS = {
-  helmet: 'common-forged-helmet',
-  chest: 'common-forged-chest',
-  pants: 'common-forged-pants',
-  gloves: 'common-forged-gloves',
-  boots: 'common-forged-boots',
-} as const;
+import type { CraftLineId } from '../crafting/CraftLine';
 
 /**
- * Five-piece bonus for the common forged line. The retired `strength` point was
- * worth one health, while `vitality` is worth three, so the old +2 becomes a
- * single vitality point.
+ * The forged lines, worn as a full set. Both share the five slots; the ids
+ * differ because the workshop now forges an ATK and a DEF variant of each.
  */
-export const COMMON_FORGED_SET_BONUS: Readonly<Partial<CharacterAttributes>> = {
-  vitality: 1,
-  attack: 2,
-  defense: 3,
-  agility: 2,
+const FORGE_SET_IDS: Readonly<Record<CraftLineId, Readonly<Record<ArmorSlot, string>>>> = {
+  defense: {
+    helmet: 'common-forged-helmet',
+    chest: 'common-forged-chest',
+    pants: 'common-forged-pants',
+    gloves: 'common-forged-gloves',
+    boots: 'common-forged-boots',
+  },
+  attack: {
+    helmet: 'common-forged-helmet-atk',
+    chest: 'common-forged-chest-atk',
+    pants: 'common-forged-pants-atk',
+    gloves: 'common-forged-gloves-atk',
+    boots: 'common-forged-boots-atk',
+  },
 };
+
+/** The five armor slots a forged set covers (weapons are not part of it). */
+type ArmorSlot = 'helmet' | 'chest' | 'pants' | 'gloves' | 'boots';
+const ARMOR_SLOTS: readonly ArmorSlot[] = ['helmet', 'chest', 'pants', 'gloves', 'boots'];
+
+/**
+ * Five-piece bonus per line. Each set leans on the attribute its pieces stack:
+ * the defensive line closes on Defense (plus health), the offensive one on
+ * Attack. The retired `strength` point was worth one health, while `vitality`
+ * is worth three, so the old +2 becomes a single vitality point.
+ */
+export const FORGED_SET_BONUS: Readonly<Record<CraftLineId, Readonly<Partial<CharacterAttributes>>>> = {
+  defense: {
+    vitality: 2,
+    defense: 7,
+    agility: 1,
+  },
+  attack: {
+    vitality: 1,
+    attack: 7,
+    agility: 2,
+  },
+};
+
+/**
+ * Bonus of the defensive line, kept under the historical name so surfaces that
+ * only ever rendered the original set keep compiling unchanged.
+ */
+export const COMMON_FORGED_SET_BONUS: Readonly<Partial<CharacterAttributes>> = FORGED_SET_BONUS.defense;
 
 /**
  * Every worn slot, in the order the bonuses are summed. The legacy `weapon`
@@ -66,15 +97,35 @@ export function equippedAttributeBonuses(equipment: PlayerEquipment): CharacterA
     if (!stats) continue;
     for (const key of ATTRIBUTE_KEYS) bonuses[key] += stats[key] ?? 0;
   }
-  if (hasCommonForgedSet(equipment)) {
-    for (const key of ATTRIBUTE_KEYS) bonuses[key] += COMMON_FORGED_SET_BONUS[key] ?? 0;
+  const setLine = equippedForgedSetLine(equipment);
+  if (setLine) {
+    for (const key of ATTRIBUTE_KEYS) bonuses[key] += FORGED_SET_BONUS[setLine][key] ?? 0;
   }
   return bonuses;
 }
 
+/** True when the five armor slots wear the same forged line. */
 export function hasCommonForgedSet(equipment: PlayerEquipment): boolean {
-  return (Object.entries(COMMON_FORGE_SET_IDS) as [keyof typeof COMMON_FORGE_SET_IDS, string][])
-    .every(([slot, itemId]) => equipment[slot] === itemId);
+  return equippedForgedSetLine(equipment) !== null;
+}
+
+/**
+ * Which forged line is worn as a complete set, or `null` when the armor is
+ * incomplete or mixes the two lines - a mixed loadout earns no set bonus.
+ */
+export function equippedForgedSetLine(equipment: PlayerEquipment): CraftLineId | null {
+  for (const line of ['defense', 'attack'] as const) {
+    const ids = FORGE_SET_IDS[line];
+    if (ARMOR_SLOTS.every((slot) => equipment[slot] === ids[slot])) return line;
+  }
+  return null;
+}
+
+/** Set label for the line currently worn, used by the character sheet. */
+export function forgedSetLabel(line: CraftLineId | null): string | null {
+  if (line === 'attack') return 'Conjunto Draconic ATK';
+  if (line === 'defense') return 'Conjunto Draconic DEF';
+  return null;
 }
 
 export function attributesWithEquipment(

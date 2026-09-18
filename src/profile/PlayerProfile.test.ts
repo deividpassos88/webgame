@@ -192,6 +192,8 @@ describe('PlayerProfile progression', () => {
       ...['helmet', 'chest', 'pants', 'gloves', 'boots'].flatMap((slot) => [
         `predator-forged-${slot}`,
         `bulwark-forged-${slot}`,
+        // The offensive forged line postdates the legacy schema too.
+        `common-forged-${slot}-atk`,
       ]),
     ]);
     const itemIds = [

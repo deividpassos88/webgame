@@ -866,25 +866,42 @@
 }
 
 @media (max-width: 1180px) and (min-width: 821px) {
+  /*
+   * Fixed 96px tracks overflowed the tool column on every tablet (4 x 96px
+   * plus gaps needs ~420px, the column has ~300px). A wrapping flex row keeps
+   * four sockets per line and centres the leftover three, so the old 52px
+   * translate nudge is gone.
+   */
   html body #blacksmith-screen .workshop-tab-panel .equipment-grid {
-    grid-template-columns: repeat(4, 96px);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
   }
 
   html body #blacksmith-screen .workshop-tab-panel .equipment-slot,
   html body #blacksmith-screen .workshop-tab-panel .equipment-slot:last-child {
-    width: 96px;
-    height: 96px;
-    min-height: 96px;
+    flex: 0 0 calc((100% - 24px) / 4);
+    width: auto;
+    height: auto;
+    min-width: 0;
+    min-height: clamp(72px, 9vw, 104px);
+    transform: none;
   }
 
-  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:nth-child(5),
-  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:nth-child(6),
-  html body #blacksmith-screen .workshop-tab-panel .equipment-slot:nth-child(7) {
-    transform: translateX(52px);
+  /* Three tabs must share ~300px without truncating "Itens de craft". */
+  html body #blacksmith-screen .workshop-tabs { gap: 6px; padding: 6px; }
+  html body #blacksmith-screen .workshop-tabs button {
+    gap: 5px;
+    min-height: 42px;
+    padding: 8px 3px;
+    font-size: 8.5px;
+    letter-spacing: .02em;
   }
+  html body #blacksmith-screen .workshop-tabs button::before { width: 16px; height: 16px; }
 
   html body #blacksmith-screen .workshop-tab-panel .workshop-backpack-grid {
-    grid-template-columns: repeat(6, 64px);
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   html body #blacksmith-screen[data-workshop-panel='inventory'] .workshop-tab-body {
@@ -897,6 +914,21 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  #blacksmith-screen .workshop-tab-panel .equipment-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  #blacksmith-screen .workshop-tab-panel .equipment-slot,
+  #blacksmith-screen .workshop-tab-panel .equipment-slot:last-child {
+    flex: 0 0 calc((100% - 16px) / 3);
+    min-width: 0;
+    min-height: clamp(72px, 22vw, 104px);
+    transform: none;
   }
 
   #blacksmith-screen .workshop-tab-body,
@@ -950,3 +982,56 @@
   }
 }
 
+
+/*
+ * Tablet range: the forge scene used to absorb the whole column height (it is
+ * a flex:1 child), which on a portrait tablet produced a 390x1000 viewport —
+ * the bench backdrop was upscaled past its source resolution and the smith
+ * floated in the middle. A bounded height keeps the framing cinematic.
+ */
+@media (max-width: 1180px) {
+  html body #blacksmith-screen .workshop-conversation {
+    justify-content: flex-start;
+  }
+  html body #blacksmith-screen .workshop-conversation .blacksmith-scene {
+    flex: 0 1 auto;
+    height: clamp(300px, 46vh, 520px);
+    min-height: 0;
+  }
+}
+@media (max-width: 1180px) and (orientation: landscape) {
+  html body #blacksmith-screen .workshop-conversation .blacksmith-scene {
+    height: clamp(260px, 56vh, 460px);
+  }
+}
+
+/*
+ * Tablet fix: nested grids kept their automatic minimum size, so the widest
+ * ingredient label (a nowrap, ellipsised name) propagated up as a min-content
+ * floor: the craft panel was forced to ~416px inside a ~300px column and the
+ * recipe cards spilled off-screen. Explicit `minmax(0, 1fr)` tracks plus
+ * `min-width: 0` on every level let the panel follow its column instead.
+ */
+#blacksmith-screen .workshop-recipes { grid-template-columns: minmax(0, 1fr); }
+#blacksmith-screen .workshop-recipes > *,
+#blacksmith-screen .blacksmith-recipes,
+#blacksmith-screen .blacksmith-recipe,
+#blacksmith-screen .blacksmith-recipe__content,
+#blacksmith-screen .blacksmith-ingredients,
+#blacksmith-screen .blacksmith-ingredient,
+#blacksmith-screen .blacksmith-ingredient span { min-width: 0; }
+#blacksmith-screen .blacksmith-recipes { grid-template-columns: minmax(0, 1fr); }
+
+/*
+ * Craft catalogue: the item being crafted is the focus of the card, so its art
+ * scales with the viewport (76px on a portrait tablet, 112px on a desktop)
+ * while the material chips stay small.
+ */
+#blacksmith-screen .blacksmith-recipe {
+  grid-template-columns: clamp(76px, 7vw, 112px) minmax(0, 1fr);
+  gap: clamp(9px, 1.1vw, 14px);
+}
+#blacksmith-screen .blacksmith-recipe__art {
+  width: clamp(76px, 7vw, 112px);
+  height: clamp(76px, 7vw, 112px);
+}

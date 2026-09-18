@@ -87,10 +87,12 @@ import { getInventoryItem } from '../inventory/InventoryCatalog';
 import { commitGuildTokenBackpackExpansion } from '../inventory/BackpackExpansion';
 import {
   craftBlacksmithRecipe,
+  findBlacksmithRecipe,
   getBlacksmithLicensePresentation,
   purchaseBlacksmithLicense,
   type BlacksmithRecipeId,
 } from '../crafting/BlacksmithWorkshop';
+import { craftLineMaterialCost } from '../crafting/CraftLine';
 import { RewardChest } from '../entities/RewardChest';
 import { GameFlowController } from './GameFlowController';
 import { FinalBossRewardCoordinator } from '../rewards/FinalBossRewardCoordinator';
@@ -645,7 +647,10 @@ export class Game {
   private craftBlacksmithRecipe(recipeId: BlacksmithRecipeId): BlacksmithLobbyActionResult {
     const result = craftBlacksmithRecipe(this.profile, recipeId, Date.now());
     if (result.kind === 'license-expired') return { message: 'A licença da oficina expirou.' };
-    if (result.kind === 'insufficient-materials') return { message: 'São necessários 10 de cada material comum para esta peça.' };
+    if (result.kind === 'insufficient-materials') {
+      const cost = craftLineMaterialCost(findBlacksmithRecipe(recipeId)?.line ?? 'defense');
+      return { message: `São necessários ${cost} de cada material comum para esta peça.` };
+    }
     if (result.kind === 'backpack-full') return { message: 'Não há espaço livre para guardar esta peça na mochila.' };
     if (result.kind === 'unknown-recipe') return { message: 'A receita selecionada não existe.' };
     if (!savePlayerProfile(result.profile)) {

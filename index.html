@@ -10,6 +10,36 @@
   <link rel="stylesheet" href="/src/styles/skills-reference.css" />
 </head>
 <body>
+  <!-- Tablets (from ~640px wide) and desktops only: the game renders WebGL in
+       real time and has no touch controls, so smaller screens get a hint.
+       It never blocks: one tap closes it for the rest of the session. -->
+  <div class="unsupported-viewport">
+    <div>
+      <strong>Dragon Miner</strong>
+      <h2>Este jogo precisa de uma tela maior</h2>
+      <p>O Dragon Miner roda WebGL em tempo real e foi feito para tablets e computadores. Abra o jogo em um tablet (a partir de 640px de largura) ou no desktop.</p>
+      <button type="button" class="unsupported-viewport__continue" data-dismiss-unsupported>Continuar mesmo assim</button>
+    </div>
+  </div>
+  <script>
+    // The hint is advice, not a wall: dismiss it (button, backdrop or Esc) and
+    // it stays out of the way for the rest of the session.
+    (function () {
+      var notice = document.querySelector('.unsupported-viewport');
+      if (!notice) return;
+      var KEY = 'dragon-miner.unsupported-dismissed';
+      function dismiss() {
+        try { sessionStorage.setItem(KEY, '1'); } catch (error) { /* private mode */ }
+        if (notice.parentNode) notice.parentNode.removeChild(notice);
+      }
+      try { if (sessionStorage.getItem(KEY) === '1') { dismiss(); return; } } catch (error) { /* ignore */ }
+      notice.addEventListener('click', dismiss);
+      window.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') dismiss();
+      });
+    })();
+  </script>
+
   <div id="app">
     <canvas id="game-canvas"></canvas>
 

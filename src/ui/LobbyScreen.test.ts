@@ -272,8 +272,9 @@ describe('lobby character preparation', () => {
     profile.equipment.weapon = 'starter-sword';
     profile.equipment.primaryWeapon = 'starter-sword';
     const armed = statusOf();
-    expect(armed.derived.attackDamage).toBe(13);
-    expect(renderStatus(armed)).toContain('<dt>Ataque</dt><dd>13</dd>');
+    // 4 from the novice sword + 1 per allocated attack point.
+    expect(armed.derived.attackDamage).toBe(9);
+    expect(renderStatus(armed)).toContain('<dt>Ataque</dt><dd>9</dd>');
   });
 
   it('captions every status with its combat effect', () => {
@@ -314,8 +315,9 @@ describe('lobby character preparation', () => {
   it('labels weapon damage as Dano and keeps Ataque for the attribute', () => {
     // The sword grants flat damage, so its card must not promise attribute
     // points the status sheet would never show.
-    expect(itemStatSummary(getInventoryItem('starter-sword'))).toBe('Dano +8');
-    expect(itemStatSummary(getInventoryItem('common-forged-gloves'))).toBe('Ataque +3');
+    expect(itemStatSummary(getInventoryItem('starter-sword'))).toBe('Dano +4');
+    expect(itemStatSummary(getInventoryItem('common-forged-gloves'))).toBe('Defesa +3 · Agilidade +1');
+    expect(itemStatSummary(getInventoryItem('common-forged-gloves-atk'))).toBe('Ataque +4');
     expect(itemStatSummary(getInventoryItem('iron-shard'))).toBe('');
     expect(itemStatSummary(undefined)).toBe('');
   });
@@ -345,8 +347,8 @@ describe('lobby character preparation', () => {
     const withSword = renderStatus(
       buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot()).currentStatus
     );
-    // The sword's own 8 damage shows up in the status, exactly as promised.
-    expect(withSword).toContain('<dt>Ataque</dt><dd>13</dd>');
+    // The sword's own 4 damage shows up in the status, exactly as promised.
+    expect(withSword).toContain('<dt>Ataque</dt><dd>9</dd>');
     expect(withSword).toContain('<dt>Vida máxima</dt><dd>130</dd>');
   });
 

@@ -72,7 +72,14 @@ export class InputManager {
   private gameplayInputBlocked = false;
 
   constructor(private readonly domElement: HTMLElement) {
+    /*
+     * Pointer events cover mouse, touch and pen with one path, which is what
+     * tablets use; the mouse handlers stay as a fallback for engines that
+     * still synthesise only mouse events.
+     */
+    domElement.addEventListener('pointerdown', this.handlePointerDown);
     domElement.addEventListener('mousedown', this.handleMouseDown);
+    domElement.addEventListener('pointermove', this.handleMouseMove);
     domElement.addEventListener('mousemove', this.handleMouseMove);
     domElement.addEventListener('contextmenu', this.handleContextMenu);
     window.addEventListener('keydown', this.handleKeyDown, true);
@@ -82,6 +89,11 @@ export class InputManager {
     document.addEventListener('focusin', this.handleFocusIn, true);
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
+
+  private handlePointerDown = (event: PointerEvent) => {
+    if (event.pointerType === 'touch') event.preventDefault();
+    this.handleMouseDown(event);
+  };
 
   private handleMouseDown = (event: MouseEvent) => {
     if (this.gameplayInputBlocked) return;
@@ -153,7 +165,9 @@ export class InputManager {
   }
 
   public dispose() {
+    this.domElement.removeEventListener('pointerdown', this.handlePointerDown);
     this.domElement.removeEventListener('mousedown', this.handleMouseDown);
+    this.domElement.removeEventListener('pointermove', this.handleMouseMove);
     this.domElement.removeEventListener('mousemove', this.handleMouseMove);
     this.domElement.removeEventListener('contextmenu', this.handleContextMenu);
     window.removeEventListener('keydown', this.handleKeyDown, true);

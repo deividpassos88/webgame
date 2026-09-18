@@ -82,11 +82,11 @@ describe('RpgUiViewModel', () => {
     profile.equipment.weapon = 'starter-sword';
     profile.equipment.primaryWeapon = 'starter-sword';
     const armed = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
-    // 8 from the sword + 1 per attack point.
-    expect(armed.currentStatus.derived.attackDamage).toBeCloseTo(13);
+    // 4 from the sword + 1 per attack point.
+    expect(armed.currentStatus.derived.attackDamage).toBeCloseTo(9);
     expect(armed.currentStatus.derived.maxHealth).toBeCloseTo(130);
     // The attack reading in the sheet carries the weapon damage too.
-    expect(armed.currentStatus.attributes.find(({ key }) => key === 'attack')?.value).toBe(13);
+    expect(armed.currentStatus.attributes.find(({ key }) => key === 'attack')?.value).toBe(9);
   });
 
   it('exposes the Draconic set bonus for the lobby status panel', () => {
@@ -102,17 +102,51 @@ describe('RpgUiViewModel', () => {
     const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
 
     expect(view.currentStatus.setBonus).toEqual({
-      label: 'Conjunto Draconic',
+      label: 'Conjunto Draconic DEF',
       attributes: [
-        { label: 'Vitalidade', value: 1 },
-        { label: 'Ataque', value: 2 },
-        { label: 'Defesa', value: 3 },
-        { label: 'Agilidade', value: 2 },
+        { label: 'Vitalidade', value: 2 },
+        { label: 'Defesa', value: 7 },
+        { label: 'Agilidade', value: 1 },
       ],
     });
 
     profile.equipment.boots = null;
     const partial = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
     expect(partial.currentStatus.setBonus).toBeNull();
+  });
+
+  it('names the offensive line in the set bonus panel', () => {
+    const profile = createDefaultPlayerProfile();
+    Object.assign(profile.equipment, {
+      helmet: 'common-forged-helmet-atk',
+      chest: 'common-forged-chest-atk',
+      pants: 'common-forged-pants-atk',
+      gloves: 'common-forged-gloves-atk',
+      boots: 'common-forged-boots-atk',
+    });
+
+    const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
+
+    expect(view.currentStatus.setBonus?.label).toBe('Conjunto Draconic ATK');
+    expect(view.currentStatus.setBonus?.attributes).toEqual([
+      { label: 'Vitalidade', value: 1 },
+      { label: 'Ataque', value: 7 },
+      { label: 'Agilidade', value: 2 },
+    ]);
+  });
+
+  it('grants no set bonus while the armor mixes the two lines', () => {
+    const profile = createDefaultPlayerProfile();
+    Object.assign(profile.equipment, {
+      helmet: 'common-forged-helmet-atk',
+      chest: 'common-forged-chest',
+      pants: 'common-forged-pants-atk',
+      gloves: 'common-forged-gloves',
+      boots: 'common-forged-boots-atk',
+    });
+
+    const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
+
+    expect(view.currentStatus.setBonus).toBeNull();
   });
 });

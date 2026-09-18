@@ -231,8 +231,8 @@ describe('InventoryOverlay', () => {
     root.querySelector<HTMLButtonElement>('[data-inventory-index="0"]')?.click();
     document.querySelector<HTMLButtonElement>('[data-equip-inventory-item]')?.click();
     overlay.show('status');
-    // The sword brings its own 8 damage into the same reading the fight uses.
-    expect(panel()).toContain('Dano físico13.0');
+    // The sword brings its own 4 damage into the same reading the fight uses.
+    expect(panel()).toContain('Dano físico9.0');
     expect(root.dataset.characterMode).toBe('status');
   });
 });
