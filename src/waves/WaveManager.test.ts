@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WaveManager, type WaveSpawnRequest } from './WaveManager';
+import { miniBossHpMultiplier } from './WaveDifficultyScaling';
 
 function acknowledgeRequest(
   manager: WaveManager,
@@ -69,7 +70,7 @@ describe('WaveManager ADM transitions', () => {
 
     expect(manager.snapshot).toMatchObject({ phase: 'regular-wave', wave: 4, spawned: 0, alive: 0 });
     expect(manager.update(0)[0]).toMatchObject({
-      wave: 4, hpMultiplier: 1.6, damageMultiplier: 1.4, speedMultiplier: 1.12,
+      wave: 4, hpMultiplier: 1.12, damageMultiplier: 1.4, speedMultiplier: 1.12,
     });
   });
 
@@ -112,7 +113,7 @@ describe('WaveManager regular progression', () => {
     expect(request).toMatchObject({
       kind: 'regular-batch', wave: 1, regularCount: 8,
       bossCount: 0, miniBossCount: 0,
-      hpMultiplier: 1, damageMultiplier: 1, speedMultiplier: 1,
+      hpMultiplier: 1.03, damageMultiplier: 1, speedMultiplier: 1,
     });
   });
 
@@ -209,14 +210,25 @@ describe('WaveManager regular progression', () => {
       const [firstRequest] = manager.update(5);
       expect(firstRequest).toMatchObject({ kind: 'regular-batch', wave });
       const result = completeRegularWave(manager, `wave-${wave}`, firstRequest);
-      expect(result.requests.every((request) => request.hpMultiplier === firstRequest.hpMultiplier)).toBe(true);
+      // Lotes regulares seguem +3%/wave; a interrupcao de mini-boss usa a
+      // curva propria dela (+5%/wave, teto +30%).
+      expect(
+        result.requests
+          .filter((request) => request.kind === 'regular-batch')
+          .every((request) => request.hpMultiplier === firstRequest.hpMultiplier)
+      ).toBe(true);
+      for (const request of result.requests) {
+        if (request.kind === 'mini-boss') {
+          expect(request.hpMultiplier).toBeCloseTo(miniBossHpMultiplier(wave), 10);
+        }
+      }
       hpMultipliers.push(firstRequest.hpMultiplier);
       damageMultipliers.push(firstRequest.damageMultiplier);
       speedMultipliers.push(firstRequest.speedMultiplier);
       expect(manager.snapshot.phase).toBe(wave === 6 ? 'final-countdown' : 'intermission');
     }
 
-    expect(hpMultipliers).toEqual([1, 1.12, 1.32, 1.6, 1.95, 2.4]);
+    expect(hpMultipliers).toEqual([1.03, 1.06, 1.09, 1.12, 1.15, 1.18]);
     expect(damageMultipliers).toEqual([1, 1.1, 1.24, 1.4, 1.65, 2]);
     expect(speedMultipliers).toEqual([1, 1.03, 1.07, 1.12, 1.2, 1.3]);
     const [finalRequest] = manager.update(5);

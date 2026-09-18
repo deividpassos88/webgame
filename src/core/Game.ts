@@ -102,7 +102,7 @@ import {
   settleFinalBossLoot,
 } from '../rewards/FinalBossLoot';
 import { WarriorSkillController } from '../combat/WarriorSkillController';
-import { FatigueMeter, MAX_FATIGUE } from '../combat/FatigueMeter';
+import { FatigueMeter, MAX_FATIGUE, DASH_FATIGUE_COST } from '../combat/FatigueMeter';
 import {
   getWarriorSkill,
   isWarriorSkillUnlocked,
@@ -175,6 +175,8 @@ export class Game {
   private bossEffects = new BossSkillEffects(this.scene);
   private bossEncounterActive = false;
   private readonly miniBossSkillControllers = new Map<string, MiniBossSkillController>();
+  /** Id do mini-boss dono da barra de vida visivel no HUD. */
+  private miniBossBarId: string | null = null;
   private readonly miniBossEffects = new MiniBossSkillEffects(this.scene);
   private cameraController: CameraController;
   private input: InputManager;
@@ -391,6 +393,7 @@ export class Game {
           this.clearTargetMarker();
           this.player.setInputLocked(true);
           this.hud.hideBossHealth();
+          this.hideMiniBossBarForReset();
           this.flow.transition({ type: 'victory' });
           if (this.finalBossRewards) {
             this.finalBossRewards.start(
@@ -504,6 +507,7 @@ export class Game {
     this.stopMiniBossSkills();
     this.finalBattleSlots.reset();
     this.hud.hideBossHealth();
+    this.hideMiniBossBarForReset();
     this.hud.hideVictoryScreen();
     this.hud.hideCraftRewardNotification();
   }
@@ -926,6 +930,7 @@ export class Game {
           continue;
         }
         this.scene.add(enemy.root);
+        if (role === 'mini-boss') this.showMiniBossBar(id, enemy);
         records.push({ id, role });
       } catch (error) {
         Logger.error('Game:Waves', `Falha ao criar inimigo ${id}.`, error);
@@ -1045,6 +1050,7 @@ export class Game {
       this.hud.hideVictoryScreen();
       this.hud.hideCraftRewardNotification();
       this.hud.hideBossHealth();
+      this.hideMiniBossBarForReset();
       this.hud.hideWaveStatus();
       this.applyCharacterBuild(true);
       if (this.player.equippedWeaponId !== null) this.runProgression.weaponEquipped();
@@ -1140,7 +1146,10 @@ export class Game {
     const isMoving = this.keyboardDir.lengthSq() > 0;
     const preserveMarkedAttack = this.isFocusedTargetInRange();
     this.player.setKeyboardMoving(isMoving);
-    if (this.input.wasKeyPressed('shift')) this.player.tryDash(this.keyboardDir);
+    if (this.input.wasKeyPressed('shift') && this.player.tryDash(this.keyboardDir)) {
+      // Dash custa metade da barra de fadiga por uso.
+      this.fatigue.consume(DASH_FATIGUE_COST);
+    }
     if (movementInput.hasIntent) this.player.cancelClickMovement();
     if (isMoving) {
       this.player.moveByDirection(
@@ -1282,8 +1291,10 @@ export class Game {
       this.targetedEnemyRoot
       && situation
       && situation.targetAlive
+      && !this.player.isKeyboardMoving
     ) {
-      // O deslocamento continua, mas o corpo permanece orientado para o target.
+      // O deslocamento continua, mas o corpo permanece orientado para o target
+      // somente parado; em movimento o jogador gira para a direcao do passo.
       this.player.faceTargetInstantly(this.targetedEnemyRoot.position);
     }
     if (
@@ -1355,10 +1366,7 @@ export class Game {
     record.enemy.takeDamage(damage);
     this.healFromLifeSteal(damage);
     this.showFloatingDamage(target.position, damage);
-    if (record.role === 'boss') {
-      const values = getBossHealthHudValues(record.enemy);
-      this.hud.updateBossHealth(values.hp, values.maxHP);
-    }
+    this.syncCombatHealthBars(record);
 
     if (record.enemy.isDead) this.handleEnemyDeath(record);
   }
@@ -1395,13 +1403,37 @@ export class Game {
         record.enemy.applyElementalHit(skill.element, Math.max(1, damage * 0.12));
       }
       this.showFloatingDamage(record.enemy.root.position, damage);
-      if (record.role === 'boss') {
-        const values = getBossHealthHudValues(record.enemy);
-        this.hud.updateBossHealth(values.hp, values.maxHP);
-      }
+      this.syncCombatHealthBars(record);
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
     this.healFromLifeSteal(lifeStealDamage);
+  }
+
+  /** Mostra/assuma a barra de vida do mini-boss ativo no HUD. */
+  private showMiniBossBar(id: string, enemy: Enemy): void {
+    this.miniBossBarId = id;
+    const values = getBossHealthHudValues(enemy);
+    this.hud.updateMiniBossHealth(values.hp, values.maxHP);
+    this.hud.showMiniBossHealth();
+  }
+
+  /** Esconde a barra do mini-boss em resets/trocas de fase. */
+  private hideMiniBossBarForReset(): void {
+    this.miniBossBarId = null;
+    this.hud.hideMiniBossHealth();
+  }
+
+  /** Atualiza a barra certa (boss final de 5 barras ou mini-boss). */
+  private syncCombatHealthBars(record: CombatRecord): void {
+    if (record.role === 'boss') {
+      const values = getBossHealthHudValues(record.enemy);
+      this.hud.updateBossHealth(values.hp, values.maxHP);
+      return;
+    }
+    if (record.role === 'mini-boss' && record.id === this.miniBossBarId) {
+      const values = getBossHealthHudValues(record.enemy);
+      this.hud.updateMiniBossHealth(values.hp, values.maxHP);
+    }
   }
 
   private handleEnemyDeath(record: CombatRecord): void {
@@ -1411,6 +1443,20 @@ export class Game {
     const experienceWave = this.runProgression.snapshot.wave;
     const earnsCampaignExperience = this.runProgression.snapshot.phase === 'regular-wave' || death.role === 'boss';
     if (record.role === 'boss') this.stopBossSkills();
+    if (record.role === 'mini-boss' && record.id === this.miniBossBarId) {
+      // Se outro mini-boss seguir vivo, a barra passa para ele.
+      const next = this.combatRegistry.activeRoots()
+        .map((root) => this.combatRegistry.findByRoot(root))
+        .find((entry): entry is CombatRecord => (
+          entry !== null && entry.role === 'mini-boss' && entry.id !== record.id
+        ));
+      if (next) {
+        this.showMiniBossBar(next.id, next.enemy);
+      } else {
+        this.miniBossBarId = null;
+        this.hud.hideMiniBossHealth();
+      }
+    }
     if (!this.runProgression.enemyDefeated(death.id, death.phaseId)) return;
     this.applyKillRewards(record.role, record.enemy);
     if (this.targetedEnemyRoot === target) {

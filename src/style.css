@@ -229,20 +229,6 @@ html, body {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .character-card,
-  #confirm-character,
-  #loading-screen {
-    transition: none;
-  }
-
-  .character-card:hover:not(:disabled),
-  .character-card.is-selected,
-  #confirm-character:hover:not(:disabled) {
-    transform: none;
-  }
-}
-
 #hud {
   position: absolute;
   top: 0;
@@ -416,11 +402,6 @@ html, body {
   #reward-selection .reward-options::after { display: none; }
   #reward-selection .reward-panel { max-height: calc(100vh - 20px); padding: 16px; }
   .reward-preview-stage { max-height: 190px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .reward-weapon-card { transition: none; }
-  .reward-weapon-card:hover:not(:disabled) { transform: none; }
 }
 
 @media (max-width: 560px) {
@@ -682,6 +663,53 @@ html, body {
 }
 .boss-fill {
   background: linear-gradient(180deg, #a01414, #4a0808);
+}
+
+/* Rotulo dentro da barra do boss: "[ 5x  100% ]" -> "[ 4x ... ]" ... "[ 1x ]".
+ * Fonte de jogo (Cinzel, carregada no index.html; Georgia como fallback). */
+.boss-bar {
+  position: relative;
+}
+.boss-bar-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-family: 'Cinzel', Georgia, 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: .14em;
+  color: #fff7e0;
+  text-shadow: 0 1px 2px #000, 0 0 8px rgba(0, 0, 0, .85);
+  pointer-events: none;
+}
+
+/* Barra de vida dos mini-bosses (dourada, menor que a do boss final).
+ * Fica no mesmo fluxo do container do boss (static), logo abaixo dele. */
+#mini-boss-health-container {
+  position: static;
+  width: min(420px, 100%);
+  margin-top: 8px;
+  text-align: center;
+  transition: opacity 0.5s ease;
+}
+#mini-boss-health-container.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.mini-boss-name {
+  color: #efb846;
+  font-size: 11px;
+  letter-spacing: .18em;
+}
+.mini-boss-bar {
+  height: 14px;
+  border-color: #8a6a1c;
+}
+.mini-boss-fill {
+  background: linear-gradient(180deg, #efb846, #8a5a10);
 }
 
 /* ---------- Bottom HUD ---------- */
@@ -1237,13 +1265,6 @@ html, body {
   .attribute-row label small { font-size: 8px; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .player-portrait,
-  .attribute-row button,
-  .character-tabs button { transition: none !important; }
-  .player-portrait:hover { transform: none; }
-}
-
 /* ---------- Cinzafogo lobby remaster ---------- */
 #class-select-screen,
 #lobby-screen {
@@ -1525,12 +1546,6 @@ html, body {
   .compact-grid { grid-template-columns: repeat(5, minmax(38px, 1fr)); }
   .lobby-skill-list { grid-template-columns: 1fr; }
   .lobby-equipment .equipment-grid { grid-template-columns: 1fr 1fr; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lobby-tabs button,
-  .primary-action,
-  .class-choice { transition: none; }
 }
 
 @layer legacy-warrior-flow {
@@ -1951,17 +1966,6 @@ button.inventory-slot { cursor: pointer; }
   .skills { max-width: 96vw; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
 .admin-panel-toggle {
   width: 100%;
   display: flex;
@@ -1999,10 +2003,6 @@ button.inventory-slot { cursor: pointer; }
 .admin-control:focus-visible { outline: 2px solid #ffb800; outline-offset: 2px; }
 .admin-control:disabled { color: #777; border-color: #333; cursor: not-allowed; }
 .admin-toggle[aria-pressed="true"]::after { content: ' ATIVO'; font-weight: 700; }
-
-@media (prefers-reduced-motion: reduce) {
-  #admin-panel, .admin-control { transition: none; }
-}
 
 }
 
@@ -2549,12 +2549,6 @@ button.equipment-slot.is-equipped:focus-visible { outline: 2px solid #f0dba1; ou
 .lobby-attribute-clear:focus-visible,
 .lobby-confirm-attributes:focus-visible { outline: 2px solid #f1d28a; outline-offset: 2px; }
 
-@media (prefers-reduced-motion: reduce) {
-  .lobby-attribute-row button,
-  .lobby-attribute-clear,
-  .lobby-confirm-attributes { transition: none !important; }
-}
-
 .inventory-item-glyph {
   display: grid;
   place-items: center;
@@ -2815,15 +2809,6 @@ button.equipment-slot.is-equipped:focus-visible { outline: 2px solid #f0dba1; ou
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .craft-inspector-glint,
-  .craft-item-inspector,
-  .craft-reward-notification { animation: none; }
-  .craft-inspector-glint { opacity: 0; }
-  .craft-item-inspector,
-  .craft-reward-notification { scroll-behavior: auto; }
-}
-
 /* ---------- Progression HUD and focused character sheets ---------- */
 #bottom-hud {
   width: min(1420px, calc(100vw - 36px));
@@ -3007,11 +2992,6 @@ button.equipment-slot.is-equipped:focus-visible { outline: 2px solid #f0dba1; ou
   .character-panel > * { margin-bottom: 12px; }
   .backpack-card .inventory-grid { grid-template-columns: repeat(4, minmax(58px, 1fr)); }
   .attribute-row { grid-template-columns: minmax(130px, 1fr) 44px 43px 48px; gap: 5px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hud-utility-button { transition: none; }
-  .hud-utility-button:hover { transform: none; }
 }
 
 /* ---------- Compact battlefield HUD v3 ---------- */
@@ -3265,14 +3245,6 @@ button.equipment-slot.is-equipped:focus-visible { outline: 2px solid #f0dba1; ou
   #bottom-hud .bar-text { font-size: 8px; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  #gameplay-utility-dock .hud-utility-button,
-  #bottom-hud .health-bar-fill,
-  #bottom-hud .mana-bar-fill,
-  #bottom-hud .xp-bar-fill,
-  #character-overlay { transition: none; }
-}
-
 /* ---------- Backpack expansion and persisted lobby status ---------- */
 .backpack-expansion-actions {
   display: grid;
@@ -3516,11 +3488,6 @@ body #lobby-screen #lobby-backpack .inventory-slot { min-width: 0; min-height: 8
 #character-overlay::-webkit-scrollbar { width: 8px; }
 #character-overlay::-webkit-scrollbar-track { background: rgba(7, 15, 27, .48); }
 #character-overlay::-webkit-scrollbar-thumb { border: 2px solid rgba(7, 15, 27, .9); border-radius: 8px; background: linear-gradient(#e9c56f, #8d5c2d); }
-
-@media (prefers-reduced-motion: reduce) {
-  .player-quick-status .health-bar-fill,
-  #bottom-hud .fatigue-bar-fill { transition: none; }
-}
 
 /* ---------- Tooltips de item e cartões de equipamento ---------- */
 .item-tooltip {
@@ -3875,7 +3842,6 @@ body #lobby-screen .equipment-slot.is-equipped,
 .workshop-recipe-inspector span { width: fit-content; padding: 2px 5px; border: 1px solid rgba(213, 79, 72, .48); border-radius: 3px; color: #ffaaa2; font: 700 8px Consolas, 'Courier New', monospace; }
 .workshop-recipe-inspector span.is-ready { border-color: rgba(84, 199, 165, .5); color: #a7f2d9; background: rgba(34, 107, 87, .28); }
 @keyframes workshop-inspector-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-@media (prefers-reduced-motion: reduce) { .workshop-recipe-inspector { animation: none; } }
 @media (max-width: 1180px) {
   .blacksmith-screen .workshop-layout { grid-template-columns: minmax(220px, .65fr) minmax(0, 1.35fr); }
   .blacksmith-screen .workshop-recipes { grid-column: 1 / -1; }
@@ -4160,11 +4126,6 @@ body #lobby-screen .equipment-slot.is-equipped,
   from { opacity: 0; transform: scale(.7) rotate(-8deg); }
   to { opacity: 1; transform: scale(1) rotate(0deg); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .workshop-craft-notification,
-  .workshop-craft-notification__halo,
-  .workshop-craft-notification__art { animation: none; }
-}
 
 /* ---------- Oficina: bancada cinematica e layout de forja ---------- */
 @media (min-width: 1181px) {
@@ -4248,9 +4209,6 @@ body #lobby-screen .equipment-slot.is-equipped,
   0%, 100% { opacity: .5; }
   16% { opacity: 1; }
   42% { opacity: .68; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .blacksmith-screen .blacksmith-scene[data-forge-phase='working'] .blacksmith-scene__viewport::after { animation: none; opacity: .8; }
 }
 .blacksmith-screen .blacksmith-scene__canvas { z-index: 1; }
 .blacksmith-screen .blacksmith-scene__dialogue {

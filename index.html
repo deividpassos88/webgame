@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dragon Miner - Dungeon Crawler</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap"
+    rel="stylesheet"
+  />
   <link rel="stylesheet" href="/src/style.css" />
   <link rel="stylesheet" href="/src/styles/lobby-reference.css" />
   <link rel="stylesheet" href="/src/styles/forge-reference.css" />
@@ -75,16 +81,16 @@
 
         <nav class="arena-nav" aria-label="Seções do personagem">
           <button type="button" class="arena-nav__btn" data-lobby-tab="hero" aria-pressed="true">
-            <img src="/assets/ui/lobby/arena/icons/hero.svg" alt="" aria-hidden="true"><span>Herói</span>
+            <img src="/assets/ui/lobby/arena/icons/hero.png" alt="" aria-hidden="true"><span>Herói</span>
           </button>
           <button type="button" class="arena-nav__btn" data-lobby-tab="inventory" aria-pressed="false">
-            <img src="/assets/ui/lobby/arena/icons/inventory.svg" alt="" aria-hidden="true"><span>Inventário</span>
+            <img src="/assets/ui/lobby/arena/icons/inventory.png" alt="" aria-hidden="true"><span>Inventário</span>
           </button>
           <button type="button" class="arena-nav__btn" data-lobby-tab="skills" aria-pressed="false">
-            <img src="/assets/ui/lobby/arena/icons/skills.svg" alt="" aria-hidden="true"><span>Skills</span>
+            <img src="/assets/ui/lobby/arena/icons/skills.png" alt="" aria-hidden="true"><span>Skills</span>
           </button>
           <button type="button" class="arena-nav__btn" data-lobby-tab="blacksmith" aria-pressed="false">
-            <img src="/assets/ui/lobby/arena/icons/workshop.svg" alt="" aria-hidden="true"><span>Oficina</span>
+            <img src="/assets/ui/lobby/arena/icons/workshop.png" alt="" aria-hidden="true"><span>Oficina</span>
           </button>
         </nav>
 
@@ -102,10 +108,10 @@
 
         <div class="lobby-equipment-tabs arena-subtabs" role="tablist" aria-label="Equipamento e status">
           <button type="button" role="tab" id="lobby-equipment-tab" aria-controls="lobby-equipment-panel" aria-selected="true" data-lobby-equipment-view="equipment">
-            <img src="/assets/ui/lobby/arena/icons/equipment.svg" alt="" aria-hidden="true"><span>Equipamentos</span>
+            <img src="/assets/ui/lobby/arena/icons/equipment.png" alt="" aria-hidden="true"><span>Equipamentos</span>
           </button>
           <button type="button" role="tab" id="lobby-status-tab" aria-controls="lobby-status-panel" aria-selected="false" tabindex="-1" data-lobby-equipment-view="status">
-            <img src="/assets/ui/lobby/arena/icons/status.svg" alt="" aria-hidden="true"><span>Status</span>
+            <img src="/assets/ui/lobby/arena/icons/status.png" alt="" aria-hidden="true"><span>Status</span>
           </button>
         </div>
 
@@ -146,7 +152,7 @@
         <section id="lobby-panel-inventory" data-lobby-panel="inventory">
           <header class="arena-panel__head arena-panel__head--row">
             <div class="inventory-heading-title">
-              <img src="/assets/ui/lobby/arena/icons/inventory.svg" alt="" aria-hidden="true">
+              <img src="/assets/ui/lobby/arena/icons/inventory.png" alt="" aria-hidden="true">
               <h2>Itens armazenados</h2>
             </div>
             <div class="lobby-backpack-heading-actions">
@@ -189,7 +195,7 @@
 
         <div class="lobby-start-action arena-cta">
           <button id="start-game" class="primary-action arena-cta__btn" type="button">
-            <img class="lobby-start-icon" src="/assets/ui/lobby/arena/icons/play.svg" alt="" aria-hidden="true">
+            <img class="lobby-start-icon" src="/assets/ui/lobby/arena/icons/play.png" alt="" aria-hidden="true">
             <span class="arena-cta__text"><small>Entrar na masmorra</small><strong>Iniciar partida</strong></span>
           </button>
         </div>
@@ -246,6 +252,13 @@
           <div class="boss-name">DRAGON OVERLORD</div>
           <div class="health-bar-bg boss-bar">
             <div id="boss-health-fill" class="health-bar-fill boss-fill"></div>
+            <div id="boss-health-label" class="boss-bar-label" aria-hidden="true">[ 5x  100% ]</div>
+          </div>
+        </div>
+        <div id="mini-boss-health-container" class="hidden">
+          <div class="boss-name mini-boss-name">MINI-BOSS</div>
+          <div class="health-bar-bg boss-bar mini-boss-bar">
+            <div id="mini-boss-health-fill" class="health-bar-fill mini-boss-fill"></div>
           </div>
         </div>
       </div>

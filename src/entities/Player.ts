@@ -47,6 +47,11 @@ const DASH_DISTANCE = 5.4;
 const DASH_SPEED = 30;
 const DASH_COOLDOWN_SECONDS = 0.85;
 const DASH_INVULNERABILITY_SECONDS = 0.3;
+/** Peso do clip de ataque no blend com a corrida: o mixer normaliza os pesos
+ * ativos, entao running(1) + ataque(0.45) deixa ~69% do ciclo de corrida nas
+ * pernas/corpo — o guerreiro anda/corre em todas as direcoes durante o combo
+ * em vez de travar na pose de ataque. */
+const ATTACK_WEIGHT_UNDER_MOVEMENT = 0.45;
 
 export type PlayerState = CharacterAnimationState;
 
@@ -105,6 +110,7 @@ export class Player {
   private actionInvulnerability = 0;
   private actionInvulnerabilityFresh = false;
   private isSwinging = false;
+  private locomotionBlendActive = false;
   private isHitReacting = false;
   private emptyHandAttackPreview = false;
   private attackSequenceCursor = 0;
@@ -306,6 +312,9 @@ export class Player {
   }
 
   private playState(state: PlayerState, fadeDuration = 0.2, restart = false): boolean {
+    if (this.locomotionBlendActive) {
+      this.clearLocomotionBlend(state === 'running' ? null : fadeDuration);
+    }
     if (this.isDead && state !== 'dead') return false;
 
     const nextAction = this.actions[state];
@@ -580,6 +589,8 @@ export class Player {
     if (this.isHitReacting) return;
     if (this.emptyHandAttackPreview) return;
 
+    if (this.isSwinging && !this.keyboardMoving) this.clearLocomotionBlend(0.12);
+
     if (this.isSwinging) {
       if (this.skillAttackController.active) {
         this.updateSkillAttack(delta);
@@ -709,7 +720,7 @@ export class Player {
       return;
     }
 
-    this.facePoint(enemy.position, delta);
+    if (!this.keyboardMoving) this.facePoint(enemy.position, delta);
     this.playState(this.keyboardMoving ? 'running' : 'idle', 0.15);
   }
 
@@ -786,7 +797,7 @@ export class Player {
         }
         return;
       }
-      this.facePoint(target.position, delta);
+      if (!this.keyboardMoving) this.facePoint(target.position, delta);
     }
 
     const events = this.comboController.update(delta);
@@ -997,7 +1008,11 @@ export class Player {
     );
     this.root.position.addScaledVector(this.moveDirection, this.currentMoveSpeed * delta);
 
-    if (!keepAttacking || !this.attackTargetEnemy) {
+    // Com target marcado o corpo so fica "preso" olhando o inimigo enquanto
+    // o jogador nao anda (ou durante skills, que usam cone de direcao).
+    // Andando, gira para a direcao do passo como sem target.
+    const skillLocksFacing = this.skillAttackController.active;
+    if (!keepAttacking || !this.attackTargetEnemy || !skillLocksFacing) {
       const targetAngle = Math.atan2(this.moveDirection.x, this.moveDirection.z);
       let diff = targetAngle - this.root.rotation.y;
       while (diff > Math.PI) diff -= Math.PI * 2;
@@ -1005,11 +1020,74 @@ export class Player {
       this.root.rotation.y += diff * Math.min(1, this.rotationSpeed * delta);
     }
 
-    if (!this.isSwinging) this.playState('running', 0.15);
+    if (!this.isSwinging) {
+      this.playState('running', 0.15);
+    } else if (!skillLocksFacing) {
+      this.blendRunningUnderAttack();
+    }
   }
 
   public setKeyboardMoving(active: boolean) {
     this.keyboardMoving = this.inputLocked ? false : active;
+  }
+
+  public get isKeyboardMoving(): boolean {
+    return this.keyboardMoving;
+  }
+
+  /** True enquanto o clip de ataque roda blendado por cima da corrida. */
+  public get isLocomotionBlendActive(): boolean {
+    return this.locomotionBlendActive;
+  }
+
+  /**
+   * Mantem a locomocao visivel sob o clip de ataque: o mixer normaliza os
+   * pesos dos actions ativos, entao running(1) + ataque(0.45) deixa ~69% do
+   * ciclo de corrida nas pernas e no corpo. Assim o guerreiro continua
+   * andando/correndo em todas as direcoes durante o combo, sem travar na
+   * pose de ataque quando ha um target marcado.
+   */
+  private blendRunningUnderAttack(): void {
+    const run = this.actions.running;
+    const attack = this.currentAction;
+    if (!run || !attack || attack === run) return;
+    if (!this.locomotionBlendActive) {
+      this.locomotionBlendActive = true;
+      run.reset();
+      run.setLoop(THREE.LoopRepeat, Infinity);
+      run.setEffectiveWeight(1);
+      run.fadeIn(0.1);
+      run.play();
+    } else {
+      run.stopFading();
+      run.setEffectiveWeight(1);
+    }
+    attack.stopFading();
+    attack.setEffectiveWeight(ATTACK_WEIGHT_UNDER_MOVEMENT);
+  }
+
+  /** `runningFade === null` mantém a corrida cheia (troca de estado assume). */
+  private clearLocomotionBlend(runningFade: number | null): void {
+    if (!this.locomotionBlendActive && runningFade !== null) return;
+    this.locomotionBlendActive = false;
+    const run = this.actions.running;
+    if (run) {
+      if (runningFade === null) {
+        run.stopFading();
+        run.setEffectiveWeight(1);
+      } else if (this.currentAction !== run) {
+        run.fadeOut(runningFade);
+      }
+    }
+    for (const action of Object.values(this.warriorAttackActions)) {
+      if (!action) continue;
+      action.stopFading();
+      action.setEffectiveWeight(1);
+    }
+    for (const action of this.comboActions) {
+      action.stopFading();
+      action.setEffectiveWeight(1);
+    }
   }
 
   public tryDash(direction: THREE.Vector3): boolean {

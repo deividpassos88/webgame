@@ -304,9 +304,13 @@ export function lobbyMotionPolicy(prefersReducedMotion: boolean): {
   animateIdle: boolean;
   continuousRender: boolean;
 } {
+  // O jogo eh um produto de animacao: idle do guerreiro e render continuo do
+  // lobby ficam SEMPRE ligados, mesmo se o SO/navegador pedir "movimento
+  // reduzido" (decisao do dono do projeto para o lobby nunca ficar congelado).
+  void prefersReducedMotion;
   return {
-    animateIdle: !prefersReducedMotion,
-    continuousRender: !prefersReducedMotion,
+    animateIdle: true,
+    continuousRender: true,
   };
 }
 
@@ -1245,6 +1249,10 @@ export class LobbyScreen {
     const delta = Math.min(this.clock.getDelta(), 0.1);
     const motion = lobbyMotionPolicy(this.reducedMotionQuery.matches);
     this.mixer?.update(motion.animateIdle ? delta : 0);
+    // Vitrine: o heroi gira bem devagar sozinho no palco (para ao arrastar).
+    if (motion.animateIdle && !this.dragging) {
+      this.modelHolder.rotation.y += delta * 0.12;
+    }
     this.camera.position.set(0, 1.35, this.zoom);
     this.camera.lookAt(0, 0.875, 0);
     const preview = resolveLobbyPreviewViewport(

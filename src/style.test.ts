@@ -30,28 +30,32 @@ describe('narrow-screen HUD layout', () => {
 });
 
 describe('armory selector visual contract', () => {
-  it('uses the approved palette, responsive stack, focus and reduced motion', () => {
+  it('uses the approved palette, responsive stack, focus and always-on motion', () => {
     expect(styles).toContain('--armory-obsidian: #070a0d');
     expect(styles).toContain('--armory-steel: #151b22');
     expect(styles).toContain('--armory-brass: #c7923e');
     expect(styles).toContain('--armory-plasma: #69d7e8');
     expect(styles).toContain('@media (max-width: 680px)');
-    expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
+    // Decisao do projeto: animacoes do jogo sempre ativas, sem kill-switch
+    // de prefers-reduced-motion (o lobby/HUD nunca ficam congelados).
+    expect(styles).not.toContain('@media (prefers-reduced-motion: reduce)');
     expect(styles).toContain('.reward-weapon-card:focus-visible');
   });
 });
 
 describe('ADM panel visual contract', () => {
-  it('uses a compact centered industrial panel with keyboard focus and reduced motion', () => {
+  it('uses a compact centered industrial panel with keyboard focus and always-on motion', () => {
     expect(styles).toMatch(/#admin-panel\s*\{[^}]*top:\s*50%;[^}]*left:\s*50%;/s);
     expect(styles).toContain('#admin-panel.is-collapsed .admin-panel-body');
     expect(styles).toContain('.admin-control:focus-visible');
-    expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
+    // Decisao do projeto: animacoes do jogo sempre ativas, sem kill-switch
+    // de prefers-reduced-motion (o lobby/HUD nunca ficam congelados).
+    expect(styles).not.toContain('@media (prefers-reduced-motion: reduce)');
   });
 });
 
 describe('character build interface visual contract', () => {
-  it('lays equipment out as a silhouette, uses compact utility launchers, and supports reduced motion', () => {
+  it('lays equipment out as a silhouette, uses compact utility launchers, and supports always-on motion', () => {
     expect(styles).toContain('/* ---------- Character build interface v2 ---------- */');
     expect(styles).toMatch(/\.equipment-silhouette\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
     expect(styles).toContain('.equipment-silhouette .equipment-slot:last-child');
@@ -60,7 +64,9 @@ describe('character build interface visual contract', () => {
     expect(styles).toContain('.player-progression');
     expect(styles).toContain('.status-gate-message');
     expect(styles).toContain('@media (max-width: 760px)');
-    expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
+    // Decisao do projeto: animacoes do jogo sempre ativas, sem kill-switch
+    // de prefers-reduced-motion (o lobby/HUD nunca ficam congelados).
+    expect(styles).not.toContain('@media (prefers-reduced-motion: reduce)');
   });
 });
 
@@ -73,12 +79,14 @@ describe('compact battlefield HUD visual contract', () => {
     expect(styles).toContain('.resource-bar');
     expect(styles).toMatch(/#gameplay-utility-dock \.player-portrait\s*\{[^}]*background:\s*[\s\S]*var\(--portrait-image\)/);
     expect(styles).toContain('#gameplay-utility-dock .hud-utility-button:focus-visible');
-    expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
+    // Decisao do projeto: animacoes do jogo sempre ativas, sem kill-switch
+    // de prefers-reduced-motion (o lobby/HUD nunca ficam congelados).
+    expect(styles).not.toContain('@media (prefers-reduced-motion: reduce)');
   });
 });
 
 describe('final boss craft reward visual contract', () => {
-  it('uses the Cinzafogo palette, a framed item inspector, responsive layout and reduced-motion restraint', () => {
+  it('uses the Cinzafogo palette, a framed item inspector, responsive layout and always-on motion', () => {
     expect(styles).toContain('--craft-obsidian: #080A0B');
     expect(styles).toContain('--craft-slate: #171B1F');
     expect(styles).toContain('--craft-gold: #C89536');
@@ -91,7 +99,7 @@ describe('final boss craft reward visual contract', () => {
     expect(styles).toMatch(/\.craft-item-inspector\s*\{[^}]*animation:\s*craft-inspector-arrive\s+180ms/s);
     expect(styles).toMatch(/\.craft-reward-notification\s*\{[^}]*animation:\s*craft-notice-arrive\s+220ms/s);
     expect(styles).toContain('@media (max-width: 560px)');
-    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{[^}]*\.craft-inspector-glint,[^}]*\.craft-item-inspector,[^}]*\.craft-reward-notification\s*\{\s*animation:\s*none;/s);
+    expect(styles).not.toMatch(/@media \(prefers-reduced-motion/);
   });
 });
 

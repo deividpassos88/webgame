@@ -10,6 +10,7 @@ import {
   rewardOptionsForAvailability,
 } from './RewardSelection';
 import { getWaveHudContent } from './WaveHudView';
+import { BOSS_BAR_LAYER_COLORS, resolveBossBarLayer } from './BossHealthView';
 import type { WaveSnapshot } from '../waves/WaveManager';
 import type { RewardPreviewPort } from './RewardWeaponPreview';
 import {
@@ -80,6 +81,9 @@ export class HUD {
   private playerFatigueText: HTMLElement;
   private bossContainer: HTMLElement;
   private bossHealthFill: HTMLElement;
+  private bossBarLabel: HTMLElement;
+  private miniBossContainer: HTMLElement;
+  private miniBossFill: HTMLElement;
   private deathScreen: HTMLElement;
   private loadingScreen: HTMLElement;
   private loadingBarFill: HTMLElement;
@@ -120,6 +124,14 @@ export class HUD {
     this.playerFatigueText = document.getElementById('player-fatigue-text')!;
     this.bossContainer = document.getElementById('boss-health-container')!;
     this.bossHealthFill = document.getElementById('boss-health-fill')!;
+    // Defensivo: se um index.html antigo em cache nao tiver os ids novos, o
+    // lobby nao pode morrer por isso (fallback cria elementos soltos).
+    this.bossBarLabel = document.getElementById('boss-health-label')
+      ?? document.createElement('div');
+    this.miniBossContainer = document.getElementById('mini-boss-health-container')
+      ?? document.createElement('div');
+    this.miniBossFill = document.getElementById('mini-boss-health-fill')
+      ?? document.createElement('div');
     this.deathScreen = document.getElementById('death-screen')!;
     this.loadingScreen = document.getElementById('loading-screen')!;
     this.loadingBarFill = document.getElementById('loading-bar-fill')!;
@@ -559,8 +571,27 @@ export class HUD {
   }
 
   public updateBossHealth(hp: number, maxHp: number) {
-    const pct = Math.max(0, (hp / maxHp) * 100);
-    this.bossHealthFill.style.width = `${pct}%`;
+    // Boss de 5 barras: a barra atual drena e troca de cor
+    // (verde -> verde claro -> roxo -> vermelho escuro -> vermelho claro).
+    // O rotulo dentro da barra mostra "[ 5x  100% ]" -> "[ 4x  100% ]" ...
+    const layer = resolveBossBarLayer(hp, maxHp);
+    this.bossHealthFill.style.width = `${layer.fill * 100}%`;
+    this.bossHealthFill.style.background = layer.color;
+    this.bossBarLabel.textContent =
+      `[ ${layer.barsRemaining}x  ${Math.round(layer.fill * 100)}% ]`;
+  }
+
+  public showMiniBossHealth() {
+    this.miniBossContainer.classList.remove('hidden');
+  }
+
+  public hideMiniBossHealth() {
+    this.miniBossContainer.classList.add('hidden');
+  }
+
+  public updateMiniBossHealth(hp: number, maxHp: number) {
+    const pct = Math.max(0, Math.min(100, (hp / Math.max(1, maxHp)) * 100));
+    this.miniBossFill.style.width = `${pct}%`;
   }
 
   public showDeathScreen() {
