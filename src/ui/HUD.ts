@@ -10,6 +10,11 @@ import {
   rewardOptionsForAvailability,
 } from './RewardSelection';
 import { getWaveHudContent } from './WaveHudView';
+import {
+  BOSS_BAR_LAYER_COLORS,
+  resolveBossBarLayer,
+  type BossBarLayer,
+} from './BossHealthView';
 import type { WaveSnapshot } from '../waves/WaveManager';
 import type { RewardPreviewPort } from './RewardWeaponPreview';
 import {
@@ -80,6 +85,9 @@ export class HUD {
   private playerFatigueText: HTMLElement;
   private bossContainer: HTMLElement;
   private bossHealthFill: HTMLElement;
+  private bossBarPips: HTMLElement;
+  private miniBossContainer: HTMLElement;
+  private miniBossFill: HTMLElement;
   private deathScreen: HTMLElement;
   private loadingScreen: HTMLElement;
   private loadingBarFill: HTMLElement;
@@ -120,6 +128,10 @@ export class HUD {
     this.playerFatigueText = document.getElementById('player-fatigue-text')!;
     this.bossContainer = document.getElementById('boss-health-container')!;
     this.bossHealthFill = document.getElementById('boss-health-fill')!;
+    this.bossBarPips = document.getElementById('boss-bar-pips')!;
+    this.miniBossContainer = document.getElementById('mini-boss-health-container')!;
+    this.miniBossFill = document.getElementById('mini-boss-health-fill')!;
+    this.buildBossBarPips();
     this.deathScreen = document.getElementById('death-screen')!;
     this.loadingScreen = document.getElementById('loading-screen')!;
     this.loadingBarFill = document.getElementById('loading-bar-fill')!;
@@ -559,8 +571,43 @@ export class HUD {
   }
 
   public updateBossHealth(hp: number, maxHp: number) {
-    const pct = Math.max(0, (hp / maxHp) * 100);
-    this.bossHealthFill.style.width = `${pct}%`;
+    // Boss de 5 barras: a barra atual drena e troca de cor
+    // (verde -> verde claro -> roxo -> vermelho escuro -> vermelho claro).
+    const layer = resolveBossBarLayer(hp, maxHp);
+    this.bossHealthFill.style.width = `${layer.fill * 100}%`;
+    this.bossHealthFill.style.background = layer.color;
+    this.updateBossBarPips(layer);
+  }
+
+  private buildBossBarPips(): void {
+    this.bossBarPips.replaceChildren();
+    for (let index = 0; index < BOSS_BAR_LAYER_COLORS.length; index += 1) {
+      this.bossBarPips.appendChild(document.createElement('span'));
+    }
+  }
+
+  private updateBossBarPips(layer: BossBarLayer): void {
+    const pips = this.bossBarPips.children;
+    for (let index = 0; index < pips.length; index += 1) {
+      const pip = pips[index] as HTMLElement;
+      pip.style.background = index < layer.index
+        ? 'rgba(255, 255, 255, .14)'
+        : BOSS_BAR_LAYER_COLORS[index];
+      pip.classList.toggle('is-current', index === layer.index);
+    }
+  }
+
+  public showMiniBossHealth() {
+    this.miniBossContainer.classList.remove('hidden');
+  }
+
+  public hideMiniBossHealth() {
+    this.miniBossContainer.classList.add('hidden');
+  }
+
+  public updateMiniBossHealth(hp: number, maxHp: number) {
+    const pct = Math.max(0, Math.min(100, (hp / Math.max(1, maxHp)) * 100));
+    this.miniBossFill.style.width = `${pct}%`;
   }
 
   public showDeathScreen() {

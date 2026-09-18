@@ -26,21 +26,18 @@ describe('arena lobby composition', () => {
     );
   });
 
-  it('brands the hall with its own guild sigil, shipped as a real asset', () => {
-    // The mark in front of "Masmorra de Herois" is the guild crest, not the
-    // equipment icon: the nav already owns the crossed swords.
+  it('brands the hall with its own guild emblem, shipped as a real asset', () => {
+    // The mark in front of "Masmorra de Herois" is the guild emblem (crossed
+    // golden swords over a red gem), not the equipment icon: the nav already
+    // owns the crossed swords.
     expect(lobbyStyles).toMatch(
-      /#lobby-screen \.arena-sigil \{[^}]*guild-sigil\.svg/
+      /#lobby-screen \.arena-sigil \{[^}]*guild-emblem\.png/
     );
-    const svg = readFileSync(
-      new URL('../../public/assets/ui/lobby/arena/icons/guild-sigil.svg', import.meta.url),
-      'utf8'
+    const png = readFileSync(
+      new URL('../../public/assets/ui/lobby/arena/icons/guild-emblem.png', import.meta.url)
     );
-    expect(svg.startsWith('<svg')).toBe(true);
-    // Ornate crest: stone ring, ember core and the two crossed swords.
-    expect(svg).toContain('viewBox="0 0 64 64"');
-    expect(svg).toContain('gsEmber');
-    for (const peca of ['gsRing', 'gsGold', 'gsGem']) expect(svg).toContain(peca);
+    // PNG signature: the crest ships as a real transparent image asset.
+    expect(Array.from(png.subarray(0, 8))).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   });
 
   it('keeps the lobby topbar clickable above the WebGL canvas', () => {

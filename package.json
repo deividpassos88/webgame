@@ -8,7 +8,9 @@
     "dev:admin": "vite --mode admin",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && vite build",
+    "build:admin": "npm run typecheck && vite build --mode admin",
     "preview": "vite preview",
+    "preview:admin": "vite preview --mode admin",
     "test": "vitest run",
     "validate:warrior-glb": "node scripts/validate-warrior-glb.mjs public/models/Guerreiro/guerreiro_animado.glb"
   },

@@ -8,7 +8,9 @@ import type { WarriorSkillsSnapshot } from '../combat/WarriorSkillController';
 const hudElementIds = [
   'player-health-fill', 'player-health-text', 'player-mana-fill', 'player-mana-text',
   'player-xp-fill', 'player-xp-text', 'player-fatigue-fill', 'player-fatigue-text',
-  'boss-health-container', 'boss-health-fill', 'death-screen', 'loading-screen',
+  'boss-health-container', 'boss-health-fill', 'boss-bar-pips',
+  'mini-boss-health-container', 'mini-boss-health-fill',
+  'death-screen', 'loading-screen',
   'loading-bar-fill', 'loading-text', 'loading-error', 'reload-btn', 'damage-log',
   'anim-warning-banner', 'anim-warning-text', 'animation-test-panel',
   'animation-test-status', 'animation-test-controls', 'reward-selection',

@@ -684,6 +684,52 @@ html, body {
   background: linear-gradient(180deg, #a01414, #4a0808);
 }
 
+/* 5 barras do boss: pips mostram as vidas restantes na cor de cada barra. */
+.boss-bar-pips {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+  margin-top: 5px;
+}
+.boss-bar-pips span {
+  width: 14px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, .14);
+  box-shadow: 0 0 4px rgba(0, 0, 0, .6);
+  transition: background .25s ease-out;
+}
+.boss-bar-pips span.is-current {
+  outline: 1px solid rgba(255, 255, 255, .55);
+  outline-offset: 1px;
+}
+
+/* Barra de vida dos mini-bosses (dourada, menor que a do boss final).
+ * Fica no mesmo fluxo do container do boss (static), logo abaixo dele. */
+#mini-boss-health-container {
+  position: static;
+  width: min(420px, 100%);
+  margin-top: 8px;
+  text-align: center;
+  transition: opacity 0.5s ease;
+}
+#mini-boss-health-container.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.mini-boss-name {
+  color: #efb846;
+  font-size: 11px;
+  letter-spacing: .18em;
+}
+.mini-boss-bar {
+  height: 14px;
+  border-color: #8a6a1c;
+}
+.mini-boss-fill {
+  background: linear-gradient(180deg, #efb846, #8a5a10);
+}
+
 /* ---------- Bottom HUD ---------- */
 #bottom-hud {
   position: absolute;

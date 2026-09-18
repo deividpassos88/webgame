@@ -476,4 +476,51 @@ describe('Player sword combo integration', () => {
     expect(hits).toEqual([enemy]);
     expect(player.isAttackInSwing()).toBe(false);
   });
+
+  it('keeps locomotion free while swinging at a marked target', async () => {
+    const player = await loadedPlayerWithSword();
+    const enemy = new THREE.Object3D();
+    enemy.position.set(0, 0, 2);
+    player.attackEnemy(enemy, () => {});
+    expect(player.isAttackInSwing()).toBe(true);
+
+    const start = player.root.position.clone();
+    player.setKeyboardMoving(true);
+    const step = new THREE.Vector3(1, 0, 0);
+    for (let i = 0; i < 6; i += 1) {
+      player.moveByDirection(step, 0.05, true);
+      player.update(0.05);
+    }
+
+    // Anda de verdade para o lado mesmo com combo ativo no target...
+    const midDistance = player.root.position.distanceTo(start);
+    expect(midDistance).toBeGreaterThan(0.1);
+    // ...o corpo gira para a direcao do passo (nao fica olhando o inimigo)...
+    expect(player.root.rotation.y).toBeGreaterThan(0.3);
+    // ...e a corrida continua blendada sob o clip de ataque (sem travar pose).
+    expect(player.isLocomotionBlendActive).toBe(true);
+
+    // Mesmo depois do combo acabar, seguir segurando a tecla continua
+    // deslocando o guerreiro (nunca volta a travar em pose parada).
+    for (let i = 0; i < 10; i += 1) {
+      player.moveByDirection(step, 0.05, true);
+      player.update(0.05);
+    }
+    expect(player.root.position.distanceTo(start)).toBeGreaterThan(midDistance);
+  });
+
+  it('releases the locomotion blend when the player stops moving', async () => {
+    const player = await loadedPlayerWithSword();
+    const enemy = new THREE.Object3D();
+    enemy.position.set(0, 0, 2);
+    player.attackEnemy(enemy, () => {});
+    player.setKeyboardMoving(true);
+    player.moveByDirection(new THREE.Vector3(1, 0, 0), 0.05, true);
+    player.update(0.05);
+    expect(player.isLocomotionBlendActive).toBe(true);
+
+    player.setKeyboardMoving(false);
+    player.update(0.05);
+    expect(player.isLocomotionBlendActive).toBe(false);
+  });
 });
