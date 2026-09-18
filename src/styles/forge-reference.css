@@ -336,10 +336,6 @@
   #blacksmith-screen .workshop-backpack-grid { grid-template-columns: repeat(5, minmax(38px, 1fr)); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  #blacksmith-screen *, #blacksmith-screen *::before, #blacksmith-screen *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
-}
-
 /* Two-column workshop console: one continuous scene and one bounded tool window. */
 @media (min-width: 821px) {
   html body #blacksmith-screen {

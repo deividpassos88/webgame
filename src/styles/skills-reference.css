@@ -210,9 +210,3 @@
   #lobby-screen .lobby-hotkey-row > span { font-size: 9px; }
   #lobby-screen .lobby-basic-auto small { max-width: 195px; }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  #lobby-screen .lobby-skill-row,
-  #lobby-screen .lobby-basic-auto button,
-  #lobby-screen .lobby-hotkey-row button { transition: none !important; }
-}

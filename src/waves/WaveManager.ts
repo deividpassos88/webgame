@@ -1,4 +1,5 @@
 import type { AdminWave } from '../admin/AdminCommandGate';
+import { miniBossHpMultiplier, regularEnemyHpMultiplier } from './WaveDifficultyScaling';
 
 export type WavePhase =
   | 'waiting-for-weapon'
@@ -55,12 +56,12 @@ const DEFAULT_CONFIG: WaveManagerConfig = {
 };
 
 const REGULAR_WAVE_MULTIPLIERS = [
-  { hp: 1, damage: 1, speed: 1 },
-  { hp: 1.12, damage: 1.1, speed: 1.03 },
-  { hp: 1.32, damage: 1.24, speed: 1.07 },
-  { hp: 1.6, damage: 1.4, speed: 1.12 },
-  { hp: 1.95, damage: 1.65, speed: 1.2 },
-  { hp: 2.4, damage: 2, speed: 1.3 },
+  { damage: 1, speed: 1 },
+  { damage: 1.1, speed: 1.03 },
+  { damage: 1.24, speed: 1.07 },
+  { damage: 1.4, speed: 1.12 },
+  { damage: 1.65, speed: 1.2 },
+  { damage: 2, speed: 1.3 },
 ] as const;
 
 const FINAL_ALLY_COUNT = 4;
@@ -322,17 +323,23 @@ export class WaveManager {
     const waveMultipliers = this.currentPhase === 'regular-wave'
       ? REGULAR_WAVE_MULTIPLIERS[this.currentWave - 1]
       : undefined;
+    const miniBossRequest = counts.miniBossCount > 0 && counts.regularCount === 0;
     const request: WaveSpawnRequest = {
       requestId: this.nextRequestId++,
       phaseId: this.currentPhaseId,
       kind: this.currentPhase === 'final-battle'
         ? 'final-battle'
-        : counts.miniBossCount > 0 && counts.regularCount === 0
+        : miniBossRequest
           ? 'mini-boss'
           : 'regular-batch',
       wave: this.currentPhase === 'regular-wave' ? this.currentWave : null,
       ...counts,
-      hpMultiplier: waveMultipliers?.hp ?? 1,
+      // HP por wave: monstros +3%/wave; mini-bosses +5%/wave (teto +30%).
+      hpMultiplier: this.currentPhase === 'regular-wave'
+        ? miniBossRequest
+          ? miniBossHpMultiplier(this.currentWave)
+          : regularEnemyHpMultiplier(this.currentWave)
+        : 1,
       damageMultiplier: waveMultipliers?.damage ?? 1,
       speedMultiplier: waveMultipliers?.speed ?? 1,
     };

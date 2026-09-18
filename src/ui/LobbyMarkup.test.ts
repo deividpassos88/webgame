@@ -77,7 +77,7 @@ describe('Arena lobby shell', () => {
     const start = document.querySelector('#start-game');
     expect(start?.firstElementChild?.classList.contains('lobby-start-icon')).toBe(true);
     expect(start?.querySelector<HTMLImageElement>('.lobby-start-icon')?.src)
-      .toContain('/assets/ui/lobby/arena/icons/play.svg');
+      .toContain('/assets/ui/lobby/arena/icons/play.png');
     expect(start?.querySelector('.arena-cta__text strong')?.textContent).toBe('Iniciar partida');
   });
 });

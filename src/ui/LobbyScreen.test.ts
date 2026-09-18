@@ -144,8 +144,10 @@ describe('lobby preview viewport', () => {
 });
 
 describe('lobby reduced motion', () => {
-  it('pauses idle animation and continuous rendering when reduced motion is enabled', () => {
-    expect(lobbyMotionPolicy(true)).toEqual({ animateIdle: false, continuousRender: false });
+  it('keeps idle animation and continuous rendering on even under reduced motion', () => {
+    // Decisao do projeto: o lobby nunca congela, independente do pedido de
+    // "movimento reduzido" do SO/navegador.
+    expect(lobbyMotionPolicy(true)).toEqual({ animateIdle: true, continuousRender: true });
     expect(lobbyMotionPolicy(false)).toEqual({ animateIdle: true, continuousRender: true });
   });
 });
