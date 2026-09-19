@@ -2,13 +2,15 @@ import * as THREE from 'three';
 import { resolveCharacterClips } from '../characters/CharacterAnimations';
 import { gameKeyForEvent } from '../core/InputManager';
 import { CharacterAssetStore } from '../characters/CharacterAssetStore';
-import { getCharacterDefinition } from '../characters/CharacterCatalog';
+import { getCharacterDefinition, getPlayableCharacters, PLAYABLE_CHARACTER_IDS } from '../characters/CharacterCatalog';
+import type { CharacterId } from '../characters/CharacterCatalog';
 import {
   prepareGuildTokenBackpackExpansion,
   type BackpackExpansionResult,
 } from '../inventory/BackpackExpansion';
 import type { InventorySnapshot, InventoryStore } from '../inventory/InventoryStore';
-import type { PlayerProfile, RpgEquipmentSlot, InventoryStack } from '../profile/PlayerProfile';
+import type { PlayerProfile, RpgEquipmentSlot, InventoryStack, PlayableClassId } from '../profile/PlayerProfile';
+import { isPlayableClassId } from '../profile/PlayerProfile';
 import { getInventoryItem, type InventoryItemDefinition } from '../inventory/InventoryCatalog';
 import {
   displayPlayerHotkey,
@@ -45,7 +47,7 @@ import {
 
 export interface LobbyScreenOptions {
   readonly firstRun: boolean;
-  readonly onClassConfirmed: () => void;
+  readonly onClassConfirmed: (classId: PlayableClassId) => void;
   readonly onGuildTokenBackpackExpansion: () => string;
   readonly onHotkeysChanged: () => void;
   readonly onAutoBasicAttackChanged: () => void;
@@ -68,19 +70,12 @@ const ATTRIBUTE_LABELS: Readonly<Record<string, string>> = {
   dodge: 'Esquiva',
 };
 
-/**
- * Player-facing stat line for an item. Weapon base damage is flat damage, so it
- * reads as "Dano"; "Ataque" is reserved for the attribute point that the status
- * sheet, the character overlay and the combat pipeline all share.
- */
 export function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 export function itemStatSummary(item: InventoryItemDefinition | undefined): string {
   if (!item) return '';
-  // Weapon base damage is flat damage, not an attribute point: the sheet reads
-  // it as "Dano", while "Ataque" keeps meaning the allocated attribute.
   const values = item.baseDamage ? [`Dano +${item.baseDamage}`] : [];
   for (const [attribute, amount] of Object.entries(item.statBonuses ?? {})) {
     if (amount) values.push(`${ATTRIBUTE_LABELS[attribute] ?? attribute} +${amount}`);
@@ -88,7 +83,6 @@ export function itemStatSummary(item: InventoryItemDefinition | undefined): stri
   return values.join(' · ');
 }
 
-/** Produces focusable item slots for the lobby with the shared tooltip contract. */
 export function renderLobbyBackpackContents(
   profile: PlayerProfile,
   inventory: InventorySnapshot
@@ -129,14 +123,6 @@ export function renderLobbyHotkeys(
     </section>`;
 }
 
-/**
- * The reference hall shows a seven-metric sheet: the six attributes that answer
- * for the build plus the life total that moves with gear. Ataque includes the
- * equipped weapon damage, so wearing a sword shows its bonus right away.
- * Crítico físico is surfaced simply as "Crítico"; the dedicated Critical Damage
- * and Life Steal readings stay on the full sheet in the character overlay. The
- * view model keeps its full nine-attribute contract for other surfaces.
- */
 const LOBBY_STATUS_METRICS: readonly {
   readonly key: string;
   readonly label: string;
@@ -149,16 +135,10 @@ const LOBBY_STATUS_METRICS: readonly {
   { key: 'dodge', label: 'Esquiva' },
 ];
 
-/** Keeps whole points whole and shows derived readings with one decimal. */
 function formatMetricValue(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-/**
- * One-line reading of what each point does in combat. It is the caption under
- * the number, so the player can tell a status from a decoration: "Defesa 17"
- * alone said nothing, "-30% do dano recebido" tells the whole story.
- */
 function lobbyStatusHints(
   status: CurrentCharacterStatusView
 ): Readonly<Record<string, string>> {
@@ -184,8 +164,6 @@ function lobbyStatusMetrics(
     value: byKey.get(key) ?? 0,
     hint: hints[key] ?? '',
   }));
-  // The attack reading already carries the equipped weapon damage, so the
-  // sheet only adds the life total next to the six attributes.
   return [
     ...attributes,
     {
@@ -216,11 +194,6 @@ export function renderLobbyCurrentStatus(status: CurrentCharacterStatusView): st
     </section>`;
 }
 
-/**
- * Expansion is the 21st cell: visually identical to a bag slot, carrying a
- * plain [+]. Its cost is revealed in a floating popup rendered outside the
- * grid, so the scrolling list never clips or reflows it.
- */
 export function renderLobbyBackpackExpansionControls(
   preparation: BackpackExpansionResult
 ): string {
@@ -238,7 +211,6 @@ export function renderLobbyBackpackExpansionControls(
     </button>`;
 }
 
-/** Cost copy shared by the expansion notification and its aria label. */
 export const BACKPACK_EXPANSION_REQUIREMENT =
   'Para aumentar o inventário em +5 espaços: 30 Token da Guilda ou 5 CM.';
 
@@ -295,8 +267,6 @@ export function adjustLobbyPreview(
       handled: true,
     };
   }
-  // Up/Down used to dolly the camera. The hero is now locked at one distance
-  // and only turns on the spot, so they are left unhandled.
   return { rotation, zoom, handled: false };
 }
 
@@ -304,9 +274,6 @@ export function lobbyMotionPolicy(prefersReducedMotion: boolean): {
   animateIdle: boolean;
   continuousRender: boolean;
 } {
-  // O jogo eh um produto de animacao: idle do guerreiro e render continuo do
-  // lobby ficam SEMPRE ligados, mesmo se o SO/navegador pedir "movimento
-  // reduzido" (decisao do dono do projeto para o lobby nunca ficar congelado).
   void prefersReducedMotion;
   return {
     animateIdle: true,
@@ -320,11 +287,9 @@ export function resolveLobbyIdlePhase(_elapsedSeconds: number): LobbyIdlePhase {
   return 'lobby_dwarf_idle';
 }
 
-/** Reuses the game renderer for an isolated, disposable Warrior lobby preview. */
 export class LobbyScreen {
   private readonly classScreen = document.getElementById('class-select-screen')!;
   private readonly lobbyScreen = document.getElementById('lobby-screen')!;
-  private readonly selectButton = document.getElementById('select-warrior') as HTMLButtonElement;
   private readonly startButton = document.getElementById('start-game') as HTMLButtonElement;
   private readonly heroStage = document.querySelector('.lobby-hero-stage') as HTMLElement;
   private readonly scene = new THREE.Scene();
@@ -339,11 +304,10 @@ export class LobbyScreen {
   private active = false;
   private dragging = false;
   private lastPointerX = 0;
-  // The lobby reference keeps the full silhouette above the physical dais.
-  // A slightly wider default framing leaves the feet and CTA breathing room.
   private zoom = 5.3;
   private resolver: (() => void) | null = null;
-  private classConfirm: (() => void) | null = null;
+  private classConfirm: ((classId: PlayableClassId) => void) | null = null;
+  private selectedClassId: PlayableClassId;
   private guildTokenBackpackExpansion: (() => string) | null = null;
   private hotkeysChanged: (() => void) | null = null;
   private autoBasicAttackChanged: (() => void) | null = null;
@@ -377,7 +341,6 @@ export class LobbyScreen {
     this.renderData();
     this.requestFrame();
   };
-  /** Currently selected backpack stack driving the item action popover. */
   private selectedStack:
     | { location: 'backpack'; index: number; itemId: string; quantity: number }
     | { location: 'equipment'; slot: RpgEquipmentSlot; itemId: string; quantity: 1 }
@@ -390,6 +353,7 @@ export class LobbyScreen {
     private readonly profile: PlayerProfile,
     private readonly inventory: InventoryStore
   ) {
+    this.selectedClassId = this.profile.selectedClass;
     this.setupScene();
     this.unbindItemTooltip = bindItemTooltip(this.lobbyScreen);
     this.itemActionsPanel.addEventListener('click', this.itemActionClick);
@@ -425,13 +389,18 @@ export class LobbyScreen {
     this.startButton.disabled = false;
     this.hideItemActions();
     this.renderData();
+    // Update 3D preview to current selected class
+    this.updatePreviewModel(this.profile.selectedClass);
     this.classScreen.classList.toggle('hidden', !options.firstRun);
     this.lobbyScreen.classList.toggle('hidden', options.firstRun);
     this.bind();
     this.resize();
     this.clock.start();
     this.requestFrame();
-    (options.firstRun ? this.selectButton : this.startButton).focus();
+    const focusTarget = options.firstRun
+      ? (document.getElementById('confirm-class') as HTMLButtonElement) ?? this.startButton
+      : this.startButton;
+    focusTarget.focus();
     return new Promise<void>((resolve) => { this.resolver = resolve; });
   }
 
@@ -505,8 +474,28 @@ export class LobbyScreen {
     floor.receiveShadow = true;
     this.scene.add(floor);
 
-    const definition = getCharacterDefinition('paladin');
-    const model = this.assets.createModel('paladin');
+    this.scene.add(this.modelHolder);
+    // Initial model will be set in show()
+    this.updatePreviewModel(this.selectedClassId);
+  }
+
+  private updatePreviewModel(classId: CharacterId): void {
+    // Clear previous
+    this.modelHolder.clear();
+    this.mixer?.stopAllAction();
+    this.mixer = null;
+    this.lobbyIdleAction = null;
+    this.fallbackIdleAction = null;
+
+    if (!this.assets.has(classId)) {
+      // fallback to first available playable
+      const fallback = getPlayableCharacters().find(c => this.assets.has(c.id));
+      if (!fallback) return;
+      classId = fallback.id as CharacterId;
+    }
+
+    const definition = getCharacterDefinition(classId);
+    const model = this.assets.createModel(classId);
     prepareLobbyModel(model);
     model.scale.setScalar(definition.previewScale);
     model.updateMatrixWorld(true);
@@ -523,9 +512,9 @@ export class LobbyScreen {
     model.position.set(-center.x, -bounds.min.y, -center.z);
     this.modelHolder.add(model);
     this.modelHolder.rotation.y = 0;
-    this.scene.add(this.modelHolder);
+
     this.mixer = new THREE.AnimationMixer(model);
-    const nativeClips = this.assets.getAnimations('paladin');
+    const nativeClips = this.assets.getAnimations(classId);
     const lobbyIdle = nativeClips.find(
       (candidate) => candidate.name === resolveLobbyIdlePhase(0)
     );
@@ -534,12 +523,34 @@ export class LobbyScreen {
       action.setLoop(THREE.LoopRepeat, Infinity);
       this.lobbyIdleAction = action;
     }
-    const idle = resolveCharacterClips('paladin', this.assets).idle;
+    const idle = resolveCharacterClips(classId, this.assets).idle;
     if (idle) {
       this.fallbackIdleAction = this.mixer.clipAction(idle);
       this.fallbackIdleAction.setLoop(THREE.LoopRepeat, Infinity);
     }
     this.playLobbyIdle();
+
+    // Update UI labels
+    const titleEl = this.heroStage.querySelector('strong');
+    const subtitleEl = this.heroStage.querySelector('span');
+    if (titleEl) titleEl.textContent = definition.name;
+    if (subtitleEl) {
+      subtitleEl.textContent = classId === 'maga'
+        ? 'Maga • magia elemental • controle'
+        : 'Vanguarda • corpo a corpo • força';
+    }
+    const lobbyTitle = document.getElementById('lobby-title');
+    if (lobbyTitle) lobbyTitle.textContent = `Masmorra de Heróis - ${definition.name}`;
+    const heroPanelTitle = document.querySelector('#lobby-panel-hero h2');
+    if (heroPanelTitle) heroPanelTitle.textContent = definition.name;
+    const warriorSummary = document.querySelector('.warrior-summary');
+    if (warriorSummary) {
+      warriorSummary.innerHTML = classId === 'maga'
+        ? '<div><dt>Vida</dt><dd>80</dd></div><div><dt>Energia</dt><dd>80</dd></div><div><dt>Arma</dt><dd>Magia</dd></div>'
+        : '<div><dt>Vida</dt><dd>100</dd></div><div><dt>Energia</dt><dd>50</dd></div><div><dt>Arma</dt><dd>Espada</dd></div>';
+    }
+
+    this.requestFrame();
   }
 
   private renderData(): void {
@@ -555,7 +566,6 @@ export class LobbyScreen {
     document.getElementById('lobby-equipment-slots')!.innerHTML = equipmentMarkup;
     document.getElementById('lobby-current-status')!.innerHTML = renderLobbyCurrentStatus(view.currentStatus);
     document.getElementById('lobby-capacity')!.textContent = `${view.backpack.filter(({ item }) => item).length} / ${view.backpack.length}`;
-    // The [+] is appended as the final grid cell; the header slot stays empty.
     document.getElementById('lobby-backpack-actions')!.innerHTML = '';
     document.getElementById('lobby-backpack')!.innerHTML = renderLobbyBackpackContents(
       this.profile,
@@ -579,7 +589,8 @@ export class LobbyScreen {
   }
 
   private bind(): void {
-    this.selectButton.addEventListener('click', this.confirmClass);
+    this.classScreen.addEventListener('click', this.classChoiceClick);
+    this.lobbyScreen.addEventListener('click', this.lobbyClassSwitchClick);
     this.startButton.addEventListener('click', this.startGame);
     this.heroStage.addEventListener('pointerdown', this.pointerDown);
     window.addEventListener('pointermove', this.pointerMove);
@@ -600,14 +611,13 @@ export class LobbyScreen {
     this.lobbyScreen.addEventListener('input', this.inventorySearchInput);
     this.lobbyScreen.addEventListener('change', this.inventoryFilterChange);
     document.addEventListener('dragon-miner:admin-inventory-changed', this.adminInventoryChanged);
-    // The popover lives outside #lobby-screen, so outside-clicks are caught
-    // on the document in capture phase to close it anywhere on the page.
     document.addEventListener('click', this.outsideLobbyClick, true);
     window.addEventListener('keydown', this.hotkeyCapture, true);
   }
 
   private unbind(): void {
-    this.selectButton.removeEventListener('click', this.confirmClass);
+    this.classScreen.removeEventListener('click', this.classChoiceClick);
+    this.lobbyScreen.removeEventListener('click', this.lobbyClassSwitchClick);
     this.startButton.removeEventListener('click', this.startGame);
     this.heroStage.removeEventListener('pointerdown', this.pointerDown);
     window.removeEventListener('pointermove', this.pointerMove);
@@ -632,8 +642,41 @@ export class LobbyScreen {
     window.removeEventListener('keydown', this.hotkeyCapture, true);
   }
 
+  private classChoiceClick = (event: Event): void => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-class-id]');
+    if (!button) {
+      const confirm = (event.target as HTMLElement).closest<HTMLButtonElement>('#confirm-class');
+      if (confirm) this.confirmClass();
+      return;
+    }
+    const classId = button.dataset.classId;
+    if (!classId || !isPlayableClassId(classId)) return;
+    this.selectedClassId = classId;
+    // update UI selection
+    this.classScreen.querySelectorAll<HTMLButtonElement>('[data-class-id]').forEach(btn => {
+      const isSelected = btn.dataset.classId === classId;
+      btn.classList.toggle('is-selected', isSelected);
+      btn.setAttribute('aria-pressed', String(isSelected));
+    });
+    this.updatePreviewModel(classId as CharacterId);
+  };
+
+  private lobbyClassSwitchClick = (event: Event): void => {
+    // Allow switching class from lobby hero panel? Click on hero title or add buttons
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-switch-class]');
+    if (!button) return;
+    const classId = button.dataset.switchClass;
+    if (!classId || !isPlayableClassId(classId)) return;
+    this.profile.selectedClass = classId;
+    this.selectedClassId = classId;
+    this.updatePreviewModel(classId as CharacterId);
+    this.renderData();
+  };
+
   private confirmClass = (): void => {
-    this.classConfirm?.();
+    // Ensure profile gets selected class
+    this.profile.selectedClass = this.selectedClassId;
+    this.classConfirm?.(this.selectedClassId);
     this.classScreen.classList.add('hidden');
     this.lobbyScreen.classList.remove('hidden');
     this.requestFrame();
@@ -720,9 +763,9 @@ export class LobbyScreen {
   };
 
   private equipmentViewKeydown = (event: KeyboardEvent): void => {
-    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('.lobby-equipment-tabs [role="tab"]');
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('.lobby-equipment-tabs [role=\"tab\"]');
     if (!button || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    const buttons = [...this.lobbyScreen.querySelectorAll<HTMLButtonElement>('.lobby-equipment-tabs [role="tab"]')];
+    const buttons = [...this.lobbyScreen.querySelectorAll<HTMLButtonElement>('.lobby-equipment-tabs [role=\"tab\"]')];
     if (buttons.length === 0) return;
     event.preventDefault();
     const current = Math.max(0, buttons.indexOf(button));
@@ -742,7 +785,7 @@ export class LobbyScreen {
     const statusPanel = this.lobbyScreen.querySelector<HTMLElement>('#lobby-status-panel');
     if (equipmentPanel) equipmentPanel.hidden = view !== 'equipment';
     if (statusPanel) statusPanel.hidden = view !== 'status';
-    this.lobbyScreen.querySelectorAll<HTMLButtonElement>('.lobby-equipment-tabs [role="tab"]').forEach((candidate) => {
+    this.lobbyScreen.querySelectorAll<HTMLButtonElement>('.lobby-equipment-tabs [role=\"tab\"]').forEach((candidate) => {
       const selected = candidate.dataset.lobbyEquipmentView === view;
       candidate.setAttribute('aria-selected', String(selected));
       candidate.tabIndex = selected ? 0 : -1;
@@ -823,7 +866,6 @@ export class LobbyScreen {
     });
   }
 
-  /** Clicking a backpack stack toggles the compact contextual menu beside it. */
   private lobbyInventoryClick = (event: Event): void => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-lobby-inventory-index]');
     if (!button) return;
@@ -853,7 +895,6 @@ export class LobbyScreen {
     this.openItemActions({ location: 'equipment', slot, itemId, quantity: 1 }, button);
   };
 
-  /** Removes the selection glow from the previously highlighted slot. */
   private clearSelectedSlotHighlight(): void {
     this.lobbyScreen
       .querySelectorAll('.inventory-slot.is-selected')
@@ -876,15 +917,8 @@ export class LobbyScreen {
     const stats = itemStatSummary(item);
     this.itemActionsStat.textContent = stats;
     this.itemActionsStat.hidden = !stats;
-    // Legacy materials carry neither lore nor attributes: the bordered details
-    // box would otherwise show up as an empty frame above the actions.
     const detailsHost = this.itemActionsPanel.querySelector<HTMLElement>('.lobby-item-actions__details');
     if (detailsHost) detailsHost.hidden = description.length === 0 && stats.length === 0;
-    /*
-     * The menu is filtered by item kind: gear offers equip/unequip and
-     * upgrade, materials and consumables offer destruction only. Hidden
-     * actions must not keep their grid row or receive focus.
-     */
     const actions = resolveLobbyItemActionState(item?.kind, selection.location);
     const equipAction = this.itemActionsPanel.querySelector<HTMLButtonElement>('[data-item-action="equip"]');
     if (equipAction) {
@@ -908,12 +942,6 @@ export class LobbyScreen {
       ?.focus();
   }
 
-  /**
-   * Anchors the compact menu beside the clicked slot: prefer the right side
-   * (6px away), fall back to the left when clipped, and clamp vertically
-   * inside the viewport. The popover is a direct child of #app, so fixed
-   * coordinates from getBoundingClientRect always match the layout.
-   */
   private positionItemActions(source: HTMLElement): void {
     const slotRect = source.getBoundingClientRect();
     const panelRect = this.itemActionsPanel.getBoundingClientRect();
@@ -946,7 +974,6 @@ export class LobbyScreen {
     this.hideDestroyConfirm(false);
   }
 
-  /** A click anywhere outside the popover (or its anchor slot) closes it. */
   private outsideLobbyClick = (event: Event): void => {
     if (this.itemActionsPanel.classList.contains('hidden')) return;
     const target = event.target as HTMLElement;
@@ -1019,7 +1046,6 @@ export class LobbyScreen {
     this.hideItemActions();
   }
 
-  /** The upgrade system is not implemented yet; the option stays wired safely. */
   private upgradeSelectedItem(): void {
     const selected = this.selectedStack;
     if (!selected) return;
@@ -1042,7 +1068,6 @@ export class LobbyScreen {
     this.destroyConfirmName.textContent = `${item?.label ?? stack.itemId} (x${stack.quantity})`;
     this.destroyConfirmDialog.classList.remove('hidden');
     this.destroyConfirmDialog.querySelector<HTMLButtonElement>('[data-destroy-cancel]')?.focus();
-    // The menu may grow taller with the inline confirmation: re-anchor it.
     this.itemActionsPanel.style.left = '';
     this.itemActionsPanel.style.top = '';
     const source = document.querySelector<HTMLElement>(
@@ -1077,7 +1102,6 @@ export class LobbyScreen {
     }
   }
 
-  /** Closes the inline confirmation and menu without touching focus, used during teardown. */
   private hideDestroyConfirmSilently(): void {
     this.destroyConfirmDialog.classList.add('hidden');
     this.itemActionsPanel.classList.add('hidden');
@@ -1129,22 +1153,15 @@ export class LobbyScreen {
       this.showExpansionNotice(button, 'Mochila já está no limite de 60 espaços.');
       return;
     }
-    // Always tell the player what expansion costs, whether or not it succeeds.
     const message = this.guildTokenBackpackExpansion?.()
       ?? 'A expansão da mochila está indisponível.';
     this.renderData();
     this.setLobbyStatus(message);
-    // renderData() rebuilt the grid, so anchor to the freshly rendered button.
     const anchor = this.lobbyScreen?.querySelector<HTMLElement>('[data-expand-backpack]') ?? button;
     this.showExpansionNotice(anchor, message);
     restoreBackpackExpansionFocus(this.lobbyScreen, 'lobby-capacity');
   };
 
-  /**
-   * Floating cost popup. It is appended to the lobby root (not the grid) and
-   * positioned against the button's viewport rect, so scrolling or clipping
-   * inside the bag never hides it.
-   */
   private showExpansionNotice(anchor: HTMLElement, detail: string): void {
     const host = this.lobbyScreen ?? document.body;
     let popup = host.querySelector<HTMLElement>('[data-expansion-notice]');
@@ -1164,7 +1181,6 @@ export class LobbyScreen {
 
     const rect = anchor.getBoundingClientRect();
     const box = popup.getBoundingClientRect();
-    // Open to the left of the slot, nudged back inside the viewport if needed.
     const left = Math.max(8, rect.left - box.width - 12);
     const top = Math.min(
       Math.max(8, rect.top + rect.height / 2 - box.height / 2),
@@ -1199,11 +1215,6 @@ export class LobbyScreen {
 
   private pointerUp = (): void => { this.dragging = false; };
 
-  /**
-   * The wheel is swallowed on the stage so the page behind cannot scroll,
-   * but it no longer changes the camera distance: the hero holds one framing
-   * and only spins in place.
-   */
   private wheel = (event: WheelEvent): void => {
     if (this.lobbyScreen.classList.contains('hidden') && this.classScreen.classList.contains('hidden')) return;
     event.preventDefault();

@@ -147,20 +147,80 @@ export function resolveCharacterClips(
   return result;
 }
 
+const MAGE_SKILL_FALLBACKS: Record<string, readonly string[]> = {
+  // warrior skill id -> possible maga animation names
+  ataque_basico: ['ataque basico', 'ataque basico', 'posicao ataque'],
+  ataque_giratorio: ['ataque agua', 'ataque basico'],
+  ataque_giratorio_2: ['ataque gelo', 'ataque agua'],
+  pulo_atacando: ['ataque choque', 'ataque de larva'],
+  triplo_ataque: ['ataque laser', 'ataque choque'],
+  corte_duplo: ['ataque de larva', 'ataque laser'],
+  // also allow maga names to be found via warrior names
+  'ataque basico': ['ataque_basico', 'ataque basico'],
+  'ataque agua': ['ataque_giratorio'],
+  'ataque gelo': ['ataque_giratorio_2'],
+  'ataque choque': ['pulo_atacando'],
+  'ataque laser': ['triplo_ataque'],
+  'ataque de larva': ['corte_duplo'],
+  'posicao ataque': ['ataque_basico', 'ataque basico'],
+};
+
+function findAttackClipWithFallback(
+  clips: THREE.AnimationClip[],
+  attackId: string,
+  characterId: CharacterId
+): THREE.AnimationClip | undefined {
+  const exact = clips.find((c) => c.name === attackId);
+  if (exact) return exact;
+  // try case-insensitive or trimmed? keep exact for now
+  const fallbacks = MAGE_SKILL_FALLBACKS[attackId];
+  if (fallbacks) {
+    for (const alt of fallbacks) {
+      const found = clips.find((c) => c.name === alt);
+      if (found) return found;
+    }
+  }
+  // For maga, also try to find any attack clip if warrior id not found
+  if (characterId === 'maga') {
+    // try to find any clip that contains part of the name
+    const lower = attackId.toLowerCase();
+    if (lower.includes('giratorio')) {
+      return clips.find((c) => c.name.toLowerCase().includes('agua') || c.name.toLowerCase().includes('gelo'));
+    }
+    if (lower.includes('pulo')) {
+      return clips.find((c) => c.name.toLowerCase().includes('choque') || c.name.toLowerCase().includes('larva'));
+    }
+  }
+  return undefined;
+}
+
 export function resolveWarriorAttackClips(
   characterId: CharacterId,
   source: CharacterAnimationSource
-): Partial<Record<WarriorAttackId, THREE.AnimationClip>> {
+): Partial<Record<string, THREE.AnimationClip>> {
   const definition = getCharacterDefinition(characterId);
-  const result: Partial<Record<WarriorAttackId, THREE.AnimationClip>> = {};
+  const result: Partial<Record<string, THREE.AnimationClip>> = {};
   const nativeClips = source.getAnimations(characterId);
   const idleReferenceClip = findExact(
     nativeClips,
     definition.clipMap.idle ?? definition.idlePoseSource
   );
 
-  for (const attackId of definition.attackClipNames ?? []) {
-    const clip = findExact(nativeClips, attackId);
+  // Build a set of all attack ids we want to resolve:
+  // - those defined in the character
+  // - plus warrior skill ids for compatibility (so skills work on maga)
+  // - plus maga ids for completeness
+  const desiredAttackIds = new Set<string>(definition.attackClipNames ?? []);
+  // Always try to resolve warrior skill ids so the skill system works for any class
+  for (const wid of ['ataque_basico', 'ataque_giratorio', 'ataque_giratorio_2', 'pulo_atacando', 'triplo_ataque', 'corte_duplo']) {
+    desiredAttackIds.add(wid);
+  }
+  for (const mid of ['ataque basico', 'ataque agua', 'ataque choque', 'ataque gelo', 'ataque laser', 'ataque de larva', 'posicao ataque']) {
+    desiredAttackIds.add(mid);
+  }
+
+  for (const attackId of desiredAttackIds) {
+    const clip = findAttackClipWithFallback(nativeClips, attackId, characterId);
     if (!clip) continue;
     const prepared = definition.inPlaceAxes
       ? makeClipInPlace(clip, definition.inPlaceAxes, idleReferenceClip)
@@ -170,4 +230,11 @@ export function resolveWarriorAttackClips(
   }
 
   return result;
+}
+
+export function resolveAttackClips(
+  characterId: CharacterId,
+  source: CharacterAnimationSource
+): Partial<Record<string, THREE.AnimationClip>> {
+  return resolveWarriorAttackClips(characterId, source);
 }

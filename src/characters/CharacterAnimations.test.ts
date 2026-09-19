@@ -68,6 +68,7 @@ function source(): CharacterAnimationSource {
       rotationClip('morte', true),
       rotationClip('caiu', true),
     ],
+    maga: [],
   };
 
   return {
@@ -123,6 +124,7 @@ describe('resolveCharacterClips', () => {
         clipWithRootMotion('recebe_dano', [70, 80, 50], [71, 81, 51]),
         clipWithRootMotion('morte', [90, 100, 60], [91, 101, 61]),
       ],
+    maga: [],
     };
     const clips = resolveCharacterClips('paladin', {
       getAnimations: (id) => animations[id],
@@ -226,6 +228,7 @@ describe('resolveCharacterClips', () => {
           ),
         ]),
       ],
+    maga: [],
     };
     const animationSource = {
       getAnimations: (id: CharacterId) => animations[id],
@@ -257,6 +260,7 @@ describe('resolveCharacterClips', () => {
         clipWithRootMotion('ataque', [100, 200, 30], [120, 240, 31]),
       ],
       paladin: [],
+    maga: [],
     };
     const clips = resolveCharacterClips('dragon-miner', {
       getAnimations: (id) => animations[id],

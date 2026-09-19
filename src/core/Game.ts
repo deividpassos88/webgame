@@ -285,7 +285,7 @@ export class Game {
       this.flow = new GameFlowController(
         profileResult.kind === 'loaded' ? 'lobby' : 'class-select'
       );
-      const characterId = PLAYABLE_CHARACTER_ID;
+      const characterId = this.profile.selectedClass;
       const definition = getCharacterDefinition(characterId);
       this.hud.setGameplayVisible(false);
       this.hud.showLoadingScreen(5, `Preparando ${definition.name}...`);
@@ -318,8 +318,8 @@ export class Game {
               );
             }
           }
-          if (!this.characterAssets.has(PLAYABLE_CHARACTER_ID)) {
-            const error = this.characterAssets.getError(PLAYABLE_CHARACTER_ID);
+          if (!this.characterAssets.has(this.profile.selectedClass)) {
+            const error = this.characterAssets.getError(this.profile.selectedClass);
             throw new Error(
               `O ${definition.name} não pôde ser carregado.\n${Logger.formatError(error)}`
             );
@@ -334,7 +334,8 @@ export class Game {
           );
           await lobby.show({
             firstRun: this.flow.state === 'class-select',
-            onClassConfirmed: () => {
+            onClassConfirmed: (classId) => {
+              this.profile.selectedClass = classId;
               this.flow.transition({ type: 'class-confirmed' });
               savePlayerProfile(this.profile);
             },
@@ -375,13 +376,16 @@ export class Game {
         );
       }
 
-      this.hud.setLoadingProgress(90, `Preparando ${definition.name}...`);
-      this.hud.setPlayerCharacter(definition.name);
-      Logger.info('Game', `Personagem escolhido: ${definition.name}`);
+      // Use the class confirmed in lobby (may have changed from initial definition)
+      const gameplayCharacterId = this.profile.selectedClass;
+      const gameplayDefinition = getCharacterDefinition(gameplayCharacterId);
+      this.hud.setLoadingProgress(90, `Preparando ${gameplayDefinition.name}...`);
+      this.hud.setPlayerCharacter(gameplayDefinition.name);
+      Logger.info('Game', `Personagem escolhido: ${gameplayDefinition.name}`);
 
       this.setupLights();
       this.scene.add(this.level.group);
-      this.player = new Player(characterId, this.characterAssets);
+      this.player = new Player(gameplayCharacterId, this.characterAssets);
       await this.player.load();
       this.player.onWarriorSkillHit((event) => this.onWarriorSkillHit(event));
       this.hud.onAnimationTest((state) => {
@@ -450,7 +454,10 @@ export class Game {
           restoredVault.saved
         );
       }
-       this.hud.setPlayerPortrait('/assets/ui/portrait/warrior-portrait.png');
+       const portraitPath = this.profile.selectedClass === 'maga'
+        ? '/assets/ui/portrait/mage-portrait.png'
+        : '/assets/ui/portrait/warrior-portrait.png';
+      this.hud.setPlayerPortrait(portraitPath);
       if (this.player.equippedWeaponId !== null) this.runProgression.weaponEquipped();
 
       if (WEAPON_TEST_MODE) this.spawnTrainingDummy();

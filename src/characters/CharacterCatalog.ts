@@ -1,6 +1,6 @@
 import type { RootMotionAxis } from './AnimationClipAdapter';
 
-export type CharacterId = 'dragon-miner' | 'paladin';
+export type CharacterId = 'dragon-miner' | 'paladin' | 'maga';
 
 export type CharacterAnimationState =
   | 'idle'
@@ -20,6 +20,20 @@ export const WARRIOR_ATTACK_IDS = [
 
 export type WarriorAttackId = typeof WARRIOR_ATTACK_IDS[number];
 
+export const MAGE_ATTACK_IDS = [
+  'ataque basico',
+  'ataque agua',
+  'ataque choque',
+  'ataque gelo',
+  'ataque laser',
+  'ataque de larva',
+  'posicao ataque',
+] as const;
+
+export type MagaAttackId = typeof MAGE_ATTACK_IDS[number];
+
+export type AttackClipId = WarriorAttackId | MagaAttackId | string;
+
 export interface CharacterDefinition {
   id: CharacterId;
   name: string;
@@ -30,7 +44,7 @@ export interface CharacterDefinition {
   clipMap: Partial<Record<CharacterAnimationState, string>>;
   clipAliases?: Partial<Record<CharacterAnimationState, readonly string[]>>;
   idlePoseSource?: string;
-  attackClipNames?: readonly WarriorAttackId[];
+  attackClipNames?: readonly string[];
   fallbackModelPath?: string;
   inPlaceAxes?: readonly RootMotionAxis[];
   animationTimeScale?: Partial<Record<CharacterAnimationState, number>>;
@@ -81,17 +95,56 @@ export const CHARACTERS: readonly CharacterDefinition[] = [
       attacking: ['ataque'],
       hit: ['hit'],
     },
-    attackClipNames: WARRIOR_ATTACK_IDS,
+    attackClipNames: WARRIOR_ATTACK_IDS as unknown as readonly string[],
     animationTimeScale: {
       attacking: 1.45,
+    },
+  },
+  {
+    id: 'maga',
+    name: 'Maga',
+    modelPath: '/models/maga.glb',
+    gameScale: 1.15,
+    previewScale: 1.25,
+    previewYOffset: -0.92,
+    inPlaceAxes: ['x', 'y'],
+    clipMap: {
+      idle: 'idle',
+      running: 'correr para frente',
+      attacking: 'ataque basico',
+      hit: 'hit',
+      dead: 'morrendo',
+    },
+    clipAliases: {
+      idle: ['Idle', 'mixamo.com', 'posicao ataque'],
+      running: ['correr para tras', 'running', 'correndo'],
+      attacking: [
+        'ataque agua',
+        'ataque choque',
+        'ataque gelo',
+        'ataque laser',
+        'ataque de larva',
+        'ataque_basico',
+        'ataque_giratorio',
+      ],
+      hit: ['Hit', 'recebe_dano'],
+      dead: ['morte', 'morrendo'],
+    },
+    attackClipNames: MAGE_ATTACK_IDS as unknown as readonly string[],
+    animationTimeScale: {
+      attacking: 1.25,
+      running: 1.1,
+      idle: 1.0,
     },
   },
 ] as const;
 
 export const PLAYABLE_CHARACTER_ID: CharacterId = 'paladin';
+export const PLAYABLE_CHARACTER_IDS: readonly CharacterId[] = ['paladin', 'maga'] as const;
+export const DEFAULT_PLAYABLE_CHARACTER_ID: CharacterId = 'paladin';
 
 export function getPlayableCharacters(): readonly CharacterDefinition[] {
-  return CHARACTERS.filter(({ id }) => id === PLAYABLE_CHARACTER_ID);
+  return CHARACTERS.filter(({ id }) => (PLAYABLE_CHARACTER_IDS as readonly string[]).includes(id));
 }
 
 export function getCharacterDefinition(id: CharacterId): CharacterDefinition {

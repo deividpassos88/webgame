@@ -99,9 +99,17 @@ export interface BlacksmithAccess {
   availableUntil: number | null;
 }
 
+export type PlayableClassId = 'paladin' | 'maga';
+
+export const PLAYABLE_CLASS_IDS = ['paladin', 'maga'] as const satisfies readonly PlayableClassId[];
+
+export function isPlayableClassId(value: unknown): value is PlayableClassId {
+  return typeof value === 'string' && (PLAYABLE_CLASS_IDS as readonly string[]).includes(value);
+}
+
 export interface PlayerProfile {
   schemaVersion: typeof PROFILE_SCHEMA_VERSION;
-  selectedClass: 'paladin';
+  selectedClass: PlayableClassId;
   equipment: PlayerEquipment;
   backpack: InventoryStack[];
   /** Persisted number of accessible backpack stacks, expanded in five-slot steps. */
@@ -379,7 +387,7 @@ export function getSecondaryWeaponId(equipment: PlayerEquipment): string | null 
 function isPlayerProfile(value: unknown): value is PlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== PROFILE_SCHEMA_VERSION) return false;
-  if (value.selectedClass !== 'paladin') return false;
+  if (!isPlayableClassId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   const backpackCapacity = value.backpackCapacity;
   if (!isBackpackCapacity(backpackCapacity)) return false;
@@ -401,7 +409,7 @@ function isPlayerProfile(value: unknown): value is PlayerProfile {
 function isStrengthAttributeProfile(value: unknown): value is StrengthAttributePlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== STRENGTH_ATTRIBUTE_SCHEMA_VERSION) return false;
-  if (value.selectedClass !== 'paladin') return false;
+  if (!isPlayableClassId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   const backpackCapacity = value.backpackCapacity;
   if (!isBackpackCapacity(backpackCapacity)) return false;
@@ -456,7 +464,7 @@ function hasStrengthAttributeAllocation(
 function isVersionNineProfile(value: unknown): value is VersionNinePlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== PREVIOUS_CURRENT_PROFILE_SCHEMA_VERSION) return false;
-  if (value.selectedClass !== 'paladin') return false;
+  if (!isPlayableClassId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   if (!isBackpackCapacity(value.backpackCapacity) || !isBackpack(value.backpack, value.backpackCapacity)) return false;
   if (!isGuildVault(value.guildVault)) return false;
@@ -472,7 +480,7 @@ function isVersionNineProfile(value: unknown): value is VersionNinePlayerProfile
 function isVersionEightProfile(value: unknown): value is VersionEightPlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== PREVIOUS_PROFILE_SCHEMA_VERSION) return false;
-  if (value.selectedClass !== 'paladin') return false;
+  if (!isPlayableClassId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   if (!isBackpackCapacity(value.backpackCapacity) || !isBackpack(value.backpack, value.backpackCapacity)) return false;
   if (!isGuildVault(value.guildVault) || !isPlayerHotkeys(value.hotkeys) || !isSkillStars(value.skillStars)) return false;
@@ -485,7 +493,7 @@ function isVersionEightProfile(value: unknown): value is VersionEightPlayerProfi
 function isVersionSevenProfile(value: unknown): value is VersionSevenPlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== PREVIOUS_PREVIOUS_PROFILE_SCHEMA_VERSION) return false;
-  if (value.selectedClass !== 'paladin') return false;
+  if (!isPlayableClassId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   if (!isBackpackCapacity(value.backpackCapacity) || !isBackpack(value.backpack, value.backpackCapacity)) return false;
   if (!isGuildVault(value.guildVault) || !isSkillStars(value.skillStars) || !isVersionSevenHotkeys(value.hotkeys)) return false;
@@ -504,7 +512,7 @@ function isVersionSevenHotkeys(value: unknown): value is Record<'ataque_basico' 
 function isVersionSixProfile(value: unknown): value is VersionSixPlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== OLDER_PROFILE_SCHEMA_VERSION) return false;
-  if (value.selectedClass !== 'paladin') return false;
+  if (!isPlayableClassId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   if (!isBackpackCapacity(value.backpackCapacity) || !isBackpack(value.backpack, value.backpackCapacity)) return false;
   if (!isGuildVault(value.guildVault) || !isSkillStars(value.skillStars)) return false;
@@ -516,7 +524,7 @@ function isVersionSixProfile(value: unknown): value is VersionSixPlayerProfile {
 function isVersionFiveProfile(value: unknown): value is VersionFivePlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== LEGACY_PROFILE_SCHEMA_VERSION) return false;
-  if (value.selectedClass !== 'paladin') return false;
+  if (!isPlayableClassId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   if (!isBackpack(value.backpack, migratedBackpackCapacity(value))) return false;
   if (!isGuildVault(value.guildVault)) return false;
@@ -529,7 +537,7 @@ function isVersionFiveProfile(value: unknown): value is VersionFivePlayerProfile
 function isVersionFourProfile(value: unknown): value is VersionFourPlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== OLDEST_PROFILE_SCHEMA_VERSION) return false;
-  if (value.selectedClass !== 'paladin') return false;
+  if (!isPlayableClassId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   if (!isBackpack(value.backpack, migratedBackpackCapacity(value))) return false;
   if (!isGuildVault(value.guildVault)) return false;
@@ -541,7 +549,7 @@ function isVersionFourProfile(value: unknown): value is VersionFourPlayerProfile
 function isVersionThreeProfile(value: unknown): value is VersionThreePlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== ANCIENT_PROFILE_SCHEMA_VERSION) return false;
-  if (value.selectedClass !== 'paladin') return false;
+  if (!isPlayableClassId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   if (!isLegacyBackpack(value.backpack)) return false;
   if (!isGuildVault(value.guildVault)) return false;
@@ -552,7 +560,7 @@ function isVersionThreeProfile(value: unknown): value is VersionThreePlayerProfi
 function isVersionTwoProfile(value: unknown): value is VersionTwoPlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== PRIMITIVE_PROFILE_SCHEMA_VERSION) return false;
-  if (value.selectedClass !== 'paladin') return false;
+  if (!isPlayableClassId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   if (!isLegacyBackpack(value.backpack)) return false;
   if (!isSkillStars(value.skillStars)) return false;
@@ -562,7 +570,7 @@ function isVersionTwoProfile(value: unknown): value is VersionTwoPlayerProfile {
 function isLegacyPlayerProfile(value: unknown): value is LegacyPlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== EARLIEST_PROFILE_SCHEMA_VERSION) return false;
-  if (value.selectedClass !== 'paladin') return false;
+  if (!isPlayableClassId(value.selectedClass)) return false;
   if (!isLegacyEquipment(value.equipment)) return false;
   if (!isLegacyBackpack(value.backpack)) return false;
   return isSkillStars(value.skillStars);
@@ -907,7 +915,7 @@ function migrateVersionFourProgression(previous: CharacterProgression): Characte
 }
 
 function makeProgressionProfile(source: {
-  selectedClass: 'paladin';
+  selectedClass: PlayableClassId;
   equipment: PlayerEquipment;
   backpack: InventoryStack[];
   backpackCapacity: number;

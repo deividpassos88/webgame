@@ -7,7 +7,6 @@ import {
 import type { RuntimeWarriorBudgetReport } from '../characters/RuntimeWarriorBudget';
 import {
   getCharacterDefinition,
-  WARRIOR_ATTACK_IDS,
   type CharacterAnimationState,
   type CharacterId,
   type WarriorAttackId,
@@ -75,7 +74,7 @@ export class Player {
 
   private actions: Partial<Record<PlayerState, THREE.AnimationAction>> = {};
   private comboActions: THREE.AnimationAction[] = [];
-  private warriorAttackActions: Partial<Record<WarriorAttackId, THREE.AnimationAction>> = {};
+  private warriorAttackActions: Partial<Record<string, THREE.AnimationAction>> = {};
   private currentAction: THREE.AnimationAction | null = null;
   private animationPreview = new PlayerAnimationPreview();
   private readonly comboController = new SwordComboController();
@@ -154,7 +153,8 @@ export class Player {
       if (mesh.isMesh) {
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-        if (this.characterId === 'paladin') {
+        // Keep the original emissive boost for warrior, but also ensure maga renders bright enough
+        if (this.characterId === 'paladin' || this.characterId === 'maga') {
           const materials = Array.isArray(mesh.material)
             ? mesh.material
             : [mesh.material];
@@ -163,7 +163,7 @@ export class Player {
             if (copy instanceof THREE.MeshStandardMaterial) {
               copy.emissive.setHex(0xffffff);
               copy.emissiveMap = copy.map;
-              copy.emissiveIntensity = 0.45;
+              copy.emissiveIntensity = this.characterId === 'maga' ? 0.25 : 0.45;
             }
             return copy;
           });
@@ -241,13 +241,13 @@ export class Player {
   private setupComboActions(
     clip: THREE.AnimationClip | undefined,
     previewTimeScale: number,
-    warriorClips: Partial<Record<WarriorAttackId, THREE.AnimationClip>>
+    warriorClips: Partial<Record<string, THREE.AnimationClip>>
   ): void {
     this.comboActions = [];
     this.warriorAttackActions = {};
 
-    for (const attackId of WARRIOR_ATTACK_IDS) {
-      const attackClip = warriorClips[attackId];
+    // Populate all attack clips that were resolved (warrior + maga)
+    for (const [attackId, attackClip] of Object.entries(warriorClips)) {
       if (!attackClip) continue;
       const action = this.mixer.clipAction(attackClip);
       action.setLoop(THREE.LoopOnce, 1);
@@ -270,7 +270,9 @@ export class Player {
       }
     }
     this.actions.attacking =
-      this.warriorAttackActions.ataque_basico ?? this.comboActions[0];
+      this.warriorAttackActions.ataque_basico ??
+      this.warriorAttackActions['ataque basico'] ??
+      this.comboActions[0];
   }
 
   private setupAction(
@@ -395,15 +397,12 @@ export class Player {
   public attackAtCursor() {
     if (this.skillAttackController.active) return;
     if (this.isSwinging) {
-      if (this.equippedWeaponId === 'sword') this.comboController.request();
+      if (this.equippedWeaponId === 'sword' || this.characterId === 'maga') this.comboController.request();
       return;
     }
     if (!this.canAcceptInput() || this.attackCooldown > 0) return;
     this.animationPreview.clear();
-    // Empty-hand clicks are used by the animation preview before the reward
-    // gate equips a weapon. Keep that preview one-shot and leave combat
-    // combo timing exclusively to the equipped sword path.
-    if (this.equippedWeaponId !== 'sword') {
+    if (this.characterId !== 'maga' && this.equippedWeaponId !== 'sword') {
       this.attackCooldown = this.attackCooldownTime;
       this.emptyHandAttackPreview = true;
       this.playState('attacking', 0.15);
@@ -412,7 +411,7 @@ export class Player {
     this.startCombo();
   }
 
-  public get activeWarriorAttackId(): WarriorAttackId | null {
+  public get activeWarriorAttackId(): string | null {
     if (this.skillAttackController.activeAttackId) {
       return this.skillAttackController.activeAttackId;
     }
@@ -425,7 +424,7 @@ export class Player {
 
   public tryStartSkillAttack(id: WarriorSkillId): boolean {
     if (
-      this.equippedWeaponId !== 'sword' ||
+      (this.characterId !== 'maga' && this.equippedWeaponId !== 'sword') ||
       this.isDead ||
       this.isHitReacting ||
       this.isSwinging ||
@@ -730,12 +729,14 @@ export class Player {
 
   private startCombo(): boolean {
     if (
-      this.equippedWeaponId === null ||
       this.isDead ||
       this.attackCooldown > 0 ||
       this.isSwinging
     ) return false;
+    // Maga does not require sword equipped for basic attack preview in combat
+    if (this.characterId !== 'maga' && this.equippedWeaponId === null) return false;
     const action = this.warriorAttackActions.ataque_basico
+      ?? this.warriorAttackActions['ataque basico']
       ?? this.comboActions[0]
       ?? this.actions.attacking;
     if (!action || !this.comboController.request()) return false;
@@ -751,8 +752,12 @@ export class Player {
   }
 
   private playComboStage(stage: number): void {
-    const attackId: WarriorAttackId = 'ataque_basico';
+    const attackId = this.characterId === 'maga' ? 'ataque basico' : 'ataque_basico';
+    const fallbackId = attackId === 'ataque basico' ? 'ataque_basico' : 'ataque basico';
     const action = this.warriorAttackActions[attackId]
+      ?? this.warriorAttackActions[fallbackId]
+      ?? this.warriorAttackActions['ataque_basico']
+      ?? this.warriorAttackActions['ataque basico']
       ?? this.comboActions[stage]
       ?? this.actions.attacking;
     if (!action) {
@@ -871,7 +876,7 @@ export class Player {
   private tryDealComboDamage(): void {
     const target = this.attackTargetEnemy;
     if (
-      this.equippedWeaponId === null ||
+      (this.characterId !== 'maga' && this.equippedWeaponId === null) ||
       !target ||
       !this.isTargetAlive(target) ||
       !this.isTargetInRange(target)
