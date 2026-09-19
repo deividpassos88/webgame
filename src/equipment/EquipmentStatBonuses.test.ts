@@ -10,7 +10,7 @@ import {
 import { createDefaultCharacterAttributes } from '../profile/CharacterAttributes';
 import { createDefaultPlayerProfile, type PlayerEquipment } from '../profile/PlayerProfile';
 
-function draconicSet(suffix = ''): PlayerEquipment {
+function dragonicSet(suffix = ''): PlayerEquipment {
   return {
     ...createDefaultPlayerProfile().equipment,
     helmet: `common-forged-helmet${suffix}`,
@@ -21,9 +21,9 @@ function draconicSet(suffix = ''): PlayerEquipment {
   };
 }
 
-describe('Draconic equipment set bonuses', () => {
+describe('Dragonic equipment set bonuses', () => {
   it('adds the five-piece bonus only when the whole set is worn', () => {
-    const equipment = draconicSet();
+    const equipment = dragonicSet();
 
     expect(hasCommonForgedSet(equipment)).toBe(true);
     expect(equippedForgedSetLine(equipment)).toBe('defense');
@@ -37,7 +37,7 @@ describe('Draconic equipment set bonuses', () => {
   });
 
   it('adds the offensive five-piece bonus when the whole ATK set is worn', () => {
-    const equipment = draconicSet('-atk');
+    const equipment = dragonicSet('-atk');
 
     expect(equippedForgedSetLine(equipment)).toBe('attack');
     // Pieces (ATK): attack 3+4+3+4+3, vitality 1, agility 1+2+2.
@@ -50,7 +50,7 @@ describe('Draconic equipment set bonuses', () => {
   });
 
   it('grants no set bonus while the armor mixes the two lines', () => {
-    const equipment = draconicSet();
+    const equipment = dragonicSet();
     equipment.gloves = 'common-forged-gloves-atk';
 
     expect(equippedForgedSetLine(equipment)).toBeNull();
@@ -58,7 +58,7 @@ describe('Draconic equipment set bonuses', () => {
   });
 
   it('grants piece stats without the set bonus while one slot is empty', () => {
-    const equipment = draconicSet();
+    const equipment = dragonicSet();
     equipment.boots = null;
 
     expect(hasCommonForgedSet(equipment)).toBe(false);
@@ -81,7 +81,7 @@ describe('Draconic equipment set bonuses', () => {
 
   it('adds equipment bonuses on top of the allocated attributes', () => {
     const attributes = { ...createDefaultCharacterAttributes(), vitality: 20, attack: 10 };
-    const total = attributesWithEquipment(attributes, draconicSet());
+    const total = attributesWithEquipment(attributes, dragonicSet());
 
     // 20 allocated vitality + 5 from the DEF set, 10 attack, 25 defense.
     expect(total.vitality).toBe(25);
@@ -92,10 +92,10 @@ describe('Draconic equipment set bonuses', () => {
   it('resolves the equipped weapon damage shared by the sheet and the fight', () => {
     const equipment = { ...createDefaultPlayerProfile().equipment, weapon: 'starter-sword' };
 
-    expect(equippedWeaponDamage(equipment)).toBe(4);
+    expect(equippedWeaponDamage(equipment)).toBe(5);
     // The legacy mirror cannot add the same sword twice, and unequipping it
     // takes the damage back to zero.
-    expect(equippedWeaponDamage({ ...equipment, primaryWeapon: 'starter-sword' })).toBe(4);
+    expect(equippedWeaponDamage({ ...equipment, primaryWeapon: 'starter-sword' })).toBe(5);
     expect(equippedWeaponDamage({ ...equipment, weapon: null })).toBe(0);
     expect(equippedWeaponDamage({ ...equipment, weapon: 'runic-crystal' })).toBe(0);
   });

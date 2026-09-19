@@ -107,7 +107,7 @@ describe('WaveEnemyFactory', () => {
     const archer = createArcherEnemy(new THREE.Vector3(), 1, 1);
 
     expect(options).toMatchObject({
-      hp: 50,
+      hp: 120,
       attackRange: 10.5,
       detectionRange: 26,
       attackMode: 'ranged',
@@ -140,7 +140,7 @@ describe('WaveEnemyFactory', () => {
     const guardian = createGuardianEnemy(new THREE.Vector3(), 1, 1);
 
     expect(options).toMatchObject({
-      hp: 94,
+      hp: 180,
       attackRange: 4.5,
       detectionRange: 23,
       collisionRadius: 0.5,
@@ -213,11 +213,11 @@ describe('createBoss compatibility', () => {
       hp: 7000,
       damage: 11,
       detectionRange: 45,
-      attackRange: 1.9,
+      attackRange: 2.2,
       speed: 0.8,
       isBoss: true,
     });
-    expect(boss.root.userData.enemyBodyScale).toBe(2.5);
+    expect(boss.root.userData.enemyBodyScale).toBe(3.2);
     expect(boss.root.position).toEqual(new THREE.Vector3(0, 0, -14));
     position.set(9, 9, 9);
     expect(boss.root.position).toEqual(new THREE.Vector3(0, 0, -14));

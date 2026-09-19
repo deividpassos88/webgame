@@ -70,7 +70,7 @@ describe('WaveManager ADM transitions', () => {
 
     expect(manager.snapshot).toMatchObject({ phase: 'regular-wave', wave: 4, spawned: 0, alive: 0 });
     expect(manager.update(0)[0]).toMatchObject({
-      wave: 4, hpMultiplier: 1.12, damageMultiplier: 1.4, speedMultiplier: 1.12,
+      wave: 4, hpMultiplier: 1.45, damageMultiplier: 1.4, speedMultiplier: 1.12,
     });
   });
 
@@ -80,7 +80,7 @@ describe('WaveManager ADM transitions', () => {
 
     expect(manager.snapshot).toMatchObject({ phase: 'final-battle', wave: 6, spawned: 0, alive: 0 });
     expect(manager.update(0)[0]).toMatchObject({
-      kind: 'final-battle', regularCount: 4, bossCount: 1, miniBossCount: 0,
+      kind: 'final-battle', regularCount: 5, bossCount: 1, miniBossCount: 0,
     });
   });
 
@@ -113,7 +113,7 @@ describe('WaveManager regular progression', () => {
     expect(request).toMatchObject({
       kind: 'regular-batch', wave: 1, regularCount: 8,
       bossCount: 0, miniBossCount: 0,
-      hpMultiplier: 1.03, damageMultiplier: 1, speedMultiplier: 1,
+      hpMultiplier: 1.0, damageMultiplier: 1, speedMultiplier: 1,
     });
   });
 
@@ -228,43 +228,55 @@ describe('WaveManager regular progression', () => {
       expect(manager.snapshot.phase).toBe(wave === 6 ? 'final-countdown' : 'intermission');
     }
 
-    expect(hpMultipliers).toEqual([1.03, 1.06, 1.09, 1.12, 1.15, 1.18]);
+    expect(hpMultipliers).toEqual([1, 1.3, 1.4, 1.45, 1.5, 1.5]);
     expect(damageMultipliers).toEqual([1, 1.1, 1.24, 1.4, 1.65, 2]);
     expect(speedMultipliers).toEqual([1, 1.03, 1.07, 1.12, 1.2, 1.3]);
     const [finalRequest] = manager.update(5);
     expect(finalRequest).toMatchObject({
-      kind: 'final-battle', wave: null, regularCount: 4,
+      kind: 'final-battle', wave: null, regularCount: 5,
       bossCount: 1, miniBossCount: 0,
     });
 
     const finalIds = acknowledgeRequest(manager, finalRequest, 'final');
     const phaseId = manager.snapshot.phaseId;
-    finalIds.slice(0, 4).forEach((id) => expect(manager.enemyDefeated(id, phaseId)).toBe(true));
+    finalIds.slice(0, 5).forEach((id) => expect(manager.enemyDefeated(id, phaseId)).toBe(true));
     expect(manager.snapshot.phase).toBe('final-battle');
-    expect(manager.enemyDefeated(finalIds[4], phaseId)).toBe(true);
-    expect(manager.snapshot).toMatchObject({ phase: 'victory', spawned: 5, alive: 0, total: 5 });
+    expect(manager.enemyDefeated(finalIds[5], phaseId)).toBe(true);
+    expect(manager.snapshot).toMatchObject({ phase: 'victory', spawned: 6, alive: 0, total: 6 });
     expect(manager.update(10)).toEqual([]);
   });
 
-  it('respawns four normal allies fifteen seconds after all four die while the boss lives', () => {
+  it('multiplies regular batch and mini boss hp with the equipment multiplier', () => {
+    const manager = new WaveManager();
+    // 5 pieces equipped = +30% HP (mult 1.30)
+    manager.setEquipmentHpMultiplier(1.30);
+    expect(manager.getEquipmentHpMultiplier()).toBe(1.30);
+
+    manager.weaponSelected();
+    const [requestWave1] = manager.update(5);
+    // Base wave 1 = 1.00 * 1.30 = 1.30
+    expect(requestWave1.hpMultiplier).toBeCloseTo(1.00 * 1.30, 6);
+  });
+
+  it('respawns five normal allies fifteen seconds after all five die while the boss lives', () => {
     const manager = new WaveManager();
     manager.adminStartBoss();
     const [initial] = manager.update(0);
     const ids = acknowledgeRequest(manager, initial, 'final');
     const phaseId = manager.snapshot.phaseId;
 
-    ids.slice(0, 4).forEach((id) => {
+    ids.slice(0, 5).forEach((id) => {
       expect(manager.enemyDefeated(id, phaseId)).toBe(true);
     });
     expect(manager.update(14.9)).toEqual([]);
     const [reinforcements] = manager.update(0.1);
     expect(reinforcements).toMatchObject({
-      kind: 'final-battle', regularCount: 4, bossCount: 0, miniBossCount: 0,
+      kind: 'final-battle', regularCount: 5, bossCount: 0, miniBossCount: 0,
     });
     acknowledgeRequest(manager, reinforcements, 'reinforcements');
-    expect(manager.snapshot.alive).toBe(5);
+    expect(manager.snapshot.alive).toBe(6);
 
-    expect(manager.enemyDefeated(ids[4], phaseId)).toBe(true);
+    expect(manager.enemyDefeated(ids[5], phaseId)).toBe(true);
     expect(manager.snapshot).toMatchObject({ phase: 'victory', alive: 0 });
     expect(manager.update(30)).toEqual([]);
   });
@@ -283,7 +295,7 @@ describe('WaveManager regular progression', () => {
     ])).toBe(true);
 
     const [retry] = manager.update(0);
-    expect(retry).toMatchObject({ bossCount: 0, miniBossCount: 0, regularCount: 2 });
+    expect(retry).toMatchObject({ bossCount: 0, miniBossCount: 0, regularCount: 3 });
   });
 
   it('rejects malformed acknowledgements and duplicate or stale deaths without changing counts', () => {
@@ -356,6 +368,44 @@ describe('WaveManager regular progression', () => {
       regularCount: 3,
       miniBossCount: 0,
     }]);
+  });
+
+  it('transitions boss minions to archers at 4x and to archers plus guardians (5 each) at 2x', () => {
+    const manager = new WaveManager();
+    manager.adminStartBoss();
+    const [initial] = manager.update(0);
+    expect(initial).toMatchObject({
+      kind: 'final-battle',
+      regularCount: 5,
+      bossCount: 1,
+      miniBossCount: 0,
+    });
+    acknowledgeRequest(manager, initial, 'initial');
+
+    // Transição para 4x: invoca 5 arqueiros
+    const to4x = manager.setFinalBattleBossBars(4);
+    expect(to4x).toHaveLength(1);
+    expect(to4x[0]).toMatchObject({
+      kind: 'final-battle',
+      regularCount: 5,
+      bossCount: 0,
+      miniBossCount: 0,
+    });
+    acknowledgeRequest(manager, to4x[0], 'phase-4x');
+
+    // Mesma fase (3x ainda é tier 2): não re-invoca imediatamente
+    expect(manager.setFinalBattleBossBars(3)).toEqual([]);
+
+    // Transição para 2x: invoca 10 monstros (5 archers + 5 guardians)
+    const to2x = manager.setFinalBattleBossBars(2);
+    expect(to2x).toHaveLength(1);
+    expect(to2x[0]).toMatchObject({
+      kind: 'final-battle',
+      regularCount: 10,
+      bossCount: 0,
+      miniBossCount: 0,
+    });
+    acknowledgeRequest(manager, to2x[0], 'phase-2x');
   });
 
   it('clamps negative delta, validates configuration, and invalidates old reports after reset', () => {

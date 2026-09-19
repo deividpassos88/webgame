@@ -139,20 +139,20 @@ describe('PlayerProfile progression', () => {
   });
 
   it('migrates a schema-ten save from strength into vitality without losing its build', () => {
-    // Level five earns twenty points, so a fully spent schema-ten build has
+    // Level five earns eight points, so a fully spent schema-ten build has
     // exactly the same budget the current schema expects.
     const schemaTen = {
       ...createDefaultPlayerProfile(),
       schemaVersion: 10,
       progression: { level: 5, experience: 400 },
       attributes: {
-        strength: 8,
-        attack: 6,
-        defense: 2,
+        strength: 3,
+        attack: 2,
+        defense: 1,
         agility: 1,
         criticalAttack: 1,
-        criticalMagic: 1,
-        dodge: 1,
+        criticalMagic: 0,
+        dodge: 0,
       },
       attributePointsRemaining: 0,
     };
@@ -164,15 +164,15 @@ describe('PlayerProfile progression', () => {
     // Strength points become vitality point for point; the two new attributes
     // start at zero so the allocation stays inside the shared budget.
     expect(result.profile.attributes).toEqual({
-      vitality: 8,
-      attack: 6,
-      defense: 2,
+      vitality: 3,
+      attack: 2,
+      defense: 1,
       agility: 1,
       criticalAttack: 1,
       criticalDamage: 0,
-      criticalMagic: 1,
+      criticalMagic: 0,
       lifeSteal: 0,
-      dodge: 1,
+      dodge: 0,
     });
     expect(result.profile.attributePointsRemaining).toBe(0);
     expect(JSON.parse(storage.value!).schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
@@ -218,14 +218,14 @@ describe('PlayerProfile progression', () => {
     expect(JSON.parse(storage.value!).backpack).toHaveLength(20);
   });
 
-  it('grants five points after the new early-wave level threshold', () => {
+  it('grants two points after the new early-wave level threshold', () => {
     let profile = createDefaultPlayerProfile();
-    for (let index = 0; index < 30; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       profile = awardPlayerExperience(profile, 'regular', 1);
     }
 
     expect(profile.progression).toEqual({ level: 2, experience: 60 });
-    expect(profile.attributePointsRemaining).toBe(5);
+    expect(profile.attributePointsRemaining).toBe(2);
   });
 
   it('migrates a schema-four save without losing its earned level or inventory', () => {
@@ -234,7 +234,7 @@ describe('PlayerProfile progression', () => {
       ...current,
       schemaVersion: 4,
       progression: { level: 2, experience: 150 },
-      attributePointsRemaining: 5,
+      attributePointsRemaining: 2,
       backpack: [{ itemId: 'runic-crystal', quantity: 7 }],
     };
     const result = loadPlayerProfile(memoryStorage(JSON.stringify(oldProfile)));
@@ -242,7 +242,7 @@ describe('PlayerProfile progression', () => {
     expect(result.kind).toBe('loaded');
     expect(result.profile.schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
     expect(result.profile.progression).toEqual({ level: 2, experience: 100 });
-    expect(result.profile.attributePointsRemaining).toBe(5);
+    expect(result.profile.attributePointsRemaining).toBe(2);
     expect(result.profile.backpack).toEqual([{ itemId: 'runic-crystal', quantity: 7 }]);
     expect(result.profile.blacksmith).toEqual({ availableUntil: null });
   });
@@ -394,19 +394,19 @@ describe('PlayerProfile progression', () => {
     expect(loadPlayerProfile(memoryStorage(JSON.stringify(malformed))).kind).toBe('recovered');
   });
 
-  it('enforces the 30-point single-stat gate until another attribute reaches 30', () => {
-    let profile = { ...createDefaultPlayerProfile(), attributePointsRemaining: 100 };
-    profile = allocateAttributePoint(profile, 'attack', 28);
+  it('enforces gate progression: initial cap 10, unlocks +5 up to 15 when another reaches 10', () => {
+    let profile = { ...createDefaultPlayerProfile(), attributePointsRemaining: 40 };
+    profile = allocateAttributePoint(profile, 'attack', 8);
     profile = allocateAttributePoint(profile, 'attack', 5);
 
-    expect(profile.attributes.attack).toBe(30);
-    expect(profile.attributePointsRemaining).toBe(70);
+    expect(profile.attributes.attack).toBe(10);
+    expect(profile.attributePointsRemaining).toBe(30);
     expect(allocateAttributePoint(profile, 'attack', 5)).toEqual(profile);
 
-    profile = allocateAttributePoint(profile, 'defense', 30);
+    profile = allocateAttributePoint(profile, 'defense', 10);
     profile = allocateAttributePoint(profile, 'attack', 5);
-    expect(profile.attributes.attack).toBe(35);
-    expect(profile.attributes.defense).toBe(30);
+    expect(profile.attributes.attack).toBe(15);
+    expect(profile.attributes.defense).toBe(10);
   });
 
   it('loads a valid current profile and safely recovers malformed progression data', () => {

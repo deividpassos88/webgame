@@ -123,8 +123,8 @@ export function equippedForgedSetLine(equipment: PlayerEquipment): CraftLineId |
 
 /** Set label for the line currently worn, used by the character sheet. */
 export function forgedSetLabel(line: CraftLineId | null): string | null {
-  if (line === 'attack') return 'Conjunto Draconic ATK';
-  if (line === 'defense') return 'Conjunto Draconic DEF';
+  if (line === 'attack') return 'Conjunto Dragonic ATK';
+  if (line === 'defense') return 'Conjunto Dragonic DEF';
   return null;
 }
 

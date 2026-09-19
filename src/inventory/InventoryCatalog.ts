@@ -43,8 +43,7 @@ export const INVENTORY_ITEMS = {
     iconSrc: '/items/equipment/armas/sword.webp',
     equippedIconSrc: '/items/equipment/equipado/sword.webp',
     description: 'Uma espada de treino confiável, entregue à recruta da guilda.',
-    // Nerfed from 8 to 4: the novice weapon was out-damaging the first forged drops.
-    baseDamage: 4,
+    baseDamage: 5,
   },
   'iron-helmet': {
     id: 'iron-helmet',
@@ -108,7 +107,7 @@ export const INVENTORY_ITEMS = {
    */
   'common-forged-helmet': {
     id: 'common-forged-helmet',
-    label: 'Draconic Helmet [DEF]',
+    label: 'Dragonic Helmet [DEF]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -121,7 +120,7 @@ export const INVENTORY_ITEMS = {
   },
   'common-forged-chest': {
     id: 'common-forged-chest',
-    label: 'Draconic Chestplate [DEF]',
+    label: 'Dragonic Chestplate [DEF]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -136,7 +135,7 @@ export const INVENTORY_ITEMS = {
   },
   'common-forged-pants': {
     id: 'common-forged-pants',
-    label: 'Draconic Pants [DEF]',
+    label: 'Dragonic Pants [DEF]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -149,7 +148,7 @@ export const INVENTORY_ITEMS = {
   },
   'common-forged-gloves': {
     id: 'common-forged-gloves',
-    label: 'Draconic Gloves [DEF]',
+    label: 'Dragonic Gloves [DEF]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -162,7 +161,7 @@ export const INVENTORY_ITEMS = {
   },
   'common-forged-boots': {
     id: 'common-forged-boots',
-    label: 'Draconic Boots [DEF]',
+    label: 'Dragonic Boots [DEF]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -181,7 +180,7 @@ export const INVENTORY_ITEMS = {
    */
   'common-forged-helmet-atk': {
     id: 'common-forged-helmet-atk',
-    label: 'Draconic Helmet [ATK]',
+    label: 'Dragonic Helmet [ATK]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -194,7 +193,7 @@ export const INVENTORY_ITEMS = {
   },
   'common-forged-chest-atk': {
     id: 'common-forged-chest-atk',
-    label: 'Draconic Chestplate [ATK]',
+    label: 'Dragonic Chestplate [ATK]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -207,7 +206,7 @@ export const INVENTORY_ITEMS = {
   },
   'common-forged-pants-atk': {
     id: 'common-forged-pants-atk',
-    label: 'Draconic Pants [ATK]',
+    label: 'Dragonic Pants [ATK]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -220,7 +219,7 @@ export const INVENTORY_ITEMS = {
   },
   'common-forged-gloves-atk': {
     id: 'common-forged-gloves-atk',
-    label: 'Draconic Gloves [ATK]',
+    label: 'Dragonic Gloves [ATK]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,
@@ -233,7 +232,7 @@ export const INVENTORY_ITEMS = {
   },
   'common-forged-boots-atk': {
     id: 'common-forged-boots-atk',
-    label: 'Draconic Boots [ATK]',
+    label: 'Dragonic Boots [ATK]',
     kind: 'equipment',
     rarity: 'common',
     maxStack: 1,

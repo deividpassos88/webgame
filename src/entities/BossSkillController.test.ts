@@ -117,6 +117,22 @@ describe('BossSkillController', () => {
     expect(controller.update(5, boss, player).events[0].skill).toBe('rectangle');
   });
 
+  it('scales skill damage with the boss enrage damage multiplier and updates rest cooldown', () => {
+    const controller = new BossSkillController(() => 0);
+    controller.update(5, boss, player);
+
+    // Dano aumentado em 1.45x (3x bar): 23 * 1.45 = 33
+    const impact3x = controller.update(4.2, boss, player, 1.45, 3.7);
+    expect(impact3x.damage).toBe(33);
+    expect(controller.restRemaining).toBe(3.7);
+
+    // Dano aumentado em 2.0x (1x bar): 24 * 2.0 = 48
+    controller.update(3.7, boss, player);
+    const impact1x = controller.update(3.5, boss, player, 2.0, 2.2);
+    expect(impact1x.damage).toBe(48);
+    expect(controller.restRemaining).toBe(2.2);
+  });
+
   it('reset cancels the current warning and restores the initial rest', () => {
     const controller = new BossSkillController(() => 0);
     controller.update(5, boss, player);

@@ -20,19 +20,19 @@ export interface ExperienceProgress {
 
 /** Kept as a legacy display unit while new UI reads `experienceProgressFor`. */
 export const XP_PER_LEVEL = 100;
-export const ATTRIBUTE_POINTS_PER_LEVEL = 5;
+export const ATTRIBUTE_POINTS_PER_LEVEL = 2;
 export const CHAPTER_MAX_LEVEL = 21;
 export const CHAPTER_MAX_EXPERIENCE = experienceAtLevelStart(CHAPTER_MAX_LEVEL);
 
 const SIX_WAVE_XP = [
-  { regular: 2, miniBoss: 5 },
-  { regular: 3, miniBoss: 6 },
-  { regular: 4, miniBoss: 7 },
-  { regular: 5, miniBoss: 8 },
-  { regular: 6, miniBoss: 9 },
-  { regular: 7, miniBoss: 10 },
+  { regular: 12, miniBoss: 35 },
+  { regular: 16, miniBoss: 50 },
+  { regular: 21, miniBoss: 65 },
+  { regular: 26, miniBoss: 85 },
+  { regular: 33, miniBoss: 110 },
+  { regular: 38, miniBoss: 135 },
 ] as const;
-const FINAL_BOSS_XP = 155;
+const FINAL_BOSS_XP = 440;
 
 export function createInitialProgression(): CharacterProgression {
   return { level: 1, experience: 0 };

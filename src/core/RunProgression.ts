@@ -60,6 +60,18 @@ export class RunProgression {
     this.manager.adminStartBoss();
   }
 
+  public setFinalBattleBossBars(barsRemaining: number): void {
+    const requests = this.manager.setFinalBattleBossBars(barsRemaining);
+    for (const request of requests) {
+      const spawned = this.ports.spawn(request);
+      this.manager.acknowledgeSpawn(request.requestId, spawned);
+    }
+  }
+
+  public setEquipmentHpMultiplier(multiplier: number): void {
+    this.manager.setEquipmentHpMultiplier(multiplier);
+  }
+
   public get snapshot(): WaveSnapshot {
     return this.manager.snapshot;
   }

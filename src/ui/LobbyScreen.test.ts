@@ -274,9 +274,9 @@ describe('lobby character preparation', () => {
     profile.equipment.weapon = 'starter-sword';
     profile.equipment.primaryWeapon = 'starter-sword';
     const armed = statusOf();
-    // 4 from the novice sword + 1 per allocated attack point.
-    expect(armed.derived.attackDamage).toBe(9);
-    expect(renderStatus(armed)).toContain('<dt>Ataque</dt><dd>9</dd>');
+    // 5 from the novice sword + 1 per allocated attack point (5 points = 5 + 5 = 10).
+    expect(armed.derived.attackDamage).toBe(10);
+    expect(renderStatus(armed)).toContain('<dt>Ataque</dt><dd>10</dd>');
   });
 
   it('captions every status with its combat effect', () => {
@@ -309,7 +309,7 @@ describe('lobby character preparation', () => {
     expect(markup).toContain('+30 vida');
     expect(markup).toContain('dano do golpe');
     expect(markup).toContain(`-${Math.round((15 / 55) * 100)}% do dano`);
-    expect(markup).toContain('+2.5% velocidade');
+    expect(markup).toContain('+4.0% velocidade');
     expect(markup).toContain('0% de chance');
     expect(markup).toContain('100 + 3/Vitalidade');
   });
@@ -317,7 +317,7 @@ describe('lobby character preparation', () => {
   it('labels weapon damage as Dano and keeps Ataque for the attribute', () => {
     // The sword grants flat damage, so its card must not promise attribute
     // points the status sheet would never show.
-    expect(itemStatSummary(getInventoryItem('starter-sword'))).toBe('Dano +4');
+    expect(itemStatSummary(getInventoryItem('starter-sword'))).toBe('Dano +5');
     expect(itemStatSummary(getInventoryItem('common-forged-gloves'))).toBe('Defesa +3 · Agilidade +1');
     expect(itemStatSummary(getInventoryItem('common-forged-gloves-atk'))).toBe('Ataque +4');
     expect(itemStatSummary(getInventoryItem('iron-shard'))).toBe('');
@@ -349,8 +349,8 @@ describe('lobby character preparation', () => {
     const withSword = renderStatus(
       buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot()).currentStatus
     );
-    // The sword's own 4 damage shows up in the status, exactly as promised.
-    expect(withSword).toContain('<dt>Ataque</dt><dd>9</dd>');
+    // The sword's own 5 damage shows up in the status, exactly as promised.
+    expect(withSword).toContain('<dt>Ataque</dt><dd>10</dd>');
     expect(withSword).toContain('<dt>Vida máxima</dt><dd>130</dd>');
   });
 

@@ -25,11 +25,11 @@ describe('Game campaign progression contract', () => {
     profileWithStarterSwordEquipped.equipment.primaryWeapon = 'starter-sword';
 
     expect(resolveEquippedBaseDamage(profileWithSwordOnlyInBackpack)).toBe(0);
-    expect(resolveEquippedBaseDamage(profileWithStarterSwordEquipped)).toBe(4);
+    expect(resolveEquippedBaseDamage(profileWithStarterSwordEquipped)).toBe(5);
   });
 
-  it('renders the five-times fatigue reserve as a percentage of 500', () => {
-    expect(game).toContain('this.hud.updatePlayerFatigue(fatigue, MAX_FATIGUE);');
+  it('renders the scaled fatigue reserve against current max fatigue', () => {
+    expect(game).toContain('this.hud.updatePlayerFatigue(fatigue, this.fatigue.currentMaxFatigue);');
   });
 
   it('schedules the lobby return when the reward coordinator is unavailable', () => {

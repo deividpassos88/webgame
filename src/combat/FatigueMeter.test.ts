@@ -20,29 +20,42 @@ describe('FatigueMeter', () => {
     expect(fatigue.update(109, true)).toBe(0);
   });
 
-  it('charges the dash cost upfront: half the bar per dash', () => {
+  it('charges the dash cost upfront: twenty percent of the bar per dash', () => {
     const fatigue = new FatigueMeter();
 
-    expect(DASH_FATIGUE_COST).toBe(250);
-    expect(fatigue.consume(DASH_FATIGUE_COST)).toBe(250);
+    expect(DASH_FATIGUE_COST).toBe(100);
+    expect(fatigue.consume(DASH_FATIGUE_COST)).toBe(400);
     expect(fatigue.canUseSkills).toBe(true);
+    expect(fatigue.canDash).toBe(true);
 
-    // Segundo dash seguido zera a barra e exaure as skills.
-    expect(fatigue.consume(DASH_FATIGUE_COST)).toBe(0);
+    // Cinco dashes zeram a barra e exaurem skills e dash.
+    fatigue.consume(DASH_FATIGUE_COST * 4);
     expect(fatigue.isSkillExhausted).toBe(true);
     expect(fatigue.canUseSkills).toBe(false);
+    expect(fatigue.canDash).toBe(false);
   });
 
-  it('locks skills only after exhaustion and releases them after recovering seven percent', () => {
+  it('locks skills and dash after exhaustion and rapidly recovers while stationary', () => {
     const fatigue = new FatigueMeter();
 
     fatigue.update(210, true);
     expect(fatigue.isSkillExhausted).toBe(true);
     expect(fatigue.canUseSkills).toBe(false);
+    expect(fatigue.canDash).toBe(false);
 
-    fatigue.update((MIN_FATIGUE_TO_RESUME_SKILLS - 1) / 18, false);
+    fatigue.update((MIN_FATIGUE_TO_RESUME_SKILLS - 1) / 125, false);
     expect(fatigue.canUseSkills).toBe(false);
-    fatigue.update(1 / 18, false);
+    fatigue.update(1 / 125, false);
     expect(fatigue.canUseSkills).toBe(true);
   });
+
+  it('supports expanded maximum fatigue reserve from agility', () => {
+    const fatigue = new FatigueMeter();
+    fatigue.setMaxFatigue(700);
+
+    expect(fatigue.currentMaxFatigue).toBe(700);
+    expect(fatigue.update(0, false)).toBe(700);
+    expect(fatigue.consume(100)).toBe(600);
+  });
 });
+

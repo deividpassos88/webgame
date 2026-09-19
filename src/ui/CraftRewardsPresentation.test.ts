@@ -114,8 +114,8 @@ describe('item label tier rendering', () => {
   it('renders the bracketed tier smaller and brighter than the item name', async () => {
     const { renderItemLabel } = await import('./CraftRewardsPresentation');
 
-    expect(renderItemLabel('Draconic Helmet [Common]'))
-      .toBe('Draconic Helmet<span class="item-label__tier">[Common]</span>');
+    expect(renderItemLabel('Dragonic Helmet [Common]'))
+      .toBe('Dragonic Helmet<span class="item-label__tier">[Common]</span>');
     // Items without a tier stay untouched, and markup in a name is escaped.
     expect(renderItemLabel('Sword Novice')).toBe('Sword Novice');
     expect(renderItemLabel('Adaga <Comum> [Rare]'))

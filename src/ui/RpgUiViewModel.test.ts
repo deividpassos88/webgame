@@ -82,14 +82,14 @@ describe('RpgUiViewModel', () => {
     profile.equipment.weapon = 'starter-sword';
     profile.equipment.primaryWeapon = 'starter-sword';
     const armed = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
-    // 4 from the sword + 1 per attack point.
-    expect(armed.currentStatus.derived.attackDamage).toBeCloseTo(9);
+    // 5 from the sword + 1 per attack point (5 points = 5 + 5 = 10).
+    expect(armed.currentStatus.derived.attackDamage).toBeCloseTo(10);
     expect(armed.currentStatus.derived.maxHealth).toBeCloseTo(130);
     // The attack reading in the sheet carries the weapon damage too.
-    expect(armed.currentStatus.attributes.find(({ key }) => key === 'attack')?.value).toBe(9);
+    expect(armed.currentStatus.attributes.find(({ key }) => key === 'attack')?.value).toBe(10);
   });
 
-  it('exposes the Draconic set bonus for the lobby status panel', () => {
+  it('exposes the Dragonic set bonus for the lobby status panel', () => {
     const profile = createDefaultPlayerProfile();
     Object.assign(profile.equipment, {
       helmet: 'common-forged-helmet',
@@ -102,7 +102,7 @@ describe('RpgUiViewModel', () => {
     const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
 
     expect(view.currentStatus.setBonus).toEqual({
-      label: 'Conjunto Draconic DEF',
+      label: 'Conjunto Dragonic DEF',
       attributes: [
         { label: 'Vitalidade', value: 2 },
         { label: 'Defesa', value: 7 },
@@ -127,7 +127,7 @@ describe('RpgUiViewModel', () => {
 
     const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
 
-    expect(view.currentStatus.setBonus?.label).toBe('Conjunto Draconic ATK');
+    expect(view.currentStatus.setBonus?.label).toBe('Conjunto Dragonic ATK');
     expect(view.currentStatus.setBonus?.attributes).toEqual([
       { label: 'Vitalidade', value: 1 },
       { label: 'Ataque', value: 7 },

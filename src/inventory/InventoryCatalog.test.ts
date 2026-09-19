@@ -11,7 +11,7 @@ describe('final boss craft catalog', () => {
       slot: 'weapon',
       iconSrc: '/items/equipment/armas/sword.webp',
       description: 'Uma espada de treino confiável, entregue à recruta da guilda.',
-      baseDamage: 4,
+      baseDamage: 5,
     });
   });
 
@@ -39,16 +39,16 @@ describe('final boss craft catalog', () => {
 
   it('catalogues both forged lines with their line tag, slots and supplied art', () => {
     const expected = [
-      ['common-forged-helmet', 'Draconic Helmet [DEF]', 'helmet', 'defense'],
-      ['common-forged-chest', 'Draconic Chestplate [DEF]', 'chest', 'defense'],
-      ['common-forged-pants', 'Draconic Pants [DEF]', 'pants', 'defense'],
-      ['common-forged-gloves', 'Draconic Gloves [DEF]', 'gloves', 'defense'],
-      ['common-forged-boots', 'Draconic Boots [DEF]', 'boots', 'defense'],
-      ['common-forged-helmet-atk', 'Draconic Helmet [ATK]', 'helmet', 'attack'],
-      ['common-forged-chest-atk', 'Draconic Chestplate [ATK]', 'chest', 'attack'],
-      ['common-forged-pants-atk', 'Draconic Pants [ATK]', 'pants', 'attack'],
-      ['common-forged-gloves-atk', 'Draconic Gloves [ATK]', 'gloves', 'attack'],
-      ['common-forged-boots-atk', 'Draconic Boots [ATK]', 'boots', 'attack'],
+      ['common-forged-helmet', 'Dragonic Helmet [DEF]', 'helmet', 'defense'],
+      ['common-forged-chest', 'Dragonic Chestplate [DEF]', 'chest', 'defense'],
+      ['common-forged-pants', 'Dragonic Pants [DEF]', 'pants', 'defense'],
+      ['common-forged-gloves', 'Dragonic Gloves [DEF]', 'gloves', 'defense'],
+      ['common-forged-boots', 'Dragonic Boots [DEF]', 'boots', 'defense'],
+      ['common-forged-helmet-atk', 'Dragonic Helmet [ATK]', 'helmet', 'attack'],
+      ['common-forged-chest-atk', 'Dragonic Chestplate [ATK]', 'chest', 'attack'],
+      ['common-forged-pants-atk', 'Dragonic Pants [ATK]', 'pants', 'attack'],
+      ['common-forged-gloves-atk', 'Dragonic Gloves [ATK]', 'gloves', 'attack'],
+      ['common-forged-boots-atk', 'Dragonic Boots [ATK]', 'boots', 'attack'],
     ] as const;
 
     for (const [id, label, slot, craftLine] of expected) {

@@ -11,6 +11,7 @@ import {
   ATTRIBUTE_KEYS,
   attributeAllocationAllowance,
   deriveCharacterStats,
+  getAttributeAllocationCap,
   type CharacterAttributeKey,
 } from '../profile/CharacterAttributes';
 import { experienceProgressFor } from '../profile/CharacterProgression';
@@ -34,6 +35,7 @@ export interface InventoryOverlayOptions {
   readonly onGuildTokenBackpackExpansion: () => string;
   readonly onShown?: () => void;
   readonly onHidden?: () => void;
+  readonly allowEquip?: boolean;
 }
 
 /** Restores focus to an enabled repeat action or its persistent capacity status. */
@@ -47,7 +49,8 @@ export function restoreBackpackExpansionFocus(root: ParentNode, capacityId: stri
 
 export function renderInventoryBackpackContents(
   profile: PlayerProfile,
-  inventory: InventorySnapshot
+  inventory: InventorySnapshot,
+  allowEquip = false
 ): string {
   const view = buildRpgUiViewModel(profile, inventory);
   const preparation = prepareGuildTokenBackpackExpansion(profile, inventory);
@@ -59,9 +62,9 @@ export function renderInventoryBackpackContents(
       : 'São necessários 30 Token da Guilda.';
   const slots = view.backpack.map(({ index, item, quantity }) => {
     const isEquipment = item && item.kind === 'equipment' && item.slot;
-    const equipLabel = isEquipment ? '<span class="equip-indicator">Equipar</span>' : '';
+    const equipLabel = isEquipment && allowEquip ? '<span class="equip-indicator">Equipar</span>' : '';
     return `
-      <button class="inventory-slot${item ? ' has-item' : ''}${isEquipment ? ' is-equipment' : ''}" type="button" data-inventory-index="${index}" ${item ? itemTooltipDataAttributes(item, quantity) : ''} ${item ? '' : 'disabled'} aria-label="${item ? `${item.label}, quantidade ${quantity}${isEquipment ? ', clique para abrir opções' : ''}` : `Espaço vazio ${index + 1}`}">
+      <button class="inventory-slot${item ? ' has-item' : ''}${isEquipment ? ' is-equipment' : ''}" type="button" data-inventory-index="${index}" ${item ? itemTooltipDataAttributes(item, quantity) : ''} ${item ? '' : 'disabled'} aria-label="${item ? `${item.label}, quantidade ${quantity}${isEquipment && allowEquip ? ', clique para abrir opções' : ''}` : `Espaço vazio ${index + 1}`}">
         ${item ? `${inventoryItemArt(item)}<span class="item-quantity">${quantity}</span><small>${item.label}</small>${equipLabel}` : ''}
       </button>`;
   }).join('');
@@ -153,7 +156,11 @@ export class InventoryOverlay {
     const inventory = this.store.snapshot();
     const view = buildRpgUiViewModel(this.profile, inventory);
     this.capacity.textContent = `${view.backpack.filter(({ item }) => item).length} / ${view.backpack.length}`;
-    this.backpack.innerHTML = renderInventoryBackpackContents(this.profile, inventory);
+    this.backpack.innerHTML = renderInventoryBackpackContents(
+      this.profile,
+      inventory,
+      this.options.allowEquip ?? false
+    );
   }
 
   private renderStatus(): void {
@@ -206,12 +213,13 @@ export class InventoryOverlay {
       ['Esquiva', `${(derived.dodgeChance * 100).toFixed(1)}%`],
     ].map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('');
 
-    const gateLocked = ATTRIBUTE_KEYS.some((key) => this.profile.attributes[key] >= 30)
-      && !ATTRIBUTE_KEYS.filter((key) => this.profile.attributes[key] >= 30).slice(1).length;
+    const gateLocked = ATTRIBUTE_KEYS.some(
+      (key) => this.profile.attributes[key] >= getAttributeAllocationCap(this.profile.attributes, key)
+    );
     gateMessage.textContent = this.profile.attributePointsRemaining === 0
-      ? 'Suba de nível para conquistar mais 5 pontos de status.'
+      ? 'Suba de nível para conquistar mais 2 pontos de status.'
       : gateLocked
-        ? 'Para ultrapassar 30 em um status, eleve um segundo status até 30.'
+        ? 'Para ultrapassar o limite em um status, eleve outro status para desbloquear +5 pontos.'
         : 'Pontos aplicados não podem ser removidos. Reset pago: em breve.';
   }
 
@@ -274,6 +282,12 @@ export class InventoryOverlay {
 
   /** Applies the equip only after the player confirms it in the inspector. */
   private confirmEquipPendingItem(): void {
+    if (!this.options.allowEquip) {
+      this.message.textContent = 'Não é possível trocar equipamentos durante a masmorra. Equipe seus itens no Lobby antes de entrar.';
+      this.pendingEquipIndex = null;
+      this.hideCraftInspector(false);
+      return;
+    }
     const index = this.pendingEquipIndex;
     if (index === null) return;
     const stack = this.store.snapshot().backpack[index];
@@ -312,7 +326,7 @@ export class InventoryOverlay {
     }
     // Equipment opens the inspector first; the swap only happens once the
     // player confirms with Equipar, so a misclick never replaces worn gear.
-    this.pendingEquipIndex = index;
+    this.pendingEquipIndex = this.options.allowEquip ? index : null;
     this.showCraftInspector(item, stack.quantity, source);
   }
 
@@ -322,7 +336,7 @@ export class InventoryOverlay {
     source: HTMLButtonElement
   ): void {
     this.inspectorLastFocus = source;
-    populateCraftInspector(this.craftInspector, item, quantity);
+    populateCraftInspector(this.craftInspector, item, quantity, this.options.allowEquip ?? false);
     this.craftInspector.classList.remove('hidden');
     this.craftInspector.querySelector<HTMLButtonElement>('[data-close-craft-inspector]')?.focus();
   }
@@ -378,13 +392,13 @@ const OVERLAY_HEADINGS: Readonly<Record<RpgOverlayMode, { eyebrow: string; title
 const ATTRIBUTE_CONTENT: Readonly<Record<CharacterAttributeKey, { label: string; help: string }>> = {
   vitality: { label: 'Vitalidade', help: 'Adiciona 3 de vida máxima por ponto.' },
   attack: { label: 'Ataque', help: 'Cada ponto soma 1 de dano no golpe.' },
-  defense: { label: 'Defesa', help: 'Reduz o dano recebido; 40 pontos já cortam metade (limite 55%).' },
-  agility: { label: 'Agilidade', help: 'Aumenta movimento e velocidade de ataque.' },
-  criticalAttack: { label: 'Crítico de ataque', help: 'Chance de crítico físico.' },
-  criticalDamage: { label: 'Dano crítico', help: 'Aumenta o multiplicador do crítico (1,5× + 1% por ponto).' },
-  criticalMagic: { label: 'Crítico mágico', help: 'Chance de crítico de fogo e gelo.' },
-  lifeSteal: { label: 'Roubo de vida', help: 'Recupera vida igual a 0,15% do dano causado por ponto (até 15%).' },
-  dodge: { label: 'Esquiva', help: 'Chance de ignorar completamente um golpe.' },
+  defense: { label: 'Defesa', help: 'Reduz o dano recebido; 40 pontos já cortam metade (limite 70%).' },
+  agility: { label: 'Agilidade', help: 'Aumenta movimento, velocidade de ataque e reserva de fadiga máxima (+2 por ponto, até +200).' },
+  criticalAttack: { label: 'Crítico de ataque', help: 'Chance de crítico físico (até 50%).' },
+  criticalDamage: { label: 'Dano crítico', help: 'Aumenta o multiplicador do crítico (1,5× + 1,5% por ponto, até 3,0×).' },
+  criticalMagic: { label: 'Crítico mágico', help: 'Chance de crítico de fogo e gelo (até 50%).' },
+  lifeSteal: { label: 'Roubo de vida', help: 'Recupera vida igual a 0,20% do dano causado por ponto (até 20%).' },
+  dodge: { label: 'Esquiva', help: 'Chance de ignorar completamente um golpe (até 35%).' },
 };
 
 export function trapFocus(root: HTMLElement, event: KeyboardEvent): void {

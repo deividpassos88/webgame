@@ -54,7 +54,9 @@ export class BossSkillController {
   public update(
     delta: number,
     bossPosition: THREE.Vector3,
-    playerPosition: THREE.Vector3
+    playerPosition: THREE.Vector3,
+    damageMultiplier = 1,
+    restDuration = REST_DURATION
   ): BossSkillFrame {
     const elapsed = Math.max(0, delta);
     if (this.phase === 'resting') {
@@ -67,12 +69,12 @@ export class BossSkillController {
     if (this.telegraphRemaining > 1e-9 || !this.currentSkill) return this.emptyFrame();
 
     const skill = this.currentSkill;
-    const damage = this.damageAtImpact(skill, playerPosition);
+    const damage = this.damageAtImpact(skill, playerPosition, damageMultiplier);
     const event = this.createEvent('impact', skill);
     this.previousSkill = skill;
     this.currentSkill = null;
     this.phase = 'resting';
-    this.restRemaining = REST_DURATION;
+    this.restRemaining = restDuration;
     return { events: [event], damage };
   }
 
@@ -133,23 +135,29 @@ export class BossSkillController {
     };
   }
 
-  private damageAtImpact(skill: BossSkillKind, player: THREE.Vector3): number {
+  private damageAtImpact(
+    skill: BossSkillKind,
+    player: THREE.Vector3,
+    damageMultiplier = 1
+  ): number {
+    let baseDamage = 0;
     if (skill === 'circle') {
-      return this.horizontalDistanceSquared(player, this.target)
+      baseDamage = this.horizontalDistanceSquared(player, this.target)
         <= BOSS_SKILL_GEOMETRY.circleRadius ** 2 ? 23 : 0;
-    }
-    if (skill === 'meteors') {
-      return this.meteorPoints.some(
+    } else if (skill === 'meteors') {
+      baseDamage = this.meteorPoints.some(
         (point) => this.horizontalDistanceSquared(player, point)
           <= BOSS_SKILL_GEOMETRY.meteorRadius ** 2
       ) ? 9 : 0;
+    } else {
+      const hit = this.isInsideOrientedRectangle(
+        player,
+        BOSS_SKILL_GEOMETRY.rectangleLength,
+        BOSS_SKILL_GEOMETRY.rectangleWidth
+      );
+      baseDamage = hit ? 24 : 0;
     }
-    const hit = this.isInsideOrientedRectangle(
-      player,
-      BOSS_SKILL_GEOMETRY.rectangleLength,
-      BOSS_SKILL_GEOMETRY.rectangleWidth
-    );
-    return hit ? 24 : 0;
+    return Math.round(baseDamage * Math.max(0, damageMultiplier));
   }
 
   private isInsideOrientedRectangle(

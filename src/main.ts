@@ -34,11 +34,10 @@ async function bootstrap() {
     const { Game } = await import('./core/Game');
     Logger.info('Main', 'Módulo Game importado com sucesso.');
 
-    const adminFromLauncher = import.meta.env.DEV
-      && new URLSearchParams(window.location.search).get('admin') === '1';
-    const adminEnabled = adminFromLauncher
-      || import.meta.env.MODE === 'admin'
-      || resolveDevAdminAccess(import.meta.env.VITE_ADMIN_MODE, import.meta.env.DEV);
+    const searchParams = new URLSearchParams(window.location.search);
+    const adminParam = searchParams.get('admin');
+    const adminExplicitlyDisabled = adminParam === '0' || adminParam === 'false' || import.meta.env.VITE_ADMIN_MODE === 'false';
+    const adminEnabled = !adminExplicitlyDisabled;
 
     const game = new Game(canvas, { adminEnabled });
     await game.start();

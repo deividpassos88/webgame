@@ -12,8 +12,8 @@ import {
 import { createDefaultPlayerProfile } from '../profile/PlayerProfile';
 
 const NOW = 1_789_000_000_000;
-const DRACONIC_HELMET_DEFENSE = 'common-forged-helmet:defense';
-const DRACONIC_HELMET_ATTACK = 'common-forged-helmet-atk:attack';
+const DRAGONIC_HELMET_DEFENSE = 'common-forged-helmet:defense';
+const DRAGONIC_HELMET_ATTACK = 'common-forged-helmet-atk:attack';
 
 function profileWithCommonMaterials(quantity = 10) {
   const profile = createDefaultPlayerProfile();
@@ -29,21 +29,21 @@ describe('BlacksmithWorkshop', () => {
     });
   });
 
-  it('defines the five Draconic pieces twice, once per craft line', () => {
+  it('defines the five Dragonic pieces twice, once per craft line', () => {
     expect(BLACKSMITH_RECIPES).toHaveLength(10);
     expect(recipesForLine('defense').map((recipe) => recipe.label)).toEqual([
-      'Draconic Helmet [DEF]',
-      'Draconic Chestplate [DEF]',
-      'Draconic Pants [DEF]',
-      'Draconic Gloves [DEF]',
-      'Draconic Boots [DEF]',
+      'Dragonic Helmet [DEF]',
+      'Dragonic Chestplate [DEF]',
+      'Dragonic Pants [DEF]',
+      'Dragonic Gloves [DEF]',
+      'Dragonic Boots [DEF]',
     ]);
     expect(recipesForLine('attack').map((recipe) => recipe.label)).toEqual([
-      'Draconic Helmet [ATK]',
-      'Draconic Chestplate [ATK]',
-      'Draconic Pants [ATK]',
-      'Draconic Gloves [ATK]',
-      'Draconic Boots [ATK]',
+      'Dragonic Helmet [ATK]',
+      'Dragonic Chestplate [ATK]',
+      'Dragonic Pants [ATK]',
+      'Dragonic Gloves [ATK]',
+      'Dragonic Boots [ATK]',
     ]);
     expect(recipesForLine('defense').map((recipe) => recipe.outputItemId)).toEqual([
       'common-forged-helmet',
@@ -82,15 +82,15 @@ describe('BlacksmithWorkshop', () => {
     const profile = profileWithCommonMaterials(10);
     profile.blacksmith.availableUntil = NOW + 1;
 
-    expect(craftBlacksmithRecipe(profile, DRACONIC_HELMET_ATTACK, NOW).kind).toBe('insufficient-materials');
-    expect(craftBlacksmithRecipe(profile, DRACONIC_HELMET_DEFENSE, NOW).kind).toBe('crafted');
+    expect(craftBlacksmithRecipe(profile, DRAGONIC_HELMET_ATTACK, NOW).kind).toBe('insufficient-materials');
+    expect(craftBlacksmithRecipe(profile, DRAGONIC_HELMET_DEFENSE, NOW).kind).toBe('crafted');
   });
 
   it('crafts the offensive line into its own item id', () => {
     const profile = profileWithCommonMaterials(15);
     profile.blacksmith.availableUntil = NOW + 1;
 
-    const result = craftBlacksmithRecipe(profile, DRACONIC_HELMET_ATTACK, NOW);
+    const result = craftBlacksmithRecipe(profile, DRAGONIC_HELMET_ATTACK, NOW);
 
     expect(result.kind).toBe('crafted');
     if (result.kind !== 'crafted') return;
@@ -119,11 +119,11 @@ describe('BlacksmithWorkshop', () => {
     expect(result).toEqual({ kind: 'insufficient-guild-tokens', profile });
   });
 
-  it('crafts a Draconic helmet into the backpack without auto-equipping it', () => {
+  it('crafts a Dragonic helmet into the backpack without auto-equipping it', () => {
     const profile = profileWithCommonMaterials();
     profile.blacksmith.availableUntil = NOW + 1;
 
-    const result = craftBlacksmithRecipe(profile, DRACONIC_HELMET_DEFENSE, NOW);
+    const result = craftBlacksmithRecipe(profile, DRAGONIC_HELMET_DEFENSE, NOW);
 
     expect(result.kind).toBe('crafted');
     if (result.kind !== 'crafted') return;
@@ -135,7 +135,7 @@ describe('BlacksmithWorkshop', () => {
   it('does not consume materials when the workshop license is expired', () => {
     const profile = profileWithCommonMaterials();
 
-    const result = craftBlacksmithRecipe(profile, DRACONIC_HELMET_DEFENSE, NOW);
+    const result = craftBlacksmithRecipe(profile, DRAGONIC_HELMET_DEFENSE, NOW);
 
     expect(result).toEqual({ kind: 'license-expired', profile });
   });
@@ -155,7 +155,7 @@ describe('BlacksmithWorkshop', () => {
       { itemId: 'ancient-cloth', quantity: 1 },
     );
 
-    const result = craftBlacksmithRecipe(profile, DRACONIC_HELMET_DEFENSE, NOW);
+    const result = craftBlacksmithRecipe(profile, DRAGONIC_HELMET_DEFENSE, NOW);
 
     expect(result.kind).toBe('crafted');
     if (result.kind !== 'crafted') return;
@@ -166,6 +166,6 @@ describe('BlacksmithWorkshop', () => {
 });
 
 function recipeIngredientIds(itemId: string): boolean {
-  const recipe = findBlacksmithRecipe(DRACONIC_HELMET_DEFENSE)!;
+  const recipe = findBlacksmithRecipe(DRAGONIC_HELMET_DEFENSE)!;
   return recipe.ingredients.some((ingredient) => ingredient.itemId === itemId);
 }

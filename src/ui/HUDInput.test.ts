@@ -79,6 +79,6 @@ describe('combat action cards', () => {
     hud.updateWarriorSkills(readySkillsSnapshot(), null, 6);
 
     const meta = document.querySelector('[data-warrior-skill="ataque_giratorio"] .skill-card-meta');
-    expect(meta?.textContent).toBe('8 energia · 4.0s recarga');
+    expect(meta?.textContent).toBe('8 energia · 6.0s recarga');
   });
 });
