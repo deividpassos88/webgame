@@ -21,8 +21,8 @@ export function getKillReward(
     ? weapon?.killHealFraction.miniBoss ?? 0
     : weapon?.killHealFraction.regular ?? 0;
   return {
-    healAmount: roundCombatValue(Math.max(0, maxHP) * healFraction),
-    damageBonus: role === 'mini-boss' ? 0.4 : 0.1,
+    healAmount: roundCombatValue(Math.max(0, maxHP) * healFraction, 1),
+    damageBonus: role === 'mini-boss' ? 0.1 : 0.04,
     maxHpBonus: role === 'mini-boss' ? 15 : 0,
   };
 }
@@ -39,12 +39,13 @@ export function addMaxHealthBonus(
   };
 }
 
-export function roundCombatValue(value: number): number {
-  return Math.round((Number.isFinite(value) ? value : 0) * 10) / 10;
+export function roundCombatValue(value: number, decimals = 1): number {
+  const factor = 10 ** decimals;
+  return Math.round((Number.isFinite(value) ? value : 0) * factor) / factor;
 }
 
 export function addDamageBonus(current: number, bonus: number): number {
-  return roundCombatValue(current + bonus);
+  return roundCombatValue(current + bonus, 2);
 }
 
 export function getHitDamagePenalty(role: WaveEntityRole): number {
@@ -56,5 +57,5 @@ export function getHitDamagePenalty(role: WaveEntityRole): number {
 export function removeDamageBonus(current: number, penalty: number): number {
   const safeCurrent = Math.max(0, Number.isFinite(current) ? current : 0);
   const safePenalty = Math.max(0, Number.isFinite(penalty) ? penalty : 0);
-  return roundCombatValue(Math.max(0, safeCurrent - safePenalty));
+  return roundCombatValue(Math.max(0, safeCurrent - safePenalty), 2);
 }

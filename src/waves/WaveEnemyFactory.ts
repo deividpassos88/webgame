@@ -26,7 +26,7 @@ const REGULAR_BASE = {
 const LOCOMOTION_BASE_SCALE = REGULAR_BASE.speed / 2.8;
 
 const ARCHER_BASE = {
-  hp: 42,
+  hp: 100,
   damage: 7,
   scale: 0.68,
   detectionRange: 26,
@@ -35,7 +35,7 @@ const ARCHER_BASE = {
 } as const;
 
 const GUARDIAN_BASE = {
-  hp: 78,
+  hp: 150,
   damage: 14,
   scale: 0.76,
   detectionRange: 23,

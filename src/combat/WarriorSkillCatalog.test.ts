@@ -19,21 +19,21 @@ describe('WarriorSkillCatalog', () => {
     expect(WARRIOR_SKILLS.every(({ playbackRate }) => playbackRate >= 1 && playbackRate <= 1.2)).toBe(true);
   });
 
-  it('uses an exactly four-second cooldown for every skill', () => {
-    expect(WARRIOR_SKILLS.map(({ cooldown }) => cooldown)).toEqual([4, 4, 4, 4, 4]);
+  it('scales cooldown upward for stronger skills', () => {
+    expect(WARRIOR_SKILLS.map(({ cooldown }) => cooldown)).toEqual([6, 8, 10, 12, 14]);
   });
 
-  it('unlocks one skill per level with the approved progressive damage bonus', () => {
+  it('unlocks skills every three levels with the approved progressive damage bonus', () => {
     expect(WARRIOR_SKILLS.map((skill) => ({
       id: skill.id,
       unlockLevel: skill.unlockLevel,
       damageMultiplier: skill.damageMultiplier,
     }))).toEqual([
-      { id: 'ataque_giratorio', unlockLevel: 2, damageMultiplier: 1.1 },
-      { id: 'ataque_giratorio_2', unlockLevel: 3, damageMultiplier: 1.14 },
-      { id: 'pulo_atacando', unlockLevel: 4, damageMultiplier: 1.18 },
-      { id: 'triplo_ataque', unlockLevel: 5, damageMultiplier: 1.22 },
-      { id: 'corte_duplo', unlockLevel: 7, damageMultiplier: 1.26 },
+      { id: 'ataque_giratorio', unlockLevel: 3, damageMultiplier: 1.1 },
+      { id: 'ataque_giratorio_2', unlockLevel: 6, damageMultiplier: 1.14 },
+      { id: 'pulo_atacando', unlockLevel: 9, damageMultiplier: 1.18 },
+      { id: 'triplo_ataque', unlockLevel: 12, damageMultiplier: 1.22 },
+      { id: 'corte_duplo', unlockLevel: 15, damageMultiplier: 1.26 },
     ]);
   });
 });

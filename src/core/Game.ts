@@ -34,7 +34,16 @@ import {
   selectRegularEnemyVariant,
 } from '../waves/WaveEnemyFactory';
 import { EnemyAssetStore } from '../waves/EnemyAssetStore';
-import { getBossHealthHudValues } from '../ui/BossHealthView';
+import { getBossHealthHudValues, resolveBossBarLayer } from '../ui/BossHealthView';
+import {
+  BASE_BOSS_DAMAGE,
+  BASE_BOSS_SPEED,
+  countEquippedArmorPieces,
+  equipmentHpMultiplier,
+  getBossEnrageStats,
+  getBossMinionComposition,
+  getBossMinionTier,
+} from '../waves/WaveDifficultyScaling';
 import { RunProgression } from './RunProgression';
 import {
   addDamageBonus,
@@ -200,9 +209,14 @@ export class Game {
   private inventoryOverlay!: InventoryOverlay;
   private rpgOverlayOpen = false;
   private finalBossRewards: FinalBossRewardCoordinator | null = null;
+  private lastBossMinionTier: 1 | 2 | 3 = 1;
   private readonly victoryLobbyTransition = new VictoryLobbyTransition(
     5,
     () => { void this.returnToLobbyAfterVictory(); }
+  );
+  private readonly deathLobbyTransition = new VictoryLobbyTransition(
+    4,
+    () => { void this.returnToLobbyAfterDeath(); }
   );
 
   private raycaster = new THREE.Raycaster();
@@ -263,6 +277,8 @@ export class Game {
     try {
       const profileResult = loadPlayerProfile();
       this.profile = profileResult.profile;
+      Object.assign(this.profile, resetRunProgression(this.profile));
+      this.persistProfileState();
       this.inventory = InventoryStore.fromProfile(this.profile);
       // The administrator can add inventory items before entering the dungeon.
       this.setupAdminTools();
@@ -406,8 +422,10 @@ export class Game {
           Logger.info('Game:Waves', 'Dungeon concluída; abrindo o baú final automaticamente.');
         },
       });
+      const initialArmorPieces = countEquippedArmorPieces(this.profile.equipment);
+      this.runProgression.setEquipmentHpMultiplier(equipmentHpMultiplier(initialArmorPieces));
       this.adminPanel?.setGameplayAvailable(true);
-      this.hud.onRespawnClick(() => this.fullRunReset());
+      this.hud.onRespawnClick(() => this.deathLobbyTransition.completeNow());
       this.hud.onPlayAgain(() => this.victoryLobbyTransition.completeNow());
 
       if (!this.enemyAssets.hasRegularEnemy()) {
@@ -559,6 +577,7 @@ export class Game {
       onGuildTokenBackpackExpansion: () => this.purchaseGuildTokenBackpackExpansion(),
       onShown: () => this.activateRpgOverlay(),
       onHidden: () => this.deactivateRpgOverlay(),
+      allowEquip: false,
     });
     this.hud.onOpenEquipment(() => this.openRpgOverlay('equipment'));
     this.hud.onOpenBackpack(() => this.openRpgOverlay('backpack'));
@@ -741,6 +760,11 @@ export class Game {
     this.player.attackDamage = stats.attackDamage;
     this.player.attackRange = WARRIOR_MAX_RANGE_METERS;
     this.player.attackCooldownTime = stats.attackCooldown;
+    this.fatigue.setMaxFatigue(stats.maxFatigue);
+    const armorPieces = countEquippedArmorPieces(this.profile.equipment);
+    if (this.runProgression) {
+      this.runProgression.setEquipmentHpMultiplier(equipmentHpMultiplier(armorPieces));
+    }
   }
 
   private resolveOutgoingDamage(baseDamage: number, elemental: boolean): number {
@@ -971,37 +995,70 @@ export class Game {
       }
     }
 
-    const occupiedRoots = this.combatRegistry.activeRoots();
-    const allySlots = layout.miniBosses
-      .filter((point) => occupiedRoots.every((root) => root.position.distanceTo(point) > 1.5))
-      .slice(0, request.regularCount);
-    for (const point of allySlots) {
-      const sequence = this.regularSpawnSequence++;
-      const id = `${request.phaseId}:final-regular:${sequence}`;
-      try {
-        const ally = createRegularEnemy(
-          point,
-          request.hpMultiplier,
-          request.damageMultiplier,
-          sequence,
-          request.speedMultiplier,
-          this.enemyAssets.hasRegularEnemy()
-            ? this.enemyAssets.createRegularEnemyVisual()
-            : undefined
-        );
-        if (!this.combatRegistry.register({
-          id,
-          phaseId: request.phaseId,
-          role: 'regular',
-          enemy: ally,
-        })) {
-          Logger.warn('Game:Waves', `Registro duplicado rejeitado: ${id}.`);
-          continue;
+    if (request.regularCount > 0) {
+      const mainBoss = this.combatRegistry.mainBoss;
+      const bars = mainBoss ? resolveBossBarLayer(mainBoss.hp, mainBoss.maxHP).barsRemaining : 5;
+      const composition = getBossMinionComposition(bars);
+      const roster = composition.roster.slice(0, request.regularCount);
+      const spawnPoints = this.level.getFinalBattleMinionSpawnPoints(roster.length);
+
+      for (let index = 0; index < roster.length; index++) {
+        const variant = roster[index];
+        const point = spawnPoints[index] ?? layout.miniBosses[index % layout.miniBosses.length];
+        const sequence = this.regularSpawnSequence++;
+        const id = `${request.phaseId}:final-${variant}:${sequence}`;
+        try {
+          const visual = variant === 'archer'
+            ? this.enemyAssets.hasArcherEnemy()
+              ? this.enemyAssets.createArcherEnemyVisual()
+              : undefined
+            : variant === 'guardian'
+              ? this.enemyAssets.hasGuardianEnemy()
+                ? this.enemyAssets.createGuardianEnemyVisual()
+                : undefined
+              : this.enemyAssets.hasRegularEnemy()
+                ? this.enemyAssets.createRegularEnemyVisual()
+                : undefined;
+
+          const ally = variant === 'archer'
+            ? createArcherEnemy(
+                point,
+                request.hpMultiplier,
+                request.damageMultiplier,
+                request.speedMultiplier,
+                visual
+              )
+            : variant === 'guardian'
+              ? createGuardianEnemy(
+                  point,
+                  request.hpMultiplier,
+                  request.damageMultiplier,
+                  request.speedMultiplier,
+                  visual
+                )
+              : createRegularEnemy(
+                  point,
+                  request.hpMultiplier,
+                  request.damageMultiplier,
+                  sequence,
+                  request.speedMultiplier,
+                  visual
+                );
+
+          if (!this.combatRegistry.register({
+            id,
+            phaseId: request.phaseId,
+            role: 'regular',
+            enemy: ally,
+          })) {
+            Logger.warn('Game:Waves', `Registro duplicado rejeitado: ${id}.`);
+            continue;
+          }
+          this.scene.add(ally.root);
+          records.push({ id, role: 'regular' });
+        } catch (error) {
+          Logger.error('Game:Waves', `Falha ao criar aliado ${variant} ${id}.`, error);
         }
-        this.scene.add(ally.root);
-        records.push({ id, role: 'regular' });
-      } catch (error) {
-        Logger.error('Game:Waves', `Falha ao criar aliado normal ${id}.`, error);
       }
     }
 
@@ -1017,11 +1074,15 @@ export class Game {
     this.resetInProgress = true;
     try {
       this.victoryLobbyTransition.reset();
+      this.deathLobbyTransition.reset();
       this.finalBossRewards?.reset();
       this.combatRegistry.clear();
       this.stopMiniBossSkills();
       this.finalBattleSlots.reset();
       this.runProgression.reset();
+      Object.assign(this.profile, resetRunProgression(this.profile));
+      this.persistProfileState();
+      this.hud.updateProgression(this.profile.progression, this.profile.attributePointsRemaining);
       this.player.respawn(this.spawnPoint);
       this.player.setInputLocked(false);
       this.player.speedMultiplier = 1;
@@ -1033,6 +1094,7 @@ export class Game {
       this.healthPlasma.clear();
       this.archerProjectiles.clear();
       this.stopBossSkills();
+      this.lastBossMinionTier = 1;
       this.targetedEnemyRoot = null;
       this.clearTargetMarker();
       // Zera os bônus temporários da run e reaplica a build permanente.
@@ -1146,9 +1208,11 @@ export class Game {
     const isMoving = this.keyboardDir.lengthSq() > 0;
     const preserveMarkedAttack = this.isFocusedTargetInRange();
     this.player.setKeyboardMoving(isMoving);
-    if (this.input.wasKeyPressed('shift') && this.player.tryDash(this.keyboardDir)) {
-      // Dash custa metade da barra de fadiga por uso.
-      this.fatigue.consume(DASH_FATIGUE_COST);
+    if (this.input.wasKeyPressed('shift')) {
+      if (this.fatigue.canDash && this.player.tryDash(this.keyboardDir)) {
+        // Dash custa 20% da barra de fadiga por uso.
+        this.fatigue.consume(DASH_FATIGUE_COST);
+      }
     }
     if (movementInput.hasIntent) this.player.cancelClickMovement();
     if (isMoving) {
@@ -1163,14 +1227,24 @@ export class Game {
     if (this.input.wasKeyPressed('h')) {
       Logger.debug('Game', 'Tecla H pressionada -> testando animação "hit" (10 de dano)');
       this.player.takeDamage(10);
-      if (this.player.isDead) this.hud.showDeathScreen();
+      if (this.player.isDead) {
+        this.player.setInputLocked(true);
+        this.hud.showDeathScreen();
+        this.deathLobbyTransition.start();
+        this.flow.transition({ type: 'player-died' });
+      }
     }
 
     // Tecla de teste: pressione K para simular morte instantânea e testar "morreu"
     if (this.input.wasKeyPressed('k')) {
       Logger.debug('Game', 'Tecla K pressionada -> testando animação "morreu" (dano fatal)');
       this.player.takeDamage(9999);
-      if (this.player.isDead) this.hud.showDeathScreen();
+      if (this.player.isDead) {
+        this.player.setInputLocked(true);
+        this.hud.showDeathScreen();
+        this.deathLobbyTransition.start();
+        this.flow.transition({ type: 'player-died' });
+      }
     }
 
     // Target: Q marca o monstro mais próximo como alvo focado
@@ -1237,6 +1311,56 @@ export class Game {
     }
   }
 
+  private async returnToLobbyAfterDeath(): Promise<void> {
+    if (this.flow.state !== 'dead') return;
+    this.running = false;
+    this.flow.transition({ type: 'return-to-lobby' });
+    this.player.setInputLocked(true);
+    this.input.reset();
+    this.hud.hideDeathScreen();
+    this.hud.setGameplayVisible(false);
+    try {
+      if (!persistVictoryReset(this.profile, this.inventory, () => {
+        return this.persistProfileState();
+      })) {
+        throw new Error('Não foi possível salvar o reset da expedição.');
+      }
+      const lobby = new LobbyScreen(
+        this.renderer,
+        this.canvas,
+        this.characterAssets,
+        this.profile,
+        this.inventory
+      );
+      await lobby.show({
+        firstRun: false,
+        onClassConfirmed: () => undefined,
+        onGuildTokenBackpackExpansion: () => this.purchaseGuildTokenBackpackExpansion(),
+        onHotkeysChanged: () => this.persistProfileState(),
+        onAutoBasicAttackChanged: () => this.persistProfileState(),
+        onLobbyInventoryChanged: () => this.persistInventory(),
+        onBlacksmithLicensePurchase: () => this.purchaseBlacksmithWorkshopLicense(),
+        onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+      });
+      this.hud.setHotkeys(this.profile.hotkeys);
+      this.flow.transition({ type: 'start-game' });
+      this.hud.showLoadingScreen(70, 'Preparando nova expedição...');
+      this.fullRunReset();
+      this.hud.setGameplayVisible(true);
+      this.hud.hideLoadingScreen();
+      this.clock.start();
+      this.running = true;
+      this.loop();
+    } catch (error) {
+      Logger.error('Game:Flow', 'Falha ao retornar ao lobby após derrota.', error);
+      this.deathLobbyTransition.start();
+      this.hud.setGameplayVisible(true);
+      this.flow.state = 'dead';
+      this.running = true;
+      this.loop();
+    }
+  }
+
   private handleFlowInput(): void {
     if (!this.canAcceptGameplayInput()) return;
     if (this.input.wasKeyPressed('i')) {
@@ -1276,6 +1400,7 @@ export class Game {
     const next = enemies[(currentIndex + 1) % Math.min(enemies.length, 2)];
 
     this.targetedEnemyRoot = next;
+    this.player.attackTargetEnemy = next;
     this.updateTargetMarker(next);
     const record = this.combatRegistry.findByRoot(next);
     Logger.info(
@@ -1291,10 +1416,8 @@ export class Game {
       this.targetedEnemyRoot
       && situation
       && situation.targetAlive
-      && !this.player.isKeyboardMoving
     ) {
-      // O deslocamento continua, mas o corpo permanece orientado para o target
-      // somente parado; em movimento o jogador gira para a direcao do passo.
+      // O corpo permanece orientado para o alvo marcado mesmo em movimento
       this.player.faceTargetInstantly(this.targetedEnemyRoot.position);
     }
     if (
@@ -1560,6 +1683,28 @@ export class Game {
     if (boss) {
       const values = getBossHealthHudValues(boss);
       this.hud.updateBossHealth(values.hp, values.maxHP);
+
+      const layer = resolveBossBarLayer(boss.hp, boss.maxHP);
+      const enrage = getBossEnrageStats(layer.barsRemaining);
+      boss.damage = Math.round(BASE_BOSS_DAMAGE * enrage.damageMultiplier);
+      boss.speed = BASE_BOSS_SPEED * enrage.speedMultiplier;
+
+      const newTier = getBossMinionTier(layer.barsRemaining);
+      if (newTier !== this.lastBossMinionTier) {
+        this.lastBossMinionTier = newTier;
+        for (const root of this.combatRegistry.activeRoots()) {
+          const record = this.combatRegistry.findByRoot(root);
+          if (record && record.role === 'regular') {
+            this.scene.remove(root);
+          }
+        }
+        this.combatRegistry.clearLivingAllies();
+        this.runProgression.setFinalBattleBossBars(layer.barsRemaining);
+        Logger.info(
+          'Boss:Phase',
+          `Dragonic Overlord atingiu ${layer.barsRemaining}x vida (Tier ${newTier})! Novos reforços invocados.`
+        );
+      }
     }
   }
 
@@ -1641,6 +1786,7 @@ export class Game {
       this.stopBossSkills();
       this.player.setInputLocked(true);
       this.hud.showDeathScreen();
+      this.deathLobbyTransition.start();
       this.flow.transition({ type: 'player-died' });
     }
   }
@@ -1766,10 +1912,15 @@ export class Game {
       return;
     }
 
+    const layer = resolveBossBarLayer(boss.hp, boss.maxHP);
+    const enrage = getBossEnrageStats(layer.barsRemaining);
+
     const frame = this.bossSkills.update(
       delta,
       boss.root.position,
-      this.player.root.position
+      this.player.root.position,
+      enrage.damageMultiplier,
+      enrage.skillCooldownSeconds
     );
     for (const event of frame.events) {
       if (event.type === 'telegraph') {
@@ -1836,6 +1987,7 @@ export class Game {
       const rawDelta = this.clock.getDelta();
       const delta = Math.min(rawDelta, 0.1);
       this.victoryLobbyTransition.update(delta);
+      this.deathLobbyTransition.update(delta);
       if (!this.running) return;
       this.handleFlowInput();
       this.elapsedTime += delta;
@@ -1887,7 +2039,7 @@ export class Game {
 
       this.cameraController.update(this.player.root.position, delta);
       this.hud.updatePlayerHealth(this.player.hp, this.player.maxHP);
-      this.hud.updatePlayerFatigue(fatigue, MAX_FATIGUE);
+      this.hud.updatePlayerFatigue(fatigue, this.fatigue.currentMaxFatigue);
       const skills = this.warriorSkills.snapshot();
       this.player.mana = skills.energy;
       this.player.maxMana = skills.maxEnergy;

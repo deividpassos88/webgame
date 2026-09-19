@@ -1,7 +1,7 @@
 export const SWORD_COMBO_STAGES = [
-  { duration: 0.33, damageOpen: 0.34, damageClose: 0.64, bufferOpen: 0.48 },
-  { duration: 0.36, damageOpen: 0.30, damageClose: 0.62, bufferOpen: 0.46 },
-  { duration: 0.40, damageOpen: 0.28, damageClose: 0.64, bufferOpen: 0.44 },
+  { duration: 0.48, damageOpen: 0.34, damageClose: 0.64, bufferOpen: 0.48 },
+  { duration: 0.52, damageOpen: 0.30, damageClose: 0.62, bufferOpen: 0.46 },
+  { duration: 0.58, damageOpen: 0.28, damageClose: 0.64, bufferOpen: 0.44 },
 ] as const;
 
 export type SwordComboEvent =

@@ -24,11 +24,11 @@ describe('reward selection', () => {
     const [sword, axe] = rewardOptionsForAvailability({ sword: true, axe: true });
     expect(sword).toMatchObject({
       id: 'sword', name: 'Espada Longa', damage: '8', range: '2,7 m',
-      cooldown: '0,7 s', regularHeal: '3%', miniBossHeal: '6%', defense: '3%', enabled: true,
+      cooldown: '0,9 s', regularHeal: '3%', miniBossHeal: '6%', defense: '3%', enabled: true,
     });
     expect(axe).toMatchObject({
       id: 'axe', name: 'Machado de Guerra', damage: '10', range: '2,0 m',
-      cooldown: '0,9 s', regularHeal: '3,1%', miniBossHeal: '6,2%', defense: '5%', enabled: true,
+      cooldown: '1,1 s', regularHeal: '3,1%', miniBossHeal: '6,2%', defense: '5%', enabled: true,
     });
   });
 });

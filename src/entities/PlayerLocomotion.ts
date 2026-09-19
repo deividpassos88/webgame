@@ -43,6 +43,6 @@ export function cappedMovementStep(
 export function resolveLocomotionState(
   input: LocomotionInput
 ): 'idle' | 'running' | null {
-  if (input.isDead || input.isSwinging || input.hasAttackTarget) return null;
+  if (input.isDead || input.isSwinging) return null;
   return input.keyboardMoving || input.hasMoveTarget ? 'running' : 'idle';
 }

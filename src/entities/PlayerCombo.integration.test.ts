@@ -274,9 +274,9 @@ describe('Player sword combo integration', () => {
     player.update(0.01);
     expect(hits).toEqual([]);
 
-    player.update(0.09);
+    player.update(0.12);
     expect(hits).toEqual([]);
-    player.update(0.03);
+    player.update(0.05);
     expect(hits).toEqual([enemy]);
 
     // A stage may only damage a target once, even while its damage window remains open.
@@ -310,10 +310,10 @@ describe('Player sword combo integration', () => {
 
     player.attackEnemy(enemy, (target) => hits.push(target));
     player.update(0.01);
-    player.update(0.16);
+    player.update(0.24);
     player.attackAtCursor();
-    player.update(0.2);
-    player.update(0.12);
+    player.update(0.25);
+    player.update(0.18);
 
     expect(hits).toEqual([enemy, enemy]);
   });
@@ -326,7 +326,7 @@ describe('Player sword combo integration', () => {
 
     player.attackEnemy(enemy, (target) => hits.push(target));
     player.update(0.01);
-    player.update(0.16);
+    player.update(0.24);
     player.update(0.45);
 
     expect(hits).toEqual([enemy]);
@@ -462,17 +462,17 @@ describe('Player sword combo integration', () => {
 
     player.attackEnemy(enemy, (target) => hits.push(target));
     player.update(0.01);
-    player.update(0.12);
+    player.update(0.18);
     expect(hits).toEqual([enemy]);
 
     // Ask after the controller's normal sword-buffer window. The axe must
     // ignore this request instead of starting a second combo stage.
-    player.update(0.05);
+    player.update(0.10);
     player.attackAtCursor();
 
     // A long update crosses the stage boundary. An axe must end rather than
     // buffer stages 1/2/3 like the sword controller does.
-    player.update(0.5);
+    player.update(0.6);
     expect(hits).toEqual([enemy]);
     expect(player.isAttackInSwing()).toBe(false);
   });
@@ -495,8 +495,10 @@ describe('Player sword combo integration', () => {
     // Anda de verdade para o lado mesmo com combo ativo no target...
     const midDistance = player.root.position.distanceTo(start);
     expect(midDistance).toBeGreaterThan(0.1);
-    // ...o corpo gira para a direcao do passo (nao fica olhando o inimigo)...
-    expect(player.root.rotation.y).toBeGreaterThan(0.3);
+    // ...o corpo permanece virado para o monstro marcado (strafe / target lock)...
+    const targetAngle = Math.atan2(enemy.position.x - player.root.position.x, enemy.position.z - player.root.position.z);
+    expect(player.root.rotation.y).toBeLessThan(0);
+    expect(Math.abs(player.root.rotation.y - targetAngle)).toBeLessThan(0.1);
     // ...e a corrida continua blendada sob o clip de ataque (sem travar pose).
     expect(player.isLocomotionBlendActive).toBe(true);
 

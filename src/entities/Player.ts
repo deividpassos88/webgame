@@ -449,16 +449,24 @@ export class Player {
     this.actionInvulnerability = SKILL_ACTION_INVULNERABILITY_SECONDS;
     this.actionInvulnerabilityFresh = true;
     this.emptyHandAttackPreview = false;
+    this.clearLocomotionBlend(0.08);
     action.reset();
     action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = true;
     action.setEffectiveTimeScale(playbackRate);
     action.setEffectiveWeight(1);
-    action.fadeIn(0.08);
-    this.currentAction?.fadeOut(0.08);
+    if (this.currentAction === action) {
+      action.stopFading();
+    } else {
+      action.fadeIn(0.08);
+      this.currentAction?.fadeOut(0.08);
+    }
     action.play();
     this.currentAction = action;
     this.state = 'attacking';
+    if (this.attackTargetEnemy && this.isTargetAlive(this.attackTargetEnemy)) {
+      this.faceTargetInstantly(this.attackTargetEnemy.position);
+    }
     return true;
   }
 
@@ -704,24 +712,20 @@ export class Player {
     const enemy = this.attackTargetEnemy!;
     if (!this.isTargetAlive(enemy)) {
       this.clearInvalidAttackTarget();
-      this.playState(this.getLocomotionState() ?? 'idle', 0.15);
+      const locomotion = this.getLocomotionState();
+      if (locomotion) this.playState(locomotion, 0.15);
       return;
     }
-    if (!this.isTargetInRange(enemy)) {
-      if (this.keyboardMoving) {
-        this.clearInvalidAttackTarget();
-        this.playState('running', 0.15);
-        return;
-      }
-      // A selected target is passive. Do not pursue it or arm a delayed
-      // attack after the original click has been consumed.
-      this.facePoint(enemy.position, delta);
-      this.playState('idle', 0.15);
-      return;
-    }
-
-    if (!this.keyboardMoving) this.facePoint(enemy.position, delta);
-    this.playState(this.keyboardMoving ? 'running' : 'idle', 0.15);
+    this.facePoint(enemy.position, delta);
+    this.currentMoveSpeed = approachMovementSpeed(
+      this.currentMoveSpeed,
+      this.keyboardMoving ? this.speed * this.speedMultiplier : 0,
+      14,
+      18,
+      delta
+    );
+    const locomotion = this.getLocomotionState();
+    if (locomotion) this.playState(locomotion, 0.15);
   }
 
   private startCombo(): boolean {
@@ -832,7 +836,7 @@ export class Player {
 
   private updateSkillAttack(delta: number): void {
     const target = this.attackTargetEnemy;
-    if (target && this.isTargetAlive(target) && this.isTargetInRange(target)) {
+    if (target && this.isTargetAlive(target)) {
       this.facePoint(target.position, delta);
     }
 
@@ -980,21 +984,19 @@ export class Player {
       ? this.isTargetInRange(this.attackTargetEnemy)
       : false;
     const keepAttacking = this.isSwinging || preserveMarkedAttack || currentTargetInRange;
-    if (this.isSwinging && !keepAttacking) this.cancelCombo(false);
+    if (this.isSwinging && !keepAttacking && !this.skillAttackController.active) {
+      this.cancelCombo(false);
+    }
     // Permite escapar mesmo durante a animação de hit (anti-stunlock)
     if (this.isHitReacting) {
       this.isHitReacting = false;
       this.playState('running', 0.15);
     }
-    const canMove = keepAttacking
+    const canMove = this.isSwinging
       ? !this.isDead && !this.inputLocked
       : this.canAcceptInput();
     if (!canMove) return;
     this.animationPreview.clear();
-    if (!keepAttacking) {
-      this.attackTargetEnemy = null;
-      this.onAttackHitCallback = null;
-    }
     this.moveTarget = null;
     this.keyboardMoving = true;
 
@@ -1008,11 +1010,14 @@ export class Player {
     );
     this.root.position.addScaledVector(this.moveDirection, this.currentMoveSpeed * delta);
 
-    // Com target marcado o corpo so fica "preso" olhando o inimigo enquanto
-    // o jogador nao anda (ou durante skills, que usam cone de direcao).
-    // Andando, gira para a direcao do passo como sem target.
-    const skillLocksFacing = this.skillAttackController.active;
-    if (!keepAttacking || !this.attackTargetEnemy || !skillLocksFacing) {
+    // Quando há um monstro marcado como alvo, o personagem fica virado para ele
+    // mesmo andando para trás ou fazendo strafe em qualquer direção.
+    const hasActiveTarget = Boolean(
+      this.attackTargetEnemy && this.isTargetAlive(this.attackTargetEnemy)
+    );
+    if (hasActiveTarget) {
+      this.facePoint(this.attackTargetEnemy!.position, delta);
+    } else {
       const targetAngle = Math.atan2(this.moveDirection.x, this.moveDirection.z);
       let diff = targetAngle - this.root.rotation.y;
       while (diff > Math.PI) diff -= Math.PI * 2;
@@ -1022,7 +1027,7 @@ export class Player {
 
     if (!this.isSwinging) {
       this.playState('running', 0.15);
-    } else if (!skillLocksFacing) {
+    } else if (!this.skillAttackController.active) {
       this.blendRunningUnderAttack();
     }
   }

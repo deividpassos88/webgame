@@ -22,44 +22,40 @@ export type CharacterAttributeKey = (typeof ATTRIBUTE_KEYS)[number];
 
 export type CharacterAttributes = Record<CharacterAttributeKey, number>;
 
-export const TOTAL_ATTRIBUTE_POINTS = 100;
+export const TOTAL_ATTRIBUTE_POINTS = 40;
 /**
- * A build may invest freely in one attribute only through this threshold.
- * Investing beyond it requires a second attribute to have reached the same
- * milestone, which keeps early builds from becoming one-dimensional.
+ * A build may invest freely in one attribute only through the initial threshold (10).
+ * Investing beyond it requires a second attribute to have reached the same milestone,
+ * which unlocks +5 points (up to 15), then locking until another reaches 15 to unlock
+ * up to 20, and so on in 5-point increments.
  */
-export const ATTRIBUTE_SOLO_CAP = 30;
+export const ATTRIBUTE_INITIAL_CAP = 10;
+export const ATTRIBUTE_GATE_STEP = 5;
+export const ATTRIBUTE_SOLO_CAP = 10;
 
-const MAX_ATTRIBUTE_VALUE = TOTAL_ATTRIBUTE_POINTS;
-const MAX_DEFENSE_REDUCTION = 0.55;
-const MAX_MOVEMENT_SPEED_BONUS = 0.25;
-const MAX_ATTACK_SPEED_BONUS = 0.2;
-const MAX_CRITICAL_CHANCE = 0.35;
-const MAX_DODGE_CHANCE = 0.25;
+const MAX_ATTRIBUTE_VALUE = 100;
+const MAX_DEFENSE_REDUCTION = 0.70;
+const MAX_MOVEMENT_SPEED_BONUS = 0.40;
+const MAX_ATTACK_SPEED_BONUS = 0.35;
+const MAX_CRITICAL_CHANCE = 0.50;
+const MAX_DODGE_CHANCE = 0.35;
 /** Absolute health granted by one Vitality point. */
 const HEALTH_PER_VITALITY = 3;
-/**
- * Flat damage granted by one Attack point.
- *
- * One point equals one point of damage on purpose: the sheet prints the Attack
- * reading and the weapon damage as a single number, so that number has to be
- * the damage the strike actually deals. At 0.2/point a geared warrior added
- * less than one damage to a hit and every equipment upgrade disappeared in the
- * combat rounding.
- */
+/** Flat damage granted by one Attack point. */
 const DAMAGE_PER_ATTACK = 1;
-/**
- * Defense points needed to reach 50% damage reduction (before the 55% cap).
- * The old denominator (160) turned a full set into ~9% reduction, which the
- * player could not feel: a 12 damage hit landed as 11 instead of 12.
- */
+/** Defense points needed to reach 50% damage reduction. */
 const DEFENSE_REDUCTION_DENOMINATOR = 40;
 const BASE_CRITICAL_MULTIPLIER = 1.5;
-const MAX_CRITICAL_DAMAGE_BONUS = 1;
-const MAX_LIFE_STEAL = 0.15;
+const MAX_CRITICAL_DAMAGE_BONUS = 1.5;
+const MAX_LIFE_STEAL = 0.20;
+/** Maximum bonus fatigue granted by Agility. */
+export const MAX_FATIGUE_BONUS = 200;
+/** Absolute fatigue reserve added by each Agility point. */
+export const FATIGUE_PER_AGILITY = 2;
 
 export interface CharacterCombatBaseStats {
   readonly maxHealth?: number;
+  readonly maxFatigue?: number;
   readonly attackDamage?: number;
   readonly movementSpeed?: number;
   readonly attackCooldown?: number;
@@ -70,6 +66,10 @@ export interface DerivedCharacterStats {
   readonly maxHealthBonus: number;
   /** Base health after applying Vitality. */
   readonly maxHealth: number;
+  /** Absolute fatigue added by Agility. */
+  readonly maxFatigueBonus: number;
+  /** Maximum fatigue reserve after applying Agility. */
+  readonly maxFatigue: number;
   /**
    * Seam for future damage buffs. No attribute drives it since Strength was
    * replaced by Vitality: physical damage now comes from Attack alone.
@@ -138,9 +138,34 @@ export function remainingCharacterAttributePoints(attributes: CharacterAttribute
 }
 
 /**
+ * Resolves the dynamic allocation cap for a specific attribute based on the gate progression rule:
+ * Initial cap is 10. Reaching 10 unlocks +5 (up to 15) only when another attribute reaches >= 10.
+ * Reaching 15 unlocks +5 (up to 20) only when another attribute reaches >= 15, and so on.
+ */
+export function getAttributeAllocationCap(
+  attributes: CharacterAttributes,
+  attribute: CharacterAttributeKey
+): number {
+  const normalized = normalizeCharacterAttributes(attributes);
+  let maxOther = 0;
+  for (const key of ATTRIBUTE_KEYS) {
+    if (key !== attribute && normalized[key] > maxOther) {
+      maxOther = normalized[key];
+    }
+  }
+  if (maxOther < ATTRIBUTE_INITIAL_CAP) {
+    return ATTRIBUTE_INITIAL_CAP;
+  }
+  return (
+    ATTRIBUTE_INITIAL_CAP +
+    ATTRIBUTE_GATE_STEP * (Math.floor((maxOther - ATTRIBUTE_INITIAL_CAP) / ATTRIBUTE_GATE_STEP) + 1)
+  );
+}
+
+/**
  * Resolves how many of a requested batch can be assigned right now. It is
  * intentionally pure so UI previews and persisted-profile writes use exactly
- * the same 30-point gate.
+ * the same dynamic gate progression.
  */
 export function attributeAllocationAllowance(
   attributes: CharacterAttributes,
@@ -153,14 +178,10 @@ export function attributeAllocationAllowance(
   const safeBudget = safeInteger(pointsAvailable);
   if (safeRequest === 0 || safeBudget === 0) return 0;
 
-  const anotherAttributeReachedGate = ATTRIBUTE_KEYS.some(
-    (key) => key !== attribute && normalized[key] >= ATTRIBUTE_SOLO_CAP
-  );
-  const attributeCap = anotherAttributeReachedGate ? MAX_ATTRIBUTE_VALUE : ATTRIBUTE_SOLO_CAP;
+  const attributeCap = getAttributeAllocationCap(normalized, attribute);
   const remainingForAttribute = Math.max(0, attributeCap - normalized[attribute]);
-  const remainingOverall = Math.max(0, TOTAL_ATTRIBUTE_POINTS - totalCharacterAttributePoints(normalized));
 
-  return Math.min(safeRequest, safeBudget, remainingForAttribute, remainingOverall);
+  return Math.min(safeRequest, safeBudget, remainingForAttribute);
 }
 
 /**
@@ -179,16 +200,18 @@ export function deriveCharacterStats(
   const defenseReduction =
     safe.defense / (safe.defense + DEFENSE_REDUCTION_DENOMINATOR);
   const damageReduction = clamp(defenseReduction, 0, MAX_DEFENSE_REDUCTION);
-  const movementSpeedMultiplier = 1 + Math.min(MAX_MOVEMENT_SPEED_BONUS, safe.agility * 0.0025);
-  const attackSpeedMultiplier = 1 + Math.min(MAX_ATTACK_SPEED_BONUS, safe.agility * 0.002);
-  const criticalAttackChance = Math.min(MAX_CRITICAL_CHANCE, safe.criticalAttack * 0.003);
-  const magicCriticalChance = Math.min(MAX_CRITICAL_CHANCE, safe.criticalMagic * 0.003);
-  const dodgeChance = Math.min(MAX_DODGE_CHANCE, safe.dodge * 0.0025);
+  const movementSpeedMultiplier = 1 + Math.min(MAX_MOVEMENT_SPEED_BONUS, safe.agility * 0.004);
+  const attackSpeedMultiplier = 1 + Math.min(MAX_ATTACK_SPEED_BONUS, safe.agility * 0.0035);
+  const criticalAttackChance = Math.min(MAX_CRITICAL_CHANCE, safe.criticalAttack * 0.005);
+  const magicCriticalChance = Math.min(MAX_CRITICAL_CHANCE, safe.criticalMagic * 0.005);
+  const dodgeChance = Math.min(MAX_DODGE_CHANCE, safe.dodge * 0.0035);
   const criticalMultiplier = BASE_CRITICAL_MULTIPLIER
-    + Math.min(MAX_CRITICAL_DAMAGE_BONUS, safe.criticalDamage * 0.01);
-  const lifeStealFraction = Math.min(MAX_LIFE_STEAL, safe.lifeSteal * 0.0015);
+    + Math.min(MAX_CRITICAL_DAMAGE_BONUS, safe.criticalDamage * 0.015);
+  const lifeStealFraction = Math.min(MAX_LIFE_STEAL, safe.lifeSteal * 0.002);
 
   const maxHealth = safeBase(base.maxHealth, 100) + maxHealthBonus;
+  const maxFatigueBonus = Math.min(MAX_FATIGUE_BONUS, safe.agility * FATIGUE_PER_AGILITY);
+  const maxFatigue = safeBase(base.maxFatigue, 500) + maxFatigueBonus;
   const attackDamage = safeBase(base.attackDamage, 0) + baseAttackBonus;
   const movementSpeed = safeBase(base.movementSpeed, 1) * movementSpeedMultiplier;
   const baseCooldown = safeBase(base.attackCooldown, 1);
@@ -197,6 +220,8 @@ export function deriveCharacterStats(
   return {
     maxHealthBonus,
     maxHealth,
+    maxFatigueBonus,
+    maxFatigue,
     physicalDamageMultiplier,
     baseAttackBonus,
     damageReduction,

@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { SwordComboController } from './SwordComboController';
 
 describe('SwordComboController', () => {
-  it('opens one damage window and ends the first 0.33-second stage', () => {
+  it('opens one damage window and ends the first 0.48-second stage', () => {
     const combo = new SwordComboController();
     combo.request();
 
-    expect(combo.update(0.10).map((event) => event.type)).not.toContain('damage-opened');
+    expect(combo.update(0.15).map((event) => event.type)).not.toContain('damage-opened');
     expect(combo.update(0.02).map((event) => event.type)).toContain('damage-opened');
-    expect(combo.update(0.21).map((event) => event.type)).toContain('combo-ended');
+    expect(combo.update(0.35).map((event) => event.type)).toContain('combo-ended');
     expect(combo.activeStage).toBeNull();
   });
 
@@ -16,15 +16,15 @@ describe('SwordComboController', () => {
     const combo = new SwordComboController();
     combo.request();
 
-    combo.update(0.18);
+    combo.update(0.24);
     expect(combo.request()).toBe(true);
-    expect(combo.update(0.15).some(
+    expect(combo.update(0.25).some(
       (event) => event.type === 'stage-started' && event.stage === 1
     )).toBe(true);
 
-    combo.update(0.18);
+    combo.update(0.25);
     expect(combo.request()).toBe(true);
-    expect(combo.update(0.18).some(
+    expect(combo.update(0.28).some(
       (event) => event.type === 'stage-started' && event.stage === 2
     )).toBe(true);
   });
@@ -33,9 +33,9 @@ describe('SwordComboController', () => {
     const combo = new SwordComboController();
     combo.request();
 
-    combo.update(0.15);
+    combo.update(0.22);
     expect(combo.request()).toBe(false);
-    combo.update(0.01);
+    combo.update(0.02);
     expect(combo.request()).toBe(true);
   });
 
@@ -43,7 +43,7 @@ describe('SwordComboController', () => {
     const combo = new SwordComboController();
     combo.request();
 
-    expect(combo.update(0.40).map((event) => event.type)).toEqual([
+    expect(combo.update(0.60).map((event) => event.type)).toEqual([
       'damage-opened', 'damage-closed', 'combo-ended',
     ]);
   });
@@ -69,13 +69,13 @@ describe('SwordComboController', () => {
     expect(combo.update(Number.NaN)).toEqual([]);
     expect(combo.update(Number.POSITIVE_INFINITY)).toEqual([]);
     expect(combo.active).toBe(true);
-    expect(combo.update(0.12).map((event) => event.type)).toContain('damage-opened');
+    expect(combo.update(0.18).map((event) => event.type)).toContain('damage-opened');
   });
 
   it('cancels pending damage transitions and can be requested again from stage zero', () => {
     const combo = new SwordComboController();
     combo.request();
-    combo.update(0.12);
+    combo.update(0.18);
 
     combo.cancel();
     expect(combo.active).toBe(false);
@@ -83,22 +83,22 @@ describe('SwordComboController', () => {
     expect(combo.update(1)).toEqual([]);
 
     expect(combo.request()).toBe(true);
-    expect(combo.update(0.12).map((event) => event.type)).toContain('damage-opened');
+    expect(combo.update(0.18).map((event) => event.type)).toContain('damage-opened');
   });
 
   it('ends the third stage even if an input request arrives during its buffer window', () => {
     const combo = new SwordComboController();
     combo.request();
-    combo.update(0.18);
+    combo.update(0.24);
     combo.request();
-    combo.update(0.15);
-    combo.update(0.18);
+    combo.update(0.25);
+    combo.update(0.25);
     combo.request();
-    combo.update(0.18);
+    combo.update(0.28);
 
     expect(combo.activeStage).toBe(2);
     expect(combo.request()).toBe(false);
-    expect(combo.update(0.40).map((event) => event.type)).toEqual([
+    expect(combo.update(0.60).map((event) => event.type)).toEqual([
       'damage-opened', 'damage-closed', 'combo-ended',
     ]);
     expect(combo.active).toBe(false);
@@ -108,14 +108,14 @@ describe('SwordComboController', () => {
     const combo = new SwordComboController();
     combo.request();
 
-    expect(combo.update(0.1121).map((event) => event.type)).toEqual([]);
+    expect(combo.update(0.1631).map((event) => event.type)).toEqual([]);
     expect(combo.update(0.0001)).toEqual([
       { type: 'damage-opened', stage: 0 },
     ]);
-    expect(combo.update(0.099)).toEqual([
+    expect(combo.update(0.1440)).toEqual([
       { type: 'damage-closed', stage: 0 },
     ]);
-    expect(combo.update(0.1188)).toEqual([
+    expect(combo.update(0.1728)).toEqual([
       { type: 'combo-ended' },
     ]);
   });
@@ -123,18 +123,18 @@ describe('SwordComboController', () => {
   it('hits the second stage pre-open, open, close and end boundaries exactly', () => {
     const combo = new SwordComboController();
     combo.request();
-    combo.update(0.18);
+    combo.update(0.24);
     expect(combo.request()).toBe(true);
-    combo.update(0.15);
+    combo.update(0.24);
 
-    expect(combo.update(0.1079).map((event) => event.type)).not.toContain('damage-opened');
+    expect(combo.update(0.1559).map((event) => event.type)).not.toContain('damage-opened');
     expect(combo.update(0.0001)).toEqual([
       { type: 'damage-opened', stage: 1 },
     ]);
-    expect(combo.update(0.1152)).toEqual([
+    expect(combo.update(0.1664)).toEqual([
       { type: 'damage-closed', stage: 1 },
     ]);
-    expect(combo.update(0.1368)).toEqual([
+    expect(combo.update(0.1976)).toEqual([
       { type: 'combo-ended' },
     ]);
   });
@@ -142,21 +142,21 @@ describe('SwordComboController', () => {
   it('hits the third stage pre-open, open, close and end boundaries exactly', () => {
     const combo = new SwordComboController();
     combo.request();
-    combo.update(0.18);
+    combo.update(0.24);
     expect(combo.request()).toBe(true);
-    combo.update(0.15);
-    combo.update(0.18);
+    combo.update(0.24);
+    combo.update(0.25);
     expect(combo.request()).toBe(true);
-    combo.update(0.18);
+    combo.update(0.27);
 
-    expect(combo.update(0.1119).map((event) => event.type)).not.toContain('damage-opened');
+    expect(combo.update(0.1623).map((event) => event.type)).not.toContain('damage-opened');
     expect(combo.update(0.0001)).toEqual([
       { type: 'damage-opened', stage: 2 },
     ]);
-    expect(combo.update(0.144)).toEqual([
+    expect(combo.update(0.2088)).toEqual([
       { type: 'damage-closed', stage: 2 },
     ]);
-    expect(combo.update(0.144)).toEqual([
+    expect(combo.update(0.2088)).toEqual([
       { type: 'combo-ended' },
     ]);
   });
@@ -164,10 +164,10 @@ describe('SwordComboController', () => {
   it('crosses a buffered first-stage close and end then carries remainder into stage one', () => {
     const combo = new SwordComboController();
     combo.request();
-    combo.update(0.18);
+    combo.update(0.24);
     expect(combo.request()).toBe(true);
 
-    const transition = combo.update(0.20);
+    const transition = combo.update(0.28);
 
     expect(transition.map((event) => event.type)).toEqual([
       'damage-closed', 'stage-started',
@@ -175,7 +175,7 @@ describe('SwordComboController', () => {
     expect(transition[0]).toEqual({ type: 'damage-closed', stage: 0 });
     expect(transition[1]).toEqual({ type: 'stage-started', stage: 1 });
     expect(combo.activeStage).toBe(1);
-    expect(combo.update(0.0581)).toEqual([
+    expect(combo.update(0.1161)).toEqual([
       { type: 'damage-opened', stage: 1 },
     ]);
   });
@@ -184,10 +184,10 @@ describe('SwordComboController', () => {
     const combo = new SwordComboController();
     combo.request();
 
-    expect(combo.update(0.1122).map((event) => event.type)).toEqual(['damage-opened']);
+    expect(combo.update(0.1633).map((event) => event.type)).toEqual(['damage-opened']);
     expect(combo.update(0.01)).toEqual([]);
-    expect(combo.update(0.089).map((event) => event.type)).toEqual(['damage-closed']);
-    expect(combo.update(0.1188).map((event) => event.type)).toEqual(['combo-ended']);
+    expect(combo.update(0.1339).map((event) => event.type)).toEqual(['damage-closed']);
+    expect(combo.update(0.1728).map((event) => event.type)).toEqual(['combo-ended']);
     expect(combo.update(0.01)).toEqual([]);
     expect(combo.active).toBe(false);
   });
@@ -195,20 +195,20 @@ describe('SwordComboController', () => {
   it('freezes shared event objects while leaving the reusable event array mutable', () => {
     const combo = new SwordComboController();
     combo.request();
-    const opened = combo.update(0.12)[0];
-    const closed = combo.update(0.10)[0];
-    const ended = combo.update(0.11)[0];
+    const opened = combo.update(0.17)[0];
+    const closed = combo.update(0.14)[0];
+    const ended = combo.update(0.18)[0];
 
     const otherCombo = new SwordComboController();
     otherCombo.request();
-    const otherOpened = otherCombo.update(0.12)[0];
+    const otherOpened = otherCombo.update(0.17)[0];
     expect(otherOpened).toBe(opened);
 
     const continuation = new SwordComboController();
     continuation.request();
-    continuation.update(0.18);
+    continuation.update(0.24);
     continuation.request();
-    const started = continuation.update(0.15).find(
+    const started = continuation.update(0.25).find(
       (event) => event.type === 'stage-started' && event.stage === 1
     );
 

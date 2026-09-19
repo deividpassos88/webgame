@@ -92,4 +92,13 @@ describe('Level wave layouts', () => {
       expect(mini.distanceTo(layout.boss)).toBeLessThan(8);
     }
   });
+
+  it('provides 10 distinct minion spawn points for final battle archers and guardians', () => {
+    const level = new Level();
+    const points = level.getFinalBattleMinionSpawnPoints(10);
+
+    expect(points).toHaveLength(10);
+    const stringSet = new Set(points.map((p) => `${p.x}:${p.z}`));
+    expect(stringSet.size).toBe(10);
+  });
 });

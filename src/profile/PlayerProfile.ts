@@ -15,6 +15,7 @@ import {
   type CharacterAttributes,
 } from './CharacterAttributes';
 import {
+  ATTRIBUTE_POINTS_PER_LEVEL,
   awardExperience,
   createInitialProgression,
   experienceAtLevelStart,
@@ -297,7 +298,7 @@ export function awardPlayerExperience(
   if (award.experienceGranted === 0) return profile;
 
   const totalAssigned = totalCharacterAttributePoints(profile.attributes);
-  const totalEarned = (award.progression.level - 1) * 5;
+  const totalEarned = (award.progression.level - 1) * ATTRIBUTE_POINTS_PER_LEVEL;
   return {
     ...profile,
     progression: award.progression,
@@ -423,7 +424,7 @@ function readStrengthAttributes(value: unknown): Record<string, number> | undefi
   const attributes: Record<string, number> = {};
   for (const key of LEGACY_ATTRIBUTE_KEYS) {
     const raw = value[key];
-    if (!Number.isInteger(raw) || (raw as number) < 0 || (raw as number) > TOTAL_ATTRIBUTE_POINTS) {
+    if (!Number.isInteger(raw) || (raw as number) < 0 || (raw as number) > 100) {
       return undefined;
     }
     attributes[key] = raw as number;
@@ -444,7 +445,7 @@ function hasStrengthAttributeAllocation(
   if (!attributes) return false;
   const total = LEGACY_ATTRIBUTE_KEYS.reduce((sum, key) => sum + attributes[key], 0);
   const remaining = value.attributePointsRemaining;
-  const earned = (progression.level - 1) * 5;
+  const earned = (progression.level - 1) * ATTRIBUTE_POINTS_PER_LEVEL;
   if (!Number.isInteger(remaining) || remaining !== earned - total || (remaining as number) < 0) {
     return false;
   }
@@ -684,7 +685,7 @@ function isCurrentAttributeAllocation(
   if (!attributes) return false;
   const total = totalCharacterAttributePoints(attributes);
   const remaining = value.attributePointsRemaining;
-  const earned = (progression.level - 1) * 5;
+  const earned = (progression.level - 1) * ATTRIBUTE_POINTS_PER_LEVEL;
   if (!Number.isInteger(remaining) || remaining !== earned - total || (remaining as number) < 0) {
     return false;
   }
@@ -698,9 +699,9 @@ function isLegacyAttributeAllocation(value: Record<string, unknown>): boolean {
   if (!attributes) return false;
   const total = LEGACY_ATTRIBUTE_KEYS.reduce((sum, key) => sum + attributes[key], 0);
   const remaining = value.attributePointsRemaining;
-  if (!Number.isInteger(remaining) || remaining !== TOTAL_ATTRIBUTE_POINTS - total) return false;
+  if (!Number.isInteger(remaining) || remaining !== 100 - total) return false;
   if (typeof value.attributesConfirmed !== 'boolean') return false;
-  return !value.attributesConfirmed || (total === TOTAL_ATTRIBUTE_POINTS && remaining === 0);
+  return !value.attributesConfirmed || (total === 100 && remaining === 0);
 }
 
 function readAttributes(value: unknown): CharacterAttributes | undefined {
@@ -777,7 +778,7 @@ function migrateVersionFourProfile(previous: VersionFourPlayerProfile): PlayerPr
     skillStars: { ...previous.skillStars },
     progression,
     attributes: { ...previous.attributes },
-    attributePointsRemaining: Math.max(0, (progression.level - 1) * 5 - totalAssigned),
+    attributePointsRemaining: Math.max(0, (progression.level - 1) * ATTRIBUTE_POINTS_PER_LEVEL - totalAssigned),
     attributesConfirmed: false,
   };
 }

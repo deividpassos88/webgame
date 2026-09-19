@@ -228,6 +228,28 @@ export class Level {
     };
   }
 
+  /**
+   * Posições de spawn dos lacaios/monstros que lutam ao lado do Dragonic Overlord.
+   * Suporta até 10 monstros (5 guardiões na linha de frente e 5 arqueiros na retaguarda/flancos).
+   */
+  public getFinalBattleMinionSpawnPoints(count = 10): THREE.Vector3[] {
+    const points: THREE.Vector3[] = [
+      // Linha de frente / flanco próximo (guardiões ou monstros normais)
+      new THREE.Vector3(-6, 0, -14),
+      new THREE.Vector3(-3, 0, -12),
+      new THREE.Vector3(0, 0, -11),
+      new THREE.Vector3(3, 0, -12),
+      new THREE.Vector3(6, 0, -14),
+      // Linha de trás / flancos abertos (arqueiros)
+      new THREE.Vector3(-9, 0, -18),
+      new THREE.Vector3(-5, 0, -8),
+      new THREE.Vector3(0, 0, -7),
+      new THREE.Vector3(5, 0, -8),
+      new THREE.Vector3(9, 0, -18),
+    ];
+    return points.slice(0, Math.max(0, count));
+  }
+
   public update(time: number, playerPosition?: THREE.Vector3) {
     for (const torch of this.torchVisuals) {
       torch.flame.scale.setScalar(

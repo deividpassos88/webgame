@@ -131,6 +131,13 @@ export class AdminPanel {
       const collapsed = this.root.classList.toggle('is-collapsed');
       disclosure.setAttribute('aria-expanded', String(!collapsed));
     });
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'F2') {
+        event.preventDefault();
+        const collapsed = this.root.classList.toggle('is-collapsed');
+        disclosure.setAttribute('aria-expanded', String(!collapsed));
+      }
+    });
     disclosure.addEventListener('pointerdown', (event) => this.startDrag(event));
     window.addEventListener('pointermove', this.moveDrag);
     window.addEventListener('pointerup', this.endDrag);

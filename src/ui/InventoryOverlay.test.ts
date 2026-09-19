@@ -122,7 +122,7 @@ describe('InventoryOverlay', () => {
     expect(inspector.classList.contains('hidden')).toBe(false);
   });
 
-  it('requires confirming Equipar before moving a weapon from the backpack to primary weapon', () => {
+  it('requires confirming Equipar before moving a weapon from the backpack to primary weapon when allowEquip is enabled', () => {
     const root = mountInventoryMarkup();
     const profile = createDefaultPlayerProfile();
     const store = InventoryStore.fromProfile(profile);
@@ -132,6 +132,7 @@ describe('InventoryOverlay', () => {
       onInventoryChanged: () => inventoryChanges++,
       onStatusChanged: () => undefined,
       onGuildTokenBackpackExpansion: () => '',
+      allowEquip: true,
     });
 
     overlay.show('backpack');
@@ -148,6 +149,32 @@ describe('InventoryOverlay', () => {
     expect(store.snapshot().equipment.primaryWeapon).toBe('starter-sword');
     expect(store.snapshot().backpack).toEqual([]);
     expect(inventoryChanges).toBe(1);
+  });
+
+  it('blocks equipping during dungeon when allowEquip is disabled', () => {
+    const root = mountInventoryMarkup();
+    const profile = createDefaultPlayerProfile();
+    const store = InventoryStore.fromProfile(profile);
+    let inventoryChanges = 0;
+    const overlay = new InventoryOverlay(profile, store, {
+      onClose: () => undefined,
+      onInventoryChanged: () => inventoryChanges++,
+      onStatusChanged: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+      allowEquip: false,
+    });
+
+    overlay.show('backpack');
+    root.querySelector<HTMLButtonElement>('[data-inventory-index="0"]')?.click();
+
+    const inspector = document.getElementById('craft-item-inspector')!;
+    const equip = inspector.querySelector<HTMLButtonElement>('[data-equip-inventory-item]')!;
+    expect(store.snapshot().equipment.primaryWeapon).toBeNull();
+    expect(inspector.classList.contains('hidden')).toBe(false);
+    expect(equip.hidden).toBe(true);
+
+    expect(store.snapshot().equipment.primaryWeapon).toBeNull();
+    expect(inventoryChanges).toBe(0);
   });
 
   it('notifies the game while the panel owns and releases focus', () => {
@@ -217,6 +244,7 @@ describe('InventoryOverlay', () => {
       onInventoryChanged: () => undefined,
       onStatusChanged: () => undefined,
       onGuildTokenBackpackExpansion: () => '',
+      allowEquip: true,
     });
     // dt/dd pairs concatenate without a separator in textContent.
     const panel = () => document.getElementById('status-derived-stats')?.textContent ?? '';
@@ -231,8 +259,8 @@ describe('InventoryOverlay', () => {
     root.querySelector<HTMLButtonElement>('[data-inventory-index="0"]')?.click();
     document.querySelector<HTMLButtonElement>('[data-equip-inventory-item]')?.click();
     overlay.show('status');
-    // The sword brings its own 4 damage into the same reading the fight uses.
-    expect(panel()).toContain('Dano físico9.0');
+    // The sword brings its own 5 damage into the same reading the fight uses (5 attack + 5 sword = 10.0).
+    expect(panel()).toContain('Dano físico10.0');
     expect(root.dataset.characterMode).toBe('status');
   });
 });

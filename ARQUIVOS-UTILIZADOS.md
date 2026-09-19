@@ -18,7 +18,7 @@
 |---------|---------|----------|-----------|
 | `models/Guerreiro/guerreiro_animado.glb` | - | CharacterCatalog.ts | Modelo principal do Guerreiro |
 | `models/monstro.glb` | 370KB | EnemyAssetStore.ts | Inimigos regulares |
-| `models/Boss/Boss.glb` | - | BossAssetStore.ts | Boss final (Dragon Overlord) |
+| `models/Boss/Boss.glb` | - | BossAssetStore.ts | Boss final (Dragonic Overlord) |
 | `models/chest.glb` | 1.1MB | RewardAssetStore.ts | Baú de recompensas |
 | `models/sword.glb` | 134KB | EquipmentCatalog.ts | Espada (modelo 3D) |
 | `models/axe.glb` | 188KB | EquipmentCatalog.ts | Machado (modelo 3D) |

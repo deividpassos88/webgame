@@ -90,7 +90,8 @@ export function isInspectableItem(item: InventoryItemDefinition | undefined): it
 export function populateCraftInspector(
   inspector: HTMLElement,
   item: InventoryItemDefinition,
-  quantity: number
+  quantity: number,
+  allowEquip = false
 ): void {
   if (!isInspectableItem(item)) return;
   const equipment = item.kind === 'equipment';
@@ -110,7 +111,7 @@ export function populateCraftInspector(
   if (amount) amount.textContent = `x${Math.max(1, Math.floor(quantity))}`;
   // Equipping is an explicit confirmation so a stray click never swaps gear.
   const equip = inspector.querySelector<HTMLButtonElement>('[data-equip-inventory-item]');
-  if (equip) equip.hidden = !equipment;
+  if (equip) equip.hidden = !equipment || !allowEquip;
 }
 
 export function renderCraftRewardNotification(

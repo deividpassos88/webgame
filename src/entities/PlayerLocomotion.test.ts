@@ -34,7 +34,15 @@ describe('resolveLocomotionState', () => {
   it('does not override attack or death states', () => {
     expect(resolveLocomotionState({ ...still, isSwinging: true })).toBeNull();
     expect(resolveLocomotionState({ ...still, isDead: true })).toBeNull();
-    expect(resolveLocomotionState({ ...still, hasAttackTarget: true })).toBeNull();
+  });
+
+  it('keeps running while moving with keyboard even when an attack target exists', () => {
+    expect(
+      resolveLocomotionState({ ...still, hasAttackTarget: true, keyboardMoving: true })
+    ).toBe('running');
+    expect(
+      resolveLocomotionState({ ...still, hasAttackTarget: true, keyboardMoving: false })
+    ).toBe('idle');
   });
 });
 

@@ -26,7 +26,7 @@ describe('WarriorSkillController', () => {
       attackId: 'ataque_giratorio',
     });
     expect(skills.snapshot().energy).toBe(42);
-    expect(skills.snapshot().skills.ataque_giratorio.cooldownRemaining).toBe(4);
+    expect(skills.snapshot().skills.ataque_giratorio.cooldownRemaining).toBe(6);
 
     skills.update(0.9, false);
     expect(skills.snapshot().energy).toBe(42);

@@ -117,7 +117,7 @@ describe('Player animation preview integration', () => {
     player.attackEnemy(enemy, (target) => hits.push(target));
     player.update(0.01);
     expect(hits).toEqual([]);
-    player.update(0.12);
+    player.update(0.18);
     expect(hits).toEqual([enemy]);
   });
 

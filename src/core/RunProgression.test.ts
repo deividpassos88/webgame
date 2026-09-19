@@ -75,10 +75,10 @@ describe('RunProgression ADM transitions', () => {
     progression.update(0);
 
     expect(scene.snapshots[scene.snapshots.length - 1]).toMatchObject({
-      phase: 'final-battle', alive: 5,
+      phase: 'final-battle', alive: 6,
     });
     expect(scene.enemies.map(({ role }) => role).sort()).toEqual([
-      'boss', 'regular', 'regular', 'regular', 'regular',
+      'boss', 'regular', 'regular', 'regular', 'regular', 'regular',
     ]);
   });
 });
@@ -147,6 +147,7 @@ describe('RunProgression', () => {
     progression.update(5);
     expect(scene.enemies.map(({ role }) => role).sort()).toEqual([
       'boss',
+      'regular',
       'regular',
       'regular',
       'regular',

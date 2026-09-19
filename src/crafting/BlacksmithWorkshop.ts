@@ -28,11 +28,11 @@ export const COMMON_CRAFT_MATERIAL_IDS = [
  * slot table is declared once and expanded below.
  */
 const SLOT_RECIPES = [
-  { slot: 'helmet', label: 'Draconic Helmet', materials: ['worn-draco-claw', 'worn-draco-hide', 'black-horn-fragment', 'crimson-fang', 'serrated-rubra-scale'] },
-  { slot: 'chest', label: 'Draconic Chestplate', materials: ['worn-draco-claw', 'worn-draco-hide', 'volatile-draconic-essence', 'ossified-draco-ribs', 'verdant-draco-talisman'] },
-  { slot: 'pants', label: 'Draconic Pants', materials: ['worn-draco-hide', 'black-horn-fragment', 'volatile-draconic-essence', 'crimson-draco-talon', 'obsidian-draco-eye'] },
-  { slot: 'gloves', label: 'Draconic Gloves', materials: ['worn-draco-claw', 'crimson-fang', 'serrated-rubra-scale', 'ossified-draco-ribs', 'crimson-draco-talon'] },
-  { slot: 'boots', label: 'Draconic Boots', materials: ['black-horn-fragment', 'crimson-fang', 'volatile-draconic-essence', 'verdant-draco-talisman', 'obsidian-draco-eye'] },
+  { slot: 'helmet', label: 'Dragonic Helmet', materials: ['worn-draco-claw', 'worn-draco-hide', 'black-horn-fragment', 'crimson-fang', 'serrated-rubra-scale'] },
+  { slot: 'chest', label: 'Dragonic Chestplate', materials: ['worn-draco-claw', 'worn-draco-hide', 'volatile-draconic-essence', 'ossified-draco-ribs', 'verdant-draco-talisman'] },
+  { slot: 'pants', label: 'Dragonic Pants', materials: ['worn-draco-hide', 'black-horn-fragment', 'volatile-draconic-essence', 'crimson-draco-talon', 'obsidian-draco-eye'] },
+  { slot: 'gloves', label: 'Dragonic Gloves', materials: ['worn-draco-claw', 'crimson-fang', 'serrated-rubra-scale', 'ossified-draco-ribs', 'crimson-draco-talon'] },
+  { slot: 'boots', label: 'Dragonic Boots', materials: ['black-horn-fragment', 'crimson-fang', 'volatile-draconic-essence', 'verdant-draco-talisman', 'obsidian-draco-eye'] },
 ] as const;
 
 export type BlacksmithSlotRecipeId = (typeof SLOT_RECIPES)[number]['slot'];

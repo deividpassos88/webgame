@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ATTRIBUTE_INITIAL_CAP,
+  ATTRIBUTE_GATE_STEP,
   ATTRIBUTE_SOLO_CAP,
   ATTRIBUTE_KEYS,
   attributeAllocationAllowance,
+  getAttributeAllocationCap,
   createDefaultCharacterAttributes,
   deriveCharacterStats,
   normalizeCharacterAttributes,
@@ -49,7 +52,7 @@ describe('CharacterAttributes', () => {
     });
   });
 
-  it('derives the approved warrior formulas and caps from the allocation', () => {
+  it('derives the approved formulas and caps from the allocation', () => {
     const stats = deriveCharacterStats({
       vitality: 10,
       attack: 10,
@@ -62,33 +65,29 @@ describe('CharacterAttributes', () => {
       dodge: 100,
     });
 
-    // Vitality is pure health now: 3 HP per point, no damage side effect.
+    // Vitality: 3 HP per point.
     expect(stats.maxHealthBonus).toBeCloseTo(30);
     expect(stats.physicalDamageMultiplier).toBeCloseTo(1);
-    // One Attack point is one point of strike damage: the status sheet prints
-    // the same number the weapon deals.
     expect(stats.baseAttackBonus).toBeCloseTo(10);
-    // Defense 80 reaches 80/120 and is trimmed by the 55% cap.
-    expect(stats.damageReduction).toBeCloseTo(0.55);
-    expect(stats.movementSpeedMultiplier).toBeCloseTo(1.25);
-    expect(stats.attackSpeedMultiplier).toBeCloseTo(1.2);
-    // 100 points produce 30%; the independent 35% cap still protects
-    // callers that later support bonuses outside the allocation budget.
-    expect(stats.criticalAttackChance).toBeCloseTo(0.3);
-    expect(stats.magicCriticalChance).toBeCloseTo(0.15);
-    // Critical Damage: 1.5x base + 1% per point, capped at +100%.
-    expect(stats.criticalMultiplier).toBeCloseTo(2.5);
-    // Life Steal: 0.15% per point, capped at 15%.
-    expect(stats.lifeStealFraction).toBeCloseTo(0.15);
-    expect(stats.dodgeChance).toBeCloseTo(0.25);
+    // Defense 80 reaches 80/120 = 66.67% reduction (under 70% cap).
+    expect(stats.damageReduction).toBeCloseTo(80 / 120);
+    expect(stats.movementSpeedMultiplier).toBeCloseTo(1.40);
+    expect(stats.attackSpeedMultiplier).toBeCloseTo(1.35);
+    expect(stats.criticalAttackChance).toBeCloseTo(0.50);
+    expect(stats.magicCriticalChance).toBeCloseTo(0.25);
+    // Critical Damage: 1.5x base + 1.5% per point, capped at +150% (3.0x total).
+    expect(stats.criticalMultiplier).toBeCloseTo(3.0);
+    // Life Steal: 0.20% per point, capped at 20%.
+    expect(stats.lifeStealFraction).toBeCloseTo(0.20);
+    expect(stats.dodgeChance).toBeCloseTo(0.35);
   });
 
   it('caps life steal and critical damage below their maximum allocations', () => {
     const base = createDefaultCharacterAttributes();
     const stats = deriveCharacterStats({ ...base, criticalDamage: 250, lifeSteal: 400 });
 
-    expect(stats.criticalMultiplier).toBeCloseTo(2.5);
-    expect(stats.lifeStealFraction).toBeCloseTo(0.15);
+    expect(stats.criticalMultiplier).toBeCloseTo(3.0);
+    expect(stats.lifeStealFraction).toBeCloseTo(0.20);
   });
 
   it('resolves derived values against caller-provided base combat stats', () => {
@@ -98,28 +97,43 @@ describe('CharacterAttributes', () => {
     );
 
     expect(stats.maxHealth).toBeCloseTo(160);
-    // Base weapon damage 4 + 5 Attack points.
+    // Base weapon damage 8 + 5 Attack points.
     expect(stats.attackDamage).toBeCloseTo(13);
-    expect(stats.movementSpeed).toBeCloseTo(4.5 * 1.125);
-    expect(stats.attackCooldown).toBeCloseTo(0.67 / 1.1);
+    expect(stats.movementSpeed).toBeCloseTo(4.5 * 1.2);
+    expect(stats.attackCooldown).toBeCloseTo(0.67 / 1.175);
   });
 
-  it('stops a five-point allocation at 30 until a second attribute reaches 30', () => {
-    const attributes = { ...createDefaultCharacterAttributes(), attack: 28 };
+  it('enforces gate progression: initial cap 10, unlocks +5 up to 15 when another reaches 10, then +5 up to 20 when another reaches 15', () => {
+    const base = createDefaultCharacterAttributes();
 
-    expect(ATTRIBUTE_SOLO_CAP).toBe(30);
-    expect(attributeAllocationAllowance(attributes, 'attack', 5, 5)).toBe(2);
-    expect(attributeAllocationAllowance(
-      { ...attributes, attack: 30 },
-      'attack',
-      1,
-      5
-    )).toBe(0);
-    expect(attributeAllocationAllowance(
-      { ...attributes, attack: 30, defense: 30 },
-      'attack',
-      5,
-      5
-    )).toBe(5);
+    expect(ATTRIBUTE_INITIAL_CAP).toBe(10);
+    expect(ATTRIBUTE_GATE_STEP).toBe(5);
+
+    // When all other stats are < 10, cap is 10.
+    expect(getAttributeAllocationCap(base, 'attack')).toBe(10);
+    expect(attributeAllocationAllowance(base, 'attack', 12, 12)).toBe(10);
+
+    const withAttack10 = { ...base, attack: 10 };
+    expect(attributeAllocationAllowance(withAttack10, 'attack', 5, 5)).toBe(0);
+
+    // Defense reaches 10 -> unlocks attack up to 15.
+    const withDefense10 = { ...base, attack: 10, defense: 10 };
+    expect(getAttributeAllocationCap(withDefense10, 'attack')).toBe(15);
+    expect(attributeAllocationAllowance(withDefense10, 'attack', 5, 5)).toBe(5);
+
+    // Attack is 15, defense is 10 -> attack is capped at 15.
+    const withAttack15 = { ...base, attack: 15, defense: 10 };
+    expect(getAttributeAllocationCap(withAttack15, 'attack')).toBe(15);
+    expect(attributeAllocationAllowance(withAttack15, 'attack', 5, 5)).toBe(0);
+
+    // Defense reaches 15 -> unlocks attack up to 20.
+    const withDefense15 = { ...base, attack: 15, defense: 15 };
+    expect(getAttributeAllocationCap(withDefense15, 'attack')).toBe(20);
+    expect(attributeAllocationAllowance(withDefense15, 'attack', 5, 5)).toBe(5);
+
+    // Defense reaches 20 -> unlocks attack up to 25.
+    const withDefense20 = { ...base, attack: 20, defense: 20 };
+    expect(getAttributeAllocationCap(withDefense20, 'attack')).toBe(25);
+    expect(attributeAllocationAllowance(withDefense20, 'attack', 5, 5)).toBe(5);
   });
 });

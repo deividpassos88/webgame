@@ -26,14 +26,14 @@ describe('equipment catalog', () => {
     expect(getWeaponDefinition('sword')).toMatchObject({
       attackDamage: 8,
       attackRange: 2.7,
-      attackCooldownTime: 0.67,
+      attackCooldownTime: 0.90,
       killHealFraction: { regular: 0.03, miniBoss: 0.06 },
       regularDefenseChance: 0.03,
     });
     expect(getWeaponDefinition('axe')).toMatchObject({
       attackDamage: 10,
       attackRange: 2.0,
-      attackCooldownTime: 0.87,
+      attackCooldownTime: 1.10,
       killHealFraction: { regular: 0.031, miniBoss: 0.062 },
       regularDefenseChance: 0.05,
     });
