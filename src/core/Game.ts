@@ -384,6 +384,15 @@ export class Game {
       Logger.info('Game', `Personagem escolhido: ${gameplayDefinition.name}`);
 
       this.setupLights();
+      // Tenta carregar cenário customizado cenario3.glb para teste; se falhar, mantém procedural
+      this.hud.setLoadingProgress(88, 'Carregando cenário cenario3.glb...');
+      const scenarioLoaded = await this.level.loadScenario('/models/cenario3.glb');
+      if (scenarioLoaded) {
+        Logger.info('Game', `Cenário customizado ativo: ${this.level.getScenarioPath()}`);
+        this.hud.setLoadingProgress(89, `Cenário customizado: ${this.level.getScenarioPath()}`);
+      } else {
+        Logger.info('Game', 'Cenário procedural ativo (cenario3.glb não encontrado ou falhou)');
+      }
       this.scene.add(this.level.group);
       this.player = new Player(gameplayCharacterId, this.characterAssets);
       await this.player.load();

@@ -1,15 +1,39 @@
 import * as THREE from 'three';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import type { NavigationObstacle } from './NavigationObstacle';
 import {
   selectNearestTorchIndices,
   shouldTorchLightBeActive,
 } from './ProximityLighting';
+import { Logger } from '../utils/Logger';
 
 const TORCH_LIGHT_POOL_SIZE = 4;
+const DRACO_DECODER_PATH = '/draco/';
+
+// Prioridade de cenários: tenta cenario3.glb primeiro (teste do usuário), depois fallback procedural
+export const SCENARIO_MODEL_PATHS = [
+  '/models/cenario3.glb',
+  '/models/cenario3.glb', // duplicate intentional for cache bust? keep one
+] as const;
+
+export const PRIMARY_SCENARIO_PATH = '/models/cenario3.glb';
+
+function createScenarioLoader(): GLTFLoader {
+  const dracoLoader = new DRACOLoader();
+  dracoLoader.setDecoderPath(DRACO_DECODER_PATH);
+  dracoLoader.setDecoderConfig({ type: 'wasm' });
+  const loader = new GLTFLoader();
+  loader.setDRACOLoader(dracoLoader);
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  return loader;
+}
 
 /**
  * Cenário estilo Diablo 2/3: chão de pedra, paredes de dungeon,
  * pilares decorativos, tochas com luz dinâmica e plataforma do boss.
+ * Agora suporta cenário customizado via GLB (cenario3.glb) para teste.
  */
 export class Level {
   public group = new THREE.Group();
@@ -20,8 +44,22 @@ export class Level {
   private torchVisuals: { flame: THREE.Mesh; baseIntensity: number; active: boolean }[] = [];
   private activeTorchIndices: number[] = [];
   private size = 50;
+  private scenarioLoaded = false;
+  private scenarioPath: string | null = null;
+  private customBounds: THREE.Box3 | null = null;
 
   constructor() {
+    this.buildProcedural();
+  }
+
+  private buildProcedural() {
+    this.group.clear();
+    this.groundMeshes = [];
+    this.navigationObstacles.length = 0;
+    this.torchLights = [];
+    this.torchVisuals = [];
+    this.activeTorchIndices = [];
+    this.size = 50;
     this.buildGround();
     this.buildWalls();
     this.buildPillars();
@@ -188,20 +226,126 @@ export class Level {
     this.group.add(platform);
   }
 
+  /**
+   * Tenta carregar cenário customizado (cenario3.glb). Se falhar, mantém procedural.
+   * Deve ser chamado antes de adicionar o level à cena.
+   */
+  public async loadScenario(path: string = PRIMARY_SCENARIO_PATH): Promise<boolean> {
+    const loader = createScenarioLoader();
+    try {
+      Logger.info('Level', `Tentando carregar cenário customizado: ${path}`);
+      const gltf = await loader.loadAsync(path);
+      const scene = gltf.scene;
+
+      // Prepara materiais: sombras, etc
+      const box = new THREE.Box3();
+      const meshes: THREE.Object3D[] = [];
+      scene.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh) {
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          // Marca tudo como chão potencial para raycast de movimento
+          mesh.userData.isGround = true;
+          meshes.push(mesh);
+          // Se o material não tem roughness, garante um default
+          if ((mesh.material as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
+            const mat = mesh.material as THREE.MeshStandardMaterial;
+            if (mat.roughness === undefined) mat.roughness = 0.8;
+          }
+          box.expandByObject(mesh);
+        }
+      });
+
+      if (meshes.length === 0) {
+        Logger.warn('Level', `Cenário ${path} não contém meshes, mantendo procedural`);
+        return false;
+      }
+
+      // Centraliza cenário no 0,0 e ajusta altura para o chão ficar em y=0
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      // Move para que o centro XZ fique em 0,0 e o min Y fique em 0
+      scene.position.set(-center.x, -box.min.y, -center.z);
+
+      // Recalcula bounds após reposicionamento
+      const newBox = new THREE.Box3().setFromObject(scene);
+      this.customBounds = newBox;
+      this.size = Math.max(newBox.getSize(new THREE.Vector3()).x, newBox.getSize(new THREE.Vector3()).z, 50);
+
+      // Limpa procedural e adiciona cenário customizado
+      this.group.clear();
+      this.groundMeshes = [];
+      this.navigationObstacles.length = 0;
+      this.torchLights = [];
+      this.torchVisuals = [];
+      this.activeTorchIndices = [];
+
+      this.group.add(scene);
+      this.groundMeshes.push(...meshes);
+      this.scenarioLoaded = true;
+      this.scenarioPath = path;
+
+      // Se o cenário tiver objetos nomeados como "obstacle", usa como bloqueio de navegação
+      scene.traverse((obj) => {
+        if (obj.name.toLowerCase().includes('obstacle') || obj.name.toLowerCase().includes('colisor') || obj.name.toLowerCase().includes('pillar') || obj.name.toLowerCase().includes('coluna')) {
+          const pos = new THREE.Vector3();
+          obj.getWorldPosition(pos);
+          // Ajusta pela centralização já feita
+          this.navigationObstacles.push({ x: pos.x, z: pos.z, radius: 1.0 });
+        }
+      });
+
+      Logger.info('Level', `Cenário customizado carregado: ${path} | meshes: ${meshes.length} | size: ${this.size.toFixed(1)} | bounds: ${size.x.toFixed(1)}x${size.y.toFixed(1)}x${size.z.toFixed(1)}`);
+      return true;
+    } catch (error) {
+      Logger.warn('Level', `Falha ao carregar cenário ${path}, usando procedural. ${Logger.formatError(error)}`);
+      return false;
+    }
+  }
+
+  public isCustomScenario(): boolean {
+    return this.scenarioLoaded;
+  }
+
+  public getScenarioPath(): string | null {
+    return this.scenarioPath;
+  }
+
   public getBossSpawnPoint(): THREE.Vector3 {
+    if (this.customBounds) {
+      // No cenário customizado, boss fica mais ao norte (z negativo) dentro dos bounds
+      const center = this.customBounds.getCenter(new THREE.Vector3());
+      const size = this.customBounds.getSize(new THREE.Vector3());
+      // Tenta usar 35% do tamanho em direção norte
+      return new THREE.Vector3(0, 0, center.z - size.z * 0.35);
+    }
     return new THREE.Vector3(0, 0, -18);
   }
 
-  /** Spawns de inimigos: bordas/cantos do cenário — eles vêm "de fora" para dentro. */
+  /** Spawns de inimigos: bordas/cantos do cenário — eles vêm \"de fora\" para dentro. */
   public getEnemySpawnPoints(): THREE.Vector3[] {
+    if (this.customBounds) {
+      const min = this.customBounds.min;
+      const max = this.customBounds.max;
+      const pad = 1.5;
+      return [
+        new THREE.Vector3(min.x + pad, 0, min.z + pad),
+        new THREE.Vector3(max.x - pad, 0, min.z + pad),
+        new THREE.Vector3(min.x + pad, 0, max.z - pad),
+        new THREE.Vector3(max.x - pad, 0, max.z - pad),
+        new THREE.Vector3(0, 0, max.z - pad),
+        new THREE.Vector3(0, 0, min.z + pad),
+        new THREE.Vector3(min.x + pad, 0, 0),
+        new THREE.Vector3(max.x - pad, 0, 0),
+      ];
+    }
     const half = this.size / 2 - 1.5;
     return [
-      // cantos
       new THREE.Vector3(-half + 2, 0, -half + 2),
       new THREE.Vector3(half - 2, 0, -half + 2),
       new THREE.Vector3(-half + 2, 0, half - 2),
       new THREE.Vector3(half - 2, 0, half - 2),
-      // meio das bordas
       new THREE.Vector3(0, 0, half - 1.5),
       new THREE.Vector3(0, 0, -half + 1.5),
       new THREE.Vector3(-half + 1.5, 0, 0),
@@ -217,6 +361,18 @@ export class Level {
     boss: THREE.Vector3;
     miniBosses: [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3];
   } {
+    if (this.customBounds) {
+      const boss = this.getBossSpawnPoint();
+      return {
+        boss,
+        miniBosses: [
+          new THREE.Vector3(boss.x - 5, 0, boss.z + 3),
+          new THREE.Vector3(boss.x + 5, 0, boss.z + 3),
+          new THREE.Vector3(boss.x - 5, 0, boss.z - 3),
+          new THREE.Vector3(boss.x + 5, 0, boss.z - 3),
+        ],
+      };
+    }
     return {
       boss: this.getBossSpawnPoint(),
       miniBosses: [
@@ -228,19 +384,29 @@ export class Level {
     };
   }
 
-  /**
-   * Posições de spawn dos lacaios/monstros que lutam ao lado do Dragonic Overlord.
-   * Suporta até 10 monstros (5 guardiões na linha de frente e 5 arqueiros na retaguarda/flancos).
-   */
   public getFinalBattleMinionSpawnPoints(count = 10): THREE.Vector3[] {
+    if (this.customBounds) {
+      const boss = this.getBossSpawnPoint();
+      const points: THREE.Vector3[] = [
+        new THREE.Vector3(boss.x - 6, 0, boss.z + 4),
+        new THREE.Vector3(boss.x - 3, 0, boss.z + 6),
+        new THREE.Vector3(boss.x, 0, boss.z + 7),
+        new THREE.Vector3(boss.x + 3, 0, boss.z + 6),
+        new THREE.Vector3(boss.x + 6, 0, boss.z + 4),
+        new THREE.Vector3(boss.x - 9, 0, boss.z),
+        new THREE.Vector3(boss.x - 5, 0, boss.z + 10),
+        new THREE.Vector3(boss.x, 0, boss.z + 11),
+        new THREE.Vector3(boss.x + 5, 0, boss.z + 10),
+        new THREE.Vector3(boss.x + 9, 0, boss.z),
+      ];
+      return points.slice(0, Math.max(0, count));
+    }
     const points: THREE.Vector3[] = [
-      // Linha de frente / flanco próximo (guardiões ou monstros normais)
       new THREE.Vector3(-6, 0, -14),
       new THREE.Vector3(-3, 0, -12),
       new THREE.Vector3(0, 0, -11),
       new THREE.Vector3(3, 0, -12),
       new THREE.Vector3(6, 0, -14),
-      // Linha de trás / flancos abertos (arqueiros)
       new THREE.Vector3(-9, 0, -18),
       new THREE.Vector3(-5, 0, -8),
       new THREE.Vector3(0, 0, -7),
@@ -251,6 +417,9 @@ export class Level {
   }
 
   public update(time: number, playerPosition?: THREE.Vector3) {
+    // Se cenário customizado, não tem tochas procedurais para animar
+    if (this.scenarioLoaded) return;
+
     for (const torch of this.torchVisuals) {
       torch.flame.scale.setScalar(
         1 + Math.sin(time * 10 + torch.flame.position.z) * 0.15
