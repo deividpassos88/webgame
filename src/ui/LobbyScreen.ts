@@ -398,7 +398,9 @@ export class LobbyScreen {
     this.clock.start();
     this.requestFrame();
     const focusTarget = options.firstRun
-      ? (document.getElementById('confirm-class') as HTMLButtonElement) ?? this.startButton
+      ? (this.classScreen.querySelector<HTMLButtonElement>('[data-class-id].is-selected')
+        ?? this.classScreen.querySelector<HTMLButtonElement>('[data-class-id]')
+        ?? this.startButton)
       : this.startButton;
     focusTarget.focus();
     return new Promise<void>((resolve) => { this.resolver = resolve; });
@@ -644,21 +646,19 @@ export class LobbyScreen {
 
   private classChoiceClick = (event: Event): void => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-class-id]');
-    if (!button) {
-      const confirm = (event.target as HTMLElement).closest<HTMLButtonElement>('#confirm-class');
-      if (confirm) this.confirmClass();
-      return;
-    }
+    if (!button) return;
     const classId = button.dataset.classId;
     if (!classId || !isPlayableClassId(classId)) return;
     this.selectedClassId = classId;
-    // update UI selection
+    // visual feedback before transition
     this.classScreen.querySelectorAll<HTMLButtonElement>('[data-class-id]').forEach(btn => {
       const isSelected = btn.dataset.classId === classId;
       btn.classList.toggle('is-selected', isSelected);
       btn.setAttribute('aria-pressed', String(isSelected));
     });
     this.updatePreviewModel(classId as CharacterId);
+    // Clique direto já confirma e vai para o lobby
+    this.confirmClass();
   };
 
   private lobbyClassSwitchClick = (event: Event): void => {
