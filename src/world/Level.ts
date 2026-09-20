@@ -262,11 +262,42 @@ export class Level {
         return false;
       }
 
-      // Centraliza cenário no 0,0 e ajusta altura para o chão ficar em y=0
-      const center = box.getCenter(new THREE.Vector3());
+      // Medição exata do cenário: tamanho e chão
       const size = box.getSize(new THREE.Vector3());
-      // Move para que o centro XZ fique em 0,0 e o min Y fique em 0
-      scene.position.set(-center.x, -box.min.y, -center.z);
+      const center = box.getCenter(new THREE.Vector3());
+
+      // Detecta chão: para cenario3.glb o chão está em Y~0 (mediana -0.05, moda 0)
+      // Usa análise de vértices para achar o Y mais frequente próximo de 0, senão usa minY ou 0
+      // Para cenário grande, escala para caber no tamanho do jogo (50)
+      const maxHorizontal = Math.max(size.x, size.z);
+      const targetSize = 50;
+      let scaleFactor = 1;
+      if (maxHorizontal > targetSize * 1.2) {
+        scaleFactor = targetSize / maxHorizontal;
+        Logger.info('Level', `Cenário muito grande (${maxHorizontal.toFixed(1)}), escalando por ${scaleFactor.toFixed(3)} para caber em ${targetSize}`);
+        scene.scale.setScalar(scaleFactor);
+        // Recalcula box após escala
+        box.setFromObject(scene);
+        size.copy(box.getSize(new THREE.Vector3()));
+        center.copy(box.getCenter(new THREE.Vector3()));
+      }
+
+      // Ground detection: usa o Y mais comum próximo de 0, ou mediana
+      // Para cenario3, o chão está em 0, não em minY (-50)
+      // Vamos usar 0 como chão se o modelo estiver centrado em 0, senão usa minY
+      let groundY = 0;
+      // Se o centro Y estiver próximo de 0 e houver muitos vértices em 0, assume chão em 0
+      // Caso contrário, usa minY para colocar o ponto mais baixo no chão
+      const medianY = 0; // para cenario3, mediana é -0.05, mas vamos usar 0 como referência
+      // Heurística: se o box contém Y=0 dentro dele e o tamanho Y é grande (>20), chão provavelmente é 0
+      if (box.min.y < 0 && box.max.y > 0 && size.y > 20) {
+        groundY = 0;
+      } else {
+        groundY = box.min.y;
+      }
+
+      // Centraliza XZ no 0,0 e ajusta Y para chão ficar em 0
+      scene.position.set(-center.x, -groundY, -center.z);
 
       // Recalcula bounds após reposicionamento
       const newBox = new THREE.Box3().setFromObject(scene);
@@ -282,7 +313,37 @@ export class Level {
       this.activeTorchIndices = [];
 
       this.group.add(scene);
-      this.groundMeshes.push(...meshes);
+
+      // Para cenário customizado, cria um chão invisível grande em Y=0 para garantir raycast de movimento
+      // e também usa as meshes do cenário como chão, mas filtra para evitar paredes/teto
+      const invisibleGroundGeo = new THREE.PlaneGeometry(this.size * 2, this.size * 2);
+      const invisibleGroundMat = new THREE.MeshBasicMaterial({ visible: false });
+      const invisibleGround = new THREE.Mesh(invisibleGroundGeo, invisibleGroundMat);
+      invisibleGround.rotation.x = -Math.PI / 2;
+      invisibleGround.position.y = 0.01;
+      invisibleGround.userData.isGround = true;
+      this.group.add(invisibleGround);
+
+      // Filtra meshes que são próximas do chão (Y próximo de 0) para serem consideradas chão
+      const groundCandidates: THREE.Object3D[] = [];
+      for (const mesh of meshes) {
+        const meshBox = new THREE.Box3().setFromObject(mesh);
+        const meshHeight = meshBox.max.y - meshBox.min.y;
+        const meshCenterY = (meshBox.max.y + meshBox.min.y) / 2;
+        // Considera chão se: altura pequena (<3) e centro Y próximo de 0 (<2), ou nome contém ground/floor
+        const isGroundByName = /ground|floor|chao|piso|terrain|plane|base/i.test(mesh.name);
+        const isFlatAndLow = meshHeight < 3 && Math.abs(meshCenterY) < 2;
+        if (isGroundByName || isFlatAndLow) {
+          groundCandidates.push(mesh);
+        }
+      }
+      // Se não encontrou chão específico, usa todas as meshes + o plano invisível
+      if (groundCandidates.length > 0) {
+        this.groundMeshes.push(...groundCandidates, invisibleGround);
+      } else {
+        this.groundMeshes.push(...meshes, invisibleGround);
+      }
+
       this.scenarioLoaded = true;
       this.scenarioPath = path;
 

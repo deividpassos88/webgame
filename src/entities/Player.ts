@@ -146,6 +146,13 @@ export class Player {
     model.scale.setScalar(definition.gameScale);
     this.embeddedSword = model.getObjectByName('sword') ?? null;
     if (this.embeddedSword) this.embeddedSword.visible = false;
+    // Para maga, oculta cajado/staff no modelo base (lobby usa Idle sem arma)
+    const weaponPattern = /(sword|axe|weapon|espada|machado|shield|escudo|staff|cajado|wand|bastao|bastão|rod|stick|orb|crystal|khakkhara|mage_staff|wizard_staff)/i;
+    model.traverse((node) => {
+      if (weaponPattern.test(node.name)) {
+        node.visible = false;
+      }
+    });
 
     let meshCount = 0;
     model.traverse((child) => {

@@ -76,10 +76,11 @@ export function itemTooltipDataAttributes(
  */
 export function renderEquipmentSlotContent(
   slot: UiEquipmentSlot,
-  item: InventoryItemDefinition | null
+  item: InventoryItemDefinition | null,
+  characterClass: 'paladin' | 'maga' | string = 'paladin'
 ): string {
   return `
-    <span class="equipment-slot__art"${item ? '' : ' aria-hidden="true"'}>${item ? equippedItemArt(item) : equipmentSlotIcon(slot)}</span>`;
+    <span class="equipment-slot__art"${item ? '' : ' aria-hidden="true"'}>${item ? equippedItemArt(item) : equipmentSlotIcon(slot, characterClass)}</span>`;
 }
 
 /** True when the inspector can present the item, i.e. craft materials and equipment. */

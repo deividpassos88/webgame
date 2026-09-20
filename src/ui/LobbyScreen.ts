@@ -512,6 +512,7 @@ export class LobbyScreen {
     });
     const center = bounds.getCenter(new THREE.Vector3());
     model.position.set(-center.x, -bounds.min.y, -center.z);
+    this.modelHolder.position.set(0, definition.previewYOffset ?? 0, 0);
     this.modelHolder.add(model);
     this.modelHolder.rotation.y = 0;
 
@@ -558,12 +559,13 @@ export class LobbyScreen {
   private renderData(): void {
     const inventory = this.inventory.snapshot();
     const view = buildRpgUiViewModel(this.profile, inventory);
+    const selectedClassForIcons = this.profile.selectedClass;
     const equipmentMarkup = view.equipment.map(({ slot, label, item }) => item
       ? `<button class="equipment-slot is-equipped" type="button" data-lobby-equipped-slot="${slot}" data-rarity="${item.rarity ?? 'common'}" aria-label="${label}: ${item.label}. Abrir ações do item.">
-          ${renderEquipmentSlotContent(slot, item)}
+          ${renderEquipmentSlotContent(slot, item, selectedClassForIcons)}
         </button>`
       : `<div class="equipment-slot" data-equipment-slot="${slot}" aria-label="${label}: Vazio">
-          ${renderEquipmentSlotContent(slot, null)}
+          ${renderEquipmentSlotContent(slot, null, selectedClassForIcons)}
         </div>`).join('');
     document.getElementById('lobby-equipment-slots')!.innerHTML = equipmentMarkup;
     document.getElementById('lobby-current-status')!.innerHTML = renderLobbyCurrentStatus(view.currentStatus);

@@ -23,14 +23,19 @@ const EQUIPMENT_SLOT_ICON_SOURCES: Record<UiEquipmentSlot, string> = {
   secondaryWeapon: 'shield',
 };
 
-export function equipmentSlotIconSource(slot: UiEquipmentSlot): string {
+export type EquipmentIconClass = 'paladin' | 'maga' | string;
+
+export function equipmentSlotIconSource(slot: UiEquipmentSlot, characterClass: EquipmentIconClass = 'paladin'): string {
   const file = EQUIPMENT_SLOT_ICON_SOURCES[slot];
+  if (characterClass === 'maga') {
+    return `/assets/ui/lobby/arena/slots/maga/${file}.png`;
+  }
   return `/assets/ui/lobby/arena/slots/${file}.png`;
 }
 
 /** Markup for the placeholder inside an empty socket. Decorative only. */
-export function equipmentSlotIcon(slot: UiEquipmentSlot): string {
-  return `<img class="equipment-slot__icon" src="${equipmentSlotIconSource(slot)}" alt="" aria-hidden="true" loading="lazy" decoding="async">`;
+export function equipmentSlotIcon(slot: UiEquipmentSlot, characterClass: EquipmentIconClass = 'paladin'): string {
+  return `<img class="equipment-slot__icon" src="${equipmentSlotIconSource(slot, characterClass)}\" alt="" aria-hidden="true" loading="lazy" decoding="async">`;
 }
 
 export function equipmentIcon(slot: UiEquipmentSlot): string {
