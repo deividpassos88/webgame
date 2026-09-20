@@ -31,8 +31,8 @@ describe('playable character policy', () => {
           id: 'maga',
           name: 'Maga',
           modelPath: '/models/maga.glb',
-          gameScale: 16.5,
-          previewScale: 12,
+          gameScale: 11,
+          previewScale: 8,
           clipMap: {
             idle: 'idle',
             running: 'correr para frente',

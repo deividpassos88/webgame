@@ -104,9 +104,9 @@ export const CHARACTERS: readonly CharacterDefinition[] = [
     id: 'maga',
     name: 'Maga',
     modelPath: '/models/maga.glb',
-    gameScale: 16.5,
-    previewScale: 12,
-    previewYOffset: 0,
+    gameScale: 11,
+    previewScale: 8,
+    previewYOffset: -0.1,
     inPlaceAxes: ['x', 'y', 'z'],
     clipMap: {
       idle: 'idle',
