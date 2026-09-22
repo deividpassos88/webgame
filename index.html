@@ -57,12 +57,18 @@
       <div class="class-select-copy">
         <p class="section-label">Primeiro acesso</p>
         <h1 id="class-select-title">Escolha sua classe</h1>
-        <p>O Guerreiro entra equipado com espada e domina ataques de curto alcance.</p>
+        <p>Escolha Guerreiro ou Maga. Ao clicar em uma classe, o lobby abre com a prévia 3D ajustada para ela.</p>
       </div>
-      <button id="select-warrior" class="class-choice" type="button">
-        <span class="class-choice-index">01</span>
-        <span><strong>Guerreiro</strong><small>Arma inicial: Espada do Recruta</small></span>
-      </button>
+      <div class="class-choice-list" role="group" aria-label="Classes disponíveis">
+        <button id="select-warrior" class="class-choice" type="button" data-class-choice="paladin">
+          <span class="class-choice-index">01</span>
+          <span><strong>Guerreiro</strong><small>Arma inicial: Espada do Recruta</small></span>
+        </button>
+        <button id="select-mage" class="class-choice" type="button" data-class-choice="mage">
+          <span class="class-choice-index">02</span>
+          <span><strong>Maga</strong><small>Arma inicial: Cajado Arcano</small></span>
+        </button>
+      </div>
     </section>
 
     <section id="lobby-screen" class="flow-screen hidden" aria-labelledby="lobby-title">
@@ -128,8 +134,8 @@
       <main class="lobby-hero-stage arena-stage" tabindex="0" aria-label="Prévia 3D do Guerreiro. Arraste com o mouse para girar.">
         <div class="arena-stage__title">
           <small>Classe selecionada</small>
-          <strong>Guerreiro</strong>
-          <span>Vanguarda • corpo a corpo • força</span>
+          <strong data-lobby-class-name>Guerreiro</strong>
+          <span data-lobby-class-role>Vanguarda • corpo a corpo • força</span>
         </div>
         <div class="arena-stage__glow" aria-hidden="true"></div>
         <p class="arena-stage__hint" aria-hidden="true">Arraste para girar</p>
@@ -140,12 +146,12 @@
         <section id="lobby-panel-hero" data-lobby-panel="hero">
           <header class="arena-panel__head">
             <p class="section-label">Classe selecionada</p>
-            <h2>Guerreiro</h2>
+            <h2 data-lobby-class-panel-name>Guerreiro</h2>
           </header>
           <dl class="warrior-summary arena-summary">
             <div><dt>Vida</dt><dd>100</dd></div>
             <div><dt>Energia</dt><dd>50</dd></div>
-            <div><dt>Arma</dt><dd>Espada</dd></div>
+            <div><dt>Arma</dt><dd data-lobby-class-weapon>Espada do Recruta</dd></div>
           </dl>
         </section>
 
@@ -197,6 +203,9 @@
           <button id="start-game" class="primary-action arena-cta__btn" type="button">
             <img class="lobby-start-icon" src="/assets/ui/lobby/arena/icons/play.png" alt="" aria-hidden="true">
             <span class="arena-cta__text"><small>Entrar na masmorra</small><strong>Iniciar partida</strong></span>
+          </button>
+          <button id="start-admin-training" class="admin-training-start admin-mode-toggle hidden" type="button" aria-pressed="false">
+            <small>MODO ADM</small><strong>Desligado</strong><span>Partida normal</span>
           </button>
         </div>
 

@@ -15,10 +15,10 @@ describe('Enemy elemental status integration', () => {
     expect(enemy.hp).toBe(92);
   });
 
-  it('slows an iced enemy by twenty percent for the status duration', () => {
+  it('freezes an iced enemy for the status duration', () => {
     const enemy = new Enemy({ position: new THREE.Vector3(), hp: 100, speed: 4 });
     enemy.applyElementalHit('ice', 1);
-    expect(enemy.elementalSpeedMultiplier).toBe(0.8);
+    expect(enemy.elementalSpeedMultiplier).toBe(0);
     enemy.update(3, new THREE.Vector3(100, 0, 0), () => undefined);
     expect(enemy.elementalSpeedMultiplier).toBe(1);
   });

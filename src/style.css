@@ -1512,9 +1512,11 @@ html, body {
 .class-select-copy { padding: 28px; border-left: 4px solid #d6a84b; background: linear-gradient(90deg, rgba(30,21,15,.88), transparent); }
 .class-select-copy h1 { color: #f2ddba; font-family: Georgia, serif; letter-spacing: -.045em; }
 .class-select-copy > p:last-child { color: #d0bda1; }
-.class-choice { border: 1px solid #d6a84b; border-radius: 2px; color: #f5e4c9; background: linear-gradient(90deg, #36251a, #18110d); box-shadow: 0 10px 28px rgba(0,0,0,.45); }
+.class-choice-list { display: grid; gap: 14px; align-self: start; }
+.class-choice { border: 1px solid #d6a84b; border-radius: 2px; color: #f5e4c9; background: linear-gradient(90deg, #36251a, #18110d); box-shadow: 0 10px 28px rgba(0,0,0,.45); transition: transform .14s ease, filter .14s ease, border-color .14s ease; }
 .class-choice-index { background: linear-gradient(#e3b85d, #a65325); }
-.class-choice:hover { filter: brightness(1.12); transform: translateY(-2px); }
+.class-choice:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-2px); }
+.class-choice:disabled { cursor: not-allowed; filter: grayscale(.6); opacity: .52; }
 
 @media (max-width: 1100px) {
   /* Columns are set by the arena skin's --panel-left/--panel-right. */
@@ -1601,6 +1603,15 @@ button:focus-visible,
   pointer-events: none;
 }
 
+.class-choice-list {
+  width: min(520px, calc(100vw - 40px));
+  display: grid;
+  gap: 14px;
+  justify-self: start;
+  margin-left: clamp(24px, 8vw, 140px);
+  pointer-events: auto;
+}
+
 .class-select-copy {
   width: min(520px, calc(100vw - 40px));
   align-self: center;
@@ -1628,8 +1639,8 @@ button:focus-visible,
   display: grid;
   grid-template-columns: 68px 1fr;
   align-items: center;
-  justify-self: start;
-  margin-left: clamp(24px, 8vw, 140px);
+  justify-self: stretch;
+  margin-left: 0;
   padding: 0;
   border: 1px solid #ffb800;
   border-radius: 0;
@@ -1952,7 +1963,8 @@ button.inventory-slot { cursor: pointer; }
 
 @media (max-width: 560px) {
   .class-select-copy,
-  .class-choice { margin-left: 20px; }
+  .class-choice-list { margin-left: 20px; }
+  .class-choice { margin-left: 0; }
   .class-select-copy h1 { font-size: 44px; }
   .lobby-footer span { display: none; }
   .primary-action { width: 100%; min-width: 0; }
@@ -2000,6 +2012,10 @@ button.inventory-slot { cursor: pointer; }
 .admin-control.is-active { color: #000; background: #ffb800; border-color: #ffb800; }
 .admin-control:focus-visible { outline: 2px solid #ffb800; outline-offset: 2px; }
 .admin-control:disabled { color: #777; border-color: #333; cursor: not-allowed; }
+.admin-training { display: grid; gap: 5px; }
+.admin-training > strong { color: #ffdf89; font: 800 9px/1 Consolas, 'Courier New', monospace; text-transform: uppercase; letter-spacing: .08em; }
+.admin-spawn-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; }
+.admin-spawn-grid .admin-control { padding-inline: 3px; font-size: 8.5px; }
 .admin-toggle[aria-pressed="true"]::after { content: ' ATIVO'; font-weight: 700; }
 
 }
@@ -2178,7 +2194,7 @@ button.inventory-slot { cursor: pointer; }
   text-transform: uppercase;
   color: #0b0c0a;
   background: #ffb800;
-  border-radius: 999px;
+  border-radius: 10px;
 }
 
 #reward-selection-status {
@@ -2229,9 +2245,9 @@ button.inventory-slot { cursor: pointer; }
 body #lobby-screen {
   font-family: 'Segoe UI', system-ui, sans-serif;
   background:
-    radial-gradient(circle at 50% 46%, rgba(226, 100, 47, 0.08), transparent 29%),
-    linear-gradient(90deg, rgba(8, 11, 16, 0.74) 0%, rgba(8, 11, 16, 0.15) 29%, rgba(8, 11, 16, 0.08) 70%, rgba(8, 11, 16, 0.68) 100%),
-    linear-gradient(180deg, rgba(8, 11, 16, 0.18), transparent 23% 73%, rgba(8, 11, 16, 0.62));
+    radial-gradient(circle at 50% 46%, rgba(226, 100, 47, 0.035), transparent 30%),
+    linear-gradient(90deg, rgba(8, 11, 16, 0.72) 0%, rgba(8, 11, 16, 0.1) 27%, rgba(8, 11, 16, 0) 42% 58%, rgba(8, 11, 16, 0.1) 73%, rgba(8, 11, 16, 0.66) 100%),
+    linear-gradient(180deg, rgba(8, 11, 16, 0.08), transparent 26% 72%, rgba(8, 11, 16, 0.34));
 }
 
 body #lobby-screen .flow-masthead,
@@ -3859,13 +3875,50 @@ body #lobby-screen .equipment-slot.is-equipped,
  * so the old footer grid placement is left out: grid-column/row would be
  * dead weight on a fixed-position element and only confuse future edits.
  */
-#lobby-screen .lobby-start-action {
+#lobby-screen .arena-cta.lobby-start-action {
   z-index: 7;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 #lobby-screen .lobby-start-action .primary-action { min-width: min(260px, 100%); }
-#start-game:disabled { cursor: not-allowed; filter: grayscale(1); opacity: .56; }
+.admin-training-start {
+  min-width: 108px;
+  display: inline-grid;
+  gap: 1px;
+  justify-items: center;
+  align-items: center;
+  align-self: center;
+  pointer-events: auto;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 184, 0, .68);
+  border-radius: 999px;
+  color: #ffe9ac;
+  background: rgba(8, 12, 18, .78);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .34), inset 0 1px rgba(255, 255, 255, .14);
+  font: 800 10px/1 system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  cursor: pointer;
+}
+.admin-training-start small { color: #ffb800; font-size: 8px; }
+.admin-training-start span { display: none; }
+.admin-training-start[aria-pressed="true"] {
+  border-color: #76f0aa;
+  color: #e9fff1;
+  background: rgba(11, 45, 28, .86);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .34), 0 0 18px rgba(72, 255, 151, .16), inset 0 1px rgba(255, 255, 255, .16);
+}
+.admin-training-start[aria-pressed="true"] small { color: #76f0aa; }
+.admin-training-start:hover:not(:disabled),
+.admin-training-start:focus-visible { border-color: #ffdc7a; background: rgba(37, 28, 13, .9); }
+.admin-training-start[aria-pressed="true"]:hover:not(:disabled),
+.admin-training-start[aria-pressed="true"]:focus-visible { border-color: #9dffc3; background: rgba(14, 63, 38, .92); }
+#start-game:disabled,
+.admin-training-start:disabled { cursor: not-allowed; filter: grayscale(1); opacity: .56; }
 
 
 /* ---------- Refinamentos: combate, ADM e oficina ---------- */

@@ -13,6 +13,8 @@ function createPorts(): AdminGamePorts {
     hitkillBoss: vi.fn(() => true),
     setImmortal: vi.fn(),
     setAdminCamera: vi.fn(),
+    spawnTestEnemy: vi.fn(() => true),
+    clearTestEnemies: vi.fn(),
     profile,
     inventory: InventoryStore.fromProfile(profile),
     persistProfileState: vi.fn(() => true),
@@ -38,6 +40,24 @@ describe('AdminGameActions', () => {
     expect(actions.execute({ type: 'jump-boss' })).toEqual({ ok: true });
     expect(ports.preparePhaseChange).toHaveBeenCalledOnce();
     expect(ports.startBoss).toHaveBeenCalledOnce();
+  });
+
+
+  it('spawns and clears admin test enemies through authorized commands', () => {
+    const ports = createPorts();
+    const actions = new AdminGameActions(ports, new AdminCommandGate(true));
+
+    expect(actions.execute({ type: 'spawn-test-enemy', role: 'regular' })).toEqual({ ok: true });
+    expect(ports.spawnTestEnemy).toHaveBeenCalledWith('regular');
+
+    expect(actions.execute({ type: 'clear-test-enemies' })).toEqual({ ok: true });
+    expect(ports.clearTestEnemies).toHaveBeenCalledOnce();
+
+    vi.mocked(ports.spawnTestEnemy).mockReturnValue(false);
+    expect(actions.execute({ type: 'spawn-test-enemy', role: 'boss' })).toEqual({
+      ok: false,
+      reason: 'unavailable',
+    });
   });
 
   it('forwards toggles and reports when no living boss can receive hitkill', () => {

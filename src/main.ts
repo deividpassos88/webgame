@@ -1,11 +1,45 @@
 import { Logger } from './utils/Logger';
 import { resolveDevAdminAccess } from './admin/AdminAccess';
+import { PROFILE_STORAGE_KEY } from './profile/PlayerProfile';
 import './style.css';
 
 // Inicializa o Logger e os listeners de erro GLOBAIS antes de qualquer
 // outro import pesado (Game, Three.js, etc). Assim, se algo quebrar
 // durante a importação/inicialização dessas dependências, ainda capturamos.
 Logger.init();
+
+const PROFILE_BUILD_CACHE_KEY = 'dragon-miner.profile-build-id.v1';
+
+function clearProfileCacheIfBuildChanged(): void {
+  try {
+    const buildId = __DRAGON_MINER_BUILD_ID__;
+    const searchParams = new URLSearchParams(window.location.search);
+    const manualReset = searchParams.get('resetProfile') === '1'
+      || searchParams.get('clearProfile') === '1'
+      || searchParams.get('freshProfile') === '1';
+    const previousBuildId = window.localStorage.getItem(PROFILE_BUILD_CACHE_KEY);
+    if (!manualReset && previousBuildId === buildId) return;
+
+    window.localStorage.removeItem(PROFILE_STORAGE_KEY);
+    window.localStorage.setItem(PROFILE_BUILD_CACHE_KEY, buildId);
+    Logger.info(
+      'Main',
+      manualReset
+        ? 'Perfil local limpo por parâmetro de URL; a seleção de classe será exibida.'
+        : 'Perfil/cache local limpo porque um novo build foi carregado; a seleção de classe será exibida.'
+    );
+
+    if ('caches' in window) {
+      void window.caches.keys()
+        .then((keys) => Promise.all(keys.map((key) => window.caches.delete(key))))
+        .catch((error) => Logger.warn('Main', 'Falha ao limpar Cache Storage do navegador.', error));
+    }
+  } catch (error) {
+    Logger.warn('Main', 'Não foi possível limpar o perfil/cache local do navegador.', error);
+  }
+}
+
+clearProfileCacheIfBuildChanged();
 
 window.addEventListener('error', (event) => {
   Logger.error('Window', event.message, {

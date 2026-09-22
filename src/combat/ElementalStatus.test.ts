@@ -41,7 +41,7 @@ describe('ElementalStatus', () => {
     expect(tickElementalStatus(refreshed, 3).damage).toBeCloseTo(12);
   });
 
-  it('replaces a different element and applies the approved twenty percent ice slow', () => {
+  it('replaces a different element and freezes movement with the approved ice lock', () => {
     const fire = applyElementalStatus(null, 'fire', 4);
     const ice = applyElementalStatus(fire, 'ice', 5);
 
@@ -51,7 +51,7 @@ describe('ElementalStatus', () => {
       damagePerSecond: 5,
       pendingDamage: 0,
     });
-    expect(getElementalSlowMultiplier(ice)).toBeCloseTo(0.8);
+    expect(getElementalSlowMultiplier(ice)).toBe(0);
   });
 
   it('does not advance or deal damage for invalid or non-positive elapsed time', () => {

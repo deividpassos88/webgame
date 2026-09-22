@@ -1,4 +1,5 @@
 import type { RuntimeWarriorBudgetReport } from '../characters/RuntimeWarriorBudget';
+import type { MageVFXDiagnostics } from '../vfx/VFXTypes';
 import type { InputSnapshot } from './InputManager';
 
 export interface FramePerformanceContext {
@@ -14,6 +15,7 @@ export interface FramePerformanceContext {
   tabVisibility: DocumentVisibilityState;
   playerAnimation: string;
   input: InputSnapshot & { movementSource: 'keyboard' | 'click' | 'none' };
+  mageVFX?: MageVFXDiagnostics;
   /** Cached at player construction; absent in legacy callers and null on GLB fallback. */
   runtimeWarriorBudget?: RuntimeWarriorBudgetReport | null;
 }

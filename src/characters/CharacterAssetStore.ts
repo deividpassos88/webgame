@@ -25,6 +25,8 @@ export type CharacterLoadProgress = (
   characterId: CharacterId
 ) => void;
 
+export type CharacterAssetVariant = 'gameplay' | 'lobby';
+
 export interface CharacterModelLoader {
   loadAsync(path: string): Promise<GLTF>;
 }
@@ -42,6 +44,8 @@ function createDefaultLoader(): GLTFLoader {
 
 export class CharacterAssetStore {
   private readonly assets = new Map<CharacterId, GLTF>();
+  private readonly lobbyAssets = new Map<CharacterId, GLTF>();
+  private readonly strictLobbyAssets = new Set<CharacterId>();
   private readonly errors = new Map<CharacterId, unknown>();
   private readonly fallbackWarnings = new Map<CharacterId, unknown>();
 
@@ -59,6 +63,7 @@ export class CharacterAssetStore {
           this.assets.set(definition.id, asset);
           this.errors.delete(definition.id);
           this.fallbackWarnings.delete(definition.id);
+          await this.loadLobbyAsset(definition, asset);
         } catch (error) {
           if (definition.fallbackModelPath) {
             try {
@@ -66,8 +71,10 @@ export class CharacterAssetStore {
               this.assets.set(definition.id, fallback);
               this.errors.delete(definition.id);
               this.fallbackWarnings.set(definition.id, error);
+              await this.loadLobbyAsset(definition, fallback);
             } catch (fallbackError) {
               this.assets.delete(definition.id);
+              this.lobbyAssets.delete(definition.id);
               this.fallbackWarnings.delete(definition.id);
               this.errors.set(definition.id, {
                 primary: error,
@@ -87,7 +94,10 @@ export class CharacterAssetStore {
     );
   }
 
-  public has(id: CharacterId): boolean {
+  public has(id: CharacterId, variant: CharacterAssetVariant = 'gameplay'): boolean {
+    if (variant === 'lobby' && this.strictLobbyAssets.has(id)) {
+      return this.lobbyAssets.has(id);
+    }
     return this.assets.has(id);
   }
 
@@ -99,29 +109,37 @@ export class CharacterAssetStore {
     return this.fallbackWarnings.get(id);
   }
 
-  public get(id: CharacterId): GLTF {
+  public get(id: CharacterId, variant: CharacterAssetVariant = 'gameplay'): GLTF {
+    if (variant === 'lobby') {
+      const lobbyAsset = this.lobbyAssets.get(id);
+      if (lobbyAsset) return lobbyAsset;
+      if (this.strictLobbyAssets.has(id)) {
+        throw new Error(`Modelo de lobby não carregado: ${id}`);
+      }
+    }
     const asset = this.assets.get(id);
     if (!asset) throw new Error(`Modelo não carregado: ${id}`);
     return asset;
   }
 
-  public getAnimations(id: CharacterId): THREE.AnimationClip[] {
-    return this.get(id).animations;
+  public getAnimations(id: CharacterId, variant: CharacterAssetVariant = 'gameplay'): THREE.AnimationClip[] {
+    return this.get(id, variant).animations;
   }
 
-  public getBoneNames(id: CharacterId): ReadonlySet<string> {
+  public getBoneNames(id: CharacterId, variant: CharacterAssetVariant = 'gameplay'): ReadonlySet<string> {
     const names = new Set<string>();
-    this.get(id).scene.traverse((object) => {
+    this.get(id, variant).scene.traverse((object) => {
       if ((object as THREE.Bone).isBone && object.name) names.add(object.name);
     });
     return names;
   }
 
   public getBoneRestRotations(
-    id: CharacterId
+    id: CharacterId,
+    variant: CharacterAssetVariant = 'gameplay'
   ): ReadonlyMap<string, THREE.Quaternion> {
     const rotations = new Map<string, THREE.Quaternion>();
-    this.get(id).scene.traverse((object) => {
+    this.get(id, variant).scene.traverse((object) => {
       if ((object as THREE.Bone).isBone && object.name) {
         rotations.set(object.name, object.quaternion.clone());
       }
@@ -129,7 +147,39 @@ export class CharacterAssetStore {
     return rotations;
   }
 
-  public createModel(id: CharacterId): THREE.Group {
-    return cloneSkeleton(this.get(id).scene) as THREE.Group;
+  public getBoneRestTranslations(
+    id: CharacterId,
+    variant: CharacterAssetVariant = 'gameplay'
+  ): ReadonlyMap<string, THREE.Vector3> {
+    const translations = new Map<string, THREE.Vector3>();
+    this.get(id, variant).scene.traverse((object) => {
+      if ((object as THREE.Bone).isBone && object.name) {
+        translations.set(object.name, object.position.clone());
+      }
+    });
+    return translations;
+  }
+
+  public createModel(id: CharacterId, variant: CharacterAssetVariant = 'gameplay'): THREE.Group {
+    return cloneSkeleton(this.get(id, variant).scene) as THREE.Group;
+  }
+
+  private async loadLobbyAsset(definition: CharacterDefinition, gameplayAsset: GLTF): Promise<void> {
+    this.strictLobbyAssets.delete(definition.id);
+    if (!definition.lobbyModelPath || definition.lobbyModelPath === definition.modelPath) {
+      this.lobbyAssets.set(definition.id, gameplayAsset);
+      return;
+    }
+    if (definition.strictLobbyModel) this.strictLobbyAssets.add(definition.id);
+    try {
+      const lobbyAsset = await this.loader.loadAsync(definition.lobbyModelPath);
+      this.lobbyAssets.set(definition.id, lobbyAsset);
+    } catch (error) {
+      this.lobbyAssets.delete(definition.id);
+      this.fallbackWarnings.set(definition.id, error);
+      if (!definition.strictLobbyModel) {
+        this.lobbyAssets.set(definition.id, gameplayAsset);
+      }
+    }
   }
 }

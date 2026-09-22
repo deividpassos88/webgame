@@ -2,11 +2,12 @@ import * as THREE from 'three';
 import { resolveCharacterClips } from '../characters/CharacterAnimations';
 import { CharacterAssetStore } from '../characters/CharacterAssetStore';
 import {
-  CHARACTERS,
   getCharacterDefinition,
+  getPlayableCharacters,
   type CharacterId,
 } from '../characters/CharacterCatalog';
 import { CharacterSelectionState } from './CharacterSelectionState';
+import { prepareLobbyModel } from './LobbyPresentation';
 
 interface PreviewCharacter {
   container: THREE.Group;
@@ -44,7 +45,7 @@ export class CharacterSelectScreen {
     private readonly canvas: HTMLCanvasElement,
     private readonly assets: CharacterAssetStore
   ) {
-    const availableIds = CHARACTERS.filter((character) => assets.has(character.id)).map(
+    const availableIds = getPlayableCharacters().filter((character) => assets.has(character.id)).map(
       (character) => character.id
     );
     this.state = new CharacterSelectionState(availableIds);
@@ -76,7 +77,7 @@ export class CharacterSelectScreen {
     this.clock.start();
     this.frameId = requestAnimationFrame(this.render);
 
-    const firstAvailable = CHARACTERS.find((character) =>
+    const firstAvailable = getPlayableCharacters().find((character) =>
       this.state.isAvailable(character.id)
     );
     if (firstAvailable) {
@@ -137,7 +138,7 @@ export class CharacterSelectScreen {
     floor.receiveShadow = true;
     this.scene.add(floor);
 
-    for (const definition of CHARACTERS) {
+    for (const definition of getPlayableCharacters()) {
       if (!this.assets.has(definition.id)) continue;
       this.addCharacterPreview(definition.id);
     }
@@ -175,7 +176,8 @@ export class CharacterSelectScreen {
     ring.position.y = 0.055;
     container.add(ring);
 
-    const model = this.assets.createModel(id);
+    const model = this.assets.createModel(id, 'lobby');
+    prepareLobbyModel(model);
     model.scale.setScalar(definition.previewScale);
     model.traverse((object) => {
       const mesh = object as THREE.Mesh;
@@ -196,7 +198,10 @@ export class CharacterSelectScreen {
     container.add(modelHolder);
 
     const mixer = new THREE.AnimationMixer(model);
-    const idle = resolveCharacterClips(id, this.assets).idle;
+    const lobbyIdle = this.assets.getAnimations(id, 'lobby').find((clip) =>
+      clip.name === definition.clipMap.idle || clip.name === 'idle'
+    );
+    const idle = lobbyIdle ?? resolveCharacterClips(id, this.assets).idle;
     if (idle) mixer.clipAction(idle).play();
 
     this.previews.set(id, { container, modelHolder, ringMaterial, mixer });
@@ -281,9 +286,14 @@ export class CharacterSelectScreen {
     this.camera.lookAt(0, 1.05, 0);
     this.camera.updateProjectionMatrix();
 
+    const ids = getPlayableCharacters()
+      .map((character) => character.id)
+      .filter((id) => this.previews.has(id));
     const separation = aspect < 0.8 ? 0.82 : 1.65;
-    this.previews.get('dragon-miner')?.container.position.set(-separation, 0, 0);
-    this.previews.get('paladin')?.container.position.set(separation, 0, 0);
+    const origin = ((ids.length - 1) * separation) / 2;
+    ids.forEach((id, index) => {
+      this.previews.get(id)?.container.position.set(index * separation - origin, 0, 0);
+    });
   };
 
   private render = () => {

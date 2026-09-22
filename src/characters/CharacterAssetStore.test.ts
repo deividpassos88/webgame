@@ -50,6 +50,60 @@ describe('CharacterAssetStore', () => {
     expect(store.getFallbackWarning('paladin')).toBeUndefined();
   });
 
+  it('can load a separate lobby model while keeping gameplay on the optimized asset', async () => {
+    const requested: string[] = [];
+    const loader: CharacterModelLoader = {
+      async loadAsync(path) {
+        requested.push(path);
+        return asset(path);
+      },
+    };
+    const store = new CharacterAssetStore(loader);
+    const mageDefinition = {
+      ...definition(),
+      id: 'mage' as const,
+      name: 'Maga',
+      modelPath: '/models/Maga/Maga-optimized.glb',
+      lobbyModelPath: '/models/Maga/Maga.glb',
+    };
+
+    await store.loadAll(undefined, [mageDefinition]);
+
+    expect(requested).toEqual(['/models/Maga/Maga-optimized.glb', '/models/Maga/Maga.glb']);
+    expect(store.createModel('mage').name).toBe('/models/Maga/Maga-optimized.glb');
+    expect(store.createModel('mage', 'lobby').name).toBe('/models/Maga/Maga.glb');
+  });
+
+  it('does not fall back to the gameplay model when a strict lobby model fails', async () => {
+    const lobbyFailure = new Error('lobby missing');
+    const requested: string[] = [];
+    const loader: CharacterModelLoader = {
+      async loadAsync(path) {
+        requested.push(path);
+        if (path === '/models/Maga/Maga.glb') throw lobbyFailure;
+        return asset(path);
+      },
+    };
+    const store = new CharacterAssetStore(loader);
+    const mageDefinition = {
+      ...definition(),
+      id: 'mage' as const,
+      name: 'Maga',
+      modelPath: '/models/Maga/Maga-optimized.glb',
+      lobbyModelPath: '/models/Maga/Maga.glb',
+      strictLobbyModel: true,
+    };
+
+    await store.loadAll(undefined, [mageDefinition]);
+
+    expect(requested).toEqual(['/models/Maga/Maga-optimized.glb', '/models/Maga/Maga.glb']);
+    expect(store.has('mage')).toBe(true);
+    expect(store.has('mage', 'lobby')).toBe(false);
+    expect(store.createModel('mage').name).toBe('/models/Maga/Maga-optimized.glb');
+    expect(() => store.createModel('mage', 'lobby')).toThrow('Modelo de lobby não carregado: mage');
+    expect(store.getFallbackWarning('mage')).toBe(lobbyFailure);
+  });
+
   it('loads the fallback after a primary failure and retains a non-fatal warning', async () => {
     const primaryFailure = new Error('primary missing');
     const requested: string[] = [];

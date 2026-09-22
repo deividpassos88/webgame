@@ -34,6 +34,24 @@ describe('WarriorSkillController', () => {
     expect(skills.snapshot().energy).toBeCloseTo(48);
   });
 
+
+  it('activates free training skills without spending energy or starting cooldowns', () => {
+    const skills = new WarriorSkillController();
+
+    expect(skills.tryActivate('triplo_ataque', { free: true })).toEqual({
+      kind: 'activated',
+      attackId: 'triplo_ataque',
+    });
+    expect(skills.tryActivate('triplo_ataque', { free: true })).toEqual({
+      kind: 'activated',
+      attackId: 'triplo_ataque',
+    });
+
+    const snapshot = skills.snapshot();
+    expect(snapshot.energy).toBe(snapshot.maxEnergy);
+    expect(snapshot.skills.triplo_ataque.cooldownRemaining).toBe(0);
+  });
+
   it('freezes regeneration and cooldowns while paused', () => {
     const skills = new WarriorSkillController();
     skills.tryActivate('corte_duplo');

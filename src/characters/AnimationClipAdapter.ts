@@ -65,6 +65,20 @@ function rootPositionTrack(clip: THREE.AnimationClip) {
   );
 }
 
+function restPositionForTrack(
+  track: THREE.KeyframeTrack,
+  restTranslations?: ReadonlyMap<string, THREE.Vector3>
+): THREE.Vector3 | undefined {
+  if (!restTranslations) return undefined;
+  const target = trackTargetName(track.name);
+  const exact = restTranslations.get(target);
+  if (exact) return exact;
+  for (const [name, position] of restTranslations) {
+    if (THREE.PropertyBinding.sanitizeNodeName(name) === target) return position;
+  }
+  return undefined;
+}
+
 export function adaptRotationClip(
   clip: THREE.AnimationClip,
   allowedNodeNames: ReadonlySet<string>,
@@ -110,7 +124,8 @@ export function adaptRotationClip(
 export function makeClipInPlace(
   clip: THREE.AnimationClip,
   lockedAxes: readonly RootMotionAxis[] = ['x', 'z'],
-  referenceClip: THREE.AnimationClip = clip
+  referenceClip: THREE.AnimationClip = clip,
+  restTranslations?: ReadonlyMap<string, THREE.Vector3>
 ): THREE.AnimationClip {
   const cloned = clip.clone();
   const referenceTrack = rootPositionTrack(referenceClip);
@@ -125,9 +140,12 @@ export function makeClipInPlace(
       continue;
     }
 
-    const initialValues = referenceTrack
-      ? [referenceTrack.values[0], referenceTrack.values[1], referenceTrack.values[2]]
-      : [track.values[0], track.values[1], track.values[2]];
+    const restPosition = restPositionForTrack(track, restTranslations);
+    const initialValues = restPosition
+      ? [restPosition.x, restPosition.y, restPosition.z]
+      : referenceTrack
+        ? [referenceTrack.values[0], referenceTrack.values[1], referenceTrack.values[2]]
+        : [track.values[0], track.values[1], track.values[2]];
     for (let i = 0; i < track.values.length; i += 3) {
       for (const axis of lockedAxes) {
         const axisIndex = AXIS_INDEX[axis];

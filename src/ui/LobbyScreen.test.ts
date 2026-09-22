@@ -23,13 +23,15 @@ import type { CharacterAssetStore } from '../characters/CharacterAssetStore';
 
 function mountLobbyRouteMarkup(): void {
   document.body.innerHTML = `
-    <section id="class-select-screen" class="hidden"></section>
+    <section id="class-select-screen" class="hidden">
+      <button id="select-warrior" type="button" data-class-choice="paladin">Guerreiro</button>
+      <button id="select-mage" type="button" data-class-choice="mage">Maga</button>
+    </section>
     <section id="lobby-screen">
-      <button id="select-warrior" type="button">Selecionar</button>
       <button type="button" data-lobby-tab="hero" aria-pressed="true">Herói</button>
       <button type="button" data-lobby-tab="blacksmith" aria-pressed="false">Oficina</button>
-      <main class="lobby-hero-stage"></main>
-      <section data-lobby-panel="hero"></section>
+      <main class="lobby-hero-stage"><strong data-lobby-class-name>Guerreiro</strong><span data-lobby-class-role></span></main>
+      <section data-lobby-panel="hero"><h2 data-lobby-class-panel-name>Guerreiro</h2><dd data-lobby-class-weapon>Espada</dd></section>
       <section data-lobby-panel="inventory">
         <div id="lobby-backpack"></div>
         <section id="lobby-item-actions" class="hidden" role="menu">
@@ -62,6 +64,9 @@ function createLobbyRenderer(): THREE.WebGLRenderer {
   return {
     toneMapping: THREE.NoToneMapping,
     toneMappingExposure: 1,
+    outputColorSpace: THREE.LinearSRGBColorSpace,
+    shadowMap: { enabled: false, type: THREE.BasicShadowMap },
+    capabilities: { getMaxAnisotropy: () => 4 },
     autoClear: true,
     setSize: () => undefined,
     setScissorTest: () => undefined,
@@ -76,10 +81,12 @@ function createLobbyAssets(): CharacterAssetStore {
   const model = new THREE.Group();
   model.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial()));
   return {
+    has: () => true,
     createModel: () => model.clone(),
     getAnimations: () => [],
     getBoneNames: () => new Set<string>(),
     getBoneRestRotations: () => new Map<string, THREE.Quaternion>(),
+    getBoneRestTranslations: () => new Map<string, THREE.Vector3>(),
   } as unknown as CharacterAssetStore;
 }
 
@@ -153,6 +160,116 @@ describe('lobby reduced motion', () => {
 });
 
 describe('lobby character preparation', () => {
+  it('confirms Maga from the first-run class screen and opens the lobby with her preview selected', () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      InventoryStore.fromProfile(profile)
+    );
+    let confirmed: string | null = null;
+    void lobby.show({
+      firstRun: true,
+      onClassConfirmed: (id) => { confirmed = id; },
+      onGuildTokenBackpackExpansion: () => '',
+      onHotkeysChanged: () => undefined,
+      onAutoBasicAttackChanged: () => undefined,
+      onBlacksmithLicensePurchase: () => ({ message: '' }),
+      onBlacksmithCraft: () => ({ message: '' }),
+    });
+
+    document.getElementById('select-mage')?.click();
+
+    expect(confirmed).toBe('mage');
+    expect(profile.selectedClass).toBe('mage');
+    expect(document.getElementById('class-select-screen')?.classList.contains('hidden')).toBe(true);
+    expect(document.getElementById('lobby-screen')?.classList.contains('hidden')).toBe(false);
+    expect(document.querySelector('[data-lobby-class-name]')?.textContent).toBe('Maga');
+    expect(document.querySelector('[data-lobby-class-weapon]')?.textContent).toBe('Cajado Arcano');
+    expect(document.querySelector('.lobby-hero-stage')?.getAttribute('aria-label')).toContain('Maga');
+    lobby.dispose();
+  });
+
+  it('applies the Mage-only material profile without changing the Warrior material response', () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+
+    const mageMaterial = new THREE.MeshPhysicalMaterial({ roughness: 1, metalness: 0 });
+    mageMaterial.normalMap = new THREE.Texture();
+    const mageMiswiredRoughnessTexture = new THREE.Texture();
+    mageMaterial.specularIntensityMap = mageMiswiredRoughnessTexture;
+    mageMaterial.specularIntensity = 0.2;
+    const warriorMaterial = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 });
+    warriorMaterial.normalMap = new THREE.Texture();
+    const makeModel = (material: THREE.Material): THREE.Group => {
+      const model = new THREE.Group();
+      model.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material));
+      return model;
+    };
+    const assets = {
+      has: () => true,
+      createModel: (id: string) => makeModel(id === 'mage' ? mageMaterial : warriorMaterial),
+      getAnimations: () => [],
+      getBoneNames: () => new Set<string>(),
+      getBoneRestRotations: () => new Map<string, THREE.Quaternion>(),
+      getBoneRestTranslations: () => new Map<string, THREE.Vector3>(),
+    } as unknown as CharacterAssetStore;
+
+    const renderer = createLobbyRenderer();
+    renderer.capabilities = { getMaxAnisotropy: () => 16 } as THREE.WebGLCapabilities;
+    const profile = createDefaultPlayerProfile();
+    profile.selectedClass = 'mage';
+    const lobby = new LobbyScreen(
+      renderer,
+      document.createElement('canvas'),
+      assets,
+      profile,
+      InventoryStore.fromProfile(profile)
+    );
+
+    expect(mageMaterial.envMapIntensity).toBeCloseTo(1.22);
+    expect(mageMaterial.roughness).toBeCloseTo(0.72);
+    expect(mageMaterial.roughnessMap).toBe(mageMiswiredRoughnessTexture);
+    expect(mageMaterial.metalness).toBe(0);
+    expect(mageMaterial.color.r).toBeCloseTo(0.82);
+    expect(mageMaterial.color.g).toBeCloseTo(0.79);
+    expect(mageMaterial.color.b).toBeCloseTo(0.73);
+    expect(mageMaterial.normalScale.x).toBeCloseTo(1.34);
+    expect(mageMaterial.normalScale.y).toBeCloseTo(1.34);
+    expect(mageMaterial.specularIntensity).toBeCloseTo(0.68);
+    expect(mageMaterial.normalMap.anisotropy).toBe(16);
+
+    lobby.dispose();
+    mountLobbyRouteMarkup();
+    const warriorProfile = createDefaultPlayerProfile();
+    warriorProfile.selectedClass = 'paladin';
+    const warriorLobby = new LobbyScreen(
+      renderer,
+      document.createElement('canvas'),
+      assets,
+      warriorProfile,
+      InventoryStore.fromProfile(warriorProfile)
+    );
+
+    expect(warriorMaterial.envMapIntensity).toBe(1);
+    expect(warriorMaterial.roughness).toBe(1);
+    expect(warriorMaterial.roughnessMap).toBeNull();
+    expect(warriorMaterial.color.r).toBe(1);
+    expect(warriorMaterial.color.g).toBe(1);
+    expect(warriorMaterial.color.b).toBe(1);
+    expect(warriorMaterial.normalScale.x).toBe(1);
+    expect(warriorMaterial.normalScale.y).toBe(1);
+    warriorLobby.dispose();
+  });
+
   it('opens Oficina as a full screen route and restores the lobby start action on return', () => {
     mountLobbyRouteMarkup();
     vi.stubGlobal('requestAnimationFrame', () => 1);
@@ -176,6 +293,8 @@ describe('lobby character preparation', () => {
       onBlacksmithCraft: () => ({ message: '' }),
     });
 
+    expect(document.getElementById('start-admin-training')?.classList.contains('hidden')).toBe(true);
+
     document.querySelector<HTMLButtonElement>('[data-lobby-tab="blacksmith"]')?.click();
 
     expect(document.getElementById('lobby-screen')?.classList.contains('hidden')).toBe(true);
@@ -188,6 +307,87 @@ describe('lobby character preparation', () => {
     expect(document.getElementById('blacksmith-screen')?.classList.contains('hidden')).toBe(true);
     expect(document.getElementById('start-game')).toHaveProperty('disabled', false);
     lobby.dispose();
+  });
+
+
+  it('uses the MODO ADM toggle to make Iniciar partida open the no-monster training run', async () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      InventoryStore.fromProfile(profile)
+    );
+    let selectedMode: string | null = null;
+    const shown = lobby.show({
+      firstRun: false,
+      onClassConfirmed: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+      onHotkeysChanged: () => undefined,
+      onAutoBasicAttackChanged: () => undefined,
+      onBlacksmithLicensePurchase: () => ({ message: '' }),
+      onBlacksmithCraft: () => ({ message: '' }),
+      adminTrainingEnabled: true,
+      onRunModeSelected: (mode) => { selectedMode = mode; },
+    });
+
+    const toggle = document.getElementById('start-admin-training') as HTMLButtonElement;
+    expect(toggle.classList.contains('hidden')).toBe(false);
+    expect(toggle.disabled).toBe(false);
+    expect(toggle.textContent).toContain('MODO ADM');
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+
+    toggle.click();
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(toggle.textContent).toContain('Ligado');
+
+    document.getElementById('start-game')?.click();
+    await shown;
+
+    expect(selectedMode).toBe('admin-training');
+  });
+
+  it('keeps Iniciar partida on the normal campaign when MODO ADM stays off', async () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      InventoryStore.fromProfile(profile)
+    );
+    let selectedMode: string | null = null;
+    const shown = lobby.show({
+      firstRun: false,
+      onClassConfirmed: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+      onHotkeysChanged: () => undefined,
+      onAutoBasicAttackChanged: () => undefined,
+      onBlacksmithLicensePurchase: () => ({ message: '' }),
+      onBlacksmithCraft: () => ({ message: '' }),
+      adminTrainingEnabled: true,
+      onRunModeSelected: (mode) => { selectedMode = mode; },
+    });
+
+    const toggle = document.getElementById('start-admin-training') as HTMLButtonElement;
+    toggle.click();
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    toggle.click();
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+
+    document.getElementById('start-game')?.click();
+    await shown;
+
+    expect(selectedMode).toBe('campaign');
   });
 
   it('renders automatic basic attack and registration controls for the five Warrior skills', () => {

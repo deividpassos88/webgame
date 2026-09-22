@@ -19,6 +19,8 @@ export interface SkillActivationContext {
   readonly busy?: boolean;
   readonly paused?: boolean;
   readonly dead?: boolean;
+  /** Admin-only training runs can preview every skill without energy or cooldown cost. */
+  readonly free?: boolean;
 }
 
 export interface SkillStateSnapshot {
@@ -56,15 +58,21 @@ export class WarriorSkillController {
     if (context.busy) return { kind: 'rejected', reason: 'busy' };
 
     const definition = getWarriorSkill(id);
-    if (this.cooldowns[id] > 0) return { kind: 'rejected', reason: 'cooldown' };
-    if (this.energy < definition.energyCost) {
+    if (!context.free && this.cooldowns[id] > 0) return { kind: 'rejected', reason: 'cooldown' };
+    if (!context.free && this.energy < definition.energyCost) {
       return { kind: 'rejected', reason: 'insufficient-energy' };
     }
 
-    this.energy -= definition.energyCost;
-    this.cooldowns[id] = definition.cooldown;
-    this.regenerationDelayRemaining = REGENERATION_DELAY;
-    this.refundableActivation = id;
+    if (!context.free) {
+      this.energy -= definition.energyCost;
+      this.cooldowns[id] = definition.cooldown;
+      this.regenerationDelayRemaining = REGENERATION_DELAY;
+      this.refundableActivation = id;
+    } else {
+      this.cooldowns[id] = 0;
+      this.regenerationDelayRemaining = 0;
+      this.refundableActivation = null;
+    }
     return { kind: 'activated', attackId: id };
   }
 
