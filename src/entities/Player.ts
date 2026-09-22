@@ -40,6 +40,7 @@ import {
 } from '../combat/WarriorSkillCatalog';
 import { getEffectiveTargetDistance } from '../combat/DistanceDamage';
 import type { MageSpellId } from '../vfx/VFXTypes';
+import { MAGE_TELEPORT_INVULNERABILITY_SECONDS } from './MageTeleport';
 
 const BASIC_ACTION_INVULNERABILITY_SECONDS = 0.7;
 const SKILL_ACTION_INVULNERABILITY_SECONDS = 1.5;
@@ -144,6 +145,8 @@ export class Player {
   private playedComboStages = 0;
   private dashDistanceRemaining = 0;
   private dashCooldown = 0;
+  /** World position captured when a Mage skill starts. Movement cannot leave it. */
+  private skillCastAnchor: THREE.Vector3 | null = null;
   private onAttackHitCallback: ((target: THREE.Object3D) => void) | null = null;
   private onWarriorSkillHitCallback: ((event: WarriorSkillHitEvent) => void) | null = null;
   private onMageSpellCastCallback: ((event: MageSpellCastEvent) => void) | null = null;
@@ -501,6 +504,7 @@ export class Player {
   }
 
   public moveTo(point: THREE.Vector3) {
+    if (this.isMageSkillLocked()) return;
     if (this.isSwinging) this.cancelCombo();
     if (!this.canAcceptInput()) return;
     this.animationPreview.clear();
@@ -603,7 +607,8 @@ export class Player {
       this.isHitReacting ||
       this.isSwinging ||
       this.inputLocked ||
-      this.isDashing
+      this.isDashing ||
+      this.blocksSkillsWhileMoving
     ) {
       return false;
     }
@@ -616,6 +621,10 @@ export class Player {
 
     this.animationPreview.clear();
     this.moveTarget = null;
+    this.currentMoveSpeed = 0;
+    this.skillCastAnchor = this.characterId === 'mage'
+      ? this.root.position.clone()
+      : null;
     this.comboController.cancel();
     this.comboHitTargets.clear();
     this.isSwinging = true;
@@ -1019,8 +1028,9 @@ export class Player {
   }
 
   private updateSkillAttack(delta: number): void {
+    this.holdMageSkillCastPosition();
     const target = this.attackTargetEnemy;
-    if (target && this.isTargetAlive(target)) {
+    if (target && this.isTargetAlive(target) && this.characterId !== 'mage') {
       this.facePoint(target.position, delta);
     }
 
@@ -1043,6 +1053,7 @@ export class Player {
           break;
         case 'attack-ended':
           this.isSwinging = false;
+          this.skillCastAnchor = null;
           this.comboHitTargets.clear();
           this.playState(this.getLocomotionState() ?? 'idle', 0.15);
           break;
@@ -1088,6 +1099,7 @@ export class Player {
     const hadCombo = this.isSwinging || this.comboController.active || this.skillAttackController.active;
     this.comboController.cancel();
     this.skillAttackController.cancel();
+    this.skillCastAnchor = null;
     this.isSwinging = false;
     this.emptyHandAttackPreview = false;
     this.comboHitTargets.clear();
@@ -1162,7 +1174,10 @@ export class Player {
     delta: number,
     preserveMarkedAttack = false
   ) {
-    if (this.isDashing) return;
+    if (this.isDashing || this.isMageSkillLocked()) {
+      this.holdMageSkillCastPosition();
+      return;
+    }
     if (!dir.lengthSq()) return;
     const currentTargetInRange = this.attackTargetEnemy
       ? this.isTargetInRange(this.attackTargetEnemy)
@@ -1282,11 +1297,14 @@ export class Player {
   }
 
   public tryDash(direction: THREE.Vector3): boolean {
+    // Mage Shift is an instant blink, not this slide. Game calls blinkTo.
+    if (this.characterId === 'mage') return false;
     if (
       !this.loaded ||
       this.isDead ||
       this.inputLocked ||
       this.isDashing ||
+      this.isMageSkillLocked() ||
       this.dashCooldown > 0
     ) {
       return false;
@@ -1323,6 +1341,42 @@ export class Player {
     return this.dashDistanceRemaining > 0;
   }
 
+  /** Planar facing used by movement. Three.js getWorldDirection points the other way. */
+  public planarForward(target = new THREE.Vector3()): THREE.Vector3 {
+    return target.set(Math.sin(this.root.rotation.y), 0, Math.cos(this.root.rotation.y));
+  }
+
+  /**
+   * Instant Mage reposition. The caller already resolved walls and the cost.
+   * Skills stay pinned; a blink during a cast is rejected so the anchor holds.
+   */
+  public blinkTo(destination: THREE.Vector3, facing?: THREE.Vector3): boolean {
+    if (
+      this.characterId !== 'mage' ||
+      !this.loaded ||
+      this.isDead ||
+      this.inputLocked ||
+      this.isMageSkillLocked()
+    ) {
+      return false;
+    }
+    this.moveTarget = null;
+    this.dashDistanceRemaining = 0;
+    this.currentMoveSpeed = 0;
+    this.root.position.x = destination.x;
+    this.root.position.z = destination.z;
+    if (facing && facing.lengthSq() > 1e-8) {
+      this.faceTargetInstantly(this.root.position.clone().add(facing));
+    }
+    this.actionInvulnerability = Math.max(
+      this.actionInvulnerability,
+      MAGE_TELEPORT_INVULNERABILITY_SECONDS
+    );
+    this.actionInvulnerabilityFresh = true;
+    if (!this.isSwinging && !this.keyboardMoving) this.playState('idle', 0.06);
+    return true;
+  }
+
   public cancelClickMovement(): void {
     this.moveTarget = null;
   }
@@ -1330,6 +1384,26 @@ export class Player {
   /** Indica se há um golpe em andamento (usado pelo auto-ataque do target) */
   public isAttackInSwing(): boolean {
     return this.isSwinging;
+  }
+
+  /** True while a committed skill clip still owns the action slot. */
+  public get isCastingSkill(): boolean {
+    return this.skillAttackController.active;
+  }
+
+  /**
+   * Mage skills require a full stop. Holding movement, a click-to-walk, or a
+   * dash rejects the cast. The warrior can still open skills while moving.
+   */
+  public get blocksSkillsWhileMoving(): boolean {
+    return this.characterId === 'mage' && (
+      this.keyboardMoving || this.moveTarget !== null || this.isDashing
+    );
+  }
+
+  /** Keeps a Mage skill pinned to the position where the cast started. */
+  public enforceSkillCastAnchor(): void {
+    this.holdMageSkillCastPosition();
   }
 
   /** Seconds of action-granted invulnerability, excluding anti-stunlock time. */
@@ -1360,6 +1434,16 @@ export class Player {
 
   private canUseSkillAttacks(): boolean {
     return this.equippedWeaponId === 'sword' || this.characterId === 'mage';
+  }
+
+  private isMageSkillLocked(): boolean {
+    return this.characterId === 'mage' && this.skillAttackController.active;
+  }
+
+  private holdMageSkillCastPosition(): void {
+    if (!this.isMageSkillLocked() || !this.skillCastAnchor) return;
+    this.root.position.copy(this.skillCastAnchor);
+    this.currentMoveSpeed = 0;
   }
 
   private canAcceptInput(): boolean {

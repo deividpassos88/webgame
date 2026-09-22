@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { MAGE_SPELL_TRAVEL_METERS } from '../combat/MageSpellFlight';
 import { CameraShake } from './CameraShake';
 import { DEFAULT_MAGE_VFX_QUALITY, MAGE_SPELL_PRESETS, MAGE_VFX_LIMITS, mageQualityProfile } from './VFXConfig';
 import { ImpactVFX } from './ImpactVFX';
@@ -475,6 +476,7 @@ interface ActiveMageCast {
   readonly timeline: VFXTimeline<MageTimelineEvent>;
   charge: ChargeOrbEffect | null;
   launched: boolean;
+  impactDelivered: boolean;
 }
 
 export interface MageVFXOptions {
@@ -535,7 +537,15 @@ export class MageVFX {
       { at: preset.timeline.recover, name: 'recover' as const },
     ];
     const timeline = new VFXTimeline<MageTimelineEvent>(context.action, events);
-    this.activeCasts.push({ spellId, preset, context, timeline, charge: null, launched: false });
+    this.activeCasts.push({
+      spellId,
+      preset,
+      context,
+      timeline,
+      charge: null,
+      launched: false,
+      impactDelivered: false,
+    });
     if (spellId !== 'basic') this.startSkillBarrier(context, preset);
     this.emitAudio(context, preset, 'charge');
   }
@@ -767,28 +777,36 @@ export class MageVFX {
     this.emitAudio(cast.context, cast.preset, 'cast', origin);
 
     if (cast.preset.delivery === 'instant-lightning') {
-      const end = this.resolveTargetPoint(cast, origin, direction, 9);
+      const aimed = this.resolveTargetPoint(cast, origin, direction, MAGE_SPELL_TRAVEL_METERS);
+      const stopped = this.stopOnBody(cast, origin, aimed);
       this.lightning.strike({
         start: origin,
-        end,
+        end: stopped.point,
         preset: cast.preset,
         onImpact: () => {
-          this.handleDirectImpact(end, cast, cast.context.target);
+          this.handleDirectImpact(stopped.point, cast, stopped.target);
         },
       });
       return;
     }
 
     if (cast.preset.delivery === 'beam') {
+      const aimed = this.resolveTargetPoint(cast, origin, direction, MAGE_SPELL_TRAVEL_METERS);
+      const stopped = this.stopOnBody(cast, origin, aimed);
       this.lasers.fire({
         startAnchor: null,
         startProvider: (output) => this.resolveCastSocketWorldPosition(cast, this.resolveHand(cast), output),
         fallbackStart: origin,
-        target: cast.context.target,
+        target: stopped.target,
         fallbackDirection: direction,
         preset: cast.preset,
         isTargetAlive: cast.context.isTargetAlive,
-        onImpact: (target) => cast.context.onImpact?.(target),
+        queryBodyHit: cast.context.queryBodyHit,
+        onImpact: (target) => this.handleDirectImpact(
+          this.bodyImpactPoint(target, aimed),
+          cast,
+          target
+        ),
         onFinalImpact: (position, target) => this.handleDirectImpact(position, cast, target),
       });
       return;
@@ -800,12 +818,14 @@ export class MageVFX {
       target: cast.context.target,
       preset: cast.preset,
       isTargetAlive: cast.context.isTargetAlive,
+      queryBodyHit: cast.context.queryBodyHit,
       onImpact: (impact) => this.handleProjectileImpact(impact, cast),
     });
 
     if (!fired) {
-      const targetPoint = this.resolveTargetPoint(cast, origin, direction, 7);
-      this.handleDirectImpact(targetPoint, cast, cast.context.target);
+      const aimed = this.resolveTargetPoint(cast, origin, direction, MAGE_SPELL_TRAVEL_METERS);
+      const stopped = this.stopOnBody(cast, origin, aimed);
+      this.handleDirectImpact(stopped.point, cast, stopped.target);
     }
   }
 
@@ -814,15 +834,76 @@ export class MageVFX {
   }
 
   private handleDirectImpact(position: THREE.Vector3, cast: ActiveMageCast, target: THREE.Object3D | null): void {
-    this.impacts.play({ position, preset: cast.preset });
-    this.cameraShake.add(
-      cast.preset.impact.cameraShakeIntensity,
-      cast.preset.impact.cameraShakeDuration
-    );
-    this.emitAudio(cast.context, cast.preset, 'impact', position);
-    if (target && (!cast.context.isTargetAlive || cast.context.isTargetAlive(target))) {
-      cast.context.onImpact?.(target);
+    const impactPoint = target ? this.bodyImpactPoint(target, position) : position;
+    if (!cast.impactDelivered) {
+      this.impacts.play({ position: impactPoint, preset: cast.preset });
+      this.cameraShake.add(
+        cast.preset.impact.cameraShakeIntensity,
+        cast.preset.impact.cameraShakeDuration
+      );
+      this.emitAudio(cast.context, cast.preset, 'impact', impactPoint);
     }
+    if (cast.impactDelivered) return;
+    if (target && (!cast.context.isTargetAlive || cast.context.isTargetAlive(target))) {
+      cast.impactDelivered = true;
+      cast.context.onImpact?.(target);
+      return;
+    }
+    if (!target) cast.impactDelivered = true;
+  }
+
+  /** Chest point so the explosion finishes on the body, not behind it. */
+  private bodyImpactPoint(target: THREE.Object3D, fallback: THREE.Vector3): THREE.Vector3 {
+    const point = target.getWorldPosition(new THREE.Vector3());
+    const bodyScale = Number(target.userData?.enemyBodyScale) || 1;
+    point.y += 0.95 * bodyScale;
+    if (!Number.isFinite(point.x)) return fallback.clone();
+    return point;
+  }
+
+  private stopOnBody(
+    cast: ActiveMageCast,
+    origin: THREE.Vector3,
+    end: THREE.Vector3
+  ): { point: THREE.Vector3; target: THREE.Object3D | null } {
+    const blocker = cast.context.queryBodyHit?.(origin, end, Math.max(0.2, cast.preset.projectile.radius));
+    if (blocker) return { point: this.bodyImpactPoint(blocker, end), target: blocker };
+    // Without a body query the aimed target still receives the impact. With a
+    // query, a miss must not damage a monster the bolt never reached.
+    if (cast.context.queryBodyHit) return { point: end.clone(), target: null };
+    return { point: end.clone(), target: cast.context.target };
+  }
+
+  /** Ground seal for the shock impact. Body lightning is owned by the monsters. */
+  public playShockImpact(position: THREE.Vector3): void {
+    const preset = MAGE_SPELL_PRESETS.lightning;
+    this.magicCircles.play({
+      parent: this.scene,
+      position: position.clone().setY(position.y + 0.05),
+      color: preset.colors.glow,
+      radius: 2,
+      duration: 0.7,
+      groundAligned: true,
+    });
+  }
+
+  /**
+   * Floor seal and departure glow for the blink. The beam that used to connect
+   * the two points stays out — that was the blue light between them.
+   */
+  public playTeleport(from: THREE.Vector3, to: THREE.Vector3): void {
+    const preset = MAGE_SPELL_PRESETS.basic;
+    const departure = from.clone();
+    departure.y += 1.05;
+    this.impacts.play({ position: departure, preset, scale: 0.55, lightIntensity: 0.45 });
+    this.magicCircles.play({
+      parent: this.scene,
+      position: to.clone().setY(to.y + 0.05),
+      color: preset.colors.glow,
+      radius: 1.15,
+      duration: 0.5,
+      groundAligned: true,
+    });
   }
 
   private releaseCharge(cast: ActiveMageCast): void {
@@ -961,14 +1042,20 @@ export class MageVFX {
     direction: THREE.Vector3,
     fallbackDistance: number
   ): THREE.Vector3 {
+    const reach = Math.min(Math.max(0.5, fallbackDistance), MAGE_SPELL_TRAVEL_METERS);
     const target = cast.context.target;
     if (target && (!cast.context.isTargetAlive || cast.context.isTargetAlive(target))) {
       target.getWorldPosition(TMP_WORLD_2);
       const bodyScale = Number(target.userData?.enemyBodyScale) || 1;
       TMP_WORLD_2.y += 0.95 * bodyScale;
+      const offset = TMP_DIRECTION.subVectors(TMP_WORLD_2, origin);
+      const distance = offset.length();
+      if (distance > reach && distance > 1e-6) {
+        return origin.clone().addScaledVector(offset.multiplyScalar(1 / distance), reach);
+      }
       return TMP_WORLD_2.clone();
     }
-    return origin.clone().addScaledVector(direction, fallbackDistance);
+    return origin.clone().addScaledVector(direction, reach);
   }
 
   private resolveLaunchDirection(

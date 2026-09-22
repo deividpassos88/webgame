@@ -6,6 +6,7 @@ import {
   LobbyScreen,
   lobbyMotionPolicy,
   itemStatSummary,
+  MAGE_LOBBY_FACE_LIGHT_SCALE,
   renderLobbyHotkeys,
   resolveLobbyIdlePhase,
   resolveLobbyPreviewViewport,
@@ -196,7 +197,7 @@ describe('lobby character preparation', () => {
     lobby.dispose();
   });
 
-  it('applies the Mage-only material profile without changing the Warrior material response', () => {
+  it('lights the Mage with the Warrior rig and only dims her face', () => {
     mountLobbyRouteMarkup();
     vi.stubGlobal('requestAnimationFrame', () => 1);
     vi.stubGlobal('cancelAnimationFrame', () => undefined);
@@ -235,17 +236,31 @@ describe('lobby character preparation', () => {
       InventoryStore.fromProfile(profile)
     );
 
-    expect(mageMaterial.envMapIntensity).toBeCloseTo(1.22);
-    expect(mageMaterial.roughness).toBeCloseTo(0.72);
-    expect(mageMaterial.roughnessMap).toBe(mageMiswiredRoughnessTexture);
+    expect(mageMaterial.envMapIntensity).toBe(1);
+    expect(mageMaterial.roughness).toBe(1);
+    expect(mageMaterial.roughnessMap).toBeNull();
     expect(mageMaterial.metalness).toBe(0);
-    expect(mageMaterial.color.r).toBeCloseTo(0.82);
-    expect(mageMaterial.color.g).toBeCloseTo(0.79);
-    expect(mageMaterial.color.b).toBeCloseTo(0.73);
-    expect(mageMaterial.normalScale.x).toBeCloseTo(1.34);
-    expect(mageMaterial.normalScale.y).toBeCloseTo(1.34);
-    expect(mageMaterial.specularIntensity).toBeCloseTo(0.68);
-    expect(mageMaterial.normalMap.anisotropy).toBe(16);
+    expect(mageMaterial.color.r).toBe(1);
+    expect(mageMaterial.color.g).toBe(1);
+    expect(mageMaterial.color.b).toBe(1);
+    expect(mageMaterial.normalScale.x).toBe(1);
+    expect(mageMaterial.normalScale.y).toBe(1);
+    expect(mageMaterial.specularIntensity).toBe(0.2);
+    expect(mageMaterial.normalMap.anisotropy).toBe(4);
+    const mageLights = (lobby as unknown as {
+      lobbyLights: {
+        key: THREE.DirectionalLight;
+        fill: THREE.DirectionalLight;
+        rim: THREE.DirectionalLight;
+        ambient: THREE.AmbientLight;
+        hemisphere: THREE.HemisphereLight;
+      };
+    }).lobbyLights;
+    expect(mageLights.key.intensity).toBe(5.6);
+    expect(mageLights.fill.intensity).toBe(2.4);
+    expect(mageLights.rim.intensity).toBe(3.6);
+    expect(mageLights.ambient.intensity).toBe(0.8);
+    expect(mageLights.hemisphere.intensity).toBe(1.35);
 
     lobby.dispose();
     mountLobbyRouteMarkup();
@@ -267,7 +282,81 @@ describe('lobby character preparation', () => {
     expect(warriorMaterial.color.b).toBe(1);
     expect(warriorMaterial.normalScale.x).toBe(1);
     expect(warriorMaterial.normalScale.y).toBe(1);
+    const warriorLights = (warriorLobby as unknown as { lobbyLights: typeof mageLights }).lobbyLights;
+    expect(warriorLights.key.intensity).toBe(mageLights.key.intensity);
+    expect(warriorLights.rim.intensity).toBe(mageLights.rim.intensity);
+    expect(warriorLights.ambient.intensity).toBe(mageLights.ambient.intensity);
     warriorLobby.dispose();
+  });
+
+  it('dims only the Mage head and neck and keeps look_around as her only lobby clip', () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+
+    const material = new THREE.MeshStandardMaterial();
+    const hips = new THREE.Bone();
+    hips.name = 'mixamorig:Hips';
+    const neck = new THREE.Bone();
+    neck.name = 'mixamorig:Neck';
+    const head = new THREE.Bone();
+    head.name = 'mixamorig:Head';
+    hips.add(neck);
+    neck.add(head);
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const vertexCount = geometry.getAttribute('position').count;
+    const skinIndex = new THREE.Uint16BufferAttribute(vertexCount * 4, 4);
+    const skinWeight = new THREE.Float32BufferAttribute(vertexCount * 4, 4);
+    for (let index = 0; index < vertexCount; index += 1) {
+      skinIndex.setXYZW(index, 2, 1, 0, 0);
+      skinWeight.setXYZW(index, 1, 0, 0, 0);
+    }
+    geometry.setAttribute('skinIndex', skinIndex);
+    geometry.setAttribute('skinWeight', skinWeight);
+    const mesh = new THREE.SkinnedMesh(geometry, material);
+    mesh.add(hips);
+    mesh.bind(new THREE.Skeleton([hips, neck, head]));
+    const model = new THREE.Group();
+    model.add(mesh);
+    const lookAround = new THREE.AnimationClip('look_around', 15.5, []);
+    const wait = new THREE.AnimationClip('wait', 6, []);
+    const assets = {
+      has: () => true,
+      createModel: () => model,
+      getAnimations: () => [wait, lookAround],
+      getBoneNames: () => new Set(['mixamorig:Hips', 'mixamorig:Neck', 'mixamorig:Head']),
+      getBoneRestRotations: () => new Map<string, THREE.Quaternion>(),
+      getBoneRestTranslations: () => new Map<string, THREE.Vector3>(),
+    } as unknown as CharacterAssetStore;
+    const profile = createDefaultPlayerProfile();
+    profile.selectedClass = 'mage';
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      assets,
+      profile,
+      InventoryStore.fromProfile(profile)
+    );
+
+    const shader = {
+      uniforms: {} as Record<string, { value: unknown }>,
+      vertexShader: '#include <common>\n#include <skinning_vertex>\n',
+      fragmentShader: '#include <common>\n#include <opaque_fragment>\n',
+    };
+    material.onBeforeCompile(
+      shader as unknown as Parameters<THREE.MeshStandardMaterial['onBeforeCompile']>[0],
+      {} as THREE.WebGLRenderer
+    );
+    expect(shader.uniforms.uMageFaceLight?.value).toBe(MAGE_LOBBY_FACE_LIGHT_SCALE);
+    expect(shader.uniforms.uMageFaceBones?.value).toEqual(new THREE.Vector2(2, 1));
+    expect(shader.fragmentShader).toContain('outgoingLight *= mix(1.0, uMageFaceLight');
+    expect(shader.vertexShader).toContain('skinIndex.x - uMageFaceBones.x');
+    const idleAction = (lobby as unknown as { fallbackIdleAction: THREE.AnimationAction | null }).fallbackIdleAction;
+    expect(idleAction?.getClip().name).toBe('mage:idle');
+    expect(idleAction?.getClip().duration).toBeCloseTo(15.5);
+    expect((lobby as unknown as { lobbyIdleAction: THREE.AnimationAction | null }).lobbyIdleAction).toBeNull();
+    lobby.dispose();
   });
 
   it('opens Oficina as a full screen route and restores the lobby start action on return', () => {

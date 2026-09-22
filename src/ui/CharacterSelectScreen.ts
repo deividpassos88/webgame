@@ -198,8 +198,13 @@ export class CharacterSelectScreen {
     container.add(modelHolder);
 
     const mixer = new THREE.AnimationMixer(model);
+    const lobbyIdleNames = new Set([
+      definition.clipMap.idle,
+      'idle',
+      ...(definition.clipAliases?.idle ?? []),
+    ].filter((name): name is string => Boolean(name)));
     const lobbyIdle = this.assets.getAnimations(id, 'lobby').find((clip) =>
-      clip.name === definition.clipMap.idle || clip.name === 'idle'
+      lobbyIdleNames.has(clip.name)
     );
     const idle = lobbyIdle ?? resolveCharacterClips(id, this.assets).idle;
     if (idle) mixer.clipAction(idle).play();

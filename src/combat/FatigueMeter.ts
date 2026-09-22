@@ -38,6 +38,19 @@ export class FatigueMeter {
     return this.maxFatigue;
   }
 
+  public costForPercent(percent: number): number {
+    const safe = Number.isFinite(percent) ? Math.max(0, percent) : 0;
+    return this.maxFatigue * safe / 100;
+  }
+
+  public canAffordPercent(percent: number): boolean {
+    return this.canUseSkills && this.value + 1e-6 >= this.costForPercent(percent);
+  }
+
+  public consumePercent(percent: number): number {
+    return this.consume(this.costForPercent(percent));
+  }
+
   /** Custo imediato (dash etc.): derruba a barra e pode exaurir skills. */
   public consume(amount: number): number {
     const safe = Number.isFinite(amount) ? Math.max(0, amount) : 0;
@@ -49,7 +62,8 @@ export class FatigueMeter {
     return Math.round(this.value);
   }
 
-  public update(delta: number, moving: boolean): number {
+  public update(delta: number, moving: boolean, hold = false): number {
+    if (hold) return Math.round(this.value);
     const safeDelta = Number.isFinite(delta) ? Math.max(0, delta) : 0;
     const rate = moving ? -DRAIN_PER_SECOND : RECOVERY_PER_SECOND;
     this.value = Math.min(this.maxFatigue, Math.max(0, this.value + rate * safeDelta));

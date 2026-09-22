@@ -113,7 +113,8 @@ export const CHARACTERS: readonly CharacterDefinition[] = [
     id: 'mage',
     name: 'Maga',
     modelPath: '/models/Maga/Maga-optimized.glb',
-    lobbyModelPath: '/models/Maga/Maga.glb',
+    // Lobby-only high mesh. Gameplay stays on Maga-optimized.glb.
+    lobbyModelPath: '/models/Maga/Maga_High.glb',
     strictLobbyModel: true,
     // Match the Mage gameplay silhouette to Guerreiro/guerreiro_animado.glb.
     // The Mage rig is authored in different units, so this smaller scale keeps
@@ -144,8 +145,12 @@ export const CHARACTERS: readonly CharacterDefinition[] = [
       dead: 'morrendo',
     },
     clipAliases: {
-      // Never use the generic Mixamo export name as a Mage run fallback: in the
-      // current asset that clip is a death/fall motion, not locomotion.
+      // Lobby Maga_High.glb must play only look_around. Gameplay still has an
+      // exact `idle` clip on Maga-optimized.glb, which wins before this alias.
+      idle: ['look_around'],
+      // Never use the generic Mixamo export name or the backward run as a Mage
+      // run fallback: mixamo.com is a death/fall, and correr para tras walks
+      // backward. The authored forward run is exported as correr rapido2.
       running: [
         'correr rápido2',
         'correr rapido 2',
@@ -166,7 +171,7 @@ export const CHARACTERS: readonly CharacterDefinition[] = [
         'run',
         'walking',
         'walk',
-        'correr para tras',
+        'correr para frente',
       ],
       attacking: ['ataque agua', 'ataque gelo', 'ataque choque', 'ataque laser'],
       hit: ['Hit'],

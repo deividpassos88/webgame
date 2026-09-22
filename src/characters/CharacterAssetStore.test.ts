@@ -64,14 +64,14 @@ describe('CharacterAssetStore', () => {
       id: 'mage' as const,
       name: 'Maga',
       modelPath: '/models/Maga/Maga-optimized.glb',
-      lobbyModelPath: '/models/Maga/Maga.glb',
+      lobbyModelPath: '/models/Maga/Maga_High.glb',
     };
 
     await store.loadAll(undefined, [mageDefinition]);
 
-    expect(requested).toEqual(['/models/Maga/Maga-optimized.glb', '/models/Maga/Maga.glb']);
+    expect(requested).toEqual(['/models/Maga/Maga-optimized.glb', '/models/Maga/Maga_High.glb']);
     expect(store.createModel('mage').name).toBe('/models/Maga/Maga-optimized.glb');
-    expect(store.createModel('mage', 'lobby').name).toBe('/models/Maga/Maga.glb');
+    expect(store.createModel('mage', 'lobby').name).toBe('/models/Maga/Maga_High.glb');
   });
 
   it('does not fall back to the gameplay model when a strict lobby model fails', async () => {
@@ -80,7 +80,7 @@ describe('CharacterAssetStore', () => {
     const loader: CharacterModelLoader = {
       async loadAsync(path) {
         requested.push(path);
-        if (path === '/models/Maga/Maga.glb') throw lobbyFailure;
+        if (path === '/models/Maga/Maga_High.glb') throw lobbyFailure;
         return asset(path);
       },
     };
@@ -90,13 +90,13 @@ describe('CharacterAssetStore', () => {
       id: 'mage' as const,
       name: 'Maga',
       modelPath: '/models/Maga/Maga-optimized.glb',
-      lobbyModelPath: '/models/Maga/Maga.glb',
+      lobbyModelPath: '/models/Maga/Maga_High.glb',
       strictLobbyModel: true,
     };
 
     await store.loadAll(undefined, [mageDefinition]);
 
-    expect(requested).toEqual(['/models/Maga/Maga-optimized.glb', '/models/Maga/Maga.glb']);
+    expect(requested).toEqual(['/models/Maga/Maga-optimized.glb', '/models/Maga/Maga_High.glb']);
     expect(store.has('mage')).toBe(true);
     expect(store.has('mage', 'lobby')).toBe(false);
     expect(store.createModel('mage').name).toBe('/models/Maga/Maga-optimized.glb');

@@ -39,6 +39,9 @@
         if (notice.parentNode) notice.parentNode.removeChild(notice);
       }
       try { if (sessionStorage.getItem(KEY) === '1') { dismiss(); return; } } catch (error) { /* ignore */ }
+      // The live preview iframe is often shorter than a phone check expects.
+      // Never cover the canvas there; the hint is only for a real small window.
+      try { if (window.top !== window.self) { dismiss(); return; } } catch (error) { dismiss(); return; }
       notice.addEventListener('click', dismiss);
       window.addEventListener('keydown', function (event) {
         if (event.key === 'Escape') dismiss();

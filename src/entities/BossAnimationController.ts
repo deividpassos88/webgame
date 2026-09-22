@@ -5,6 +5,7 @@ import {
 } from '../characters/AnimationClipAdapter';
 import type { BossSkillKind } from './BossSkillController';
 import type { EnemyAnimator } from './EnemyAnimator';
+import { isEnemyHitClipName } from './EnemyHitClip';
 
 const SKILL_CLIPS: Record<BossSkillKind, string> = {
   circle: 'jump_circle',
@@ -33,6 +34,8 @@ export class BossAnimationController implements EnemyAnimator {
   private timeScale = 1;
   private nextClawAttack = 0;
   private pendingSkill: PendingSkillAnimation | null = null;
+  private lyingHeld = false;
+  private hitHeld = false;
 
   constructor(model: THREE.Group, clips: readonly THREE.AnimationClip[]) {
     this.mixer = new THREE.AnimationMixer(model);
@@ -74,6 +77,15 @@ export class BossAnimationController implements EnemyAnimator {
   }
 
   public update(delta: number): void {
+    if (this.lyingHeld) {
+      const action = this.actions.get('death');
+      if (action) action.paused = true;
+      return;
+    }
+    if (this.hitHeld) {
+      this.mixer.update(Math.max(0, delta));
+      return;
+    }
     const elapsed = Math.max(0, delta);
     if (this.dead) {
       this.mixer.update(elapsed);
@@ -91,7 +103,7 @@ export class BossAnimationController implements EnemyAnimator {
     state: 'idle' | 'walking' | 'running',
     fadeDuration = 0.15
   ): boolean {
-    if (this.dead || this.lockedRemaining > 0) return false;
+    if (this.dead || this.lockedRemaining > 0 || this.lyingHeld || this.hitHeld) return false;
     const resolved = state === 'idle'
       ? 'idle'
       : state === 'walking' && this.actions.has('walking') ? 'walking' : 'running';
@@ -105,7 +117,7 @@ export class BossAnimationController implements EnemyAnimator {
   }
 
   public playNextAttack(): string | null {
-    if (this.dead || this.lockedRemaining > 0) return null;
+    if (this.dead || this.lockedRemaining > 0 || this.lyingHeld || this.hitHeld) return null;
     const available = ['attack_meteors', 'attack_dash'].filter((clip) =>
       this.actions.has(clip)
     );
@@ -154,6 +166,55 @@ export class BossAnimationController implements EnemyAnimator {
     this.activate('jump_circle', 'approach-jump', 0.08, true, 1);
     this.lockedRemaining = duration;
     return duration;
+  }
+
+  public playHit(): boolean {
+    if (this.dead || this.lyingHeld) return false;
+    const clip = [...this.actions.keys()].find((name) => isEnemyHitClipName(name));
+    if (!clip) return false;
+    this.pendingSkill = null;
+    this.lockedRemaining = 0;
+    this.hitHeld = true;
+    return this.activate(clip, 'hit', 0.04, true, 1);
+  }
+
+  public releaseHit(): void {
+    if (!this.hitHeld) return;
+    this.hitHeld = false;
+    this.play('idle', 0.08);
+  }
+
+  public holdLyingPose(): boolean {
+    const action = this.actions.get('death');
+    if (!action) return false;
+    this.pendingSkill = null;
+    this.lockedRemaining = 0;
+    this.lyingHeld = true;
+    action.reset();
+    action.enabled = true;
+    action.setEffectiveWeight(1);
+    action.setEffectiveTimeScale(0);
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.play();
+    const duration = this.durations.get('death') ?? action.getClip().duration;
+    action.time = Math.max(0.05, duration * 0.9);
+    action.paused = true;
+    this.currentAction = action;
+    this.currentState = 'lying';
+    this.currentClip = 'death';
+    return true;
+  }
+
+  public releaseLyingPose(): void {
+    this.lyingHeld = false;
+    const action = this.actions.get('death');
+    if (action) {
+      action.paused = false;
+      action.stop();
+    }
+    this.currentAction = null;
+    this.play('idle', 0.1);
   }
 
   public playDeath(): number {

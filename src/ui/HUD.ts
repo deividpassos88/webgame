@@ -39,6 +39,7 @@ import {
   type CharacterProgression,
 } from '../profile/CharacterProgression';
 import { formatResourcePercent, resourcePercent } from './HudVitals';
+import { mageSkillFatiguePercent } from '../combat/MageSkillCost';
 
 /**
  * Floating combat text styles: damage dealt, health recovered and damage taken
@@ -274,7 +275,8 @@ export class HUD {
     snapshot: WarriorSkillsSnapshot,
     lock: CombatLockReason,
     characterLevel = 1,
-    freeSkills = false
+    freeSkills = false,
+    options: { mageCosts?: boolean } = {}
   ): void {
     this.updatePlayerMana(snapshot.energy, snapshot.maxEnergy);
     for (const skill of WARRIOR_SKILLS) {
@@ -300,13 +302,15 @@ export class HUD {
         detail.textContent = freeSkills && unlocked
           ? 'Treino ADM · livre'
           : unlocked
-            ? `${skill.energyCost} energia · ${skill.cooldown.toFixed(1)}s recarga`
+            ? options.mageCosts
+              ? `${skill.energyCost} MP · ${mageSkillFatiguePercent(skill.id)}% fadiga · ${skill.cooldown.toFixed(1)}s recarga`
+              : `${skill.energyCost} energia · ${skill.cooldown.toFixed(1)}s recarga`
             : `Nv. ${skill.unlockLevel}`;
       }
     }
     const basic = this.combatActions.querySelector<HTMLButtonElement>('[data-basic-attack]');
     if (basic) {
-      basic.disabled = lock !== null;
+      basic.disabled = lock !== null && lock !== 'moving';
       const status = lock === 'busy' ? 'Executando outro ataque'
         : lock === 'paused' ? 'Jogo pausado'
           : lock === 'dead' ? 'Personagem derrotado'

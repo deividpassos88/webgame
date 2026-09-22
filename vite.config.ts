@@ -19,6 +19,9 @@ export default defineConfig(({ mode }) => ({
     strictPort: true,
     open: false,
     allowedHosts: true,
+    headers: {
+      'Cache-Control': 'no-store',
+    },
   },
   build: {
     target: 'esnext',

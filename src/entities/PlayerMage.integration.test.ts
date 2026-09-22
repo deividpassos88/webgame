@@ -100,6 +100,33 @@ describe('Mage gameplay player', () => {
     expect(controls.actions.running?.getEffectiveTimeScale()).toBeCloseTo(1);
   });
 
+  it('blinks instead of dashing and keeps the authored run cadence', async () => {
+    const player = new Player('mage', createMageAssets());
+    await player.load();
+    const controls = player as unknown as {
+      actions: Partial<Record<string, THREE.AnimationAction>>;
+    };
+
+    player.setKeyboardMoving(true);
+    player.moveByDirection(new THREE.Vector3(0, 0, 1), 0.05);
+    expect(controls.actions.running?.getClip().name).toBe('mage:running');
+    expect(controls.actions.running?.getEffectiveTimeScale()).toBeGreaterThan(0.74);
+    expect(controls.actions.running?.getEffectiveTimeScale()).toBeLessThan(1.16);
+
+    expect(player.tryDash(new THREE.Vector3(1, 0, 0))).toBe(false);
+    expect(player.root.position.x).toBeCloseTo(0);
+    expect(player.blinkTo(new THREE.Vector3(7, 0, 1), new THREE.Vector3(1, 0, 0))).toBe(true);
+    expect(player.root.position.x).toBeCloseTo(7);
+    expect(player.planarForward().x).toBeCloseTo(1);
+    expect(player.actionInvulnerabilityRemaining).toBe(1);
+    player.takeDamage(40);
+    expect(player.hp).toBe(100);
+    player.update(0.05);
+    player.update(1);
+    player.takeDamage(40);
+    expect(player.hp).toBe(60);
+  });
+
 
 
   it('emits the Mage basic VFX cast from the right hand and defers damage to projectile impact', async () => {
@@ -145,6 +172,45 @@ describe('Mage gameplay player', () => {
     player.update(0.08);
     player.takeBossSkillDamage(40);
     expect(player.hp).toBe(60);
+  });
+
+  it('refuses a skill while moving and stays pinned until that skill animation ends', async () => {
+    const player = new Player('mage', createMageAssets());
+    await player.load();
+    player.root.position.set(2, 0, -3);
+
+    player.setKeyboardMoving(true);
+    expect(player.blocksSkillsWhileMoving).toBe(true);
+    expect(player.tryStartSkillAttack('ataque_giratorio')).toBe(false);
+
+    player.setKeyboardMoving(false);
+    expect(player.tryStartSkillAttack('ataque_giratorio')).toBe(true);
+    player.moveByDirection(new THREE.Vector3(1, 0, 0), 0.2);
+    player.update(0.2);
+    player.enforceSkillCastAnchor();
+
+    expect(player.isCastingSkill).toBe(true);
+    expect(player.root.position.x).toBeCloseTo(2);
+    expect(player.root.position.z).toBeCloseTo(-3);
+    expect(player.tryDash(new THREE.Vector3(0, 0, 1))).toBe(false);
+    expect(player.root.position.z).toBeCloseTo(-3);
+
+    for (let step = 0; step < 25; step += 1) player.update(0.1);
+    expect(player.isCastingSkill).toBe(false);
+    player.moveByDirection(new THREE.Vector3(1, 0, 0), 0.1);
+    expect(player.root.position.x).toBeGreaterThan(2);
+  });
+
+  it('still lets the basic attack move while the swing plays', async () => {
+    const player = new Player('mage', createMageAssets());
+    await player.load();
+
+    player.attackAtCursor();
+    player.moveByDirection(new THREE.Vector3(0, 0, 1), 0.1);
+
+    expect(player.isAttackInSwing()).toBe(true);
+    expect(player.activeWarriorAttackId).toBe('ataque_basico');
+    expect(player.root.position.z).toBeGreaterThan(0);
   });
 
   it('can preview every mapped Mage skill animation and emits its spell VFX id without equipping a sword', async () => {
