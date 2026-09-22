@@ -13,7 +13,7 @@ export interface ElementalStatusTick {
 }
 
 export const ELEMENTAL_STATUS_DURATION_SECONDS = 3;
-export const ICE_SLOW_MULTIPLIER = 0.8;
+export const ICE_SLOW_MULTIPLIER = 0;
 
 const TIME_EPSILON = 1e-8;
 

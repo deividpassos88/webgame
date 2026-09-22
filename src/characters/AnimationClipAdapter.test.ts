@@ -114,6 +114,28 @@ describe('makeClipInPlace', () => {
     ]);
   });
 
+  it('can pin a sanitized root track to the exported rest pose', () => {
+    const clip = new THREE.AnimationClip('idle', 1, [
+      new THREE.VectorKeyframeTrack(
+        'mixamorigHips.position',
+        [0, 1],
+        [0.5, -1.16, -51.78, 0.85, -0.85, -51.88]
+      ),
+    ]);
+
+    const inPlace = makeClipInPlace(
+      clip,
+      ['x', 'y', 'z'],
+      clip,
+      new Map([['mixamorig:Hips', new THREE.Vector3(0.045, 54.25, -3.14)]])
+    );
+
+    expect(Array.from(inPlace.tracks[0].values)).toEqual([
+      Math.fround(0.045), 54.25, Math.fround(-3.14),
+      Math.fround(0.045), 54.25, Math.fround(-3.14),
+    ]);
+  });
+
   it('removes horizontal root motion from the monster Hips track', () => {
     const idle = new THREE.AnimationClip('Character_output.fbx', 1, [
       new THREE.VectorKeyframeTrack('Hips.position', [0, 1], [-2, 107, -10, -2, 107, -10]),

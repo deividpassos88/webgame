@@ -1,8 +1,15 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { resolveCharacterClips } from '../characters/CharacterAnimations';
 import { gameKeyForEvent } from '../core/InputManager';
 import { CharacterAssetStore } from '../characters/CharacterAssetStore';
-import { getCharacterDefinition } from '../characters/CharacterCatalog';
+import {
+  getCharacterDefinition,
+  isPlayableCharacterId,
+  type CharacterDefinition,
+  type CharacterId,
+  type PlayableCharacterId,
+} from '../characters/CharacterCatalog';
 import {
   prepareGuildTokenBackpackExpansion,
   type BackpackExpansionResult,
@@ -43,18 +50,144 @@ import {
   prepareLobbyModel,
 } from './LobbyPresentation';
 
+export type LobbyRunMode = 'campaign' | 'admin-training';
+
 export interface LobbyScreenOptions {
   readonly firstRun: boolean;
-  readonly onClassConfirmed: () => void;
+  readonly onClassConfirmed: (characterId: PlayableCharacterId) => void;
   readonly onGuildTokenBackpackExpansion: () => string;
   readonly onHotkeysChanged: () => void;
   readonly onAutoBasicAttackChanged: () => void;
   readonly onLobbyInventoryChanged?: () => void;
   readonly onBlacksmithLicensePurchase: () => BlacksmithLobbyActionResult;
   readonly onBlacksmithCraft: (recipeId: BlacksmithRecipeId) => BlacksmithLobbyActionResult;
+  readonly adminTrainingEnabled?: boolean;
+  readonly onRunModeSelected?: (mode: LobbyRunMode) => void;
 }
 
 export type BlacksmithLobbyActionResult = BlacksmithScreenActionResult;
+
+type LobbyLightProfile = {
+  readonly color: number;
+  readonly intensity: number;
+  readonly position: readonly [number, number, number];
+};
+
+type LobbyPresentationProfile = {
+  readonly hemisphere: {
+    readonly sky: number;
+    readonly ground: number;
+    readonly intensity: number;
+  };
+  readonly ambient: {
+    readonly color: number;
+    readonly intensity: number;
+  };
+  readonly key: LobbyLightProfile;
+  readonly fill: LobbyLightProfile;
+  readonly rim: LobbyLightProfile;
+  readonly bounce: LobbyLightProfile & { readonly distance: number; readonly decay: number };
+  readonly material: {
+    readonly anisotropy: number;
+    readonly envMapIntensity: number;
+    readonly roughnessMax?: number;
+    readonly normalScaleMultiplier?: number;
+    readonly specularIntensityMin?: number;
+    readonly colorMultiplier?: readonly [number, number, number];
+    readonly roughnessMapFromSpecularIntensityMap?: boolean;
+    readonly skipHiddenMeshes?: boolean;
+  };
+  readonly contactShadow: {
+    readonly widthScale: number;
+    readonly depthScale: number;
+    readonly minWidth: number;
+    readonly minDepth: number;
+    readonly maxWidth: number;
+    readonly maxDepth: number;
+    readonly opacity: number;
+    readonly y: number;
+    readonly zBias: number;
+  };
+};
+
+type LobbyMaterialOriginalState = {
+  readonly roughness: number;
+  readonly metalness: number;
+  readonly envMapIntensity: number;
+  readonly normalScaleX: number;
+  readonly normalScaleY: number;
+  readonly colorR: number;
+  readonly colorG: number;
+  readonly colorB: number;
+  readonly roughnessMap: THREE.Texture | null;
+  readonly specularIntensity?: number;
+  readonly specularIntensityMap?: THREE.Texture | null;
+};
+
+const DEFAULT_LOBBY_PRESENTATION_PROFILE: LobbyPresentationProfile = {
+  hemisphere: { sky: 0xe8f0ff, ground: 0x2b3545, intensity: 1.35 },
+  ambient: { color: 0xffffff, intensity: 0.8 },
+  key: { color: LOBBY_LIGHTING.key.color, intensity: LOBBY_LIGHTING.key.intensity, position: [-3, 5, 4] },
+  fill: { color: LOBBY_LIGHTING.fill.color, intensity: LOBBY_LIGHTING.fill.intensity, position: [4, 3, 2] },
+  rim: { color: LOBBY_LIGHTING.rim.color, intensity: LOBBY_LIGHTING.rim.intensity, position: [4, 3, -3] },
+  bounce: {
+    color: LOBBY_LIGHTING.bounce.color,
+    intensity: LOBBY_LIGHTING.bounce.intensity,
+    position: [0, 1.8, 3.6],
+    distance: 12,
+    decay: 1.6,
+  },
+  material: {
+    anisotropy: 4,
+    envMapIntensity: 1,
+  },
+  contactShadow: {
+    widthScale: 1.02,
+    depthScale: 0.96,
+    minWidth: 1.05,
+    minDepth: 0.75,
+    maxWidth: 2.35,
+    maxDepth: 1.7,
+    opacity: 0.18,
+    y: 0.02,
+    zBias: 0.02,
+  },
+};
+
+const LOBBY_CHARACTER_PRESENTATION_PROFILES: Partial<Record<CharacterId, LobbyPresentationProfile>> = {
+  mage: {
+    // The Warrior reads well with the default rig; the Mage uses pale skin/cloth
+    // and a fully rough Tripo material, so she needs local contrast and a back
+    // rim instead of more global/front light.
+    hemisphere: { sky: 0xeaf1ff, ground: 0x273044, intensity: 0.48 },
+    ambient: { color: 0xfff1e4, intensity: 0.035 },
+    key: { color: 0xffdfbd, intensity: 3.95, position: [-4.85, 5.6, 2.05] },
+    fill: { color: 0xc2d5ff, intensity: 0.18, position: [3.8, 2.55, 2.25] },
+    rim: { color: 0x82b9ff, intensity: 5.25, position: [5.25, 3.35, -6.2] },
+    bounce: { color: 0xffb276, intensity: 0.08, position: [0, 1.05, 4.75], distance: 12, decay: 1.6 },
+    material: {
+      anisotropy: 16,
+      envMapIntensity: 1.22,
+      roughnessMax: 0.72,
+      normalScaleMultiplier: 1.34,
+      specularIntensityMin: 0.68,
+      colorMultiplier: [0.82, 0.79, 0.73],
+      roughnessMapFromSpecularIntensityMap: true,
+      skipHiddenMeshes: true,
+    },
+    contactShadow: {
+      widthScale: 1.1,
+      depthScale: 1.06,
+      minWidth: 0.98,
+      minDepth: 0.72,
+      maxWidth: 2.5,
+      maxDepth: 1.85,
+      opacity: 0.29,
+      y: 0.021,
+      zBias: 0.015,
+    },
+  },
+};
 
 const ATTRIBUTE_LABELS: Readonly<Record<string, string>> = {
   vitality: 'Vitalidade',
@@ -324,8 +457,11 @@ export function resolveLobbyIdlePhase(_elapsedSeconds: number): LobbyIdlePhase {
 export class LobbyScreen {
   private readonly classScreen = document.getElementById('class-select-screen')!;
   private readonly lobbyScreen = document.getElementById('lobby-screen')!;
-  private readonly selectButton = document.getElementById('select-warrior') as HTMLButtonElement;
+  private readonly classChoiceButtons = Array.from(
+    document.querySelectorAll<HTMLButtonElement>('[data-class-choice]')
+  );
   private readonly startButton = document.getElementById('start-game') as HTMLButtonElement;
+  private readonly adminTrainingButton = this.resolveAdminTrainingButton();
   private readonly heroStage = document.querySelector('.lobby-hero-stage') as HTMLElement;
   private readonly scene = new THREE.Scene();
   private readonly backdropScene = new THREE.Scene();
@@ -335,6 +471,7 @@ export class LobbyScreen {
   private mixer: THREE.AnimationMixer | null = null;
   private lobbyIdleAction: THREE.AnimationAction | null = null;
   private fallbackIdleAction: THREE.AnimationAction | null = null;
+  private selectedCharacterId: CharacterId;
   private frameId = 0;
   private active = false;
   private dragging = false;
@@ -343,7 +480,9 @@ export class LobbyScreen {
   // A slightly wider default framing leaves the feet and CTA breathing room.
   private zoom = 5.3;
   private resolver: (() => void) | null = null;
-  private classConfirm: (() => void) | null = null;
+  private classConfirm: ((characterId: PlayableCharacterId) => void) | null = null;
+  private runModeSelected: ((mode: LobbyRunMode) => void) | null = null;
+  private adminModeSelected = false;
   private guildTokenBackpackExpansion: (() => string) | null = null;
   private hotkeysChanged: (() => void) | null = null;
   private autoBasicAttackChanged: (() => void) | null = null;
@@ -360,6 +499,17 @@ export class LobbyScreen {
   private disposed = false;
   private readonly reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   private readonly fallbackBackground = new THREE.Color(0x111827);
+  private lobbyLights: {
+    hemisphere: THREE.HemisphereLight;
+    ambient: THREE.AmbientLight;
+    key: THREE.DirectionalLight;
+    fill: THREE.DirectionalLight;
+    rim: THREE.DirectionalLight;
+    bounce: THREE.PointLight;
+  } | null = null;
+  private lobbyEnvironmentTarget: THREE.WebGLRenderTarget | null = null;
+  private lobbyPmremGenerator: THREE.PMREMGenerator | null = null;
+  private contactShadow: THREE.Mesh | null = null;
   private readonly presentation = new LobbyPresentation();
   private readonly unbindItemTooltip: () => void;
   private readonly itemActionsPanel = document.getElementById('lobby-item-actions')!;
@@ -383,6 +533,19 @@ export class LobbyScreen {
     | { location: 'equipment'; slot: RpgEquipmentSlot; itemId: string; quantity: 1 }
     | null = null;
 
+  private resolveAdminTrainingButton(): HTMLButtonElement {
+    let button = document.getElementById('start-admin-training') as HTMLButtonElement | null;
+    if (button) return button;
+    button = document.createElement('button');
+    button.id = 'start-admin-training';
+    button.type = 'button';
+    button.className = 'admin-training-start admin-mode-toggle hidden';
+    button.setAttribute('aria-pressed', 'false');
+    button.innerHTML = '<small>MODO ADM</small><strong>Desligado</strong><span>Teste sem monstros</span>';
+    this.startButton.insertAdjacentElement('afterend', button);
+    return button;
+  }
+
   public constructor(
     private readonly renderer: THREE.WebGLRenderer,
     private readonly canvas: HTMLCanvasElement,
@@ -390,6 +553,7 @@ export class LobbyScreen {
     private readonly profile: PlayerProfile,
     private readonly inventory: InventoryStore
   ) {
+    this.selectedCharacterId = this.profile.selectedClass;
     this.setupScene();
     this.unbindItemTooltip = bindItemTooltip(this.lobbyScreen);
     this.itemActionsPanel.addEventListener('click', this.itemActionClick);
@@ -415,6 +579,7 @@ export class LobbyScreen {
     this.active = true;
     this.presentation.enter(this.renderer);
     this.classConfirm = options.onClassConfirmed;
+    this.runModeSelected = options.onRunModeSelected ?? null;
     this.guildTokenBackpackExpansion = options.onGuildTokenBackpackExpansion;
     this.hotkeysChanged = options.onHotkeysChanged;
     this.autoBasicAttackChanged = options.onAutoBasicAttackChanged;
@@ -422,8 +587,13 @@ export class LobbyScreen {
     this.blacksmithLicensePurchase = options.onBlacksmithLicensePurchase;
     this.blacksmithCraft = options.onBlacksmithCraft;
     this.blacksmithScreen.hide();
-    this.startButton.disabled = false;
+    this.setStartActionsDisabled(false);
+    this.adminModeSelected = false;
+    this.adminTrainingButton.classList.toggle('hidden', options.adminTrainingEnabled !== true);
+    this.adminTrainingButton.disabled = options.adminTrainingEnabled !== true;
+    this.syncAdminModeToggle();
     this.hideItemActions();
+    this.mountLobbyCharacter(this.profile.selectedClass);
     this.renderData();
     this.classScreen.classList.toggle('hidden', !options.firstRun);
     this.lobbyScreen.classList.toggle('hidden', options.firstRun);
@@ -431,7 +601,10 @@ export class LobbyScreen {
     this.resize();
     this.clock.start();
     this.requestFrame();
-    (options.firstRun ? this.selectButton : this.startButton).focus();
+    const initialFocus = options.firstRun
+      ? this.classChoiceButtons.find((button) => !button.disabled)
+      : this.startButton;
+    initialFocus?.focus();
     return new Promise<void>((resolve) => { this.resolver = resolve; });
   }
 
@@ -439,6 +612,7 @@ export class LobbyScreen {
     this.scene.background = null;
     this.backdropScene.background = this.fallbackBackground;
     this.scene.fog = null;
+    this.setupLobbyEnvironment();
     try {
       new THREE.TextureLoader().load(
         LOBBY_BACKDROP_URL,
@@ -463,8 +637,10 @@ export class LobbyScreen {
       this.backdropScene.background = this.fallbackBackground;
     }
 
-    this.scene.add(new THREE.HemisphereLight(0xe8f0ff, 0x2b3545, 1.35));
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const hemisphere = new THREE.HemisphereLight(0xe8f0ff, 0x2b3545, 1.35);
+    this.scene.add(hemisphere);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+    this.scene.add(ambient);
     const key = new THREE.DirectionalLight(LOBBY_LIGHTING.key.color, LOBBY_LIGHTING.key.intensity);
     key.position.set(-3, 5, 4);
     key.castShadow = true;
@@ -490,6 +666,7 @@ export class LobbyScreen {
     const bounce = new THREE.PointLight(LOBBY_LIGHTING.bounce.color, LOBBY_LIGHTING.bounce.intensity, 12, 1.6);
     bounce.position.set(0, 1.8, 3.6);
     this.scene.add(bounce);
+    this.lobbyLights = { hemisphere, ambient, key, fill, rim, bounce };
 
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(24, 24),
@@ -505,11 +682,180 @@ export class LobbyScreen {
     floor.receiveShadow = true;
     this.scene.add(floor);
 
-    const definition = getCharacterDefinition('paladin');
-    const model = this.assets.createModel('paladin');
+    this.contactShadow = this.createContactShadow();
+    this.scene.add(this.contactShadow);
+
+    this.modelHolder.rotation.y = 0;
+    this.scene.add(this.modelHolder);
+    this.syncClassChoiceButtons();
+    this.mountLobbyCharacter(this.selectedCharacterId);
+  }
+
+  private setupLobbyEnvironment(): void {
+    try {
+      const generator = new THREE.PMREMGenerator(this.renderer);
+      const studio = new RoomEnvironment();
+      const target = generator.fromScene(studio, 0.035);
+      studio.dispose();
+      this.lobbyPmremGenerator = generator;
+      this.lobbyEnvironmentTarget = target;
+      this.scene.environment = target.texture;
+      // Keep the authored 2D lobby artwork; the PMREM is for PBR lighting only.
+      this.scene.background = null;
+    } catch {
+      this.scene.environment = null;
+      this.lobbyEnvironmentTarget?.dispose();
+      this.lobbyPmremGenerator?.dispose();
+      this.lobbyEnvironmentTarget = null;
+      this.lobbyPmremGenerator = null;
+    }
+  }
+
+  private createContactShadow(): THREE.Mesh {
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(0x050810) },
+        uOpacity: { value: 0.18 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uOpacity;
+        varying vec2 vUv;
+        void main() {
+          vec2 centered = vUv - 0.5;
+          float wide = 1.0 - smoothstep(0.16, 0.58, length(centered * vec2(1.0, 1.65)));
+          float core = 1.0 - smoothstep(0.04, 0.28, length(centered * vec2(1.35, 2.25)));
+          float alpha = (wide * 0.58 + core * 0.28) * uOpacity;
+          gl_FragColor = vec4(uColor, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+    });
+    const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
+    shadow.name = 'lobby-contact-shadow';
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.02;
+    shadow.renderOrder = 1;
+    return shadow;
+  }
+
+  private resolveAvailableCharacter(preferred: CharacterId): CharacterId | null {
+    if (this.assets.has(preferred, 'lobby')) return preferred;
+    for (const button of this.classChoiceButtons) {
+      const candidate = button.dataset.classChoice;
+      if (isPlayableCharacterId(candidate) && this.assets.has(candidate, 'lobby')) return candidate;
+    }
+    return null;
+  }
+
+  private lobbyPresentationProfile(characterId: CharacterId): LobbyPresentationProfile {
+    return LOBBY_CHARACTER_PRESENTATION_PROFILES[characterId] ?? DEFAULT_LOBBY_PRESENTATION_PROFILE;
+  }
+
+  private syncLobbyLighting(characterId: CharacterId): void {
+    if (!this.lobbyLights) return;
+    const profile = this.lobbyPresentationProfile(characterId);
+    const { hemisphere, ambient, key, fill, rim, bounce } = this.lobbyLights;
+    hemisphere.color.setHex(profile.hemisphere.sky);
+    hemisphere.groundColor.setHex(profile.hemisphere.ground);
+    hemisphere.intensity = profile.hemisphere.intensity;
+    ambient.color.setHex(profile.ambient.color);
+    ambient.intensity = profile.ambient.intensity;
+    key.color.setHex(profile.key.color);
+    key.intensity = profile.key.intensity;
+    key.position.fromArray(profile.key.position);
+    fill.color.setHex(profile.fill.color);
+    fill.intensity = profile.fill.intensity;
+    fill.position.fromArray(profile.fill.position);
+    rim.color.setHex(profile.rim.color);
+    rim.intensity = profile.rim.intensity;
+    rim.position.fromArray(profile.rim.position);
+    bounce.color.setHex(profile.bounce.color);
+    bounce.intensity = profile.bounce.intensity;
+    bounce.distance = profile.bounce.distance;
+    bounce.decay = profile.bounce.decay;
+    bounce.position.fromArray(profile.bounce.position);
+  }
+
+  private syncClassChoiceButtons(): void {
+    this.classChoiceButtons.forEach((button) => {
+      const id = button.dataset.classChoice;
+      const available = isPlayableCharacterId(id) && this.assets.has(id, 'lobby');
+      button.disabled = !available;
+      button.setAttribute('aria-disabled', String(!available));
+      button.classList.toggle('is-selected', available && id === this.selectedCharacterId);
+      button.setAttribute('aria-pressed', String(available && id === this.selectedCharacterId));
+      const status = button.querySelector<HTMLElement>('[data-class-choice-status]');
+      if (status) status.textContent = available ? 'Disponível' : 'Modelo indisponível';
+    });
+  }
+
+  private updateLobbyClassCopy(definition: CharacterDefinition): void {
+    const name = definition.name;
+    const role = definition.classRole ?? 'Classe selecionada';
+    const weapon = definition.initialWeaponLabel ?? 'Arma inicial';
+    document.querySelectorAll<HTMLElement>('[data-lobby-class-name], [data-lobby-class-panel-name]')
+      .forEach((element) => { element.textContent = name; });
+    document.querySelectorAll<HTMLElement>('[data-lobby-class-role]')
+      .forEach((element) => { element.textContent = role; });
+    document.querySelectorAll<HTMLElement>('[data-lobby-class-weapon]')
+      .forEach((element) => { element.textContent = weapon; });
+    this.heroStage.setAttribute(
+      'aria-label',
+      `Prévia 3D da classe ${name}. Arraste com o mouse para girar.`
+    );
+    const statusPanel = document.getElementById('lobby-status-panel');
+    statusPanel?.setAttribute('aria-label', `Status atual da classe ${name}`);
+    const lobbyStatus = document.getElementById('lobby-status');
+    if (lobbyStatus) {
+      lobbyStatus.innerHTML = `${escapeHtml(weapon)} pronto<br><small>5 skills disponíveis</small>`;
+    }
+  }
+
+  private mountLobbyCharacter(id: CharacterId): void {
+    const characterId = this.resolveAvailableCharacter(id);
+    if (!characterId) return;
+
+    this.selectedCharacterId = characterId;
+    if (isPlayableCharacterId(characterId)) this.profile.selectedClass = characterId;
+    this.syncLobbyLighting(characterId);
+    const definition = getCharacterDefinition(characterId);
+    this.mixer?.stopAllAction();
+    this.mixer = null;
+    this.lobbyIdleAction = null;
+    this.fallbackIdleAction = null;
+    this.modelHolder.clear();
+
+    const model = this.assets.createModel(characterId, 'lobby');
     prepareLobbyModel(model);
+    this.configureLobbyMaterials(model, characterId);
     model.scale.setScalar(definition.previewScale);
+
+    const nativeClips = this.assets.getAnimations(characterId, 'lobby');
+    const lobbyIdle = nativeClips.find(
+      (candidate) => candidate.name === resolveLobbyIdlePhase(0)
+    );
+    const lobbyIdleFallback = nativeClips.find((clip) =>
+      clip.name === definition.clipMap.idle || clip.name === 'idle'
+    );
+    const resolvedLobbyClips = resolveCharacterClips(characterId, this.lobbyAnimationSource());
+    // Same rotation policy as the Guerreiro: the preview group is the only thing
+    // that turns. Class clips used in the lobby must be in-place so a translated
+    // Mixamo root (notably the Maga idle) cannot make the body orbit the pivot.
+    const idle = resolvedLobbyClips.idle ?? lobbyIdleFallback;
+
+    this.applyLobbyReferencePose(model, lobbyIdle ?? idle);
     model.updateMatrixWorld(true);
+
     const bounds = new THREE.Box3();
     model.traverse((node) => {
       const mesh = node as THREE.Mesh;
@@ -517,29 +863,197 @@ export class LobbyScreen {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       if (!this.isHierarchyVisible(mesh)) return;
-      bounds.expandByObject(mesh);
+      this.expandLobbyMeshBounds(bounds, mesh);
     });
-    const center = bounds.getCenter(new THREE.Vector3());
-    model.position.set(-center.x, -bounds.min.y, -center.z);
+    if (!bounds.isEmpty()) {
+      const center = bounds.getCenter(new THREE.Vector3());
+      // Guerreiro policy for every lobby class: rotate the shared holder around
+      // the visible model bounds center. No class-specific hip/socket pivot here.
+      model.position.set(
+        -center.x,
+        -bounds.min.y + (definition.previewYOffset ?? 0),
+        -center.z + (definition.previewZOffset ?? 0)
+      );
+      this.updateContactShadow(characterId, bounds, definition.previewZOffset ?? 0);
+    } else {
+      model.position.set(0, definition.previewYOffset ?? 0, definition.previewZOffset ?? 0);
+      this.updateContactShadow(characterId, null, definition.previewZOffset ?? 0);
+    }
+
     this.modelHolder.add(model);
-    this.modelHolder.rotation.y = 0;
-    this.scene.add(this.modelHolder);
     this.mixer = new THREE.AnimationMixer(model);
-    const nativeClips = this.assets.getAnimations('paladin');
-    const lobbyIdle = nativeClips.find(
-      (candidate) => candidate.name === resolveLobbyIdlePhase(0)
-    );
     if (lobbyIdle) {
       const action = this.mixer.clipAction(lobbyIdle);
       action.setLoop(THREE.LoopRepeat, Infinity);
       this.lobbyIdleAction = action;
     }
-    const idle = resolveCharacterClips('paladin', this.assets).idle;
     if (idle) {
       this.fallbackIdleAction = this.mixer.clipAction(idle);
       this.fallbackIdleAction.setLoop(THREE.LoopRepeat, Infinity);
     }
+    this.updateLobbyClassCopy(definition);
+    this.syncClassChoiceButtons();
     this.playLobbyIdle();
+    this.requestFrame();
+  }
+
+  private configureLobbyMaterials(model: THREE.Object3D, characterId: CharacterId): void {
+    const profile = this.lobbyPresentationProfile(characterId).material;
+    const maxAnisotropy = this.renderer.capabilities?.getMaxAnisotropy?.() ?? 1;
+    const anisotropy = Math.max(1, Math.min(maxAnisotropy, profile.anisotropy));
+    const tuneTexture = (texture?: THREE.Texture | null): void => {
+      if (!texture) return;
+      texture.anisotropy = Math.max(texture.anisotropy, anisotropy);
+      texture.needsUpdate = true;
+    };
+
+    model.traverse((node) => {
+      const mesh = node as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      if (profile.skipHiddenMeshes && !this.isHierarchyVisible(mesh)) return;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      materials.forEach((material) => {
+        if (!(material instanceof THREE.MeshStandardMaterial)) return;
+        this.applyLobbyMaterialProfile(material, profile);
+        tuneTexture(material.map);
+        tuneTexture(material.normalMap);
+        tuneTexture(material.roughnessMap);
+        tuneTexture(material.metalnessMap);
+        tuneTexture(material.aoMap);
+        tuneTexture(material.emissiveMap);
+        const physical = material as THREE.MeshPhysicalMaterial;
+        tuneTexture(physical.specularIntensityMap);
+        tuneTexture(physical.specularColorMap);
+        material.needsUpdate = true;
+      });
+    });
+  }
+
+  private applyLobbyMaterialProfile(
+    material: THREE.MeshStandardMaterial,
+    profile: LobbyPresentationProfile['material']
+  ): void {
+    const original = this.getLobbyMaterialOriginalState(material);
+    material.envMapIntensity = profile.envMapIntensity;
+    material.roughness = profile.roughnessMax === undefined
+      ? original.roughness
+      : Math.min(original.roughness, profile.roughnessMax);
+    material.metalness = original.metalness;
+
+    if (profile.colorMultiplier) {
+      material.color.setRGB(
+        original.colorR * profile.colorMultiplier[0],
+        original.colorG * profile.colorMultiplier[1],
+        original.colorB * profile.colorMultiplier[2]
+      );
+    } else {
+      material.color.setRGB(original.colorR, original.colorG, original.colorB);
+    }
+
+    if (material.normalMap && material.normalScale) {
+      const multiplier = profile.normalScaleMultiplier ?? 1;
+      material.normalScale.set(
+        original.normalScaleX * multiplier,
+        original.normalScaleY * multiplier
+      );
+    }
+
+    const physical = material instanceof THREE.MeshPhysicalMaterial ? material : null;
+    if (physical && original.specularIntensity !== undefined) {
+      physical.specularIntensity = profile.specularIntensityMin === undefined
+        ? original.specularIntensity
+        : Math.max(original.specularIntensity, profile.specularIntensityMin);
+      physical.specularIntensityMap = original.specularIntensityMap ?? null;
+    }
+
+    material.roughnessMap = profile.roughnessMapFromSpecularIntensityMap
+      ? original.roughnessMap ?? original.specularIntensityMap ?? null
+      : original.roughnessMap;
+    if (material.roughnessMap) material.roughnessMap.needsUpdate = true;
+  }
+
+  private getLobbyMaterialOriginalState(material: THREE.MeshStandardMaterial): LobbyMaterialOriginalState {
+    const existing = material.userData.lobbyOriginalMaterialState as LobbyMaterialOriginalState | undefined;
+    if (existing) return existing;
+    const physical = material instanceof THREE.MeshPhysicalMaterial ? material : null;
+    const captured: LobbyMaterialOriginalState = {
+      roughness: material.roughness,
+      metalness: material.metalness,
+      envMapIntensity: material.envMapIntensity,
+      normalScaleX: material.normalScale?.x ?? 1,
+      normalScaleY: material.normalScale?.y ?? 1,
+      colorR: material.color.r,
+      colorG: material.color.g,
+      colorB: material.color.b,
+      roughnessMap: material.roughnessMap ?? null,
+      specularIntensity: physical?.specularIntensity,
+      specularIntensityMap: physical?.specularIntensityMap ?? null,
+    };
+    material.userData.lobbyOriginalMaterialState = captured;
+    return captured;
+  }
+
+  private updateContactShadow(characterId: CharacterId, bounds: THREE.Box3 | null, zOffset: number): void {
+    if (!this.contactShadow) return;
+    const profile = this.lobbyPresentationProfile(characterId).contactShadow;
+    const size = bounds?.getSize(new THREE.Vector3()) ?? new THREE.Vector3(1.2, 1, 0.7);
+    const width = THREE.MathUtils.clamp(size.x * profile.widthScale, profile.minWidth, profile.maxWidth);
+    const depth = THREE.MathUtils.clamp(size.z * profile.depthScale, profile.minDepth, profile.maxDepth);
+    this.contactShadow.position.set(0, profile.y, zOffset + profile.zBias);
+    this.contactShadow.scale.set(width, depth, 1);
+    const material = this.contactShadow.material as THREE.ShaderMaterial;
+    material.uniforms.uOpacity.value = profile.opacity;
+  }
+
+  private applyLobbyReferencePose(model: THREE.Object3D, clip: THREE.AnimationClip | undefined): void {
+    if (!clip) return;
+    const mixer = new THREE.AnimationMixer(model);
+    const action = mixer.clipAction(clip);
+    action.reset().setEffectiveWeight(1).play();
+    mixer.setTime(0);
+    model.updateMatrixWorld(true);
+  }
+
+  private expandLobbyMeshBounds(bounds: THREE.Box3, mesh: THREE.Mesh): void {
+    mesh.updateMatrixWorld(true);
+    const skinnedMesh = mesh as THREE.SkinnedMesh;
+    if (skinnedMesh.isSkinnedMesh && mesh.geometry?.getAttribute('position')) {
+      this.expandLobbySkinnedMeshBounds(bounds, skinnedMesh);
+      return;
+    }
+    bounds.expandByObject(mesh);
+  }
+
+  private expandLobbySkinnedMeshBounds(bounds: THREE.Box3, mesh: THREE.SkinnedMesh): void {
+    const position = mesh.geometry.getAttribute('position');
+    if (!position) return;
+    mesh.skeleton.update();
+    const vertex = new THREE.Vector3();
+    for (let index = 0; index < position.count; index += 1) {
+      vertex.fromBufferAttribute(position, index);
+      mesh.applyBoneTransform(index, vertex);
+      vertex.applyMatrix4(mesh.matrixWorld);
+      bounds.expandByPoint(vertex);
+    }
+  }
+
+  private lobbyAnimationSource() {
+    return {
+      getAnimations: (id: CharacterId) => this.assets.getAnimations(id, 'lobby'),
+      getBoneNames: (id: CharacterId) => this.assets.getBoneNames(id, 'lobby'),
+      getBoneRestRotations: (id: CharacterId) => this.assets.getBoneRestRotations(id, 'lobby'),
+      getBoneRestTranslations: (id: CharacterId) => this.lobbyRestTranslations(id),
+    };
+  }
+
+  private lobbyRestTranslations(characterId: CharacterId): ReadonlyMap<string, THREE.Vector3> {
+    if (characterId !== 'mage') return this.assets.getBoneRestTranslations(characterId, 'lobby');
+    // The Mage lobby must preserve the authored Maga.glb skeleton/face quality.
+    // Returning no rest override makes makeClipInPlace freeze the root at the
+    // first authored idle frame instead of mixing rest-pose axes into the clip.
+    // The posed skinned bounds above then centers that preserved pose for the
+    // same holder rotation used by Guerreiro.
+    return new Map<string, THREE.Vector3>();
   }
 
   private renderData(): void {
@@ -579,8 +1093,9 @@ export class LobbyScreen {
   }
 
   private bind(): void {
-    this.selectButton.addEventListener('click', this.confirmClass);
+    this.classChoiceButtons.forEach((button) => button.addEventListener('click', this.confirmClass));
     this.startButton.addEventListener('click', this.startGame);
+    this.adminTrainingButton.addEventListener('click', this.toggleAdminMode);
     this.heroStage.addEventListener('pointerdown', this.pointerDown);
     window.addEventListener('pointermove', this.pointerMove);
     window.addEventListener('pointerup', this.pointerUp);
@@ -607,8 +1122,9 @@ export class LobbyScreen {
   }
 
   private unbind(): void {
-    this.selectButton.removeEventListener('click', this.confirmClass);
+    this.classChoiceButtons.forEach((button) => button.removeEventListener('click', this.confirmClass));
     this.startButton.removeEventListener('click', this.startGame);
+    this.adminTrainingButton.removeEventListener('click', this.toggleAdminMode);
     this.heroStage.removeEventListener('pointerdown', this.pointerDown);
     window.removeEventListener('pointermove', this.pointerMove);
     window.removeEventListener('pointerup', this.pointerUp);
@@ -632,8 +1148,14 @@ export class LobbyScreen {
     window.removeEventListener('keydown', this.hotkeyCapture, true);
   }
 
-  private confirmClass = (): void => {
-    this.classConfirm?.();
+  private confirmClass = (event: Event): void => {
+    const button = event.currentTarget as HTMLButtonElement | null;
+    const rawId = button?.dataset.classChoice
+      ?? (button?.id === 'select-warrior' ? 'paladin' : undefined);
+    if (!isPlayableCharacterId(rawId) || !this.assets.has(rawId)) return;
+    this.profile.selectedClass = rawId;
+    this.mountLobbyCharacter(rawId);
+    this.classConfirm?.(rawId);
     this.classScreen.classList.add('hidden');
     this.lobbyScreen.classList.remove('hidden');
     this.requestFrame();
@@ -641,11 +1163,39 @@ export class LobbyScreen {
   };
 
   private startGame = (): void => {
+    const adminModeActive = this.adminModeSelected
+      && !this.adminTrainingButton.classList.contains('hidden')
+      && !this.adminTrainingButton.disabled;
+    this.finishLobby(adminModeActive ? 'admin-training' : 'campaign');
+  };
+
+  private toggleAdminMode = (): void => {
+    if (this.adminTrainingButton.disabled || this.adminTrainingButton.classList.contains('hidden')) return;
+    this.adminModeSelected = !this.adminModeSelected;
+    this.syncAdminModeToggle();
+  };
+
+  private syncAdminModeToggle(): void {
+    const enabled = this.adminModeSelected
+      && !this.adminTrainingButton.classList.contains('hidden');
+    this.adminTrainingButton.classList.add('admin-mode-toggle');
+    this.adminTrainingButton.setAttribute('aria-pressed', String(enabled));
+    this.adminTrainingButton.dataset.adminMode = enabled ? 'on' : 'off';
+    this.adminTrainingButton.title = enabled
+      ? 'Modo ADM ligado: Iniciar partida abre teste sem monstros com skills livres.'
+      : 'Modo ADM desligado: Iniciar partida abre a masmorra normal com monstros e waves.';
+    this.adminTrainingButton.innerHTML = enabled
+      ? '<small>MODO ADM</small><strong>Ligado</strong><span>Teste sem monstros</span>'
+      : '<small>MODO ADM</small><strong>Desligado</strong><span>Partida normal</span>';
+  }
+
+  private finishLobby(mode: LobbyRunMode): void {
     const resolve = this.resolver;
     this.resolver = null;
+    this.runModeSelected?.(mode);
     this.dispose();
     resolve?.();
-  };
+  }
 
   private hotkeyRegistrationClick = (event: Event): void => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-register-hotkey]');
@@ -749,8 +1299,15 @@ export class LobbyScreen {
     });
   }
 
+  private setStartActionsDisabled(disabled: boolean): void {
+    this.startButton.disabled = disabled;
+    if (!this.adminTrainingButton.classList.contains('hidden')) {
+      this.adminTrainingButton.disabled = disabled;
+    }
+  }
+
   private openBlacksmith(button: HTMLButtonElement): void {
-    this.startButton.disabled = true;
+    this.setStartActionsDisabled(true);
     this.lobbyScreen.classList.add('hidden');
     this.lobbyScreen.querySelectorAll<HTMLButtonElement>('[data-lobby-tab]').forEach((candidate) => {
       candidate.setAttribute('aria-pressed', String(candidate === button));
@@ -759,7 +1316,7 @@ export class LobbyScreen {
   }
 
   private returnFromBlacksmith(): void {
-    this.startButton.disabled = false;
+    this.setStartActionsDisabled(false);
     this.lobbyScreen.classList.remove('hidden');
     this.renderData();
     this.selectLobbyTab('hero');
@@ -1313,7 +1870,15 @@ export class LobbyScreen {
     this.mixer?.stopAllAction();
     this.renderer.setScissorTest(false);
     this.renderer.setViewport(0, 0, this.canvas.clientWidth, this.canvas.clientHeight);
+    this.scene.environment = null;
     this.scene.clear();
+    this.contactShadow?.geometry.dispose();
+    (this.contactShadow?.material as THREE.Material | undefined)?.dispose();
+    this.contactShadow = null;
+    this.lobbyEnvironmentTarget?.dispose();
+    this.lobbyEnvironmentTarget = null;
+    this.lobbyPmremGenerator?.dispose();
+    this.lobbyPmremGenerator = null;
     this.backdropScene.background = null;
     this.backdropTexture?.dispose();
     this.backdropTexture = null;

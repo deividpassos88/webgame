@@ -12,15 +12,17 @@ import {
 describe('prepareLobbyModel', () => {
   it('hides weapon nodes without hiding the character', () => {
     const model = new THREE.Group();
-    for (const name of ['sword', 'Axe', 'weapon_socket', 'personagem']) {
+    for (const name of ['sword', 'Axe', 'weapon_socket', 'staff', 'cajado', 'personagem']) {
       const node = new THREE.Object3D();
       node.name = name;
       model.add(node);
     }
-    expect(prepareLobbyModel(model)).toEqual({ hiddenWeaponCount: 3 });
+    expect(prepareLobbyModel(model)).toEqual({ hiddenWeaponCount: 5 });
     expect(model.getObjectByName('sword')?.visible).toBe(false);
     expect(model.getObjectByName('Axe')?.visible).toBe(false);
     expect(model.getObjectByName('weapon_socket')?.visible).toBe(false);
+    expect(model.getObjectByName('staff')?.visible).toBe(false);
+    expect(model.getObjectByName('cajado')?.visible).toBe(false);
     expect(model.getObjectByName('personagem')?.visible).toBe(true);
   });
 });
@@ -30,14 +32,22 @@ describe('LobbyPresentation', () => {
     const renderer = {
       toneMapping: THREE.NoToneMapping,
       toneMappingExposure: 0.73,
+      outputColorSpace: THREE.LinearSRGBColorSpace,
+      shadowMap: { enabled: false, type: THREE.BasicShadowMap },
     } as THREE.WebGLRenderer;
     const presentation = new LobbyPresentation();
     presentation.enter(renderer);
     expect(renderer.toneMapping).toBe(THREE.ACESFilmicToneMapping);
-    expect(renderer.toneMappingExposure).toBe(1.08);
+    expect(renderer.toneMappingExposure).toBe(1.06);
+    expect(renderer.outputColorSpace).toBe(THREE.SRGBColorSpace);
+    expect(renderer.shadowMap.enabled).toBe(true);
+    expect(renderer.shadowMap.type).toBe(THREE.PCFSoftShadowMap);
     presentation.leave(renderer);
     expect(renderer.toneMapping).toBe(THREE.NoToneMapping);
     expect(renderer.toneMappingExposure).toBe(0.73);
+    expect(renderer.outputColorSpace).toBe(THREE.LinearSRGBColorSpace);
+    expect(renderer.shadowMap.enabled).toBe(false);
+    expect(renderer.shadowMap.type).toBe(THREE.BasicShadowMap);
   });
 
   it('configures the generated war backdrop for correct WebGL color', () => {
@@ -74,7 +84,12 @@ describe('LobbyPresentation', () => {
   });
 
   it('can enter and leave repeatedly without throwing', () => {
-    const renderer = { toneMapping: THREE.NoToneMapping, toneMappingExposure: 1 } as THREE.WebGLRenderer;
+    const renderer = {
+      toneMapping: THREE.NoToneMapping,
+      toneMappingExposure: 1,
+      outputColorSpace: THREE.LinearSRGBColorSpace,
+      shadowMap: { enabled: false, type: THREE.BasicShadowMap },
+    } as THREE.WebGLRenderer;
     const presentation = new LobbyPresentation();
     expect(() => {
       presentation.enter(renderer);

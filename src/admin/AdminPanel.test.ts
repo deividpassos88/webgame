@@ -13,9 +13,30 @@ describe('ADM panel definition', () => {
     const definition = getAdminPanelDefinition(true);
 
     expect(definition?.waveButtons).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(definition?.spawnButtons).toEqual(['regular', 'mini-boss', 'boss']);
     expect(definition?.actions).toEqual([
-      'jump-boss', 'hitkill-boss', 'immortality', 'admin-camera', 'add-inventory-item',
+      'jump-boss', 'hitkill-boss', 'immortality', 'admin-camera',
+      'spawn-test-enemy', 'clear-test-enemies', 'add-inventory-item',
     ]);
+  });
+
+
+  it('dispatches admin spawn buttons only after gameplay controls are available', () => {
+    const host = document.createElement('div');
+    const onCommand = vi.fn<(command: AdminCommand) => AdminCommandResult>(() => ({ ok: true }));
+    const panel = AdminPanel.mount(host, true, onCommand)!;
+    const regular = host.querySelector<HTMLButtonElement>('[data-admin-spawn-role="regular"]')!;
+    const clear = host.querySelector<HTMLButtonElement>('[data-admin-command="clear-test-enemies"]')!;
+
+    expect(regular.disabled).toBe(true);
+    expect(clear.disabled).toBe(true);
+
+    panel.setGameplayAvailable(true);
+    regular.click();
+    clear.click();
+
+    expect(onCommand).toHaveBeenCalledWith({ type: 'spawn-test-enemy', role: 'regular' });
+    expect(onCommand).toHaveBeenCalledWith({ type: 'clear-test-enemies' });
   });
 
   it('renders the inventory injection controls only for an authorized panel and dispatches a valid quantity', () => {

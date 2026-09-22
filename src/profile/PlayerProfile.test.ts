@@ -409,6 +409,15 @@ describe('PlayerProfile progression', () => {
     expect(profile.attributes.defense).toBe(10);
   });
 
+  it('saves and loads the selected Mage class in the current profile schema', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.selectedClass = 'mage';
+    const storage = memoryStorage();
+
+    expect(savePlayerProfile(profile, storage)).toBe(true);
+    expect(loadPlayerProfile(storage)).toEqual({ kind: 'loaded', profile });
+  });
+
   it('loads a valid current profile and safely recovers malformed progression data', () => {
     const expected = createDefaultPlayerProfile();
     expected.backpack.push({ itemId: 'runic-crystal', quantity: 7 });

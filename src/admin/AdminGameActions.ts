@@ -1,7 +1,7 @@
 import type { InventoryMutationResult } from '../inventory/InventoryStore';
 import { InventoryStore } from '../inventory/InventoryStore';
 import type { PlayerProfile } from '../profile/PlayerProfile';
-import { AdminCommandGate, type AdminCommand, type AdminWave } from './AdminCommandGate';
+import { AdminCommandGate, type AdminCommand, type AdminSpawnRole, type AdminWave } from './AdminCommandGate';
 
 export type AdminCommandResult =
   | { readonly ok: true }
@@ -24,6 +24,8 @@ export interface AdminGamePorts {
   hitkillBoss(): boolean;
   setImmortal(enabled: boolean): void;
   setAdminCamera(enabled: boolean): void;
+  spawnTestEnemy(role: AdminSpawnRole): boolean;
+  clearTestEnemies(): void;
   inventory: InventoryStore;
   profile: PlayerProfile;
   persistProfileState(): boolean;
@@ -63,6 +65,13 @@ export class AdminGameActions {
         return { ok: true };
       case 'admin-camera':
         this.ports.setAdminCamera(command.enabled);
+        return { ok: true };
+      case 'spawn-test-enemy':
+        return this.ports.spawnTestEnemy(command.role)
+          ? { ok: true }
+          : { ok: false, reason: 'unavailable' };
+      case 'clear-test-enemies':
+        this.ports.clearTestEnemies();
         return { ok: true };
       case 'add-inventory-item':
         return this.addInventoryItem(command.itemId, command.quantity);

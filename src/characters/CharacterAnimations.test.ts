@@ -35,9 +35,10 @@ function rotationClip(name: string, extraBone = false) {
 function clipWithRootMotion(
   name: string,
   initial: [number, number, number],
-  final: [number, number, number]
+  final: [number, number, number],
+  duration = 1
 ) {
-  return new THREE.AnimationClip(name, 1, [
+  return new THREE.AnimationClip(name, duration, [
     new THREE.VectorKeyframeTrack(
       'mixamorig:Hips.position',
       [0, 1],
@@ -68,6 +69,15 @@ function source(): CharacterAnimationSource {
       rotationClip('morte', true),
       rotationClip('caiu', true),
     ],
+    mage: [
+      rotationClip('idle'),
+      rotationClip('ataque basico'),
+      rotationClip('ataque agua'),
+      rotationClip('ataque gelo'),
+      rotationClip('ataque choque'),
+      rotationClip('ataque laser'),
+      rotationClip('ataque de larva'),
+    ],
   };
 
   return {
@@ -83,6 +93,15 @@ function source(): CharacterAnimationSource {
           : ['mixamorig:Hips', 'mixamorig:Sword_joint'])].map((name) => [
           name,
           new THREE.Quaternion(),
+        ])
+      ),
+    getBoneRestTranslations: (id) =>
+      new Map(
+        [...(id === 'dragon-miner'
+          ? ['mixamorig:Hips']
+          : ['mixamorig:Hips', 'mixamorig:Sword_joint'])].map((name) => [
+          name,
+          new THREE.Vector3(),
         ])
       ),
   };
@@ -123,11 +142,13 @@ describe('resolveCharacterClips', () => {
         clipWithRootMotion('recebe_dano', [70, 80, 50], [71, 81, 51]),
         clipWithRootMotion('morte', [90, 100, 60], [91, 101, 61]),
       ],
+      mage: [],
     };
     const clips = resolveCharacterClips('paladin', {
       getAnimations: (id) => animations[id],
       getBoneNames: () => new Set(['mixamorig:Hips']),
       getBoneRestRotations: () => new Map(),
+      getBoneRestTranslations: () => new Map(),
     });
 
     for (const state of ['idle', 'running', 'attacking', 'hit', 'dead'] as const) {
@@ -145,6 +166,38 @@ describe('resolveCharacterClips', () => {
                 ? [10, 20, 50, 10, 20, 51]
                 : [10, 20, 60, 10, 20, 61]
       );
+    }
+  });
+
+  it('pins Maga root translation to the rest pose so her idle preview stays grounded', () => {
+    const rest = new THREE.Vector3(0.045, 54.25, -3.14);
+    const animations: Record<CharacterId, THREE.AnimationClip[]> = {
+      'dragon-miner': [],
+      paladin: [],
+      mage: [
+        clipWithRootMotion('idle', [0.5, -1.16, -51.78], [0.85, -0.85, -51.88]),
+        clipWithRootMotion('correr rapido2', [0.5, -1.16, -51.78], [10, 20, 30]),
+        clipWithRootMotion('ataque basico', [0.5, -1.16, -51.78], [2, 3, 4]),
+        clipWithRootMotion('hit', [0.5, -1.16, -51.78], [3, 4, 5]),
+        clipWithRootMotion('morrendo', [0.5, -1.16, -51.78], [4, 5, 6]),
+      ],
+    };
+
+    const clips = resolveCharacterClips('mage', {
+      getAnimations: (id) => animations[id],
+      getBoneNames: () => new Set(['mixamorig:Hips']),
+      getBoneRestRotations: () => new Map(),
+      getBoneRestTranslations: () => new Map([['mixamorig:Hips', rest]]),
+    });
+
+    for (const state of ['idle', 'running', 'attacking', 'hit', 'dead'] as const) {
+      const track = clips[state]?.tracks.find(
+        (candidate) => candidate.name === 'mixamorig:Hips.position'
+      );
+      expect(Array.from(track?.values ?? [])).toEqual([
+        Math.fround(rest.x), Math.fround(rest.y), Math.fround(rest.z),
+        Math.fround(rest.x), Math.fround(rest.y), Math.fround(rest.z),
+      ]);
     }
   });
 
@@ -179,6 +232,95 @@ describe('resolveCharacterClips', () => {
     expect(Array.from(idlePosition?.values ?? [])).toEqual([
       0, 0, 0, 0, 0, 3,
     ]);
+  });
+
+  it('prefers Maga correr rapido2 even when the GLB exports accents/capitalization', () => {
+    const animations: Record<CharacterId, THREE.AnimationClip[]> = {
+      'dragon-miner': [],
+      paladin: [],
+      mage: [
+        clipWithRootMotion('idle', [0.5, -1.16, -51.78], [0.85, -0.85, -51.88]),
+        clipWithRootMotion('correr para frente', [0.5, -1.16, -51.78], [4, 5, 6], 0.733),
+        clipWithRootMotion('Correr Rápido 2', [0.5, -1.16, -51.78], [10, 20, 30], 0.62),
+      ],
+    };
+
+    const clips = resolveCharacterClips('mage', {
+      getAnimations: (id) => animations[id],
+      getBoneNames: () => new Set(['mixamorig:Hips']),
+      getBoneRestRotations: () => new Map(),
+      getBoneRestTranslations: () => new Map([
+        ['mixamorig:Hips', new THREE.Vector3(0.045, 54.25, -3.14)],
+      ]),
+    });
+
+    expect(clips.running?.name).toBe('mage:running');
+    expect(clips.running?.duration).toBeCloseTo(0.62);
+  });
+
+  it('does not use the Mage generic Mixamo/death clip as a running fallback', () => {
+    const animations: Record<CharacterId, THREE.AnimationClip[]> = {
+      'dragon-miner': [],
+      paladin: [],
+      mage: [
+        clipWithRootMotion('idle', [0.5, -1.16, -51.78], [0.85, -0.85, -51.88]),
+        clipWithRootMotion('mixamo.com', [0.5, -1.16, -51.78], [-8, -45, -5], 2.43),
+        clipWithRootMotion('morrendo', [0.5, -1.16, -51.78], [-9, -44, -5], 3.67),
+        clipWithRootMotion('andar', [0.5, -1.16, -51.78], [0.7, -1.1, -51.7], 0.8),
+      ],
+    };
+
+    const clips = resolveCharacterClips('mage', {
+      getAnimations: (id) => animations[id],
+      getBoneNames: () => new Set(['mixamorig:Hips']),
+      getBoneRestRotations: () => new Map(),
+      getBoneRestTranslations: () => new Map([
+        ['mixamorig:Hips', new THREE.Vector3(0.045, 54.25, -3.14)],
+      ]),
+    });
+
+    expect(clips.running?.name).toBe('mage:running');
+    expect(clips.running?.duration).toBeCloseTo(0.8);
+  });
+
+  it('maps Maga authored attack clips onto every shared skill id and pins their root to rest pose', () => {
+    const rest = new THREE.Vector3(0.045, 54.25, -3.14);
+    const animations: Record<CharacterId, THREE.AnimationClip[]> = {
+      'dragon-miner': [],
+      paladin: [],
+      mage: [
+        clipWithRootMotion('idle', [0.5, -1.16, -51.78], [0.85, -0.85, -51.88]),
+        clipWithRootMotion('ataque basico', [0.5, -1.16, -51.78], [1, 2, 3]),
+        clipWithRootMotion('ataque agua', [0.5, -1.16, -51.78], [2, 3, 4]),
+        clipWithRootMotion('ataque gelo', [0.5, -1.16, -51.78], [3, 4, 5]),
+        clipWithRootMotion('ataque choque', [0.5, -1.16, -51.78], [4, 5, 6]),
+        clipWithRootMotion('ataque laser', [0.5, -1.16, -51.78], [5, 6, 7]),
+        clipWithRootMotion('ataque de larva', [0.5, -1.16, -51.78], [6, 7, 8]),
+      ],
+    };
+
+    const attacks = resolveWarriorAttackClips('mage', {
+      getAnimations: (id) => animations[id],
+      getBoneNames: () => new Set(['mixamorig:Hips']),
+      getBoneRestRotations: () => new Map(),
+      getBoneRestTranslations: () => new Map([['mixamorig:Hips', rest]]),
+    });
+
+    expect(Object.keys(attacks)).toEqual([
+      'ataque_basico',
+      'ataque_giratorio',
+      'ataque_giratorio_2',
+      'pulo_atacando',
+      'triplo_ataque',
+      'corte_duplo',
+    ]);
+    for (const clip of Object.values(attacks)) {
+      const track = clip?.tracks.find((candidate) => candidate.name === 'mixamorig:Hips.position');
+      expect(Array.from(track?.values ?? [])).toEqual([
+        Math.fround(rest.x), Math.fround(rest.y), Math.fround(rest.z),
+        Math.fround(rest.x), Math.fround(rest.y), Math.fround(rest.z),
+      ]);
+    }
   });
 
   it('keeps native Dragon Miner clips and adapts missing states to shared bones', () => {
@@ -226,6 +368,7 @@ describe('resolveCharacterClips', () => {
           ),
         ]),
       ],
+      mage: [],
     };
     const animationSource = {
       getAnimations: (id: CharacterId) => animations[id],
@@ -237,6 +380,7 @@ describe('resolveCharacterClips', () => {
             id === 'dragon-miner' ? targetRest : sourceRest,
           ],
         ]),
+      getBoneRestTranslations: () => new Map(),
     } as CharacterAnimationSource;
 
     const clips = resolveCharacterClips('dragon-miner', animationSource);
@@ -257,11 +401,13 @@ describe('resolveCharacterClips', () => {
         clipWithRootMotion('ataque', [100, 200, 30], [120, 240, 31]),
       ],
       paladin: [],
+      mage: [],
     };
     const clips = resolveCharacterClips('dragon-miner', {
       getAnimations: (id) => animations[id],
       getBoneNames: () => new Set(['mixamorig:Hips']),
       getBoneRestRotations: () => new Map(),
+      getBoneRestTranslations: () => new Map(),
     });
     const idlePosition = clips.idle?.tracks.find((track) =>
       track.name.endsWith('.position')

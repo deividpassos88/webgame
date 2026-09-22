@@ -5,6 +5,7 @@ import {
   type RootMotionAxis,
 } from './AnimationClipAdapter';
 import {
+  WARRIOR_ATTACK_IDS,
   getCharacterDefinition,
   type CharacterAnimationState,
   type CharacterId,
@@ -15,6 +16,7 @@ export interface CharacterAnimationSource {
   getAnimations(id: CharacterId): THREE.AnimationClip[];
   getBoneNames(id: CharacterId): ReadonlySet<string>;
   getBoneRestRotations(id: CharacterId): ReadonlyMap<string, THREE.Quaternion>;
+  getBoneRestTranslations(id: CharacterId): ReadonlyMap<string, THREE.Vector3>;
 }
 
 const STATES: readonly CharacterAnimationState[] = [
@@ -25,8 +27,20 @@ const STATES: readonly CharacterAnimationState[] = [
   'dead',
 ];
 
+function normalizeClipName(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s_.-]+/g, '')
+    .toLowerCase();
+}
+
 function findExact(clips: THREE.AnimationClip[], name?: string) {
-  return name ? clips.find((clip) => clip.name === name) : undefined;
+  if (!name) return undefined;
+  const exact = clips.find((clip) => clip.name === name);
+  if (exact) return exact;
+  const normalizedName = normalizeClipName(name);
+  return clips.find((clip) => normalizeClipName(clip.name) === normalizedName);
 }
 
 function findFirst(
@@ -45,10 +59,11 @@ function ownClip(
   characterId: CharacterId,
   state: CharacterAnimationState,
   inPlaceAxes?: readonly RootMotionAxis[],
-  referenceClip?: THREE.AnimationClip
+  referenceClip?: THREE.AnimationClip,
+  restTranslations?: ReadonlyMap<string, THREE.Vector3>
 ) {
   const prepared = inPlaceAxes
-    ? makeClipInPlace(clip, inPlaceAxes, referenceClip)
+    ? makeClipInPlace(clip, inPlaceAxes, referenceClip, restTranslations)
     : clip.clone();
   prepared.name = `${characterId}:${state}`;
   return prepared;
@@ -90,6 +105,9 @@ export function resolveCharacterClips(
   const definition = getCharacterDefinition(characterId);
   const result: Partial<Record<CharacterAnimationState, THREE.AnimationClip>> = {};
   const nativeClips = source.getAnimations(characterId);
+  const rootRestTranslations = definition.rootMotionReference === 'rest-pose'
+    ? source.getBoneRestTranslations(characterId)
+    : undefined;
   const idleReferenceClip =
     findExact(nativeClips, definition.clipMap.idle)
     ?? findFirst(nativeClips, definition.clipAliases?.idle)
@@ -108,7 +126,8 @@ export function resolveCharacterClips(
         characterId,
         state,
         definition.inPlaceAxes,
-        idleReferenceClip
+        idleReferenceClip,
+        rootRestTranslations
       );
     }
   }
@@ -154,16 +173,25 @@ export function resolveWarriorAttackClips(
   const definition = getCharacterDefinition(characterId);
   const result: Partial<Record<WarriorAttackId, THREE.AnimationClip>> = {};
   const nativeClips = source.getAnimations(characterId);
+  const rootRestTranslations = definition.rootMotionReference === 'rest-pose'
+    ? source.getBoneRestTranslations(characterId)
+    : undefined;
   const idleReferenceClip = findExact(
     nativeClips,
     definition.clipMap.idle ?? definition.idlePoseSource
   );
+  const attackIds = new Set<WarriorAttackId>([
+    ...(definition.attackClipNames ?? []),
+    ...Object.keys(definition.attackClipMap ?? {}) as WarriorAttackId[],
+  ]);
 
-  for (const attackId of definition.attackClipNames ?? []) {
-    const clip = findExact(nativeClips, attackId);
+  for (const attackId of WARRIOR_ATTACK_IDS) {
+    if (!attackIds.has(attackId)) continue;
+    const clipName = definition.attackClipMap?.[attackId] ?? attackId;
+    const clip = findExact(nativeClips, clipName);
     if (!clip) continue;
     const prepared = definition.inPlaceAxes
-      ? makeClipInPlace(clip, definition.inPlaceAxes, idleReferenceClip)
+      ? makeClipInPlace(clip, definition.inPlaceAxes, idleReferenceClip, rootRestTranslations)
       : clip.clone();
     prepared.name = `${characterId}:attack:${attackId}`;
     result[attackId] = prepared;

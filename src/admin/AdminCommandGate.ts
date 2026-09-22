@@ -1,12 +1,15 @@
 export type AdminWave = 1 | 2 | 3 | 4 | 5 | 6;
+export type AdminSpawnRole = 'regular' | 'mini-boss' | 'boss';
 
 export type AdminCommand =
-  | { type: 'jump-wave'; wave: AdminWave }
-  | { type: 'jump-boss' }
-  | { type: 'hitkill-boss' }
-  | { type: 'immortality'; enabled: boolean }
-  | { type: 'admin-camera'; enabled: boolean }
-  | { type: 'add-inventory-item'; itemId: string; quantity: number };
+  | { readonly type: 'jump-wave'; readonly wave: AdminWave }
+  | { readonly type: 'jump-boss' }
+  | { readonly type: 'hitkill-boss' }
+  | { readonly type: 'immortality'; readonly enabled: boolean }
+  | { readonly type: 'admin-camera'; readonly enabled: boolean }
+  | { readonly type: 'spawn-test-enemy'; readonly role: AdminSpawnRole }
+  | { readonly type: 'clear-test-enemies' }
+  | { readonly type: 'add-inventory-item'; readonly itemId: string; readonly quantity: number };
 
 export class AdminCommandGate {
   public constructor(private readonly authorized: boolean) {}

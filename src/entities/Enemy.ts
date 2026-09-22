@@ -136,6 +136,7 @@ export class Enemy {
   private bossMovementLocked = false;
   private formationPursuitActive = false;
   private elementalStatus: ElementalStatusState | null = null;
+  private freezeShell: THREE.Mesh | null = null;
   private readonly groundAnimatedModel: boolean;
   private readonly animatedGroundOffset: number;
   private animatedModel: THREE.Group | null = null;
@@ -467,6 +468,13 @@ export class Enemy {
       });
     }
 
+    this.updateFreezeShell(delta);
+    if (this.isFrozenByIce) {
+      this.activeAnimatedAttack = null;
+      this.animator?.play('idle');
+      return;
+    }
+
     if (this.attackCooldown > 0) this.attackCooldown -= delta;
 
     const dist = this.root.position.distanceTo(playerPos);
@@ -793,6 +801,48 @@ export class Enemy {
       element,
       damagePerSecond
     );
+    if (element === 'ice') this.ensureFreezeShell();
+  }
+
+  private get isFrozenByIce(): boolean {
+    return this.elementalStatus?.element === 'ice';
+  }
+
+  private ensureFreezeShell(): void {
+    if (this.freezeShell) return;
+    const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
+    const geometry = this.ownGeometry(new THREE.IcosahedronGeometry(0.92 * bodyScale, 2));
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xbff7ff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      wireframe: true,
+      toneMapped: false,
+    });
+    const shell = new THREE.Mesh(geometry, material);
+    shell.name = 'EnemyIceFreezeShell';
+    shell.position.y = 1.05 * bodyScale;
+    shell.scale.set(0.95, 1.35, 0.95);
+    shell.visible = false;
+    this.root.add(shell);
+    this.freezeShell = shell;
+    this.fadeMaterials.push(material);
+  }
+
+  private updateFreezeShell(delta: number): void {
+    if (!this.freezeShell) return;
+    const material = this.freezeShell.material as THREE.MeshBasicMaterial;
+    const active = this.isFrozenByIce && !this.isDead;
+    this.freezeShell.visible = active;
+    if (!active) {
+      material.opacity = 0;
+      return;
+    }
+    this.freezeShell.rotation.y += Math.max(0, delta) * 0.7;
+    this.freezeShell.rotation.x += Math.max(0, delta) * 0.25;
+    material.opacity = 0.28 + Math.sin(performance.now() * 0.012) * 0.05;
   }
 
   public get elementalSpeedMultiplier(): number {

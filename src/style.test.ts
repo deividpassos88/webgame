@@ -43,6 +43,16 @@ describe('armory selector visual contract', () => {
   });
 });
 
+
+describe('lobby ADM mode toggle placement', () => {
+  it('keeps MODO ADM small, clickable and beside the start CTA', () => {
+    expect(styles).toContain('#lobby-screen .arena-cta.lobby-start-action');
+    expect(styles).toMatch(/#lobby-screen \.arena-cta\.lobby-start-action\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*row;[^}]*gap:\s*10px;/s);
+    expect(styles).toMatch(/\.admin-training-start\s*\{[^}]*min-width:\s*108px;[^}]*pointer-events:\s*auto;/s);
+    expect(styles).toContain('.admin-training-start span { display: none; }');
+  });
+});
+
 describe('ADM panel visual contract', () => {
   it('uses a compact centered industrial panel with keyboard focus and always-on motion', () => {
     expect(styles).toMatch(/#admin-panel\s*\{[^}]*top:\s*50%;[^}]*left:\s*50%;/s);

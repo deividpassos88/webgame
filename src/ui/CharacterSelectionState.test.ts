@@ -3,7 +3,7 @@ import { CharacterSelectionState } from './CharacterSelectionState';
 
 describe('CharacterSelectionState', () => {
   it('starts without a selected character and requires a valid choice', () => {
-    const state = new CharacterSelectionState(['dragon-miner', 'paladin']);
+    const state = new CharacterSelectionState(['paladin', 'mage']);
 
     expect(state.selectedId).toBeNull();
     expect(state.confirm()).toBeNull();
@@ -25,12 +25,12 @@ describe('CharacterSelectionState', () => {
     expect(state.move(-1)).toBe('paladin');
   });
 
-  it('wraps keyboard navigation between both characters', () => {
-    const state = new CharacterSelectionState(['dragon-miner', 'paladin']);
+  it('wraps keyboard navigation between Guerreiro and Maga when both are available', () => {
+    const state = new CharacterSelectionState(['paladin', 'mage']);
 
-    expect(state.move(1)).toBe('dragon-miner');
     expect(state.move(1)).toBe('paladin');
-    expect(state.move(1)).toBe('dragon-miner');
-    expect(state.move(-1)).toBe('paladin');
+    expect(state.move(1)).toBe('mage');
+    expect(state.move(1)).toBe('paladin');
+    expect(state.move(-1)).toBe('mage');
   });
 });

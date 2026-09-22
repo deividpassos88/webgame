@@ -6,7 +6,7 @@
  * animation, a skill area, or an enemy controller.
  */
 
-export type DistanceFalloffProfile = 'warrior' | 'regular' | 'mini-boss';
+export type DistanceFalloffProfile = 'warrior' | 'mage' | 'regular' | 'mini-boss';
 
 export interface DistanceFalloffDefinition {
   readonly fullDamageDistance: number;
@@ -15,12 +15,18 @@ export interface DistanceFalloffDefinition {
 }
 
 export const WARRIOR_MAX_RANGE_METERS = 5;
+export const MAGE_MAX_RANGE_METERS = 7;
 
 const PROFILES: Readonly<Record<DistanceFalloffProfile, DistanceFalloffDefinition>> = Object.freeze({
   warrior: Object.freeze({
     fullDamageDistance: 2,
     maxDistance: WARRIOR_MAX_RANGE_METERS,
     minimumMultiplier: 0.3,
+  }),
+  mage: Object.freeze({
+    fullDamageDistance: 3,
+    maxDistance: MAGE_MAX_RANGE_METERS,
+    minimumMultiplier: 0.35,
   }),
   regular: Object.freeze({
     fullDamageDistance: 1.25,

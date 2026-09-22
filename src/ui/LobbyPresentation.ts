@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-const WEAPON_NODE = /(sword|axe|weapon|espada|machado|shield|escudo)/i;
+const WEAPON_NODE = /(sword|axe|weapon|staff|cajado|espada|machado|shield|escudo)/i;
 
 export const LOBBY_BACKDROP_URL = '/assets/ui/lobby/arena/backdrop-v4.webp';
 
@@ -50,23 +50,38 @@ export function prepareLobbyModel(model: THREE.Object3D): { hiddenWeaponCount: n
 
 /** Owns renderer settings changed only for the lobby preview. */
 export class LobbyPresentation {
-  private previous: { toneMapping: THREE.ToneMapping; exposure: number } | null = null;
+  private previous: {
+    toneMapping: THREE.ToneMapping;
+    exposure: number;
+    outputColorSpace: string;
+    shadowMapEnabled: boolean;
+    shadowMapType: THREE.ShadowMapType;
+  } | null = null;
 
   public enter(renderer: THREE.WebGLRenderer): void {
     if (!this.previous) {
       this.previous = {
         toneMapping: renderer.toneMapping,
         exposure: renderer.toneMappingExposure,
+        outputColorSpace: renderer.outputColorSpace,
+        shadowMapEnabled: renderer.shadowMap.enabled,
+        shadowMapType: renderer.shadowMap.type,
       };
     }
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.08;
+    renderer.toneMappingExposure = 1.06;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
 
   public leave(renderer: THREE.WebGLRenderer): void {
     if (!this.previous) return;
     renderer.toneMapping = this.previous.toneMapping;
     renderer.toneMappingExposure = this.previous.exposure;
+    renderer.outputColorSpace = this.previous.outputColorSpace;
+    renderer.shadowMap.enabled = this.previous.shadowMapEnabled;
+    renderer.shadowMap.type = this.previous.shadowMapType;
     this.previous = null;
   }
 }

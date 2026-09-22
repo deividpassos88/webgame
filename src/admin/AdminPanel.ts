@@ -1,18 +1,28 @@
 import { INVENTORY_ITEMS } from '../inventory/InventoryCatalog';
 import type { WaveSnapshot } from '../waves/WaveManager';
-import type { AdminCommand, AdminWave } from './AdminCommandGate';
+import type { AdminCommand, AdminSpawnRole, AdminWave } from './AdminCommandGate';
 import type { AdminCommandResult } from './AdminGameActions';
 
 export interface AdminPanelDefinition {
   waveButtons: readonly AdminWave[];
-  actions: readonly ['jump-boss', 'hitkill-boss', 'immortality', 'admin-camera', 'add-inventory-item'];
+  spawnButtons: readonly AdminSpawnRole[];
+  actions: readonly [
+    'jump-boss',
+    'hitkill-boss',
+    'immortality',
+    'admin-camera',
+    'spawn-test-enemy',
+    'clear-test-enemies',
+    'add-inventory-item',
+  ];
 }
 
 const DEFINITION: AdminPanelDefinition = Object.freeze({
   waveButtons: Object.freeze([1, 2, 3, 4, 5, 6] as AdminWave[]),
+  spawnButtons: Object.freeze(['regular', 'mini-boss', 'boss'] as AdminSpawnRole[]),
   actions: Object.freeze([
     'jump-boss', 'hitkill-boss', 'immortality', 'admin-camera',
-    'add-inventory-item',
+    'spawn-test-enemy', 'clear-test-enemies', 'add-inventory-item',
   ] as const),
 });
 
@@ -66,6 +76,13 @@ export class AdminPanel {
         <button type="button" class="admin-control" data-admin-command="hitkill-boss" disabled>Hitkill Boss</button>
         <button type="button" class="admin-control admin-toggle" data-admin-command="immortality" aria-pressed="false" disabled>Imortalidade</button>
         <button type="button" class="admin-control admin-toggle" data-admin-command="admin-camera" aria-pressed="false" disabled>Câmera ADM</button>
+        <section class="admin-training" aria-label="Treino administrativo">
+          <strong>Treino / Spawn</strong>
+          <div class="admin-spawn-grid">
+            ${definition.spawnButtons.map(role => `<button type="button" class="admin-control" data-admin-spawn-role="${role}" disabled>${role === 'regular' ? 'Adicionar monstro' : role === 'mini-boss' ? 'Adicionar mini-boss' : 'Adicionar boss'}</button>`).join('')}
+          </div>
+          <button type="button" class="admin-control" data-admin-command="clear-test-enemies" disabled>Limpar monstros</button>
+        </section>
         <section class="admin-inventory" aria-label="Adicionar item ao inventário">
           <label>Item
             <select data-admin-inventory-item>
@@ -109,6 +126,8 @@ export class AdminPanel {
       '[data-admin-command="jump-boss"]',
       '[data-admin-command="immortality"]',
       '[data-admin-command="admin-camera"]',
+      '[data-admin-spawn-role]',
+      '[data-admin-command="clear-test-enemies"]',
     ].join(', ');
     this.root.querySelectorAll<HTMLButtonElement>(selector).forEach((button) => {
       button.disabled = !available;
@@ -153,10 +172,15 @@ export class AdminPanel {
         this.onCommand({ type: 'jump-wave', wave: wave as AdminWave });
         return;
       }
+      const spawnRole = button.dataset.adminSpawnRole as AdminSpawnRole | undefined;
+      if (spawnRole === 'regular' || spawnRole === 'mini-boss' || spawnRole === 'boss') {
+        this.onCommand({ type: 'spawn-test-enemy', role: spawnRole });
+        return;
+      }
       const command = button.dataset.adminCommand;
       if (command === 'add-inventory-item') {
         this.addInventoryItem();
-      } else if (command === 'jump-boss' || command === 'hitkill-boss') {
+      } else if (command === 'jump-boss' || command === 'hitkill-boss' || command === 'clear-test-enemies') {
         this.onCommand({ type: command });
       } else if (command === 'immortality' || command === 'admin-camera') {
         const enabled = button.getAttribute('aria-pressed') !== 'true';

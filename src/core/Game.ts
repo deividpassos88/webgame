@@ -15,7 +15,7 @@ import { resolveCharacterClips } from '../characters/CharacterAnimations';
 import {
   getCharacterDefinition,
   getPlayableCharacters,
-  PLAYABLE_CHARACTER_ID,
+  type PlayableCharacterId,
 } from '../characters/CharacterCatalog';
 import { RewardAssetStore } from '../equipment/RewardAssetStore';
 import { getWeaponDefinition } from '../equipment/EquipmentCatalog';
@@ -79,7 +79,7 @@ import {
   shouldUpdateBossSkills,
 } from '../entities/BossSkillSchedulingPolicy';
 import { GameLightingRig } from './GameLightingRig';
-import { AdminCommandGate } from '../admin/AdminCommandGate';
+import { AdminCommandGate, type AdminSpawnRole } from '../admin/AdminCommandGate';
 import { AdminGameActions } from '../admin/AdminGameActions';
 import { AdminPanel } from '../admin/AdminPanel';
 import {
@@ -119,7 +119,7 @@ import {
   WARRIOR_SKILLS,
   type WarriorSkillId,
 } from '../combat/WarriorSkillCatalog';
-import { LobbyScreen, type BlacksmithLobbyActionResult } from '../ui/LobbyScreen';
+import { LobbyScreen, type BlacksmithLobbyActionResult, type LobbyRunMode } from '../ui/LobbyScreen';
 import { InventoryOverlay, type RpgOverlayMode } from '../ui/InventoryOverlay';
 import { loadGameAssetsInPhases } from './GameAssetPhases';
 import {
@@ -132,6 +132,8 @@ import {
   applyDistanceFalloff,
   getEffectiveTargetDistance,
   WARRIOR_MAX_RANGE_METERS,
+  MAGE_MAX_RANGE_METERS,
+  type DistanceFalloffProfile,
 } from '../combat/DistanceDamage';
 import { getTypedAttackBaseDamage, quantizeCombatDamage } from '../combat/CombatDamage';
 import { MiniBossSkillController } from '../combat/MiniBossSkillController';
@@ -140,6 +142,7 @@ import { deriveCharacterStats, type DerivedCharacterStats } from '../profile/Cha
 import { attributesWithEquipment, equippedWeaponDamage } from '../equipment/EquipmentStatBonuses';
 import { resolveCameraRelativeMovement } from '../entities/PlayerMovement';
 import { VictoryLobbyTransition } from './VictoryLobbyTransition';
+import { MageVFX } from '../vfx/MageVFX';
 
 /**
  * MODO DE TESTE DE ARMA/ANIMAÇÃO: quando true, desativa o spawn de monstros
@@ -147,6 +150,9 @@ import { VictoryLobbyTransition } from './VictoryLobbyTransition';
  * o fluxo normal com ondas de monstros e boss final.
  */
 const WEAPON_TEST_MODE = false;
+const ADMIN_TEST_ENEMY_PREFIX = 'admin-test';
+const ADMIN_TEST_PHASE_ID = -777;
+const MAGE_SKILL_RANGE_SCALE = MAGE_MAX_RANGE_METERS / WARRIOR_MAX_RANGE_METERS;
 
 export interface GameOptions {
   adminEnabled?: boolean;
@@ -187,6 +193,7 @@ export class Game {
   /** Id do mini-boss dono da barra de vida visivel no HUD. */
   private miniBossBarId: string | null = null;
   private readonly miniBossEffects = new MiniBossSkillEffects(this.scene);
+  private readonly mageVFX = new MageVFX(this.scene);
   private cameraController: CameraController;
   private input: InputManager;
   private clock = new THREE.Clock();
@@ -229,7 +236,10 @@ export class Game {
   private regularSpawnSequence = 0;
   private regularSpawnWave: number | null = null;
   private regularWaveSpawnIndex = 0;
+  private adminSpawnSequence = 0;
   private resetInProgress = false;
+  private pendingRunMode: LobbyRunMode = 'campaign';
+  private activeRunMode: LobbyRunMode = 'campaign';
 
   private keyboardDir = new THREE.Vector3();
   private lightingRig?: GameLightingRig;
@@ -247,6 +257,7 @@ export class Game {
     this.adminEnabled = options.adminEnabled === true;
     this.adminGate = new AdminCommandGate(this.adminEnabled);
     Logger.setDebugPanelEnabled(this.adminEnabled);
+    this.mageVFX.setDebug(this.adminEnabled);
     this.hud = new HUD();
     this.hud.setDebugLogEnabled(this.adminEnabled);
     Logger.info('Game', 'Construindo instância do jogo...');
@@ -285,10 +296,10 @@ export class Game {
       this.flow = new GameFlowController(
         profileResult.kind === 'loaded' ? 'lobby' : 'class-select'
       );
-      const characterId = PLAYABLE_CHARACTER_ID;
-      const definition = getCharacterDefinition(characterId);
+      let characterId: PlayableCharacterId = this.profile.selectedClass;
+      let definition = getCharacterDefinition(characterId);
       this.hud.setGameplayVisible(false);
-      this.hud.showLoadingScreen(5, `Preparando ${definition.name}...`);
+      this.hud.showLoadingScreen(5, 'Preparando classes...');
       const playableCharacters = getPlayableCharacters();
       let rewardProgress = 0;
       let enemyProgress = 0;
@@ -304,7 +315,7 @@ export class Game {
         loadCharacter: () => this.characterAssets.loadAll((completed, total) => {
           this.hud.setLoadingProgress(
             5 + (completed / total) * 50,
-            `Preparando ${definition.name}...`
+            `Preparando classes... (${completed}/${total})`
           );
         }, playableCharacters),
         showLobby: async () => {
@@ -318,13 +329,26 @@ export class Game {
               );
             }
           }
-          if (!this.characterAssets.has(PLAYABLE_CHARACTER_ID)) {
-            const error = this.characterAssets.getError(PLAYABLE_CHARACTER_ID);
-            throw new Error(
-              `O ${definition.name} não pôde ser carregado.\n${Logger.formatError(error)}`
+          const availableCharacters = playableCharacters.filter((character) =>
+            this.characterAssets.has(character.id)
+          );
+          if (availableCharacters.length === 0) {
+            const details = playableCharacters
+              .map((character) => `${character.name}: ${Logger.formatError(this.characterAssets.getError(character.id))}`)
+              .join('\n');
+            throw new Error(`Nenhuma classe jogável pôde ser carregada.\n${details}`);
+          }
+          if (!this.characterAssets.has(this.profile.selectedClass)) {
+            const fallback = availableCharacters[0];
+            Logger.warn(
+              'Game:Character',
+              `A classe salva (${this.profile.selectedClass}) não carregou; usando ${fallback.name}.`,
+              this.characterAssets.getError(this.profile.selectedClass)
             );
+            this.profile.selectedClass = fallback.id as PlayableCharacterId;
           }
           this.hud.hideLoadingScreen();
+          this.pendingRunMode = 'campaign';
           const lobby = new LobbyScreen(
             this.renderer,
             this.canvas,
@@ -334,7 +358,8 @@ export class Game {
           );
           await lobby.show({
             firstRun: this.flow.state === 'class-select',
-            onClassConfirmed: () => {
+            onClassConfirmed: (selectedClass) => {
+              this.profile.selectedClass = selectedClass;
               this.flow.transition({ type: 'class-confirmed' });
               savePlayerProfile(this.profile);
             },
@@ -344,8 +369,13 @@ export class Game {
             onLobbyInventoryChanged: () => this.persistInventory(),
             onBlacksmithLicensePurchase: () => this.purchaseBlacksmithWorkshopLicense(),
             onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+            adminTrainingEnabled: this.adminEnabled,
+            onRunModeSelected: (mode) => { this.pendingRunMode = mode; },
           });
+          this.activeRunMode = this.pendingRunMode;
           this.flow.transition({ type: 'start-game' });
+          characterId = this.profile.selectedClass;
+          definition = getCharacterDefinition(characterId);
           this.hud.showLoadingScreen(60, 'Preparando masmorra, recompensas e inimigos...');
         },
         loadGameplay: [
@@ -384,6 +414,18 @@ export class Game {
       this.player = new Player(characterId, this.characterAssets);
       await this.player.load();
       this.player.onWarriorSkillHit((event) => this.onWarriorSkillHit(event));
+      this.player.onMageSpellCast((event) => {
+        this.mageVFX.cast(event.spellId, {
+          caster: event.caster,
+          action: event.action,
+          rightHand: event.rightHand,
+          leftHand: event.leftHand,
+          target: event.target,
+          fallbackDirection: event.fallbackDirection,
+          onImpact: event.onImpact ?? undefined,
+          isTargetAlive: (target) => this.isMageVFXTargetAlive(target),
+        });
+      });
       this.hud.onAnimationTest((state) => {
         if (this.player.previewAnimation(state)) {
           this.hud.setActiveAnimationTest(state);
@@ -394,6 +436,10 @@ export class Game {
       this.player.root.position.copy(this.spawnPoint);
       this.scene.add(this.player.root);
       this.cameraController.snapTo(this.player.root.position);
+      if (characterId === 'mage') {
+        this.hud.setLoadingProgress(96, 'Preparando efeitos da Maga...');
+        this.mageVFX.warmUp(this.renderer, this.cameraController.camera);
+      }
       this.setupFinalBossRewardFlow();
       Logger.info('Game', 'Player adicionado à cena e câmera posicionada.');
 
@@ -403,6 +449,7 @@ export class Game {
         victory: () => {
           this.dismissRpgOverlay();
           this.stopBossSkills();
+          this.mageVFX.clear();
           this.combatRegistry.clearLivingAllies();
           this.player.clearAttackTarget();
           this.targetedEnemyRoot = null;
@@ -450,8 +497,13 @@ export class Game {
           restoredVault.saved
         );
       }
-       this.hud.setPlayerPortrait('/assets/ui/portrait/warrior-portrait.png');
-      if (this.player.equippedWeaponId !== null) this.runProgression.weaponEquipped();
+      if (characterId === 'paladin') {
+        this.hud.setPlayerPortrait('/assets/ui/portrait/warrior-portrait.png');
+      }
+      this.hud.setAnimationTestPanelForced(this.isAdminTrainingRun());
+      if (!this.isAdminTrainingRun() && this.player.equippedWeaponId !== null) {
+        this.runProgression.weaponEquipped();
+      }
 
       if (WEAPON_TEST_MODE) this.spawnTrainingDummy();
 
@@ -477,8 +529,16 @@ export class Game {
   private setupAdminTools(): void {
     this.adminActions = new AdminGameActions({
       preparePhaseChange: () => this.prepareAdminPhaseChange(),
-      startWave: (wave) => this.runProgression.adminStartWave(wave),
-      startBoss: () => this.runProgression.adminStartBoss(),
+      startWave: (wave) => {
+        this.activeRunMode = 'campaign';
+        this.hud.setAnimationTestPanelForced(false);
+        this.runProgression.adminStartWave(wave);
+      },
+      startBoss: () => {
+        this.activeRunMode = 'campaign';
+        this.hud.setAnimationTestPanelForced(false);
+        this.runProgression.adminStartBoss();
+      },
       hitkillBoss: () => this.adminHitkillBoss(),
       setImmortal: (enabled) => {
         this.player.setImmortal(enabled);
@@ -488,6 +548,8 @@ export class Game {
         this.cameraController.setAdminMode(enabled);
         Logger.info('Game:Admin', `Câmera ADM ${enabled ? 'ativada' : 'desativada'}.`);
       },
+      spawnTestEnemy: (role) => this.spawnAdminTestEnemy(role),
+      clearTestEnemies: () => this.clearAdminTestEnemies(),
       inventory: this.inventory,
       profile: this.profile,
       persistProfileState: () => this.persistProfileState(),
@@ -519,6 +581,7 @@ export class Game {
     this.targetedEnemyRoot = null;
     this.clearTargetMarker();
     this.healthPlasma.clear();
+    this.mageVFX.clear();
     this.archerProjectiles.clear();
     this.stopBossSkills();
     this.combatRegistry.clear();
@@ -758,7 +821,9 @@ export class Game {
       : Math.min(stats.maxHealth, this.player.hp + Math.max(0, stats.maxHealth - previousMax));
     this.player.speed = stats.movementSpeed;
     this.player.attackDamage = stats.attackDamage;
-    this.player.attackRange = WARRIOR_MAX_RANGE_METERS;
+    this.player.attackRange = this.profile.selectedClass === 'mage'
+      ? MAGE_MAX_RANGE_METERS
+      : WARRIOR_MAX_RANGE_METERS;
     this.player.attackCooldownTime = stats.attackCooldown;
     this.fatigue.setMaxFatigue(stats.maxFatigue);
     const armorPieces = countEquippedArmorPieces(this.profile.equipment);
@@ -834,15 +899,31 @@ export class Game {
 
   private tryActivateWarriorSkill(id: WarriorSkillId): void {
     if (!this.canAcceptGameplayInput()) return;
-    if (!this.fatigue.canUseSkills) return;
-    if (!isWarriorSkillUnlocked(id, this.profile.progression.level)) return;
+    const freeTrainingSkill = this.hasAdminFreeSkills();
+    if (!freeTrainingSkill) {
+      if (!this.fatigue.canUseSkills) return;
+      if (!isWarriorSkillUnlocked(id, this.profile.progression.level)) return;
+    }
     const activation = this.warriorSkills.tryActivate(id, {
       paused: false,
       dead: this.player.isDead,
       busy: this.player.isAttackInSwing(),
+      free: freeTrainingSkill,
     });
     if (activation.kind !== 'activated') return;
     if (!this.player.tryStartSkillAttack(id)) this.warriorSkills.refund(id);
+  }
+
+  private isAdminTrainingRun(): boolean {
+    return this.activeRunMode === 'admin-training';
+  }
+
+  private hasAdminFreeSkills(): boolean {
+    return this.isAdminTrainingRun() && this.adminEnabled && this.profile.selectedClass === 'mage';
+  }
+
+  private skillDisplayLevel(): number {
+    return this.hasAdminFreeSkills() ? Number.MAX_SAFE_INTEGER : this.profile.progression.level;
   }
 
   private spawnTrainingDummy(): void {
@@ -855,6 +936,73 @@ export class Game {
       'Game:Test',
       `Boneco de treino em Z=${position.z}. Alcance da arma é mostrado pelo anel verde.`
     );
+  }
+
+  private spawnAdminTestEnemy(role: AdminSpawnRole): boolean {
+    if (!this.player || !this.flow?.acceptsGameplayInput) return false;
+    if (role === 'boss' && this.combatRegistry.mainBoss) return false;
+
+    const point = this.resolveAdminSpawnPoint();
+    const id = `${ADMIN_TEST_ENEMY_PREFIX}:${role}:${this.adminSpawnSequence++}`;
+    try {
+      const enemy = this.createAdminEnemy(role, point);
+      if (!this.combatRegistry.register({
+        id,
+        phaseId: ADMIN_TEST_PHASE_ID,
+        role,
+        enemy,
+      })) {
+        return false;
+      }
+      this.scene.add(enemy.root);
+      if (role === 'mini-boss') this.showMiniBossBar(id, enemy);
+      if (role === 'boss') {
+        this.bossSkills.reset();
+        this.bossEffects.clear();
+        this.bossEncounterActive = true;
+        this.hud.updateBossHealth(enemy.hp, enemy.maxHP);
+        this.hud.showBossHealth();
+      }
+      Logger.info('Game:Admin', `Spawn de teste criado: ${role} em (${point.x.toFixed(1)}, ${point.z.toFixed(1)}).`);
+      return true;
+    } catch (error) {
+      Logger.error('Game:Admin', `Falha ao criar spawn de teste ${role}.`, error);
+      return false;
+    }
+  }
+
+  private createAdminEnemy(role: AdminSpawnRole, point: THREE.Vector3): Enemy {
+    if (role === 'boss') {
+      return createBoss(
+        point,
+        this.bossAssets.hasBoss() ? this.bossAssets.createBossVisual() : undefined
+      );
+    }
+    const visual = this.enemyAssets.hasRegularEnemy()
+      ? this.enemyAssets.createRegularEnemyVisual()
+      : undefined;
+    if (role === 'mini-boss') {
+      return new Enemy(createMiniBossOptions(point, 1, 1, 1), visual);
+    }
+    return createRegularEnemy(point, 1, 1, this.adminSpawnSequence, 1, visual);
+  }
+
+  private resolveAdminSpawnPoint(): THREE.Vector3 {
+    const rotationY = this.player.root.rotation.y;
+    const forward = new THREE.Vector3(Math.sin(rotationY), 0, Math.cos(rotationY));
+    if (forward.lengthSq() <= 1e-8) forward.set(0, 0, -1);
+    forward.normalize();
+    const point = this.player.root.position.clone().addScaledVector(forward, 6);
+    point.x = THREE.MathUtils.clamp(point.x, -this.worldLimit + 2, this.worldLimit - 2);
+    point.y = 0;
+    point.z = THREE.MathUtils.clamp(point.z, -this.worldLimit + 2, this.worldLimit - 2);
+    return point;
+  }
+
+  private clearAdminTestEnemies(): void {
+    this.prepareAdminPhaseChange();
+    this.runProgression.reset();
+    Logger.info('Game:Admin', 'Monstros de teste removidos.');
   }
 
   private spawnWaveRequest(
@@ -1093,6 +1241,7 @@ export class Game {
       this.adminPanel?.resetToggles();
       this.healthPlasma.clear();
       this.archerProjectiles.clear();
+      this.mageVFX.clear();
       this.stopBossSkills();
       this.lastBossMinionTier = 1;
       this.targetedEnemyRoot = null;
@@ -1108,6 +1257,7 @@ export class Game {
       this.regularSpawnSequence = 0;
       this.regularSpawnWave = null;
       this.regularWaveSpawnIndex = 0;
+      this.adminSpawnSequence = 0;
       this.hud.hideDeathScreen();
       this.hud.hideVictoryScreen();
       this.hud.hideCraftRewardNotification();
@@ -1115,7 +1265,10 @@ export class Game {
       this.hideMiniBossBarForReset();
       this.hud.hideWaveStatus();
       this.applyCharacterBuild(true);
-      if (this.player.equippedWeaponId !== null) this.runProgression.weaponEquipped();
+      this.hud.setAnimationTestPanelForced(this.isAdminTrainingRun());
+      if (!this.isAdminTrainingRun() && this.player.equippedWeaponId !== null) {
+        this.runProgression.weaponEquipped();
+      }
       this.flow.state = 'playing';
       Logger.info('Game:Waves', 'Partida reiniciada preservando o equipamento salvo.');
     } finally {
@@ -1275,6 +1428,7 @@ export class Game {
       })) {
         throw new Error('Não foi possível salvar o reset da expedição.');
       }
+      this.pendingRunMode = 'campaign';
       const lobby = new LobbyScreen(
         this.renderer,
         this.canvas,
@@ -1291,7 +1445,10 @@ export class Game {
         onLobbyInventoryChanged: () => this.persistInventory(),
         onBlacksmithLicensePurchase: () => this.purchaseBlacksmithWorkshopLicense(),
         onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+        adminTrainingEnabled: this.adminEnabled,
+        onRunModeSelected: (mode) => { this.pendingRunMode = mode; },
       });
+      this.activeRunMode = this.pendingRunMode;
       this.hud.setHotkeys(this.profile.hotkeys);
       this.flow.transition({ type: 'start-game' });
       this.hud.showLoadingScreen(70, 'Preparando nova expedição...');
@@ -1325,6 +1482,7 @@ export class Game {
       })) {
         throw new Error('Não foi possível salvar o reset da expedição.');
       }
+      this.pendingRunMode = 'campaign';
       const lobby = new LobbyScreen(
         this.renderer,
         this.canvas,
@@ -1341,7 +1499,10 @@ export class Game {
         onLobbyInventoryChanged: () => this.persistInventory(),
         onBlacksmithLicensePurchase: () => this.purchaseBlacksmithWorkshopLicense(),
         onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+        adminTrainingEnabled: this.adminEnabled,
+        onRunModeSelected: (mode) => { this.pendingRunMode = mode; },
       });
+      this.activeRunMode = this.pendingRunMode;
       this.hud.setHotkeys(this.profile.hotkeys);
       this.flow.transition({ type: 'start-game' });
       this.hud.showLoadingScreen(70, 'Preparando nova expedição...');
@@ -1453,6 +1614,16 @@ export class Game {
     }
   }
 
+  private isMageVFXTargetAlive(target: THREE.Object3D): boolean {
+    if (this.trainingDummy) {
+      let object: THREE.Object3D | null = target;
+      while (object && !object.userData.isTrainingDummy) object = object.parent;
+      if (object === this.trainingDummy.root || target === this.trainingDummy.root) return true;
+    }
+    const record = this.combatRegistry.findByRoot(target);
+    return record !== null && !record.enemy.isDead;
+  }
+
   private onPlayerHitEnemy(target: THREE.Object3D): void {
     // boneco de treino: registra o golpe, mostra dano, nunca morre
     if (this.trainingDummy) {
@@ -1483,7 +1654,11 @@ export class Game {
       stats.physicalDamageMultiplier,
       false
     );
-    const rangedDamage = applyDistanceFalloff(physicalDamage, distance, 'warrior');
+    const rangedDamage = applyDistanceFalloff(
+      physicalDamage,
+      distance,
+      this.playerDistanceFalloffProfile()
+    );
     const damage = this.resolveOutgoingDamage(rangedDamage, false);
     if (damage <= 0) return;
     record.enemy.takeDamage(damage);
@@ -1494,13 +1669,29 @@ export class Game {
     if (record.enemy.isDead) this.handleEnemyDeath(record);
   }
 
+  private playerDistanceFalloffProfile(): DistanceFalloffProfile {
+    return this.profile.selectedClass === 'mage' ? 'mage' : 'warrior';
+  }
+
+  private resolvePlayerSkillArea(attackId: WarriorSkillId): ReturnType<typeof getWarriorSkillArea> {
+    const area = getWarriorSkillArea(attackId);
+    if (this.profile.selectedClass !== 'mage') return area;
+    return {
+      ...area,
+      radius: area.radius * MAGE_SKILL_RANGE_SCALE,
+      forwardOffset: area.forwardOffset !== undefined
+        ? area.forwardOffset * MAGE_SKILL_RANGE_SCALE
+        : undefined,
+    };
+  }
+
   private onWarriorSkillHit(event: WarriorSkillHitEvent): void {
-    if (!isWarriorSkillUnlocked(event.attackId, this.profile.progression.level)) return;
+    if (!this.hasAdminFreeSkills() && !isWarriorSkillUnlocked(event.attackId, this.profile.progression.level)) return;
     const records = this.combatRegistry.activeRoots()
       .map((root) => this.combatRegistry.findByRoot(root))
       .filter((record): record is CombatRecord => record !== null);
     const skill = getWarriorSkill(event.attackId);
-    const area = getWarriorSkillArea(event.attackId);
+    const area = this.resolvePlayerSkillArea(event.attackId);
     const elemental = skill.element !== null;
     const baseDamage = getTypedAttackBaseDamage(
       getWarriorSkillDamage(this.player.attackDamage) * warriorSkillDamageMultiplier(event.attackId),
@@ -1517,7 +1708,11 @@ export class Game {
     let lifeStealDamage = 0;
     for (const record of targets) {
       const distance = damageOrigin.distanceTo(record.enemy.root.position);
-      const rangedDamage = applyDistanceFalloff(baseDamage, distance, 'warrior');
+      const rangedDamage = applyDistanceFalloff(
+        baseDamage,
+        distance,
+        this.playerDistanceFalloffProfile()
+      );
       const damage = this.resolveOutgoingDamage(rangedDamage, elemental);
       if (damage <= 0) continue;
       lifeStealDamage += damage;
@@ -1580,6 +1775,10 @@ export class Game {
         this.hud.hideMiniBossHealth();
       }
     }
+    if (death.id.startsWith(`${ADMIN_TEST_ENEMY_PREFIX}:`)) {
+      this.handleAdminTestEnemyDeath(record);
+      return;
+    }
     if (!this.runProgression.enemyDefeated(death.id, death.phaseId)) return;
     this.applyKillRewards(record.role, record.enemy);
     if (this.targetedEnemyRoot === target) {
@@ -1592,6 +1791,20 @@ export class Game {
     }
     this.persistProfileState();
     this.hud.updateProgression(this.profile.progression, this.profile.attributePointsRemaining);
+  }
+
+  private handleAdminTestEnemyDeath(record: CombatRecord): void {
+    if (record.role === 'boss') this.stopBossSkills();
+    if (record.role === 'mini-boss' && record.id === this.miniBossBarId) {
+      this.miniBossBarId = null;
+      this.hud.hideMiniBossHealth();
+    }
+    if (this.targetedEnemyRoot === record.enemy.root) {
+      this.targetedEnemyRoot = null;
+      this.clearTargetMarker();
+    }
+    this.player.clearAttackTarget();
+    Logger.info('Game:Admin', `Alvo de teste derrotado: ${record.role}.`);
   }
 
   /** Recompensas por abate: cura e bônus de dano acumulativo */
@@ -1783,6 +1996,7 @@ export class Game {
       this.dismissRpgOverlay();
       this.healthPlasma.clear();
       this.archerProjectiles.clear();
+      this.mageVFX.clear();
       this.stopBossSkills();
       this.player.setInputLocked(true);
       this.hud.showDeathScreen();
@@ -1836,6 +2050,7 @@ export class Game {
             ? 'click'
             : 'none',
       },
+      mageVFX: this.mageVFX.diagnostics(),
       runtimeWarriorBudget: this.player?.runtimeWarriorBudget ?? null,
     };
   }
@@ -2001,21 +2216,13 @@ export class Game {
       this.input.postUpdate();
       this.updateAutoAttack();
       this.player.update(delta);
+      this.mageVFX.update(delta);
       const fatigue = this.fatigue.update(delta, this.player.currentMoveSpeed > 0.05);
       this.updateHealthPlasma(delta);
       this.warriorSkills.update(delta, false);
       this.hud.setActiveAnimationTest(this.player.activeAnimationPreview);
       this.clampPlayerToArena();
-      if (!WEAPON_TEST_MODE) {
-        this.updateBossSkills(delta);
-        this.updateCombatEntities(delta);
-        this.runProgression.update(delta);
-        this.finalBossRewards?.update(delta);
-        this.adminPanel?.update(
-          this.runProgression.snapshot,
-          this.combatRegistry.mainBoss !== null
-        );
-      } else {
+      if (WEAPON_TEST_MODE) {
         this.trainingDummy?.update(delta);
         // alcance do jogador acompanha a arma equipada (teste de distância)
         const weaponDef = getWeaponDefinition(this.player.equippedWeaponId);
@@ -2029,6 +2236,17 @@ export class Game {
             weaponDef.attackRange;
           this.trainingDummy.setRangeColor(inReach ? 0x44ff88 : 0xff5544);
         }
+      } else {
+        this.updateBossSkills(delta);
+        this.updateCombatEntities(delta);
+        if (!this.isAdminTrainingRun()) {
+          this.runProgression.update(delta);
+          this.finalBossRewards?.update(delta);
+        }
+        this.adminPanel?.update(
+          this.runProgression.snapshot,
+          this.combatRegistry.mainBoss !== null
+        );
       }
       this.level.update(this.elapsedTime, this.player.root.position);
 
@@ -2038,6 +2256,7 @@ export class Game {
       );
 
       this.cameraController.update(this.player.root.position, delta);
+      this.mageVFX.applyCameraShake(this.cameraController.camera, delta);
       this.hud.updatePlayerHealth(this.player.hp, this.player.maxHP);
       this.hud.updatePlayerFatigue(fatigue, this.fatigue.currentMaxFatigue);
       const skills = this.warriorSkills.snapshot();
@@ -2047,12 +2266,17 @@ export class Game {
         ? 'dead'
         : !this.canAcceptGameplayInput()
           ? 'unavailable'
-          : !this.fatigue.canUseSkills
+          : !this.hasAdminFreeSkills() && !this.fatigue.canUseSkills
             ? 'fatigue-exhausted'
           : this.player.isAttackInSwing()
             ? 'busy'
             : null;
-      this.hud.updateWarriorSkills(skills, skillLock, this.profile.progression.level);
+      this.hud.updateWarriorSkills(
+        skills,
+        skillLock,
+        this.skillDisplayLevel(),
+        this.hasAdminFreeSkills()
+      );
 
       this.renderer.render(this.scene, this.cameraController.camera);
       this.recordFramePerformance(rawDelta * 1000);

@@ -16,6 +16,8 @@ function createPorts(
     hitkillBoss: () => true,
     setImmortal: () => undefined,
     setAdminCamera: () => undefined,
+    spawnTestEnemy: () => true,
+    clearTestEnemies: () => undefined,
     inventory,
     profile,
     persistProfileState,

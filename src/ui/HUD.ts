@@ -112,6 +112,7 @@ export class HUD {
   private craftRewardTimer: number | undefined;
   private hotkeys: PlayerHotkeys = { ...DEFAULT_PLAYER_HOTKEYS };
   private gameplayVisible = false;
+  private forceAnimationTestPanel = false;
 
   constructor() {
     this.playerHealthFill = document.getElementById('player-health-fill')!;
@@ -215,12 +216,22 @@ export class HUD {
     document.getElementById('bottom-hud')?.classList.toggle('hidden', !visible);
     this.combatActions.classList.toggle('hidden', !visible || !this.loadingScreen.classList.contains('hidden'));
     document.getElementById('gameplay-utility-dock')?.classList.toggle('hidden', !visible);
-    const animationTestEnabled = typeof location !== 'undefined'
-      && new URLSearchParams(location.search).has('animationTest');
-    this.animationTestPanel.classList.toggle('hidden', !visible || !animationTestEnabled);
+    this.syncAnimationTestPanel();
     if (!visible) this.hideWaveStatus();
     if (!visible) this.hideCraftRewardNotification();
     document.getElementById('boss-health-container')?.classList.add('hidden');
+  }
+
+  public setAnimationTestPanelForced(enabled: boolean): void {
+    this.forceAnimationTestPanel = enabled;
+    this.syncAnimationTestPanel();
+  }
+
+  private syncAnimationTestPanel(): void {
+    const animationTestEnabled = this.forceAnimationTestPanel
+      || (typeof location !== 'undefined'
+        && new URLSearchParams(location.search).has('animationTest'));
+    this.animationTestPanel.classList.toggle('hidden', !this.gameplayVisible || !animationTestEnabled);
   }
 
   /** Normal player sessions must not retain an interactive administrator log surface. */
@@ -262,7 +273,8 @@ export class HUD {
   public updateWarriorSkills(
     snapshot: WarriorSkillsSnapshot,
     lock: CombatLockReason,
-    characterLevel = 1
+    characterLevel = 1,
+    freeSkills = false
   ): void {
     this.updatePlayerMana(snapshot.energy, snapshot.maxEnergy);
     for (const skill of WARRIOR_SKILLS) {
@@ -281,13 +293,15 @@ export class HUD {
       button.dataset.cooldown = state.cooldownRemaining > 0 ? state.cooldownRemaining.toFixed(1) : '';
       button.dataset.status = view.status;
       button.dataset.available = String(unlocked && !view.disabled);
-      button.title = `${skill.label}: ${view.status}`;
+      button.title = freeSkills ? `${skill.label}: livre no treino ADM` : `${skill.label}: ${view.status}`;
       button.setAttribute('aria-label', `${view.ariaLabel}. Tecla ${displayPlayerHotkey(this.hotkeys[skill.id])}`);
       const detail = button.querySelector('.skill-card-meta');
       if (detail) {
-        detail.textContent = unlocked
-          ? `${skill.energyCost} energia · ${skill.cooldown.toFixed(1)}s recarga`
-          : `Nv. ${skill.unlockLevel}`;
+        detail.textContent = freeSkills && unlocked
+          ? 'Treino ADM · livre'
+          : unlocked
+            ? `${skill.energyCost} energia · ${skill.cooldown.toFixed(1)}s recarga`
+            : `Nv. ${skill.unlockLevel}`;
       }
     }
     const basic = this.combatActions.querySelector<HTMLButtonElement>('[data-basic-attack]');

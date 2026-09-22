@@ -14,6 +14,11 @@ describe('DistanceDamage', () => {
       maxDistance: 5,
       minimumMultiplier: 0.3,
     });
+    expect(getDistanceFalloffProfile('mage')).toEqual({
+      fullDamageDistance: 3,
+      maxDistance: 7,
+      minimumMultiplier: 0.35,
+    });
     expect(getDistanceFalloffProfile('regular')).toEqual({
       fullDamageDistance: 1.25,
       maxDistance: 4,
@@ -30,6 +35,9 @@ describe('DistanceDamage', () => {
     ['warrior', 2, 1],
     ['warrior', 3.5, 0.65],
     ['warrior', 5, 0.3],
+    ['mage', 3, 1],
+    ['mage', 5, 0.675],
+    ['mage', 7, 0.35],
     ['regular', 1.25, 1],
     ['regular', 2.625, 0.725],
     ['regular', 4, 0.45],
@@ -41,7 +49,7 @@ describe('DistanceDamage', () => {
   });
 
   it('returns no damage beyond the profile range and full damage up to the inner range', () => {
-    const profiles: readonly DistanceFalloffProfile[] = ['warrior', 'regular', 'mini-boss'];
+    const profiles: readonly DistanceFalloffProfile[] = ['warrior', 'mage', 'regular', 'mini-boss'];
     for (const profile of profiles) {
       const definition = getDistanceFalloffProfile(profile);
       expect(getDistanceDamageMultiplier(-10, profile)).toBe(1);

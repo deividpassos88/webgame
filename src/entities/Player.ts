@@ -39,6 +39,7 @@ import {
   type WarriorSkillId,
 } from '../combat/WarriorSkillCatalog';
 import { getEffectiveTargetDistance } from '../combat/DistanceDamage';
+import type { MageSpellId } from '../vfx/VFXTypes';
 
 const BASIC_ACTION_INVULNERABILITY_SECONDS = 0.7;
 const SKILL_ACTION_INVULNERABILITY_SECONDS = 1.5;
@@ -52,6 +53,9 @@ const DASH_INVULNERABILITY_SECONDS = 0.3;
  * pernas/corpo — o guerreiro anda/corre em todas as direcoes durante o combo
  * em vez de travar na pose de ataque. */
 const ATTACK_WEIGHT_UNDER_MOVEMENT = 0.45;
+
+const GAMEPLAY_BOUNDS_IGNORED_NODE = /(?:sword|axe|shield|weapon|staff|cajado)/i;
+const GAMEPLAY_GROUND_EPSILON = 1e-4;
 
 export type PlayerState = CharacterAnimationState;
 
@@ -67,6 +71,29 @@ export interface WarriorSkillHitEvent {
   readonly origin: THREE.Vector3;
   readonly forward: THREE.Vector3;
 }
+
+export interface MageSpellCastEvent {
+  readonly spellId: MageSpellId;
+  readonly caster: THREE.Object3D;
+  readonly rightHand: THREE.Object3D | null;
+  readonly leftHand: THREE.Object3D | null;
+  readonly action: THREE.AnimationAction;
+  readonly target: THREE.Object3D | null;
+  readonly fallbackDirection: THREE.Vector3;
+  readonly onImpact: ((target: THREE.Object3D) => void) | null;
+}
+
+/** Compatibility alias for older tests/embeddings that only listened to the Mage basic cast. */
+export type MageBasicAttackCastEvent = MageSpellCastEvent;
+
+const MAGE_SPELL_BY_ATTACK_ID: Partial<Record<WarriorAttackId, MageSpellId>> = {
+  ataque_basico: 'basic',
+  ataque_giratorio: 'water',
+  ataque_giratorio_2: 'ice',
+  pulo_atacando: 'lightning',
+  corte_duplo: 'lava',
+  triplo_ataque: 'laser',
+};
 
 export class Player {
   public root = new THREE.Group();
@@ -119,6 +146,7 @@ export class Player {
   private dashCooldown = 0;
   private onAttackHitCallback: ((target: THREE.Object3D) => void) | null = null;
   private onWarriorSkillHitCallback: ((event: WarriorSkillHitEvent) => void) | null = null;
+  private onMageSpellCastCallback: ((event: MageSpellCastEvent) => void) | null = null;
 
   private loaded = false;
   private keyboardMoving = false;
@@ -126,6 +154,7 @@ export class Player {
   private characterModel: THREE.Group | null = null;
   private embeddedSword: THREE.Object3D | null = null;
   private weaponEquipment = new WeaponEquipment();
+  private readonly actionBaseTimeScales: Partial<Record<PlayerState, number>> = {};
   public missingAnimationsInfo: MissingAnimationsInfo = {
     missing: [],
     foundClipNames: [],
@@ -154,7 +183,7 @@ export class Player {
       if (mesh.isMesh) {
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-        if (this.characterId === 'paladin') {
+        if (this.characterId === 'paladin' || this.characterId === 'mage') {
           const materials = Array.isArray(mesh.material)
             ? mesh.material
             : [mesh.material];
@@ -163,7 +192,7 @@ export class Player {
             if (copy instanceof THREE.MeshStandardMaterial) {
               copy.emissive.setHex(0xffffff);
               copy.emissiveMap = copy.map;
-              copy.emissiveIntensity = 0.45;
+              copy.emissiveIntensity = this.characterId === 'mage' ? 0.38 : 0.45;
             }
             return copy;
           });
@@ -200,15 +229,35 @@ export class Player {
     if (!hitClip) missing.push('hit');
     if (!deadClip) missing.push('dead');
 
-    this.setupAction('idle', idleClip, THREE.LoopRepeat);
-    this.setupAction('running', runClip, THREE.LoopRepeat);
+    this.setupAction(
+      'idle',
+      idleClip,
+      THREE.LoopRepeat,
+      definition.animationTimeScale?.idle ?? 1
+    );
+    this.setupAction(
+      'running',
+      runClip,
+      THREE.LoopRepeat,
+      definition.animationTimeScale?.running ?? 1
+    );
     this.setupComboActions(
       attackClip,
       definition.animationTimeScale?.attacking ?? 1,
       warriorAttackClips
     );
-    this.setupAction('hit', hitClip, THREE.LoopOnce);
-    this.setupAction('dead', deadClip, THREE.LoopOnce);
+    this.setupAction(
+      'hit',
+      hitClip,
+      THREE.LoopOnce,
+      definition.animationTimeScale?.hit ?? 1
+    );
+    this.setupAction(
+      'dead',
+      deadClip,
+      THREE.LoopOnce,
+      definition.animationTimeScale?.dead ?? 1
+    );
 
     const isCritical = !idleClip;
     if (isCritical) {
@@ -230,7 +279,97 @@ export class Player {
 
     this.loaded = true;
     this.playState('idle');
+    this.mixer.update(0);
+    this.groundModelToRootPlane(model);
+    if (this.characterId === 'mage') this.centerGameplayModelPivotOnRoot(model);
+    this.applyGameplayYOffset(model, definition.gameYOffset);
     Logger.info('Player', `${definition.name} pronto para uso.`);
+  }
+
+  private groundModelToRootPlane(model: THREE.Object3D): void {
+    model.updateMatrixWorld(true);
+    const bounds = this.computeGameplayModelBounds(model);
+    if (bounds.isEmpty()) return;
+    const lift = -bounds.min.y;
+    if (!Number.isFinite(lift) || Math.abs(lift) <= GAMEPLAY_GROUND_EPSILON) return;
+    model.position.y += lift;
+    model.updateMatrixWorld(true);
+    Logger.debug(
+      'Player:Grounding',
+      `Modelo ajustado ao piso: +${lift.toFixed(3)}m (minY=${bounds.min.y.toFixed(3)}).`
+    );
+  }
+
+  private applyGameplayYOffset(model: THREE.Object3D, yOffset = 0): void {
+    if (!Number.isFinite(yOffset) || Math.abs(yOffset) <= GAMEPLAY_GROUND_EPSILON) return;
+    model.position.y += yOffset;
+    model.updateMatrixWorld(true);
+    Logger.debug('Player:Grounding', `Offset vertical de gameplay aplicado: +${yOffset.toFixed(3)}m.`);
+  }
+
+  private centerGameplayModelPivotOnRoot(model: THREE.Object3D): void {
+    model.updateMatrixWorld(true);
+    const bounds = this.computeGameplayModelBounds(model);
+    if (bounds.isEmpty()) return;
+    const center = bounds.getCenter(new THREE.Vector3());
+    const horizontalOffsetX = center.x - this.root.position.x;
+    const horizontalOffsetZ = center.z - this.root.position.z;
+    if (
+      Math.abs(horizontalOffsetX) <= GAMEPLAY_GROUND_EPSILON
+      && Math.abs(horizontalOffsetZ) <= GAMEPLAY_GROUND_EPSILON
+    ) return;
+    model.position.x -= horizontalOffsetX;
+    model.position.z -= horizontalOffsetZ;
+    model.updateMatrixWorld(true);
+    Logger.debug(
+      'Player:Grounding',
+      `Pivot visual centralizado no root: dx=${(-horizontalOffsetX).toFixed(3)} dz=${(-horizontalOffsetZ).toFixed(3)}.`
+    );
+  }
+
+  private computeGameplayModelBounds(model: THREE.Object3D): THREE.Box3 {
+    const bounds = new THREE.Box3();
+    const meshBounds = new THREE.Box3();
+    model.updateMatrixWorld(true);
+    model.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.visible || this.isIgnoredGameplayBoundsNode(mesh, model)) return;
+      mesh.updateMatrixWorld(true);
+      const skinnedMesh = mesh as THREE.SkinnedMesh;
+      if (skinnedMesh.isSkinnedMesh) {
+        this.expandSkinnedMeshBounds(bounds, skinnedMesh);
+        return;
+      }
+      const geometry = mesh.geometry;
+      if (!geometry) return;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      if (!geometry.boundingBox) return;
+      meshBounds.copy(geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
+      bounds.union(meshBounds);
+    });
+    return bounds;
+  }
+
+  private expandSkinnedMeshBounds(bounds: THREE.Box3, mesh: THREE.SkinnedMesh): void {
+    const position = mesh.geometry.getAttribute('position');
+    if (!position) return;
+    mesh.skeleton.update();
+    const vertex = new THREE.Vector3();
+    for (let index = 0; index < position.count; index += 1) {
+      vertex.fromBufferAttribute(position, index);
+      mesh.applyBoneTransform(index, vertex);
+      vertex.applyMatrix4(mesh.matrixWorld);
+      bounds.expandByPoint(vertex);
+    }
+  }
+
+  private isIgnoredGameplayBoundsNode(object: THREE.Object3D, root: THREE.Object3D): boolean {
+    let current: THREE.Object3D | null = object;
+    while (current && current !== root) {
+      if (GAMEPLAY_BOUNDS_IGNORED_NODE.test(current.name)) return true;
+      current = current.parent;
+    }
+    return false;
   }
 
   /** Release player-owned VFX resources; the authored GLB remains asset-store owned. */
@@ -280,6 +419,7 @@ export class Player {
     timeScale = 1
   ) {
     if (!clip) return;
+    this.actionBaseTimeScales[state] = timeScale;
     const action = this.mixer.clipAction(clip);
     action.setEffectiveTimeScale(timeScale);
     action.setLoop(loop, loop === THREE.LoopOnce ? 1 : Infinity);
@@ -357,7 +497,7 @@ export class Player {
       0.75,
       1.15
     );
-    action.setEffectiveTimeScale(playbackRate);
+    action.setEffectiveTimeScale((this.actionBaseTimeScales.running ?? 1) * playbackRate);
   }
 
   public moveTo(point: THREE.Vector3) {
@@ -403,7 +543,7 @@ export class Player {
     // Empty-hand clicks are used by the animation preview before the reward
     // gate equips a weapon. Keep that preview one-shot and leave combat
     // combo timing exclusively to the equipped sword path.
-    if (this.equippedWeaponId !== 'sword') {
+    if (!this.canUseEmptySpaceComboAttacks()) {
       this.attackCooldown = this.attackCooldownTime;
       this.emptyHandAttackPreview = true;
       this.playState('attacking', 0.15);
@@ -423,9 +563,42 @@ export class Player {
     this.onWarriorSkillHitCallback = callback;
   }
 
+  public onMageSpellCast(callback: (event: MageSpellCastEvent) => void): void {
+    this.onMageSpellCastCallback = callback;
+  }
+
+  public onMageBasicAttackCast(callback: (event: MageBasicAttackCastEvent) => void): void {
+    this.onMageSpellCast((event) => {
+      if (event.spellId === 'basic') callback(event);
+    });
+  }
+
+  private emitMageSpellCast(spellId: MageSpellId, onImpact: ((target: THREE.Object3D) => void) | null): void {
+    if (!this.onMageSpellCastCallback || !this.currentAction) return;
+    this.root.getWorldDirection(this.faceDirection);
+    this.faceDirection.y = 0;
+    if (this.faceDirection.lengthSq() <= 1e-8) this.faceDirection.set(0, 0, 1);
+    this.faceDirection.normalize();
+    this.onMageSpellCastCallback({
+      spellId,
+      caster: this.root,
+      rightHand: this.findObjectByName('mixamorig:RightHand'),
+      leftHand: this.findObjectByName('mixamorig:LeftHand'),
+      action: this.currentAction,
+      target: this.attackTargetEnemy,
+      fallbackDirection: this.faceDirection.clone(),
+      onImpact,
+    });
+  }
+
+  private findObjectByName(name: string): THREE.Object3D | null {
+    if (!this.characterModel) return null;
+    return this.characterModel.getObjectByName(name) ?? null;
+  }
+
   public tryStartSkillAttack(id: WarriorSkillId): boolean {
     if (
-      this.equippedWeaponId !== 'sword' ||
+      !this.canUseSkillAttacks() ||
       this.isDead ||
       this.isHitReacting ||
       this.isSwinging ||
@@ -446,7 +619,9 @@ export class Player {
     this.comboController.cancel();
     this.comboHitTargets.clear();
     this.isSwinging = true;
-    this.actionInvulnerability = SKILL_ACTION_INVULNERABILITY_SECONDS;
+    this.actionInvulnerability = this.characterId === 'mage'
+      ? duration + 1
+      : SKILL_ACTION_INVULNERABILITY_SECONDS;
     this.actionInvulnerabilityFresh = true;
     this.emptyHandAttackPreview = false;
     this.clearLocomotionBlend(0.08);
@@ -467,6 +642,10 @@ export class Player {
     if (this.attackTargetEnemy && this.isTargetAlive(this.attackTargetEnemy)) {
       this.faceTargetInstantly(this.attackTargetEnemy.position);
     }
+    if (this.characterId === 'mage') {
+      const spellId = MAGE_SPELL_BY_ATTACK_ID[id];
+      if (spellId) this.emitMageSpellCast(spellId, null);
+    }
     return true;
   }
 
@@ -477,7 +656,7 @@ export class Player {
     this.attackTargetEnemy = null;
     this.keyboardMoving = false;
     this.onAttackHitCallback = null;
-    this.currentMoveSpeed = 0;
+    this.currentMoveSpeed = state === 'running' ? this.speed : 0;
     this.emptyHandAttackPreview = false;
     this.cancelCombo(false);
     this.isHitReacting = false;
@@ -730,7 +909,7 @@ export class Player {
 
   private startCombo(): boolean {
     if (
-      this.equippedWeaponId === null ||
+      !this.canUseComboAttacks() ||
       this.isDead ||
       this.attackCooldown > 0 ||
       this.isSwinging
@@ -747,6 +926,7 @@ export class Player {
     this.comboHitTargets.clear();
     this.playedComboStages = 1;
     this.playComboStage(0);
+    if (this.characterId === 'mage') this.emitMageSpellCast('basic', this.onAttackHitCallback);
     return true;
   }
 
@@ -819,7 +999,11 @@ export class Player {
         this.playComboStage(event.stage);
         break;
       case 'damage-opened':
-        this.tryDealComboDamage();
+        // Mage basic attacks deal damage on projectile impact. If no VFX bridge
+        // is registered (tests/legacy embedding), keep the old direct hit path.
+        if (this.characterId !== 'mage' || !this.onMageSpellCastCallback) {
+          this.tryDealComboDamage();
+        }
         break;
       case 'damage-closed':
         break;
@@ -1061,11 +1245,13 @@ export class Player {
       run.reset();
       run.setLoop(THREE.LoopRepeat, Infinity);
       run.setEffectiveWeight(1);
+      this.updateRunningPlaybackRate(run);
       run.fadeIn(0.1);
       run.play();
     } else {
       run.stopFading();
       run.setEffectiveWeight(1);
+      this.updateRunningPlaybackRate(run);
     }
     attack.stopFading();
     attack.setEffectiveWeight(ATTACK_WEIGHT_UNDER_MOVEMENT);
@@ -1162,6 +1348,18 @@ export class Player {
   /** Kept as a compatibility shim; attacks require an explicit input command. */
   public forceAttackIfReady(): void {
     return;
+  }
+
+  private canUseComboAttacks(): boolean {
+    return this.equippedWeaponId !== null || this.characterId === 'mage';
+  }
+
+  private canUseEmptySpaceComboAttacks(): boolean {
+    return this.equippedWeaponId === 'sword' || this.characterId === 'mage';
+  }
+
+  private canUseSkillAttacks(): boolean {
+    return this.equippedWeaponId === 'sword' || this.characterId === 'mage';
   }
 
   private canAcceptInput(): boolean {
