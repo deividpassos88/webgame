@@ -21,6 +21,8 @@ export interface SkillActivationContext {
   readonly dead?: boolean;
   /** Admin-only training runs can preview every skill without energy or cooldown cost. */
   readonly free?: boolean;
+  /** Skip the cooldown gate without waiving the energy cost. */
+  readonly waiveCooldown?: boolean;
 }
 
 export interface SkillStateSnapshot {
@@ -28,6 +30,9 @@ export interface SkillStateSnapshot {
   readonly cooldownRemaining: number;
   readonly energyCost: number;
   readonly available: boolean;
+  /** Mage-only fatigue percent copied onto the HUD snapshot. */
+  readonly fatigueCostPercent?: number;
+  readonly fatigueAffordable?: boolean;
 }
 
 export interface WarriorSkillsSnapshot {
@@ -58,14 +63,15 @@ export class WarriorSkillController {
     if (context.busy) return { kind: 'rejected', reason: 'busy' };
 
     const definition = getWarriorSkill(id);
-    if (!context.free && this.cooldowns[id] > 0) return { kind: 'rejected', reason: 'cooldown' };
+    const waiveCooldown = context.free || context.waiveCooldown === true;
+    if (!waiveCooldown && this.cooldowns[id] > 0) return { kind: 'rejected', reason: 'cooldown' };
     if (!context.free && this.energy < definition.energyCost) {
       return { kind: 'rejected', reason: 'insufficient-energy' };
     }
 
     if (!context.free) {
       this.energy -= definition.energyCost;
-      this.cooldowns[id] = definition.cooldown;
+      this.cooldowns[id] = waiveCooldown ? 0 : definition.cooldown;
       this.regenerationDelayRemaining = REGENERATION_DELAY;
       this.refundableActivation = id;
     } else {
@@ -74,6 +80,20 @@ export class WarriorSkillController {
       this.refundableActivation = null;
     }
     return { kind: 'activated', attackId: id };
+  }
+
+  public canSpend(amount: number): boolean {
+    const safe = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+    return this.energy + 1e-6 >= safe;
+  }
+
+  /** Mana spend that is not a skill activation. Used by the Mage blink. */
+  public spend(amount: number): boolean {
+    const safe = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+    if (this.energy + 1e-6 < safe) return false;
+    this.energy -= safe;
+    this.regenerationDelayRemaining = Math.max(this.regenerationDelayRemaining, REGENERATION_DELAY);
+    return true;
   }
 
   public refund(id: WarriorSkillId): boolean {

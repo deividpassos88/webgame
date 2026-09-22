@@ -25,6 +25,26 @@ describe('getSkillButtonState', () => {
     expect(getSkillButtonState('Corte', { ...ready, available: false }, null).status).toBe('Energia insuficiente: precisa de 12');
   });
 
+  it('tells the Mage to stop before a skill and names MP plus fatigue costs', () => {
+    expect(getSkillButtonState('Água', ready, 'moving')).toMatchObject({
+      disabled: true,
+      status: 'Pare para usar a skill',
+    });
+    expect(getSkillButtonState('Água', {
+      ...ready,
+      fatigueCostPercent: 8,
+      fatigueAffordable: false,
+    }, null)).toMatchObject({
+      disabled: true,
+      status: 'Fadiga insuficiente: precisa de 8%',
+    });
+    expect(getSkillButtonState('Água', {
+      ...ready,
+      fatigueCostPercent: 8,
+      fatigueAffordable: true,
+    }, null).status).toBe('Disponível · 12 MP · 8% fadiga');
+  });
+
   it('marks a ready skill as available', () => {
     expect(getSkillButtonState('Corte', ready, null)).toEqual({
       disabled: false,

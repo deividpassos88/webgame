@@ -110,8 +110,17 @@ import {
   rollFinalBossLoot,
   settleFinalBossLoot,
 } from '../rewards/FinalBossLoot';
-import { WarriorSkillController } from '../combat/WarriorSkillController';
+import { WarriorSkillController, type WarriorSkillsSnapshot } from '../combat/WarriorSkillController';
 import { FatigueMeter, MAX_FATIGUE, DASH_FATIGUE_COST } from '../combat/FatigueMeter';
+import { mageSkillFatiguePercent } from '../combat/MageSkillCost';
+import { firstColumnHit, mageSkillAttackId } from '../combat/MageSpellFlight';
+import { isInsideMageShockRadius, mageSkillImpactEffect } from '../combat/MageSkillImpact';
+import {
+  MAGE_TELEPORT_FATIGUE_PERCENT,
+  mageTeleportManaCost,
+  resolveMageTeleportDestination,
+} from '../entities/MageTeleport';
+import type { MageSpellId } from '../vfx/VFXTypes';
 import {
   getWarriorSkill,
   isWarriorSkillUnlocked,
@@ -415,15 +424,17 @@ export class Game {
       await this.player.load();
       this.player.onWarriorSkillHit((event) => this.onWarriorSkillHit(event));
       this.player.onMageSpellCast((event) => {
+        const target = this.resolveMageSpellTarget(event.target);
         this.mageVFX.cast(event.spellId, {
           caster: event.caster,
           action: event.action,
           rightHand: event.rightHand,
           leftHand: event.leftHand,
-          target: event.target,
+          target,
           fallbackDirection: event.fallbackDirection,
-          onImpact: event.onImpact ?? undefined,
-          isTargetAlive: (target) => this.isMageVFXTargetAlive(target),
+          onImpact: (hit) => this.onMageSpellImpact(event.spellId, hit, event.onImpact),
+          isTargetAlive: (candidate) => this.isMageVFXTargetAlive(candidate),
+          queryBodyHit: (from, to, radius) => this.queryMageSpellBody(from, to, radius),
         });
       });
       this.hud.onAnimationTest((state) => {
@@ -899,19 +910,42 @@ export class Game {
 
   private tryActivateWarriorSkill(id: WarriorSkillId): void {
     if (!this.canAcceptGameplayInput()) return;
-    const freeTrainingSkill = this.hasAdminFreeSkills();
-    if (!freeTrainingSkill) {
-      if (!this.fatigue.canUseSkills) return;
+    const mage = this.profile.selectedClass === 'mage';
+    const adminPreview = this.hasAdminFreeSkills();
+    if (!adminPreview) {
       if (!isWarriorSkillUnlocked(id, this.profile.progression.level)) return;
     }
+    if (!this.fatigue.canUseSkills) return;
+    if (mage && this.player.blocksSkillsWhileMoving) return;
+    if (mage && !this.fatigue.canAffordPercent(mageSkillFatiguePercent(id))) return;
     const activation = this.warriorSkills.tryActivate(id, {
       paused: false,
       dead: this.player.isDead,
       busy: this.player.isAttackInSwing(),
-      free: freeTrainingSkill,
+      // Training can skip the cooldown, but a Mage skill always spends MP.
+      waiveCooldown: adminPreview,
     });
     if (activation.kind !== 'activated') return;
-    if (!this.player.tryStartSkillAttack(id)) this.warriorSkills.refund(id);
+    if (!this.player.tryStartSkillAttack(id)) {
+      this.warriorSkills.refund(id);
+      return;
+    }
+    if (mage) this.fatigue.consumePercent(mageSkillFatiguePercent(id));
+  }
+
+  private mageSkillSnapshot(snapshot: WarriorSkillsSnapshot): WarriorSkillsSnapshot {
+    if (this.profile.selectedClass !== 'mage') return snapshot;
+    const skills = { ...snapshot.skills };
+    for (const skill of WARRIOR_SKILLS) {
+      const percent = mageSkillFatiguePercent(skill.id);
+      const state = skills[skill.id];
+      skills[skill.id] = {
+        ...state,
+        fatigueCostPercent: percent,
+        fatigueAffordable: this.fatigue.canAffordPercent(percent),
+      };
+    }
+    return { ...snapshot, skills };
   }
 
   private isAdminTrainingRun(): boolean {
@@ -1362,7 +1396,9 @@ export class Game {
     const preserveMarkedAttack = this.isFocusedTargetInRange();
     this.player.setKeyboardMoving(isMoving);
     if (this.input.wasKeyPressed('shift')) {
-      if (this.fatigue.canDash && this.player.tryDash(this.keyboardDir)) {
+      if (this.profile.selectedClass === 'mage') {
+        this.tryMageTeleport();
+      } else if (this.fatigue.canDash && this.player.tryDash(this.keyboardDir)) {
         // Dash custa 20% da barra de fadiga por uso.
         this.fatigue.consume(DASH_FATIGUE_COST);
       }
@@ -1411,6 +1447,50 @@ export class Game {
         break;
       }
     }
+  }
+
+  /**
+   * Movement keys win. A ground click is the chosen direction while she walks
+   * to it. Standing still blinks along the facing used by movement, not the
+   * Three.js look axis.
+   */
+  private mageTeleportDirection(): THREE.Vector3 {
+    if (this.keyboardDir.lengthSq() > 1e-8) return this.keyboardDir.clone();
+    const click = this.player.moveTarget;
+    if (click) {
+      const toClick = click.clone().sub(this.player.root.position);
+      toClick.y = 0;
+      if (toClick.lengthSq() > 1e-8) return toClick.normalize();
+    }
+    const facing = this.player.planarForward();
+    if (facing.lengthSq() <= 1e-8) facing.set(0, 0, 1);
+    return facing;
+  }
+
+  /**
+   * Shift blinks the Mage 10m on the chosen direction, then spends 25% fatigue
+   * and 10% MP. The warrior dash path is unchanged.
+   */
+  private tryMageTeleport(): void {
+    if (!this.player || this.player.isDead || this.player.isCastingSkill) return;
+    const manaCost = mageTeleportManaCost(this.warriorSkills.snapshot().maxEnergy);
+    if (!this.warriorSkills.canSpend(manaCost)) return;
+    if (!this.fatigue.canAffordPercent(MAGE_TELEPORT_FATIGUE_PERCENT)) return;
+
+    const direction = this.mageTeleportDirection();
+
+    const from = this.player.root.position.clone();
+    const destination = resolveMageTeleportDestination({
+      origin: from,
+      direction,
+      worldLimit: this.worldLimit,
+      obstacles: this.level.navigationObstacles,
+    });
+    if (destination.distanceToSquared(from) <= 1e-4) return;
+    if (!this.player.blinkTo(destination, direction)) return;
+    this.warriorSkills.spend(manaCost);
+    this.fatigue.consumePercent(MAGE_TELEPORT_FATIGUE_PERCENT);
+    this.mageVFX.playTeleport(from, this.player.root.position);
   }
 
   private async returnToLobbyAfterVictory(): Promise<void> {
@@ -1614,6 +1694,162 @@ export class Game {
     }
   }
 
+  private resolveMageSpellTarget(candidate: THREE.Object3D | null): THREE.Object3D | null {
+    return this.resolveLivingEnemyRoot(candidate)
+      ?? this.resolveLivingEnemyRoot(this.targetedEnemyRoot);
+  }
+
+  private resolveLivingEnemyRoot(candidate: THREE.Object3D | null): THREE.Object3D | null {
+    if (!candidate) return null;
+    if (this.isTrainingDummyTarget(candidate)) return this.trainingDummy?.root ?? null;
+    let object: THREE.Object3D | null = candidate;
+    while (object && !object.userData.isEnemyRoot) object = object.parent;
+    if (!object) return null;
+    const record = this.combatRegistry.findByRoot(object);
+    if (!record || record.enemy.isDead) return null;
+    return record.enemy.root;
+  }
+
+  private isTrainingDummyTarget(target: THREE.Object3D): boolean {
+    if (!this.trainingDummy) return false;
+    let object: THREE.Object3D | null = target;
+    while (object && !object.userData.isTrainingDummy) object = object.parent;
+    return object === this.trainingDummy.root || target === this.trainingDummy.root;
+  }
+
+  /** First living body the spell segment enters, so the bolt stops on that monster. */
+  private queryMageSpellBody(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    spellRadius: number
+  ): THREE.Object3D | null {
+    const columns = [];
+    const point = new THREE.Vector3();
+    const reach = Math.max(0, spellRadius);
+    for (const root of this.combatRegistry.activeRoots()) {
+      const record = this.combatRegistry.findByRoot(root);
+      if (!record || record.enemy.isDead) continue;
+      root.getWorldPosition(point);
+      const scale = Number(root.userData.enemyBodyScale) || 1;
+      columns.push({
+        target: root,
+        x: point.x,
+        z: point.z,
+        minY: point.y,
+        maxY: point.y + 2.05 * scale,
+        radius: Math.max(record.enemy.collisionRadius, 0.5 * scale) + reach,
+      });
+    }
+    if (this.trainingDummy) {
+      this.trainingDummy.root.getWorldPosition(point);
+      columns.push({
+        target: this.trainingDummy.root,
+        x: point.x,
+        z: point.z,
+        minY: point.y,
+        maxY: point.y + 1.9,
+        radius: 0.55 + reach,
+      });
+    }
+    return firstColumnHit(from, to, columns)?.target ?? null;
+  }
+
+  private onMageSpellImpact(
+    spellId: MageSpellId,
+    hit: THREE.Object3D,
+    basicImpact: ((target: THREE.Object3D) => void) | null
+  ): void {
+    if (spellId === 'basic') {
+      basicImpact?.(hit);
+      return;
+    }
+    this.applyMageSkillBodyDamage(spellId, hit);
+  }
+
+  private applyMageSkillBodyDamage(spellId: MageSpellId, target: THREE.Object3D): void {
+    const attackId = mageSkillAttackId(spellId);
+    if (!attackId) {
+      this.onPlayerHitEnemy(target);
+      return;
+    }
+    if (!this.hasAdminFreeSkills() && !isWarriorSkillUnlocked(attackId, this.profile.progression.level)) return;
+
+    const skill = getWarriorSkill(attackId);
+    const elemental = skill.element !== null;
+    const baseDamage = getTypedAttackBaseDamage(
+      getWarriorSkillDamage(this.player.attackDamage) * warriorSkillDamageMultiplier(attackId),
+      this.getCharacterStats().physicalDamageMultiplier,
+      elemental
+    );
+    const body = this.resolveLivingEnemyRoot(target) ?? target;
+    const center = body.getWorldPosition(new THREE.Vector3());
+    const bodyRadius = this.isTrainingDummyTarget(body)
+      ? 0.45
+      : (this.combatRegistry.findByRoot(body)?.enemy.collisionRadius ?? 0.45);
+    const rawDistance = getEffectiveTargetDistance(
+      this.player.root.position.distanceTo(center),
+      bodyRadius
+    );
+    // A bolt that connects a few centimeters past the cone still hits. A miss
+    // well beyond 7m does not.
+    const distance = rawDistance <= MAGE_MAX_RANGE_METERS + 0.45
+      ? Math.min(rawDistance, MAGE_MAX_RANGE_METERS)
+      : rawDistance;
+    const damage = this.resolveOutgoingDamage(
+      applyDistanceFalloff(baseDamage, distance, 'mage'),
+      elemental
+    );
+    if (damage <= 0) return;
+
+    if (this.isTrainingDummyTarget(body) && this.trainingDummy) {
+      this.trainingDummy.takeDamage(damage);
+      this.showFloatingDamage(this.trainingDummy.root.position, damage);
+      return;
+    }
+
+    const record = this.combatRegistry.findByRoot(body);
+    if (!record || record.enemy.isDead) return;
+    record.enemy.receivePlayerHit(damage, this.player.root.position);
+    if (skill.element === 'fire' && !record.enemy.isDead) {
+      record.enemy.applyElementalHit(skill.element, Math.max(1, damage * 0.12));
+    }
+    this.applyMageSkillControl(spellId, record.enemy, center);
+    this.healFromLifeSteal(damage);
+    this.showFloatingDamage(record.enemy.root.position, damage);
+    this.syncCombatHealthBars(record);
+    if (record.enemy.isDead) this.handleEnemyDeath(record);
+  }
+
+  /**
+   * Ice freezes the body that was hit. Water stops that body from running.
+   * Lightning lifts every living monster within 2m of the impact, including
+   * the one that was hit when it survives.
+   */
+  private applyMageSkillControl(
+    spellId: MageSpellId,
+    target: Enemy,
+    impact: THREE.Vector3
+  ): void {
+    const effect = mageSkillImpactEffect(spellId);
+    if (!effect) return;
+    if (effect.kind === 'freeze') {
+      if (!target.isDead) target.applyMageFreeze(effect.seconds);
+      return;
+    }
+    if (effect.kind === 'root') {
+      if (!target.isDead) target.applyMageRoot(effect.seconds);
+      return;
+    }
+    this.mageVFX.playShockImpact(impact);
+    for (const root of this.combatRegistry.activeRoots()) {
+      const record = this.combatRegistry.findByRoot(root);
+      if (!record || record.enemy.isDead) continue;
+      const position = record.enemy.root.position;
+      if (!isInsideMageShockRadius(impact.x, impact.z, position.x, position.z, effect.radius)) continue;
+      record.enemy.applyMageShockLevitate(effect.seconds);
+    }
+  }
+
   private isMageVFXTargetAlive(target: THREE.Object3D): boolean {
     if (this.trainingDummy) {
       let object: THREE.Object3D | null = target;
@@ -1661,7 +1897,7 @@ export class Game {
     );
     const damage = this.resolveOutgoingDamage(rangedDamage, false);
     if (damage <= 0) return;
-    record.enemy.takeDamage(damage);
+    record.enemy.receivePlayerHit(damage, this.player.root.position);
     this.healFromLifeSteal(damage);
     this.showFloatingDamage(target.position, damage);
     this.syncCombatHealthBars(record);
@@ -1686,6 +1922,9 @@ export class Game {
   }
 
   private onWarriorSkillHit(event: WarriorSkillHitEvent): void {
+    // Mage skills finish on the body the spell actually reaches. The warrior
+    // area must not also splash through monsters behind that impact.
+    if (this.profile.selectedClass === 'mage') return;
     if (!this.hasAdminFreeSkills() && !isWarriorSkillUnlocked(event.attackId, this.profile.progression.level)) return;
     const records = this.combatRegistry.activeRoots()
       .map((root) => this.combatRegistry.findByRoot(root))
@@ -1716,7 +1955,7 @@ export class Game {
       const damage = this.resolveOutgoingDamage(rangedDamage, elemental);
       if (damage <= 0) continue;
       lifeStealDamage += damage;
-      record.enemy.takeDamage(damage);
+      record.enemy.receivePlayerHit(damage, this.player.root.position);
       if (skill.element && !record.enemy.isDead) {
         record.enemy.applyElementalHit(skill.element, Math.max(1, damage * 0.12));
       }
@@ -2217,11 +2456,17 @@ export class Game {
       this.updateAutoAttack();
       this.player.update(delta);
       this.mageVFX.update(delta);
-      const fatigue = this.fatigue.update(delta, this.player.currentMoveSpeed > 0.05);
+      const castingMageSkill = this.profile.selectedClass === 'mage' && this.player.isCastingSkill;
+      const fatigue = this.fatigue.update(
+        delta,
+        this.player.currentMoveSpeed > 0.05,
+        castingMageSkill
+      );
       this.updateHealthPlasma(delta);
       this.warriorSkills.update(delta, false);
       this.hud.setActiveAnimationTest(this.player.activeAnimationPreview);
       this.clampPlayerToArena();
+      this.player.enforceSkillCastAnchor();
       if (WEAPON_TEST_MODE) {
         this.trainingDummy?.update(delta);
         // alcance do jogador acompanha a arma equipada (teste de distância)
@@ -2266,16 +2511,19 @@ export class Game {
         ? 'dead'
         : !this.canAcceptGameplayInput()
           ? 'unavailable'
-          : !this.hasAdminFreeSkills() && !this.fatigue.canUseSkills
+          : !this.fatigue.canUseSkills
             ? 'fatigue-exhausted'
-          : this.player.isAttackInSwing()
-            ? 'busy'
-            : null;
+            : this.player.isAttackInSwing()
+              ? 'busy'
+              : this.profile.selectedClass === 'mage' && this.player.blocksSkillsWhileMoving
+                ? 'moving'
+                : null;
       this.hud.updateWarriorSkills(
-        skills,
+        this.mageSkillSnapshot(skills),
         skillLock,
         this.skillDisplayLevel(),
-        this.hasAdminFreeSkills()
+        false,
+        { mageCosts: this.profile.selectedClass === 'mage' }
       );
 
       this.renderer.render(this.scene, this.cameraController.camera);

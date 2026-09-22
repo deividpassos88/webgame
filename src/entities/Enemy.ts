@@ -14,6 +14,7 @@ import {
   type ElementalStatusState,
   type ElementalType,
 } from '../combat/ElementalStatus';
+import { MAGE_SHOCK_LIFT_METERS } from '../combat/MageSkillImpact';
 import {
   animatedModelGroundY,
   hasLyingBindPose,
@@ -27,6 +28,9 @@ const REGULAR_PREFERRED_ATTACK_DISTANCE = 1.25;
 const ARCHER_SHOT_RELEASE_PROGRESS = 0.82;
 const ARCHER_CLOSE_DAMAGE_DISTANCE = 7;
 const ARCHER_CLOSE_DAMAGE_BONUS = 0.45;
+/** Each character hit shoves the body back and leaves it dizzy for this long. */
+export const ENEMY_HIT_STAGGER_SECONDS = 0.3;
+export const ENEMY_HIT_KNOCKBACK_METERS = 0.45;
 
 export type EnemyDeathEffectStage = 'animation' | 'burn' | 'ash' | 'complete';
 
@@ -137,6 +141,21 @@ export class Enemy {
   private formationPursuitActive = false;
   private elementalStatus: ElementalStatusState | null = null;
   private freezeShell: THREE.Mesh | null = null;
+  private mageFreezeRemaining = 0;
+  private mageRootRemaining = 0;
+  private mageLevitateRemaining = 0;
+  private mageLevitateDuration = 0;
+  private levitateElapsed = 0;
+  private levitateGroundY = 0;
+  private levitatePoseActive = false;
+  private levitateUsesClip = false;
+  private savedMeshRoll = 0;
+  private shockAura: THREE.Group | null = null;
+  private rootRing: THREE.Mesh | null = null;
+  private hitStaggerRemaining = 0;
+  private hitUsesClip = false;
+  private dizzyActive = false;
+  private savedDizzyRoll = 0;
   private readonly groundAnimatedModel: boolean;
   private readonly animatedGroundOffset: number;
   private animatedModel: THREE.Group | null = null;
@@ -446,7 +465,7 @@ export class Enemy {
     onRangedAttack?: (attack: EnemyRangedAttack) => void
   ) {
     this.animator?.update(delta);
-    this.keepAnimatedModelGrounded();
+    if (this.mageLevitateRemaining <= 0) this.keepAnimatedModelGrounded();
     if (!this.isDead && this.elementalStatus) {
       const tick = tickElementalStatus(this.elementalStatus, delta);
       this.elementalStatus = tick.status;
@@ -456,7 +475,15 @@ export class Enemy {
       }
     }
     if (this.isDead) {
+      this.clearMageControlForDeath();
       this.updateDeath(delta);
+      return;
+    }
+
+    this.tickMageControl(delta);
+    this.tickHitStagger(delta);
+    if (this.mageLevitateRemaining > 0) {
+      this.activeAnimatedAttack = null;
       return;
     }
 
@@ -472,6 +499,12 @@ export class Enemy {
     if (this.isFrozenByIce) {
       this.activeAnimatedAttack = null;
       this.animator?.play('idle');
+      return;
+    }
+
+    if (this.hitStaggerRemaining > 0) {
+      this.activeAnimatedAttack = null;
+      this.updateDizzyPose();
       return;
     }
 
@@ -525,6 +558,11 @@ export class Enemy {
         if (this.activeAnimatedAttack.elapsed < ENEMY_ATTACK_DURATION) return;
         this.activeAnimatedAttack = null;
       }
+    }
+
+    if (this.mageRootRemaining > 0) {
+      this.updateWhileRunLocked(playerPos, onAttackPlayer, onRangedAttack);
+      return;
     }
 
     if (this.isBoss && dist > this.attackRange) {
@@ -794,6 +832,317 @@ export class Enemy {
     this.meshGroup.rotation.y = Math.atan2(dir.x, dir.z);
   }
 
+  /**
+   * Mage ice. Full lock for the requested window only — warrior ice stays on
+   * the three-second elemental status.
+   */
+  public applyMageFreeze(seconds: number): void {
+    if (this.isDead) return;
+    const duration = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+    if (duration <= 0) return;
+    this.mageFreezeRemaining = Math.max(this.mageFreezeRemaining, duration);
+    this.activeAnimatedAttack = null;
+    this.ensureFreezeShell();
+  }
+
+  /** Mage water. The monster cannot run or patrol, but can still attack in range. */
+  public applyMageRoot(seconds: number): void {
+    if (this.isDead) return;
+    const duration = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+    if (duration <= 0) return;
+    this.mageRootRemaining = Math.max(this.mageRootRemaining, duration);
+    this.ensureRootRing();
+  }
+
+  /**
+   * Mage shock. Lifts the body, holds a lying pose, and wraps it in lightning
+   * until the timer ends. Movement and attacks are locked for the whole lift.
+   */
+  public applyMageShockLevitate(seconds: number): void {
+    if (this.isDead) return;
+    const duration = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+    if (duration <= 0) return;
+    if (this.mageLevitateRemaining <= 0) {
+      this.levitateGroundY = this.root.position.y;
+      this.levitateElapsed = 0;
+      this.mageLevitateDuration = duration;
+      this.beginLevitatePose();
+    } else {
+      this.mageLevitateDuration = Math.max(this.mageLevitateDuration, this.levitateElapsed + duration);
+    }
+    this.mageLevitateRemaining = Math.max(this.mageLevitateRemaining, duration);
+    this.activeAnimatedAttack = null;
+    this.ensureShockAura();
+  }
+
+  public get resistsDisplacement(): boolean {
+    return this.mageLevitateRemaining > 0 || this.isFrozenByIce || this.hitStaggerRemaining > 0;
+  }
+
+  /** Body roll used when the model has no authored lying clip. */
+  public get shockBodyRoll(): number {
+    return this.meshGroup.rotation.z;
+  }
+
+  private tickMageControl(delta: number): void {
+    const step = Math.max(0, delta);
+    if (this.mageFreezeRemaining > 0) {
+      this.mageFreezeRemaining = Math.max(0, this.mageFreezeRemaining - step);
+    }
+    if (this.mageRootRemaining > 0) {
+      this.mageRootRemaining = Math.max(0, this.mageRootRemaining - step);
+      this.updateRootRing();
+    } else {
+      this.hideRootRing();
+    }
+    if (this.mageLevitateRemaining <= 0) return;
+    this.levitateElapsed += step;
+    this.mageLevitateRemaining = Math.max(0, this.mageLevitateRemaining - step);
+    const height = this.levitateHeight(this.levitateElapsed, this.mageLevitateDuration);
+    this.root.position.y = this.levitateGroundY + height;
+    this.updateShockAura();
+    if (this.mageLevitateRemaining <= 0) this.endLevitatePose();
+  }
+
+  private levitateHeight(elapsed: number, duration: number): number {
+    const peak = MAGE_SHOCK_LIFT_METERS;
+    const rise = 0.22;
+    const fall = 0.2;
+    const safeDuration = Math.max(fall + rise, duration);
+    if (elapsed <= rise) return peak * THREE.MathUtils.smoothstep(elapsed, 0, rise);
+    if (elapsed >= safeDuration - fall) {
+      return peak * (1 - THREE.MathUtils.smoothstep(elapsed, safeDuration - fall, safeDuration));
+    }
+    return peak;
+  }
+
+  private beginLevitatePose(): void {
+    this.levitatePoseActive = true;
+    this.levitateUsesClip = this.animator?.holdLyingPose?.() ?? false;
+    if (this.levitateUsesClip) return;
+    this.savedMeshRoll = this.meshGroup.rotation.z;
+    this.meshGroup.rotation.order = 'YXZ';
+    this.meshGroup.rotation.z = Math.PI / 2;
+  }
+
+  private endLevitatePose(): void {
+    if (!this.levitatePoseActive && this.mageLevitateRemaining <= 0 && !this.shockAura?.visible) {
+      this.hideShockAura();
+      return;
+    }
+    if (this.levitateUsesClip) this.animator?.releaseLyingPose?.();
+    else if (this.levitatePoseActive) this.meshGroup.rotation.z = this.savedMeshRoll;
+    this.levitateUsesClip = false;
+    this.levitatePoseActive = false;
+    this.root.position.y = this.levitateGroundY;
+    this.hideShockAura();
+  }
+
+  private clearMageControlForDeath(): void {
+    this.mageFreezeRemaining = 0;
+    this.mageRootRemaining = 0;
+    this.mageLevitateRemaining = 0;
+    this.hideRootRing();
+    if (this.levitatePoseActive) this.endLevitatePose();
+    else this.hideShockAura();
+  }
+
+  private updateWhileRunLocked(
+    playerPos: THREE.Vector3,
+    onAttackPlayer: (dmg: number, distance: number) => void,
+    onRangedAttack?: (attack: EnemyRangedAttack) => void
+  ): void {
+    const dist = this.root.position.distanceTo(playerPos);
+    if (this.attackMode === 'ranged') {
+      if (dist <= this.attackRange) {
+        this.updateRangedCombat(0, playerPos, dist, onAttackPlayer, onRangedAttack);
+        return;
+      }
+      this.animator?.play('idle');
+      this.faceAnimatedModel(playerPos);
+      return;
+    }
+
+    const preferredAttackDistance = this.isBoss
+      ? this.attackRange
+      : Math.min(this.attackRange, REGULAR_PREFERRED_ATTACK_DISTANCE);
+    if (dist <= preferredAttackDistance) {
+      this.faceAnimatedModel(playerPos);
+      if (this.attackCooldown <= 0) {
+        this.attackCooldown = this.attackCooldownTime;
+        if (this.animator?.playNextAttack()) {
+          this.activeAnimatedAttack = { elapsed: 0, damageApplied: false };
+        } else {
+          onAttackPlayer(this.damage, dist);
+          this.playLungeAnimation();
+        }
+      } else if (!this.activeAnimatedAttack) {
+        this.animator?.play('idle');
+      }
+      return;
+    }
+
+    this.activeAnimatedAttack = null;
+    this.animator?.play('idle');
+    this.faceAnimatedModel(playerPos);
+  }
+
+  private ensureRootRing(): void {
+    if (this.rootRing) return;
+    const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
+    const ring = new THREE.Mesh(
+      this.ownGeometry(new THREE.RingGeometry(0.55 * bodyScale, 0.82 * bodyScale, 28)),
+      new THREE.MeshBasicMaterial({
+        color: 0x4ec8ff,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      })
+    );
+    ring.name = 'EnemyRunLockRing';
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.06;
+    ring.visible = false;
+    this.root.add(ring);
+    this.rootRing = ring;
+    this.fadeMaterials.push(ring.material);
+  }
+
+  private updateRootRing(): void {
+    this.ensureRootRing();
+    if (!this.rootRing) return;
+    this.rootRing.visible = true;
+    const material = this.rootRing.material as THREE.MeshBasicMaterial;
+    material.opacity = 0.42 + Math.sin(performance.now() * 0.012) * 0.18;
+    this.rootRing.rotation.z += 0.04;
+  }
+
+  private hideRootRing(): void {
+    if (!this.rootRing) return;
+    this.rootRing.visible = false;
+  }
+
+  private ensureShockAura(): void {
+    if (this.shockAura) {
+      this.shockAura.visible = true;
+      return;
+    }
+    const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
+    const group = new THREE.Group();
+    group.name = 'EnemyShockAura';
+    for (let index = 0; index < 6; index += 1) {
+      const geometry = this.ownGeometry(new THREE.BufferGeometry());
+      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(4 * 3), 3));
+      const material = new THREE.LineBasicMaterial({
+        color: index % 2 === 0 ? 0xf7fbff : 0x7ec8ff,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      });
+      const line = new THREE.Line(geometry, material);
+      line.name = 'EnemyShockBolt';
+      line.frustumCulled = false;
+      group.add(line);
+      this.fadeMaterials.push(material);
+    }
+    const light = new THREE.PointLight(0xb7e6ff, 1.7, 3.4 * bodyScale, 2);
+    light.position.y = 0.9 * bodyScale;
+    light.castShadow = false;
+    group.add(light);
+    this.root.add(group);
+    this.shockAura = group;
+  }
+
+  private updateShockAura(): void {
+    if (!this.shockAura) return;
+    this.shockAura.visible = true;
+    const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
+    const time = performance.now() * 0.018;
+    let lineIndex = 0;
+    this.shockAura.traverse((object) => {
+      const line = object as THREE.Line;
+      if (!line.isLine) return;
+      const positions = line.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const angle = lineIndex * 1.05 + time;
+      const radius = (0.42 + (lineIndex % 3) * 0.14) * bodyScale;
+      const height = (0.35 + (lineIndex % 4) * 0.28) * bodyScale;
+      positions.setXYZ(0, Math.cos(angle) * radius, 0.12 * bodyScale, Math.sin(angle) * radius);
+      positions.setXYZ(
+        1,
+        Math.cos(angle + 0.45) * (radius + 0.18 * bodyScale),
+        height,
+        Math.sin(angle + 0.7) * (radius + 0.18 * bodyScale)
+      );
+      positions.setXYZ(
+        2,
+        Math.cos(angle + 1.15) * radius * 0.72,
+        height + 0.5 * bodyScale,
+        Math.sin(angle + 0.25) * radius * 0.72
+      );
+      positions.setXYZ(
+        3,
+        Math.cos(angle + 1.8) * (radius + 0.06),
+        0.18 * bodyScale,
+        Math.sin(angle + 1.35) * (radius + 0.06)
+      );
+      positions.needsUpdate = true;
+      const material = line.material as THREE.LineBasicMaterial;
+      material.opacity = 0.5 + Math.abs(Math.sin(time * 3 + lineIndex)) * 0.45;
+      lineIndex += 1;
+    });
+  }
+
+  private hideShockAura(): void {
+    if (!this.shockAura) return;
+    this.shockAura.visible = false;
+  }
+
+  private applyHitKnockback(from: THREE.Vector3): void {
+    const away = new THREE.Vector3().subVectors(this.root.position, from);
+    away.y = 0;
+    if (away.lengthSq() <= 1e-8) {
+      const yaw = this.meshGroup.rotation.y;
+      away.set(Math.sin(yaw), 0, Math.cos(yaw));
+    }
+    away.normalize();
+    this.root.position.addScaledVector(away, ENEMY_HIT_KNOCKBACK_METERS);
+    this.root.position.x = THREE.MathUtils.clamp(this.root.position.x, -22, 22);
+    this.root.position.z = THREE.MathUtils.clamp(this.root.position.z, -22, 22);
+  }
+
+  private tickHitStagger(delta: number): void {
+    if (this.hitStaggerRemaining <= 0) return;
+    this.hitStaggerRemaining = Math.max(0, this.hitStaggerRemaining - Math.max(0, delta));
+    if (this.hitStaggerRemaining > 0) return;
+    this.endHitReaction();
+  }
+
+  private beginDizzyPose(): void {
+    if (this.dizzyActive || this.levitatePoseActive) return;
+    this.savedDizzyRoll = this.meshGroup.rotation.z;
+    this.dizzyActive = true;
+  }
+
+  private updateDizzyPose(): void {
+    if (!this.dizzyActive || this.hitUsesClip || this.levitatePoseActive) return;
+    const wobble = Math.sin(performance.now() * 0.05) * 0.38;
+    this.meshGroup.rotation.z = this.savedDizzyRoll + wobble;
+  }
+
+  private endHitReaction(): void {
+    if (this.hitUsesClip && !this.levitatePoseActive) this.animator?.releaseHit?.();
+    this.hitUsesClip = false;
+    if (this.dizzyActive && !this.levitatePoseActive) {
+      this.meshGroup.rotation.z = this.savedDizzyRoll;
+    }
+    this.dizzyActive = false;
+  }
+
   public applyElementalHit(element: ElementalType, damagePerSecond: number): void {
     if (this.isDead) return;
     this.elementalStatus = applyElementalStatus(
@@ -805,7 +1154,7 @@ export class Enemy {
   }
 
   private get isFrozenByIce(): boolean {
-    return this.elementalStatus?.element === 'ice';
+    return this.elementalStatus?.element === 'ice' || this.mageFreezeRemaining > 0;
   }
 
   private ensureFreezeShell(): void {
@@ -846,7 +1195,36 @@ export class Enemy {
   }
 
   public get elementalSpeedMultiplier(): number {
+    if (
+      this.mageRootRemaining > 0
+      || this.mageLevitateRemaining > 0
+      || this.mageFreezeRemaining > 0
+      || this.hitStaggerRemaining > 0
+    ) {
+      return 0;
+    }
     return getElementalSlowMultiplier(this.elementalStatus);
+  }
+
+  /**
+   * A landed character hit. Pushes the monster back, plays a hit clip when the
+   * model has one, and leaves it dizzy for 0.3s. Damage-over-time stays on
+   * takeDamage so it does not stagger.
+   */
+  public receivePlayerHit(amount: number, from: THREE.Vector3): void {
+    if (this.isDead || !(amount > 0)) return;
+    this.applyHitKnockback(from);
+    const willDie = this.hp - amount <= 0;
+    this.takeDamage(amount);
+    if (willDie || this.isDead) return;
+    this.hitStaggerRemaining = ENEMY_HIT_STAGGER_SECONDS;
+    this.activeAnimatedAttack = null;
+    if (this.levitatePoseActive) return;
+    this.hitUsesClip = this.animator?.playHit?.() ?? false;
+    if (!this.hitUsesClip) {
+      this.animator?.play('idle', 0.05);
+      this.beginDizzyPose();
+    }
   }
 
   public takeDamage(amount: number) {
@@ -854,6 +1232,12 @@ export class Enemy {
     this.hp = Math.max(0, this.hp - amount);
     this.hitFlashTime = 0.15;
     if (this.hp <= 0) {
+      if (this.levitatePoseActive) {
+        this.root.position.y = this.levitateGroundY;
+        this.endLevitatePose();
+      }
+      this.hitStaggerRemaining = 0;
+      this.endHitReaction();
       this.isDead = true;
       this.activeAnimatedAttack = null;
       this.animatedDeathDuration = this.animator?.playDeath() ?? 0;

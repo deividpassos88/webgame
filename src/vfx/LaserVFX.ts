@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { MAGE_SPELL_TRAVEL_METERS } from '../combat/MageSpellFlight';
 import { MAGE_VFX_LIMITS, mageQualityProfile } from './VFXConfig';
 import { MageVFXResources } from './MageVFXResources';
 import { PooledParticleCloud, qualityCount } from './ParticleManager';
@@ -19,6 +20,11 @@ interface LaserOptions {
   readonly fallbackDirection: THREE.Vector3;
   readonly preset: MageSpellPreset;
   readonly isTargetAlive?: (target: THREE.Object3D) => boolean;
+  readonly queryBodyHit?: (
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    spellRadius: number
+  ) => THREE.Object3D | null;
   readonly onImpact?: (target: THREE.Object3D) => void;
   readonly onFinalImpact?: (position: THREE.Vector3, target: THREE.Object3D | null) => void;
 }
@@ -64,6 +70,7 @@ class LaserBeam implements PoolableVFX {
   private fallbackStart = new THREE.Vector3();
   private fallbackDirection = new THREE.Vector3(0, 0, 1);
   private isTargetAlive: ((target: THREE.Object3D) => boolean) | undefined;
+  private queryBodyHit: LaserOptions['queryBodyHit'];
   private onImpact: ((target: THREE.Object3D) => void) | undefined;
   private onFinalImpact: ((position: THREE.Vector3, target: THREE.Object3D | null) => void) | undefined;
   private impactSent = false;
@@ -123,6 +130,7 @@ class LaserBeam implements PoolableVFX {
     this.fallbackStart.copy(options.fallbackStart);
     this.fallbackDirection.copy(options.fallbackDirection).normalize();
     this.isTargetAlive = options.isTargetAlive;
+    this.queryBodyHit = options.queryBodyHit;
     this.onImpact = options.onImpact;
     this.onFinalImpact = options.onFinalImpact;
     this.duration = options.preset.laser?.duration ?? 0.5;
@@ -221,6 +229,7 @@ class LaserBeam implements PoolableVFX {
     this.startProvider = undefined;
     this.target = null;
     this.isTargetAlive = undefined;
+    this.queryBodyHit = undefined;
     this.onImpact = undefined;
     this.onFinalImpact = undefined;
     this.particles.reset();
@@ -253,7 +262,12 @@ class LaserBeam implements PoolableVFX {
 
     if (this.target && this.isTargetAlive && !this.isTargetAlive(this.target)) this.target = null;
     if (this.target) targetPoint(this.target, TMP_END);
-    else TMP_END.copy(TMP_START).addScaledVector(this.fallbackDirection, 12);
+    else TMP_END.copy(TMP_START).addScaledVector(this.fallbackDirection, MAGE_SPELL_TRAVEL_METERS);
+    const blocker = this.queryBodyHit?.(TMP_START, TMP_END, this.preset.projectile.radius);
+    if (blocker) {
+      this.target = blocker;
+      targetPoint(blocker, TMP_END);
+    }
 
     TMP_DIR.subVectors(TMP_END, TMP_START);
     const length = Math.max(0.01, TMP_DIR.length());

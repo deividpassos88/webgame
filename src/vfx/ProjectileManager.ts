@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { MAGE_SPELL_TRAVEL_METERS } from '../combat/MageSpellFlight';
 import { MAGE_VFX_LIMITS, mageQualityProfile } from './VFXConfig';
 import { MageVFXResources } from './MageVFXResources';
 import { PooledParticleCloud, qualityCount } from './ParticleManager';
@@ -23,6 +24,11 @@ interface ProjectileFireOptions {
   readonly target: THREE.Object3D | null;
   readonly preset: MageSpellPreset;
   readonly isTargetAlive?: (target: THREE.Object3D) => boolean;
+  readonly queryBodyHit?: (
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    spellRadius: number
+  ) => THREE.Object3D | null;
   readonly onImpact: (impact: MageProjectileImpact) => void;
 }
 
@@ -30,6 +36,7 @@ const FORWARD = new THREE.Vector3(0, 0, 1);
 const TMP_TARGET = new THREE.Vector3();
 const TMP_DIRECTION = new THREE.Vector3();
 const TMP_LOCAL = new THREE.Vector3();
+const TMP_NEXT = new THREE.Vector3();
 const TRAIL_SEGMENTS = 14;
 
 function targetPoint(target: THREE.Object3D, output: THREE.Vector3): THREE.Vector3 {
@@ -80,9 +87,11 @@ class MageProjectile implements PoolableVFX {
   private preset: MageSpellPreset | null = null;
   private target: THREE.Object3D | null = null;
   private isTargetAlive: ((target: THREE.Object3D) => boolean) | undefined;
+  private queryBodyHit: ProjectileFireOptions['queryBodyHit'];
   private onImpact: ((impact: MageProjectileImpact) => void) | null = null;
   private direction = new THREE.Vector3(0, 0, 1);
   private age = 0;
+  private traveled = 0;
 
   public constructor(
     private readonly resources: MageVFXResources,
@@ -163,8 +172,10 @@ class MageProjectile implements PoolableVFX {
     this.config = options.preset.projectile;
     this.target = options.target;
     this.isTargetAlive = options.isTargetAlive;
+    this.queryBodyHit = options.queryBodyHit;
     this.onImpact = options.onImpact;
     this.age = 0;
+    this.traveled = 0;
     this.group.visible = true;
     this.group.position.copy(options.origin);
     this.direction.copy(options.direction).setY(options.direction.y);
@@ -240,13 +251,36 @@ class MageProjectile implements PoolableVFX {
     const hitDistance = this.target
       ? targetPoint(this.target, TMP_TARGET).distanceTo(this.group.position)
       : Number.POSITIVE_INFINITY;
-    if (this.target && hitDistance <= Math.max(this.config.radius, step)) {
+    if (
+      this.target
+      && this.traveled < MAGE_SPELL_TRAVEL_METERS
+      && hitDistance <= Math.max(this.config.radius, step)
+    ) {
       this.group.position.copy(TMP_TARGET);
       this.impact();
       return false;
     }
 
-    this.group.position.addScaledVector(this.direction, step);
+    const travel = Math.min(step, Math.max(0, MAGE_SPELL_TRAVEL_METERS - this.traveled));
+    const next = TMP_NEXT.copy(this.group.position).addScaledVector(this.direction, travel);
+    const blocker = this.queryBodyHit?.(this.group.position, next, Math.max(0.35, this.config.radius));
+    if (blocker) {
+      this.target = blocker;
+      this.group.position.copy(targetPoint(blocker, TMP_TARGET));
+      this.impact();
+      return false;
+    }
+
+    const reachedEnd = this.traveled + step >= MAGE_SPELL_TRAVEL_METERS - 1e-4;
+    this.group.position.copy(next);
+    this.traveled += travel;
+    if (reachedEnd) {
+      if (!this.target || hitDistance > Math.max(this.config.radius, travel + 0.05)) {
+        this.target = null;
+      }
+      this.impact();
+      return false;
+    }
     this.updateTrailGeometry(this.config.trailLength, this.config.trailWidth);
     this.secondaryParticles.points.position.copy(TMP_LOCAL.set(0, 0, -this.config.trailLength * 0.26));
     this.secondaryParticles.update(elapsed);
@@ -275,7 +309,9 @@ class MageProjectile implements PoolableVFX {
     this.preset = null;
     this.onImpact = null;
     this.isTargetAlive = undefined;
+    this.queryBodyHit = undefined;
     this.age = 0;
+    this.traveled = 0;
     this.secondaryParticles.reset();
     this.iceShard.visible = false;
     this.lavaInner.visible = false;

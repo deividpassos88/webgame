@@ -5,6 +5,7 @@ import {
   type RootMotionAxis,
 } from '../characters/AnimationClipAdapter';
 import type { EnemyAnimator } from './EnemyAnimator';
+import { isEnemyHitClipName } from './EnemyHitClip';
 
 export type EnemyAnimationState =
   | 'idle'
@@ -49,10 +50,13 @@ export class EnemyAnimationController implements EnemyAnimator {
   private readonly actions: Partial<Record<EnemyAnimationState, THREE.AnimationAction>> = {};
   private readonly nativeClipNames: Partial<Record<EnemyAnimationState, string>> = {};
   private currentAction: THREE.AnimationAction | null = null;
-  private currentState: EnemyAnimationState | null = null;
+  private currentState: EnemyAnimationState | 'hit' | null = null;
   private activeNativeClipName: string | null = null;
   private lastLocomotionState: 'idle' | 'walking' | 'running' | null = null;
   private nextAttack: 'attack-primary' | 'attack-secondary' = 'attack-primary';
+  private lyingHeld = false;
+  private hitHeld = false;
+  private hitAction: THREE.AnimationAction | null = null;
   private readonly deathClipDuration: number;
 
   constructor(
@@ -95,10 +99,11 @@ export class EnemyAnimationController implements EnemyAnimator {
     }
 
     this.deathClipDuration = this.actions.dead?.getClip().duration ?? 0;
+    this.prepareHitAction(idleReference ?? undefined);
     this.play('idle', 0);
   }
 
-  public get state(): EnemyAnimationState | null {
+  public get state(): EnemyAnimationState | 'hit' | null {
     return this.currentState;
   }
 
@@ -115,7 +120,71 @@ export class EnemyAnimationController implements EnemyAnimator {
   }
 
   public update(delta: number): void {
+    if (this.lyingHeld && this.actions.dead) {
+      this.actions.dead.paused = true;
+      return;
+    }
     this.mixer.update(Math.max(0, delta));
+  }
+
+  public holdLyingPose(): boolean {
+    const action = this.actions.dead;
+    if (!action) return false;
+    action.reset();
+    action.enabled = true;
+    action.setEffectiveWeight(1);
+    action.setEffectiveTimeScale(1);
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.play();
+    const duration = Math.max(0.05, action.getClip().duration);
+    action.time = duration * 0.92;
+    action.paused = true;
+    if (this.currentAction && this.currentAction !== action) this.currentAction.fadeOut(0.05);
+    this.currentAction = action;
+    this.currentState = 'dead';
+    this.activeNativeClipName = this.nativeClipNames.dead ?? null;
+    this.lyingHeld = true;
+    return true;
+  }
+
+  public playHit(): boolean {
+    if (!this.hitAction || this.lyingHeld) return false;
+    this.hitAction.reset();
+    this.hitAction.enabled = true;
+    this.hitAction.setEffectiveWeight(1);
+    this.hitAction.setEffectiveTimeScale(1);
+    this.hitAction.setLoop(THREE.LoopOnce, 1);
+    this.hitAction.clampWhenFinished = true;
+    this.hitAction.fadeIn(0.04);
+    this.currentAction?.fadeOut(0.04);
+    this.hitAction.play();
+    this.currentAction = this.hitAction;
+    this.currentState = 'hit';
+    this.activeNativeClipName = this.hitAction.getClip().name;
+    this.hitHeld = true;
+    return true;
+  }
+
+  public releaseHit(): void {
+    if (!this.hitHeld) return;
+    this.hitHeld = false;
+    this.hitAction?.stop();
+    if (this.currentAction === this.hitAction) this.currentAction = null;
+    this.currentState = null;
+    this.play('idle', 0.08);
+  }
+
+  public releaseLyingPose(): void {
+    this.lyingHeld = false;
+    const action = this.actions.dead;
+    if (action) {
+      action.paused = false;
+      action.stop();
+    }
+    this.currentAction = null;
+    this.currentState = null;
+    this.play('idle', 0.1);
   }
 
   public play(state: 'idle' | 'walking' | 'running', fadeDuration = 0.15): boolean {
@@ -180,6 +249,17 @@ export class EnemyAnimationController implements EnemyAnimator {
     this.currentState = state;
     this.activeNativeClipName = this.nativeClipNames[state] ?? null;
     return true;
+  }
+
+  private prepareHitAction(idleReference: THREE.AnimationClip | undefined): void {
+    const source = this.nativeClips.find((clip) => isEnemyHitClipName(clip.name));
+    if (!source) return;
+    const prepared = makeClipInPlace(source, this.rootMotionAxes, idleReference ?? source);
+    prepared.name = `${this.animationPrefix}:hit`;
+    const action = this.mixer.clipAction(prepared);
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    this.hitAction = action;
   }
 
   private sourceFor(state: EnemyAnimationState): THREE.AnimationClip | undefined {

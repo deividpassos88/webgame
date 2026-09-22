@@ -154,40 +154,13 @@ const DEFAULT_LOBBY_PRESENTATION_PROFILE: LobbyPresentationProfile = {
   },
 };
 
-const LOBBY_CHARACTER_PRESENTATION_PROFILES: Partial<Record<CharacterId, LobbyPresentationProfile>> = {
-  mage: {
-    // The Warrior reads well with the default rig; the Mage uses pale skin/cloth
-    // and a fully rough Tripo material, so she needs local contrast and a back
-    // rim instead of more global/front light.
-    hemisphere: { sky: 0xeaf1ff, ground: 0x273044, intensity: 0.48 },
-    ambient: { color: 0xfff1e4, intensity: 0.035 },
-    key: { color: 0xffdfbd, intensity: 3.95, position: [-4.85, 5.6, 2.05] },
-    fill: { color: 0xc2d5ff, intensity: 0.18, position: [3.8, 2.55, 2.25] },
-    rim: { color: 0x82b9ff, intensity: 5.25, position: [5.25, 3.35, -6.2] },
-    bounce: { color: 0xffb276, intensity: 0.08, position: [0, 1.05, 4.75], distance: 12, decay: 1.6 },
-    material: {
-      anisotropy: 16,
-      envMapIntensity: 1.22,
-      roughnessMax: 0.72,
-      normalScaleMultiplier: 1.34,
-      specularIntensityMin: 0.68,
-      colorMultiplier: [0.82, 0.79, 0.73],
-      roughnessMapFromSpecularIntensityMap: true,
-      skipHiddenMeshes: true,
-    },
-    contactShadow: {
-      widthScale: 1.1,
-      depthScale: 1.06,
-      minWidth: 0.98,
-      minDepth: 0.72,
-      maxWidth: 2.5,
-      maxDepth: 1.85,
-      opacity: 0.29,
-      y: 0.021,
-      zBias: 0.015,
-    },
-  },
-};
+// Maga uses the same hall rig as Guerreiro. Maga_High already has authored
+// highlights in the face, so only that region receives a little less light.
+const LOBBY_CHARACTER_PRESENTATION_PROFILES: Partial<Record<CharacterId, LobbyPresentationProfile>> = {};
+
+/** Fraction of the shared lobby light that remains on the Mage face. */
+export const MAGE_LOBBY_FACE_LIGHT_SCALE = 0.8;
+const MAGE_FACE_LIGHT_TOKEN = 'lobby-mage-face-light';
 
 const ATTRIBUTE_LABELS: Readonly<Record<string, string>> = {
   vitality: 'Vitalidade',
@@ -844,9 +817,15 @@ export class LobbyScreen {
     const lobbyIdle = nativeClips.find(
       (candidate) => candidate.name === resolveLobbyIdlePhase(0)
     );
-    const lobbyIdleFallback = nativeClips.find((clip) =>
-      clip.name === definition.clipMap.idle || clip.name === 'idle'
-    );
+    const lobbyIdleNames = new Set([
+      definition.clipMap.idle,
+      'idle',
+      ...(definition.clipAliases?.idle ?? []),
+    ].filter((name): name is string => Boolean(name)));
+    // Maga_High's second clip is the only lobby animation. Never fall back to wait.
+    const lobbyIdleFallback = characterId === 'mage'
+      ? nativeClips.find((clip) => clip.name === 'look_around')
+      : nativeClips.find((clip) => lobbyIdleNames.has(clip.name));
     const resolvedLobbyClips = resolveCharacterClips(characterId, this.lobbyAnimationSource());
     // Same rotation policy as the Guerreiro: the preview group is the only thing
     // that turns. Class clips used in the lobby must be in-place so a translated
@@ -915,6 +894,7 @@ export class LobbyScreen {
       materials.forEach((material) => {
         if (!(material instanceof THREE.MeshStandardMaterial)) return;
         this.applyLobbyMaterialProfile(material, profile);
+        if (characterId === 'mage') this.reduceMageFaceLight(mesh, material);
         tuneTexture(material.map);
         tuneTexture(material.normalMap);
         tuneTexture(material.roughnessMap);
@@ -927,6 +907,51 @@ export class LobbyScreen {
         material.needsUpdate = true;
       });
     });
+  }
+
+  /**
+   * Maga shares the Guerreiro light rig. Her authored face is already bright,
+   * so head/neck vertices keep a little less of that same light.
+   */
+  private reduceMageFaceLight(mesh: THREE.Mesh, material: THREE.MeshStandardMaterial): void {
+    const skinned = mesh as THREE.SkinnedMesh;
+    if (!skinned.isSkinnedMesh || !skinned.skeleton?.bones?.length) return;
+    const bones = skinned.skeleton.bones;
+    const head = bones.findIndex((bone) => /(^|:)head$/i.test(bone.name));
+    const neck = bones.findIndex((bone) => /(^|:)neck$/i.test(bone.name));
+    if (head < 0 && neck < 0) return;
+
+    const faceBones = new THREE.Vector2(head, neck);
+    material.userData.mageFaceBones = faceBones;
+    const previousCompile = material.onBeforeCompile;
+    material.onBeforeCompile = (shader, renderer) => {
+      previousCompile.call(material, shader, renderer);
+      if (shader.vertexShader.includes(MAGE_FACE_LIGHT_TOKEN)) return;
+      const bonesUniform = material.userData.mageFaceBones as THREE.Vector2;
+      shader.uniforms.uMageFaceBones = { value: bonesUniform };
+      shader.uniforms.uMageFaceLight = { value: MAGE_LOBBY_FACE_LIGHT_SCALE };
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>\n/* ${MAGE_FACE_LIGHT_TOKEN} */\nvarying float vMageFaceWeight;\nuniform vec2 uMageFaceBones;`
+        )
+        .replace(
+          '#include <skinning_vertex>',
+          `#include <skinning_vertex>\n/* ${MAGE_FACE_LIGHT_TOKEN} */\n#ifdef USE_SKINNING\n  float mageFaceWeight = 0.0;\n  if (uMageFaceBones.x >= 0.0) {\n    if (abs(skinIndex.x - uMageFaceBones.x) < 0.5) mageFaceWeight += skinWeight.x;\n    if (abs(skinIndex.y - uMageFaceBones.x) < 0.5) mageFaceWeight += skinWeight.y;\n    if (abs(skinIndex.z - uMageFaceBones.x) < 0.5) mageFaceWeight += skinWeight.z;\n    if (abs(skinIndex.w - uMageFaceBones.x) < 0.5) mageFaceWeight += skinWeight.w;\n  }\n  if (uMageFaceBones.y >= 0.0) {\n    float mageNeckWeight = 0.0;\n    if (abs(skinIndex.x - uMageFaceBones.y) < 0.5) mageNeckWeight += skinWeight.x;\n    if (abs(skinIndex.y - uMageFaceBones.y) < 0.5) mageNeckWeight += skinWeight.y;\n    if (abs(skinIndex.z - uMageFaceBones.y) < 0.5) mageNeckWeight += skinWeight.z;\n    if (abs(skinIndex.w - uMageFaceBones.y) < 0.5) mageNeckWeight += skinWeight.w;\n    mageFaceWeight += mageNeckWeight * 0.4;\n  }\n  vMageFaceWeight = clamp(mageFaceWeight, 0.0, 1.0);\n#else\n  vMageFaceWeight = 0.0;\n#endif`
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>\n/* ${MAGE_FACE_LIGHT_TOKEN} */\nvarying float vMageFaceWeight;\nuniform float uMageFaceLight;`
+        )
+        .replace(
+          '#include <opaque_fragment>',
+          `/* ${MAGE_FACE_LIGHT_TOKEN} */\noutgoingLight *= mix(1.0, uMageFaceLight, smoothstep(0.12, 0.62, vMageFaceWeight));\n#include <opaque_fragment>`
+        );
+    };
+    const previousKey = material.customProgramCacheKey;
+    material.customProgramCacheKey = () => `${previousKey.call(material)}|${MAGE_FACE_LIGHT_TOKEN}`;
+    material.needsUpdate = true;
   }
 
   private applyLobbyMaterialProfile(
@@ -1048,7 +1073,7 @@ export class LobbyScreen {
 
   private lobbyRestTranslations(characterId: CharacterId): ReadonlyMap<string, THREE.Vector3> {
     if (characterId !== 'mage') return this.assets.getBoneRestTranslations(characterId, 'lobby');
-    // The Mage lobby must preserve the authored Maga.glb skeleton/face quality.
+    // The Mage lobby must preserve the authored Maga_High.glb skeleton/face quality.
     // Returning no rest override makes makeClipInPlace freeze the root at the
     // first authored idle frame instead of mixing rest-pose axes into the clip.
     // The posed skinned bounds above then centers that preserved pose for the

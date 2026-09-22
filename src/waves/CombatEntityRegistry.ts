@@ -207,6 +207,7 @@ export class CombatEntityRegistry {
             second.collisionRadius +
             CombatEntityRegistry.ENEMY_GAP;
           if (distanceSquared >= minimumDistance * minimumDistance) continue;
+          if (first.resistsDisplacement && second.resistsDisplacement) continue;
 
           const overlapsExactly = distanceSquared < 1e-12;
           const distance = overlapsExactly ? 0 : Math.sqrt(distanceSquared);
@@ -215,6 +216,16 @@ export class CombatEntityRegistry {
           const normalZ = overlapsExactly ? 0 : offsetZ / distance;
           const firstPriority = this.separationPriority(firstRecord.role);
           const secondPriority = this.separationPriority(secondRecord.role);
+          if (first.resistsDisplacement) {
+            second.root.position.x += normalX * overlap;
+            second.root.position.z += normalZ * overlap;
+            continue;
+          }
+          if (second.resistsDisplacement) {
+            first.root.position.x -= normalX * overlap;
+            first.root.position.z -= normalZ * overlap;
+            continue;
+          }
           if (firstPriority > secondPriority) {
             second.root.position.x += normalX * overlap;
             second.root.position.z += normalZ * overlap;

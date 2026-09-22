@@ -74,6 +74,18 @@ describe('combat action cards', () => {
     expect(document.getElementById('debug-log-panel')).toBeNull();
   });
 
+  it('shows Mage MP and fatigue costs without locking the basic attack while moving', () => {
+    const hud = createHud();
+    hud.updateWarriorSkills(readySkillsSnapshot(), 'moving', 20, false, { mageCosts: true });
+
+    const meta = document.querySelector('[data-warrior-skill="ataque_giratorio"] .skill-card-meta');
+    const skill = document.querySelector<HTMLButtonElement>('[data-warrior-skill="ataque_giratorio"]');
+    const basic = document.querySelector<HTMLButtonElement>('[data-basic-attack]');
+    expect(meta?.textContent).toBe('8 MP · 8% fadiga · 6.0s recarga');
+    expect(skill?.disabled).toBe(true);
+    expect(basic?.disabled).toBe(false);
+  });
+
   it('keeps unlocked card energy and cooldown metadata after a live skill update', () => {
     const hud = createHud();
     hud.updateWarriorSkills(readySkillsSnapshot(), null, 6);

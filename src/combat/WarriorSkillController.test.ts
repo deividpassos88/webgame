@@ -35,6 +35,20 @@ describe('WarriorSkillController', () => {
   });
 
 
+  it('can skip cooldown without waiving the energy cost', () => {
+    const skills = new WarriorSkillController();
+
+    expect(skills.tryActivate('triplo_ataque', { waiveCooldown: true })).toEqual({
+      kind: 'activated',
+      attackId: 'triplo_ataque',
+    });
+    expect(skills.tryActivate('triplo_ataque', { waiveCooldown: true }).kind).toBe('activated');
+
+    const snapshot = skills.snapshot();
+    expect(snapshot.energy).toBe(snapshot.maxEnergy - 18 * 2);
+    expect(snapshot.skills.triplo_ataque.cooldownRemaining).toBe(0);
+  });
+
   it('activates free training skills without spending energy or starting cooldowns', () => {
     const skills = new WarriorSkillController();
 
@@ -106,6 +120,18 @@ describe('WarriorSkillController', () => {
     expect(skills.snapshot().energy).toBe(50);
     expect(skills.snapshot().skills.ataque_giratorio_2.cooldownRemaining).toBe(0);
     expect(skills.refund('ataque_giratorio_2')).toBe(false);
+  });
+
+  it('spends a generic mana cost and holds regeneration for one second', () => {
+    const skills = new WarriorSkillController();
+
+    expect(skills.canSpend(5)).toBe(true);
+    expect(skills.spend(5)).toBe(true);
+    expect(skills.snapshot().energy).toBe(45);
+    skills.update(0.9, false);
+    expect(skills.snapshot().energy).toBe(45);
+    expect(skills.spend(46)).toBe(false);
+    expect(skills.snapshot().energy).toBe(45);
   });
 
   it('restores full energy and clears cooldowns for a new run', () => {

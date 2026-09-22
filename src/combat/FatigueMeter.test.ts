@@ -49,6 +49,18 @@ describe('FatigueMeter', () => {
     expect(fatigue.canUseSkills).toBe(true);
   });
 
+  it('charges a percentage of the current bar and holds that cost while a cast is locked', () => {
+    const fatigue = new FatigueMeter();
+
+    expect(fatigue.canAffordPercent(8)).toBe(true);
+    expect(fatigue.consumePercent(8)).toBe(460);
+    expect(fatigue.update(2, false, true)).toBe(460);
+    expect(fatigue.update(1, false)).toBe(500);
+
+    fatigue.consume(fatigue.currentMaxFatigue);
+    expect(fatigue.canAffordPercent(8)).toBe(false);
+  });
+
   it('supports expanded maximum fatigue reserve from agility', () => {
     const fatigue = new FatigueMeter();
     fatigue.setMaxFatigue(700);

@@ -100,6 +100,15 @@ export interface MageCastContext {
   readonly fallbackDirection: THREE.Vector3;
   readonly onImpact?: (target: THREE.Object3D) => void;
   readonly isTargetAlive?: (target: THREE.Object3D) => boolean;
+  /**
+   * First monster body the segment enters. Spells stop on that body instead of
+   * flying through it.
+   */
+  readonly queryBodyHit?: (
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    spellRadius: number
+  ) => THREE.Object3D | null;
   readonly emitAudioEvent?: (event: MageVFXAudioEvent) => void;
 }
 

@@ -169,6 +169,33 @@ describe('resolveCharacterClips', () => {
     }
   });
 
+  it('uses only Maga_High look_around as lobby idle and ignores wait', () => {
+    const animations: Record<CharacterId, THREE.AnimationClip[]> = {
+      'dragon-miner': [],
+      paladin: [],
+      mage: [
+        clipWithRootMotion('wait', [0.002, 0.56, 0.01], [0.02, 0.57, 0.02], 6),
+        clipWithRootMotion('look_around', [0.002, 0.56, 0.01], [0.04, 0.58, 0.03], 15.5),
+      ],
+    };
+
+    const clips = resolveCharacterClips('mage', {
+      getAnimations: (id) => animations[id],
+      getBoneNames: () => new Set(['mixamorig:Hips']),
+      getBoneRestRotations: () => new Map(),
+      getBoneRestTranslations: () => new Map(),
+    });
+
+    expect(clips.idle?.name).toBe('mage:idle');
+    expect(clips.idle?.duration).toBeCloseTo(15.5);
+    const track = clips.idle?.tracks.find((candidate) => candidate.name === 'mixamorig:Hips.position');
+    const values = Array.from(track?.values ?? []);
+    expect(values.slice(0, 3).map(Math.fround)).toEqual([
+      Math.fround(0.002), Math.fround(0.56), Math.fround(0.01),
+    ]);
+    expect(values.slice(3, 6)).toEqual(values.slice(0, 3));
+  });
+
   it('pins Maga root translation to the rest pose so her idle preview stays grounded', () => {
     const rest = new THREE.Vector3(0.045, 54.25, -3.14);
     const animations: Record<CharacterId, THREE.AnimationClip[]> = {

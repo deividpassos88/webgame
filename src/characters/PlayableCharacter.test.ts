@@ -39,7 +39,7 @@ describe('playable character policy', () => {
         id: 'mage',
         name: 'Maga',
         modelPath: '/models/Maga/Maga-optimized.glb',
-        lobbyModelPath: '/models/Maga/Maga.glb',
+        lobbyModelPath: '/models/Maga/Maga_High.glb',
         gameScale: 2.25,
         gameYOffset: 0.9,
         previewScale: 1.78,
