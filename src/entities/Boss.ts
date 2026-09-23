@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Enemy } from './Enemy';
 import type { RegularEnemyVisual } from '../waves/EnemyAssetStore';
+import type { VFXLightPool } from '../vfx/VFXLightPool';
 import { BossAnimationController } from './BossAnimationController';
 import {
   BASE_BOSS_DAMAGE,
@@ -14,7 +15,8 @@ import {
  */
 export function createBoss(
   position: THREE.Vector3,
-  visual?: RegularEnemyVisual
+  visual?: RegularEnemyVisual,
+  shockLightPool?: VFXLightPool | null
 ): Enemy {
   // Dragonic Overlord: 5 barras de vida (base 1400 aumentada em 4x = 7000).
   // Escala aumentada (3.2) para um porte intimidador e imponente.
@@ -22,6 +24,7 @@ export function createBoss(
   // vermelho claro) sao resolvidas em ui/BossHealthView.
   return new Enemy({
     position,
+    shockLightPool: shockLightPool ?? null,
     color: 0x5a0a5a,
     scale: BASE_BOSS_SCALE,
     hp: finalBossTotalHp(),

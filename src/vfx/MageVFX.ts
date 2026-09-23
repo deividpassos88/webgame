@@ -10,6 +10,7 @@ import { MagicCircleVFX } from './MagicCircleVFX';
 import { PooledParticleCloud, qualityCount } from './ParticleManager';
 import { ProjectileManager, type MageProjectileImpact } from './ProjectileManager';
 import { VFXPool, type PoolableVFX } from './VFXPool';
+import { VFXLightPool, type VFXLightHandle } from './VFXLightPool';
 import { VFXTimeline } from './VFXTimeline';
 import type {
   MageCastContext,
@@ -39,14 +40,15 @@ class ChargeOrbEffect implements PoolableVFX {
   private readonly orbitParticles: PooledParticleCloud;
   private readonly sparks: PooledParticleCloud;
   private readonly accents: THREE.Mesh[] = [];
-  private readonly light = new THREE.PointLight(0xffffff, 0, 3.2, 2);
+  private lightHandle: VFXLightHandle | null = null;
   private age = 0;
   private intensity = 0;
   private preset: MageSpellPreset | null = null;
 
   public constructor(
     private readonly resources: MageVFXResources,
-    private readonly quality: MageVFXQuality
+    private readonly quality: MageVFXQuality,
+    private readonly lightPool: VFXLightPool
   ) {
     this.group.name = 'MageChargeOrbVFX';
     this.group.visible = false;
@@ -96,8 +98,7 @@ class ChargeOrbEffect implements PoolableVFX {
 
     this.orbitParticles = new PooledParticleCloud(42, resources.softGlow);
     this.sparks = new PooledParticleCloud(28, resources.softGlow);
-    this.light.castShadow = false;
-    this.group.add(this.glow, this.core, this.orbitParticles.points, this.sparks.points, this.light);
+    this.group.add(this.glow, this.core, this.orbitParticles.points, this.sparks.points);
   }
 
   public play(preset: MageSpellPreset): void {
@@ -111,15 +112,22 @@ class ChargeOrbEffect implements PoolableVFX {
     (this.core.material as THREE.MeshBasicMaterial).opacity = 0.65;
     const glowMaterial = this.glow.material as THREE.SpriteMaterial;
     glowMaterial.map = this.resources.mageTexture(preset.style, 'charge');
-    glowMaterial.needsUpdate = true;
     glowMaterial.color.set(preset.colors.glow);
     glowMaterial.opacity = 0.72;
     this.orbitParticles.setTexture(this.resources.mageTexture(preset.style, 'charge'));
     this.sparks.setTexture(this.resources.mageTexture(preset.style, 'charge'));
-    this.light.color.set(preset.colors.glow);
-    this.light.visible = mageQualityProfile(this.quality).enableSecondaryLights;
-    this.light.intensity = 0;
-    this.light.distance = preset.style === 'laser' ? 4.2 : 3.2;
+    // Borrowed from the shared pool: no scene add/remove, so no recompiles.
+    // (The glow map swap above needs no needsUpdate: the sprite is constructed
+    // with a map, so texture-to-texture swaps keep the same program.)
+    this.lightHandle = mageQualityProfile(this.quality).enableSecondaryLights
+      ? this.lightPool.acquire()
+      : null;
+    if (this.lightHandle) {
+      this.lightHandle.light.color.set(preset.colors.glow);
+      this.lightHandle.light.intensity = 0;
+      this.lightHandle.light.distance = preset.style === 'laser' ? 4.2 : 3.2;
+      this.lightHandle.light.position.copy(this.group.position);
+    }
 
     this.orbitParticles.emit(new THREE.Vector3(), {
       color: preset.colors.secondary,
@@ -149,9 +157,10 @@ class ChargeOrbEffect implements PoolableVFX {
     (this.core.material as THREE.MeshBasicMaterial).opacity = 0.65 + this.intensity * 0.3;
     (this.glow.material as THREE.SpriteMaterial).opacity = 0.32 + this.intensity * 0.5;
     this.glow.scale.setScalar(2.2 + this.intensity * (this.preset.style === 'laser' ? 2.8 : 1.6));
-    this.light.intensity = mageQualityProfile(this.quality).enableSecondaryLights
-      ? this.preset.charge.lightIntensity * this.intensity
-      : 0;
+    if (this.lightHandle) {
+      this.lightHandle.light.intensity = this.preset.charge.lightIntensity * this.intensity;
+      this.lightHandle.light.position.copy(this.group.position);
+    }
 
     this.updateOrbitParticles();
     this.updateAccents(elapsed);
@@ -184,7 +193,8 @@ class ChargeOrbEffect implements PoolableVFX {
     this.age = 0;
     this.intensity = 0;
     this.preset = null;
-    this.light.intensity = 0;
+    this.lightHandle?.release();
+    this.lightHandle = null;
     this.orbitParticles.reset();
     this.sparks.reset();
     (this.core.material as THREE.MeshBasicMaterial).opacity = 0;
@@ -482,6 +492,11 @@ interface ActiveMageCast {
 export interface MageVFXOptions {
   readonly quality?: MageVFXQuality;
   readonly debug?: boolean;
+  /**
+   * Shared scene-level pool for every temporary VFX light. When omitted,
+   * MageVFX creates (and owns) its own pool sized by maxTemporaryLights.
+   */
+  readonly lightPool?: VFXLightPool;
 }
 
 export class MageVFX {
@@ -499,6 +514,8 @@ export class MageVFX {
   private readonly cameraShake = new CameraShake();
   private debug = false;
   private warmedUp = false;
+  private readonly lightPool: VFXLightPool;
+  private readonly ownsLightPool: boolean;
 
   public constructor(
     private readonly scene: THREE.Scene,
@@ -506,18 +523,20 @@ export class MageVFX {
   ) {
     this.quality = options.quality ?? DEFAULT_MAGE_VFX_QUALITY;
     this.debug = options.debug === true;
+    this.lightPool = options.lightPool ?? new VFXLightPool(scene, MAGE_VFX_LIMITS.maxTemporaryLights);
+    this.ownsLightPool = options.lightPool === undefined;
     this.charges = new VFXPool(
-      () => new ChargeOrbEffect(this.resources, this.quality),
+      () => new ChargeOrbEffect(this.resources, this.quality, this.lightPool),
       MAGE_VFX_LIMITS.maxCharges
     );
     this.barriers = new VFXPool(
       () => new BarrierAuraEffect(this.resources, this.quality),
       MAGE_VFX_LIMITS.maxBarriers
     );
-    this.projectiles = new ProjectileManager(scene, this.resources, this.quality);
+    this.projectiles = new ProjectileManager(scene, this.resources, this.quality, this.lightPool);
     this.lightning = new LightningVFX(scene, this.resources, this.quality);
-    this.lasers = new LaserVFX(scene, this.resources, this.quality);
-    this.impacts = new ImpactVFX(scene, this.resources, this.quality);
+    this.lasers = new LaserVFX(scene, this.resources, this.quality, this.lightPool);
+    this.impacts = new ImpactVFX(scene, this.resources, this.quality, this.lightPool);
     this.magicCircles = new MagicCircleVFX(this.resources);
   }
 
@@ -601,12 +620,14 @@ export class MageVFX {
     this.impacts.dispose();
     this.magicCircles.dispose();
     this.resources.dispose();
+    if (this.ownsLightPool) this.lightPool.dispose();
   }
 
   /**
    * Allocates and compiles the Mage VFX materials during loading instead of on
-   * the first skill input. This keeps gameplay responsive while preserving the
-   * pooled architecture and the same visual resources used by real casts.
+   * the first skill input. Compiles are staged across charge, delivery and
+   * impact (plus one staggered volley) so every mid-flight program is baked
+   * before gameplay — a single tail compile would miss them all.
    */
   public warmUp(renderer?: THREE.WebGLRenderer, camera?: THREE.Camera): void {
     if (this.warmedUp) return;
@@ -620,6 +641,9 @@ export class MageVFX {
     leftHand.name = 'mixamorig:LeftHand';
     caster.add(rightHand, leftHand);
     this.scene.add(caster);
+    const compile = (): void => {
+      renderer?.compile?.(this.scene, camera ?? new THREE.PerspectiveCamera());
+    };
 
     try {
       for (const texture of this.resources.allTextures()) renderer?.initTexture?.(texture);
@@ -643,14 +667,92 @@ export class MageVFX {
           fallbackDirection: new THREE.Vector3(0, 0, 1),
         });
 
-        for (let step = 0; step < 10; step += 1) {
-          mixer.update(0.14);
-          this.update(0.14);
+        // renderer.compile only sees objects currently in the scene, so one
+        // tail compile would miss every mid-flight program. Compile once per
+        // stage instead: charge (orb + barrier + seals), delivery (projectile
+        // / beam / lightning + muzzle glow) and impact. The pooled lights are
+        // always in the scene, so these compiles also bake the real in-combat
+        // light count into every lit program.
+        const compiledStage = { charge: false, delivery: false, impact: false };
+        for (let step = 0; step < 30; step += 1) {
+          mixer.update(0.12);
+          this.update(0.12);
+          const diagnostics = this.diagnostics();
+          if (!compiledStage.charge && diagnostics.activeCharges > 0) {
+            compile();
+            compiledStage.charge = true;
+          }
+          const deliveryActive = diagnostics.activeProjectiles
+            + diagnostics.activeLasers
+            + diagnostics.activeLightning;
+          if (!compiledStage.delivery && deliveryActive > 0) {
+            compile();
+            compiledStage.delivery = true;
+          }
+          if (!compiledStage.impact && diagnostics.activeImpacts > 0) {
+            compile();
+            compiledStage.impact = true;
+          }
+          if (
+            compiledStage.charge
+            && compiledStage.delivery
+            && compiledStage.impact
+            && diagnostics.activeCasts === 0
+          ) {
+            break;
+          }
         }
-        renderer?.compile?.(this.scene, camera ?? new THREE.PerspectiveCamera());
+        compile();
         this.clear();
         mixer.uncacheRoot(caster);
       }
+
+      // Staggered volley: overlap three basic casts so the projectile/impact
+      // pools grow to depth 3 and compile once with several borrowed lights
+      // live at the same time, like a real multi-cast fight.
+      const volley: { mixer: THREE.AnimationMixer; action: THREE.AnimationAction }[] = [];
+      for (let round = 0; round < 3; round += 1) {
+        const mixer = new THREE.AnimationMixer(caster);
+        const clip = new THREE.AnimationClip(`mage-vfx-warmup-volley-${round}`, 1.2, [
+          new THREE.NumberKeyframeTrack('.visible', [0, 1.2], [1, 1]),
+        ]);
+        const action = mixer.clipAction(clip);
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = true;
+        action.play();
+        this.cast('basic', {
+          caster,
+          rightHand,
+          leftHand,
+          action,
+          target: null,
+          fallbackDirection: new THREE.Vector3(0, 0, 1),
+        });
+        volley.push({ mixer, action });
+        for (let step = 0; step < 3; step += 1) {
+          for (const entry of volley) entry.mixer.update(0.12);
+          this.update(0.12);
+        }
+      }
+      let volleyCompiled = false;
+      for (let step = 0; step < 30; step += 1) {
+        for (const entry of volley) entry.mixer.update(0.12);
+        this.update(0.12);
+        const diagnostics = this.diagnostics();
+        if (!volleyCompiled && diagnostics.activeProjectiles >= 2) {
+          compile();
+          volleyCompiled = true;
+        }
+        if (
+          diagnostics.activeCasts === 0
+          && diagnostics.activeProjectiles === 0
+          && diagnostics.activeImpacts === 0
+        ) {
+          break;
+        }
+      }
+      compile();
+      for (const entry of volley) entry.mixer.uncacheRoot(caster);
     } finally {
       this.clear();
       caster.removeFromParent();
@@ -762,6 +864,9 @@ export class MageVFX {
   private launch(cast: ActiveMageCast): void {
     if (cast.launched) return;
     cast.launched = true;
+    // The cast motion climaxes here: gameplay frees the caster's movement
+    // while the projectile, impact and monster-side effects still play out.
+    cast.context.onLaunch?.();
     const origin = cast.charge
       ? cast.charge.worldPosition(TMP_WORLD).clone()
       : this.resolveHandWorldPosition(cast, TMP_WORLD).clone();

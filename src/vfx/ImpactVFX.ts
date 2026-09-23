@@ -9,6 +9,7 @@ import {
   setEnergyTime,
   type EnergyShaderMaterial,
 } from './VFXMaterials';
+import { VFXLightPool, type VFXLightHandle } from './VFXLightPool';
 import type { MageImpactConfig, MageSpellPreset, MageVFXQuality } from './VFXTypes';
 
 interface ImpactPlayOptions {
@@ -33,7 +34,7 @@ class ImpactEffect implements PoolableVFX {
   private readonly smoke: PooledParticleCloud;
   private readonly debris: THREE.Mesh[] = [];
   private readonly debrisVelocities: THREE.Vector3[] = [];
-  private readonly light = new THREE.PointLight(0xffffff, 0, 4, 2);
+  private lightHandle: VFXLightHandle | null = null;
   private age = 0;
   private duration = 0.5;
   private config: MageImpactConfig | null = null;
@@ -42,7 +43,8 @@ class ImpactEffect implements PoolableVFX {
 
   public constructor(
     private readonly resources: MageVFXResources,
-    private readonly quality: MageVFXQuality
+    private readonly quality: MageVFXQuality,
+    private readonly lightPool: VFXLightPool
   ) {
     this.group.name = 'MageImpactVFX';
     this.group.visible = false;
@@ -114,8 +116,7 @@ class ImpactEffect implements PoolableVFX {
       this.debrisVelocities.push(new THREE.Vector3());
       this.group.add(mesh);
     }
-    this.light.castShadow = false;
-    this.group.add(this.core, this.burst, this.flash, this.shockwave, this.particles.points, this.smoke.points, this.light);
+    this.group.add(this.core, this.burst, this.flash, this.shockwave, this.particles.points, this.smoke.points);
   }
 
   public play(options: ImpactPlayOptions): void {
@@ -137,14 +138,12 @@ class ImpactEffect implements PoolableVFX {
     const impactTexture = this.resources.mageTexture(preset.style, 'impact');
     const flashMaterial = this.flash.material as THREE.SpriteMaterial;
     flashMaterial.map = impactTexture;
-    flashMaterial.needsUpdate = true;
     flashMaterial.color.set(preset.colors.glow);
     flashMaterial.opacity = preset.style === 'lava' ? 1 : 0.92;
     this.flash.scale.setScalar(preset.impact.radius * (preset.style === 'laser' ? 3.2 : preset.style === 'lava' ? 3 : 2.45) * this.baseScale);
 
     const burstMaterial = this.burst.material as THREE.SpriteMaterial;
     burstMaterial.map = impactTexture;
-    burstMaterial.needsUpdate = true;
     burstMaterial.color.set(preset.style === 'lava' ? preset.colors.core : preset.colors.secondary);
     burstMaterial.opacity = preset.style === 'water' ? 0.55 : preset.style === 'ice' ? 0.72 : 0.82;
     this.burst.scale.setScalar(preset.impact.radius * (preset.style === 'lava' ? 4.4 : preset.style === 'laser' ? 4.1 : 3.3) * this.baseScale);
@@ -161,12 +160,20 @@ class ImpactEffect implements PoolableVFX {
     this.shockwave.position.y = 0.025;
     this.shockwave.scale.setScalar(0.25 * this.baseScale);
 
-    this.light.color.set(preset.colors.glow);
-    this.light.visible = mageQualityProfile(this.quality).enableSecondaryLights;
-    this.light.intensity = this.light.visible
-      ? options.lightIntensity ?? preset.impact.lightIntensity
-      : 0;
-    this.light.distance = (preset.style === 'lava' ? 5.8 : 4.5) * this.baseScale;
+    // The flash light is borrowed from the shared pool: the scene light count
+    // never changes, so the impact can never trigger a shader recompile.
+    // (Map swaps above need no needsUpdate: both sprites are constructed with
+    // a map, so texture-to-texture swaps keep the same compiled program.)
+    const targetIntensity = options.lightIntensity ?? preset.impact.lightIntensity;
+    this.lightHandle = mageQualityProfile(this.quality).enableSecondaryLights && targetIntensity > 0
+      ? this.lightPool.acquire()
+      : null;
+    if (this.lightHandle) {
+      this.lightHandle.light.color.set(preset.colors.glow);
+      this.lightHandle.light.intensity = targetIntensity;
+      this.lightHandle.light.distance = (preset.style === 'lava' ? 5.8 : 4.5) * this.baseScale;
+      this.lightHandle.light.position.copy(this.group.position);
+    }
 
     this.particles.setTexture(this.resources.mageTexture(preset.style, 'impact'));
     this.smoke.setTexture(preset.style === 'lava' ? this.resources.flame : this.resources.mageTexture(preset.style, 'impact'));
@@ -211,7 +218,7 @@ class ImpactEffect implements PoolableVFX {
     this.burst.scale.setScalar(this.config.radius * this.baseScale * ((this.preset.style === 'lava' ? 4.4 : 3.3) + progress * 2.2));
     this.burst.material.rotation = progress * Math.PI * (this.preset.style === 'lightning' ? 2.5 : 0.7);
     this.shockwave.scale.setScalar(this.config.shockwaveRadius * this.baseScale * (0.25 + progress * 0.85));
-    this.light.intensity *= Math.max(0, 1 - elapsed * 8);
+    if (this.lightHandle) this.lightHandle.light.intensity *= Math.max(0, 1 - elapsed * 8);
     this.particles.update(elapsed);
     this.smoke.update(elapsed);
     this.updateDebris(elapsed, fade);
@@ -224,7 +231,8 @@ class ImpactEffect implements PoolableVFX {
     this.age = 0;
     this.config = null;
     this.preset = null;
-    this.light.intensity = 0;
+    this.lightHandle?.release();
+    this.lightHandle = null;
     this.particles.reset();
     this.smoke.reset();
     (this.core.material as THREE.MeshBasicMaterial).opacity = 0;
@@ -293,10 +301,11 @@ export class ImpactVFX {
   public constructor(
     private readonly scene: THREE.Scene,
     resources: MageVFXResources,
-    quality: MageVFXQuality
+    quality: MageVFXQuality,
+    lightPool: VFXLightPool
   ) {
     this.pool = new VFXPool(
-      () => new ImpactEffect(resources, quality),
+      () => new ImpactEffect(resources, quality, lightPool),
       MAGE_VFX_LIMITS.maxImpacts
     );
   }
@@ -304,10 +313,9 @@ export class ImpactVFX {
   public play(options: ImpactPlayOptions): void {
     const effect = this.pool.acquire();
     if (!effect) return;
-    const lightIntensity = this.active.length >= MAGE_VFX_LIMITS.maxTemporaryLights
-      ? 0
-      : options.lightIntensity;
-    effect.play({ ...options, lightIntensity });
+    // No per-impact light gate here: the shared VFXLightPool already degrades
+    // gracefully (renders unlit) when every slot is busy.
+    effect.play(options);
     this.scene.add(effect.group);
     this.active.push(effect);
   }

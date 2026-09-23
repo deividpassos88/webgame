@@ -359,6 +359,66 @@ describe('lobby character preparation', () => {
     lobby.dispose();
   });
 
+  it('spins the Mage around her own grounded center instead of orbiting the pivot', () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    profile.selectedClass = 'mage';
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      InventoryStore.fromProfile(profile)
+    );
+
+    const holder = (lobby as unknown as { modelHolder: THREE.Group }).modelHolder;
+    const model = holder.children[0] as THREE.Object3D;
+    // The depth framing offset lives on the spin pivot, never inside it:
+    // the body center stays exactly on the rotation axis, grounded.
+    expect(holder.position.z).toBeCloseTo(-0.42);
+    expect(model.position.x).toBeCloseTo(0);
+    expect(model.position.z).toBeCloseTo(0);
+    holder.updateMatrixWorld(true);
+    const before = new THREE.Vector3();
+    model.getWorldPosition(before);
+
+    // A half turn must leave her world ground spot untouched: same framing
+    // as before, but turning in place like the Guerreiro instead of orbiting.
+    holder.rotation.y = Math.PI;
+    holder.updateMatrixWorld(true);
+    const after = new THREE.Vector3();
+    model.getWorldPosition(after);
+    expect(after.x).toBeCloseTo(before.x);
+    expect(after.y).toBeCloseTo(before.y);
+    expect(after.z).toBeCloseTo(before.z);
+    expect(after.z).toBeCloseTo(-0.42);
+    lobby.dispose();
+  });
+
+  it('keeps the Guerreiro spin pivot at the stage origin', () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    profile.selectedClass = 'paladin';
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      InventoryStore.fromProfile(profile)
+    );
+
+    const holder = (lobby as unknown as { modelHolder: THREE.Group }).modelHolder;
+    expect(holder.position.z).toBe(0);
+    expect((holder.children[0] as THREE.Object3D).position.z).toBeCloseTo(0);
+    lobby.dispose();
+  });
+
   it('opens Oficina as a full screen route and restores the lobby start action on return', () => {
     mountLobbyRouteMarkup();
     vi.stubGlobal('requestAnimationFrame', () => 1);

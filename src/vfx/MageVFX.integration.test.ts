@@ -218,4 +218,39 @@ describe('MageVFX full spell architecture', () => {
     expect(diagnostics.activeBarriers).toBe(0);
     vfx.dispose();
   });
+
+  it('fires onLaunch once when the spell leaves the hand, before any impact', () => {
+    const scene = new THREE.Scene();
+    const vfx = new MageVFX(scene, { quality: 'low' });
+    const { root, mixer, action } = createAction(2, 1);
+    const target = new THREE.Group();
+    target.position.set(0, 0, 5);
+    target.userData.enemyBodyScale = 1;
+
+    let launches = 0;
+    let impacts = 0;
+    vfx.cast('lightning', {
+      caster: root,
+      rightHand: null,
+      leftHand: null,
+      action,
+      target,
+      fallbackDirection: new THREE.Vector3(0, 0, 1),
+      isTargetAlive: () => true,
+      onLaunch: () => {
+        launches += 1;
+        expect(impacts).toBe(0);
+      },
+      onImpact: () => { impacts += 1; },
+    });
+
+    for (let step = 0; step < 30; step += 1) {
+      mixer.update(0.08);
+      vfx.update(0.08);
+    }
+
+    expect(launches).toBe(1);
+    expect(impacts).toBeGreaterThan(0);
+    vfx.dispose();
+  });
 });

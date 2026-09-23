@@ -154,7 +154,7 @@ const DEFAULT_LOBBY_PRESENTATION_PROFILE: LobbyPresentationProfile = {
   },
 };
 
-// Maga uses the same hall rig as Guerreiro. Maga_High already has authored
+// Maga uses the same hall rig as Guerreiro. Maga_Lobby already has authored
 // highlights in the face, so only that region receives a little less light.
 const LOBBY_CHARACTER_PRESENTATION_PROFILES: Partial<Record<CharacterId, LobbyPresentationProfile>> = {};
 
@@ -659,6 +659,7 @@ export class LobbyScreen {
     this.scene.add(this.contactShadow);
 
     this.modelHolder.rotation.y = 0;
+    this.modelHolder.position.set(0, 0, 0);
     this.scene.add(this.modelHolder);
     this.syncClassChoiceButtons();
     this.mountLobbyCharacter(this.selectedCharacterId);
@@ -822,9 +823,12 @@ export class LobbyScreen {
       'idle',
       ...(definition.clipAliases?.idle ?? []),
     ].filter((name): name is string => Boolean(name)));
-    // Maga_High's second clip is the only lobby animation. Never fall back to wait.
+    // Maga_Lobby's only clip is the lobby animation: it kept the `look_around`
+    // motion but is exported under the generic Mixamo name. Never fall back
+    // to wait.
     const lobbyIdleFallback = characterId === 'mage'
       ? nativeClips.find((clip) => clip.name === 'look_around')
+        ?? nativeClips.find((clip) => clip.name === 'mixamo.com')
       : nativeClips.find((clip) => lobbyIdleNames.has(clip.name));
     const resolvedLobbyClips = resolveCharacterClips(characterId, this.lobbyAnimationSource());
     // Same rotation policy as the Guerreiro: the preview group is the only thing
@@ -844,19 +848,26 @@ export class LobbyScreen {
       if (!this.isHierarchyVisible(mesh)) return;
       this.expandLobbyMeshBounds(bounds, mesh);
     });
+    // The holder is the spin pivot: it carries the per-character depth framing
+    // (previewZOffset) so the model itself always stays centered exactly on
+    // the rotation axis. Offsetting the model inside the holder instead would
+    // make the hero orbit the pivot instead of turning in place like Guerreiro.
+    const previewZOffset = definition.previewZOffset ?? 0;
+    this.modelHolder.position.set(0, 0, previewZOffset);
     if (!bounds.isEmpty()) {
       const center = bounds.getCenter(new THREE.Vector3());
-      // Guerreiro policy for every lobby class: rotate the shared holder around
-      // the visible model bounds center. No class-specific hip/socket pivot here.
+      // Guerreiro policy for every lobby class: the visible model bounds
+      // center sits exactly on the holder rotation axis, with the feet
+      // grounded. No class-specific hip/socket pivot here.
       model.position.set(
         -center.x,
         -bounds.min.y + (definition.previewYOffset ?? 0),
-        -center.z + (definition.previewZOffset ?? 0)
+        -center.z
       );
-      this.updateContactShadow(characterId, bounds, definition.previewZOffset ?? 0);
+      this.updateContactShadow(characterId, bounds, previewZOffset);
     } else {
-      model.position.set(0, definition.previewYOffset ?? 0, definition.previewZOffset ?? 0);
-      this.updateContactShadow(characterId, null, definition.previewZOffset ?? 0);
+      model.position.set(0, definition.previewYOffset ?? 0, 0);
+      this.updateContactShadow(characterId, null, previewZOffset);
     }
 
     this.modelHolder.add(model);
@@ -1073,7 +1084,7 @@ export class LobbyScreen {
 
   private lobbyRestTranslations(characterId: CharacterId): ReadonlyMap<string, THREE.Vector3> {
     if (characterId !== 'mage') return this.assets.getBoneRestTranslations(characterId, 'lobby');
-    // The Mage lobby must preserve the authored Maga_High.glb skeleton/face quality.
+    // The Mage lobby must preserve the authored Maga_Lobby.glb skeleton/face quality.
     // Returning no rest override makes makeClipInPlace freeze the root at the
     // first authored idle frame instead of mixing rest-pose axes into the clip.
     // The posed skinned bounds above then centers that preserved pose for the

@@ -99,6 +99,12 @@ export interface MageCastContext {
   /** Used for empty-space animation tests or when the target dies before launch. */
   readonly fallbackDirection: THREE.Vector3;
   readonly onImpact?: (target: THREE.Object3D) => void;
+  /**
+   * Fires once when the spell launches (the cast motion climax). Gameplay uses
+   * it to free the caster's movement while the projectile and monster-side
+   * effects still play out.
+   */
+  readonly onLaunch?: () => void;
   readonly isTargetAlive?: (target: THREE.Object3D) => boolean;
   /**
    * First monster body the segment enters. Spells stop on that body instead of

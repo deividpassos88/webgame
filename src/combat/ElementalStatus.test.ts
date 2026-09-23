@@ -80,4 +80,17 @@ describe('ElementalStatus', () => {
     expect(emitted.reduce((total, damage) => total + damage, 0)).toBe(7);
     expect(status).toBeNull();
   });
+
+  it('accepts a custom duration for burns without changing the default window', () => {
+    const burn = applyElementalStatus(null, 'fire', 2, 4);
+    expect(burn.remainingSeconds).toBe(4);
+
+    const tick = tickElementalStatus(burn, 3);
+    expect(tick.damage).toBeCloseTo(6);
+    expect(tick.status).toMatchObject({ remainingSeconds: 1 });
+
+    const finalTick = tickElementalStatus(tick.status, 1);
+    expect(finalTick.damage).toBeCloseTo(2);
+    expect(finalTick.status).toBeNull();
+  });
 });

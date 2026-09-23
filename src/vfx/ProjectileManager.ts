@@ -10,6 +10,7 @@ import {
   setEnergyTime,
   type EnergyShaderMaterial,
 } from './VFXMaterials';
+import { VFXLightPool, type VFXLightHandle } from './VFXLightPool';
 import type { MageProjectileConfig, MageSpellPreset, MageVFXQuality } from './VFXTypes';
 
 export interface MageProjectileImpact {
@@ -37,6 +38,8 @@ const TMP_TARGET = new THREE.Vector3();
 const TMP_DIRECTION = new THREE.Vector3();
 const TMP_LOCAL = new THREE.Vector3();
 const TMP_NEXT = new THREE.Vector3();
+/** Where the glow light sat relative to the projectile when it was a child. */
+const LIGHT_LOCAL_OFFSET = new THREE.Vector3(0, 0.1, 0);
 const TRAIL_SEGMENTS = 14;
 
 function targetPoint(target: THREE.Object3D, output: THREE.Vector3): THREE.Vector3 {
@@ -81,7 +84,7 @@ class MageProjectile implements PoolableVFX {
   private readonly trailUvs = new Float32Array(TRAIL_SEGMENTS * 2 * 2);
   private readonly trailPositionAttribute = new THREE.BufferAttribute(this.trailPositions, 3);
   private readonly secondaryParticles: PooledParticleCloud;
-  private readonly light = new THREE.PointLight(0xffffff, 0, 3.8, 2);
+  private lightHandle: VFXLightHandle | null = null;
   private readonly trailMaterial: EnergyShaderMaterial;
   private config: MageProjectileConfig | null = null;
   private preset: MageSpellPreset | null = null;
@@ -95,7 +98,8 @@ class MageProjectile implements PoolableVFX {
 
   public constructor(
     private readonly resources: MageVFXResources,
-    private readonly quality: MageVFXQuality
+    private readonly quality: MageVFXQuality,
+    private readonly lightPool: VFXLightPool
   ) {
     this.group.name = 'MageProjectileVFX';
     this.group.visible = false;
@@ -163,8 +167,7 @@ class MageProjectile implements PoolableVFX {
     this.trail.renderOrder = 4;
 
     this.secondaryParticles = new PooledParticleCloud(38, resources.softGlow);
-    this.light.castShadow = false;
-    this.group.add(this.trail, this.core, this.iceShard, this.lavaInner, this.glow, this.secondaryParticles.points, this.light);
+    this.group.add(this.trail, this.core, this.iceShard, this.lavaInner, this.glow, this.secondaryParticles.points);
   }
 
   public fire(options: ProjectileFireOptions): void {
@@ -201,7 +204,6 @@ class MageProjectile implements PoolableVFX {
 
     const glowMaterial = this.glow.material as THREE.SpriteMaterial;
     glowMaterial.map = this.resources.mageTexture(options.preset.style, 'charge');
-    glowMaterial.needsUpdate = true;
     glowMaterial.color.set(options.preset.colors.glow);
     glowMaterial.opacity = options.preset.style === 'lava' ? 0.98 : 0.9;
     this.secondaryParticles.setTexture(this.resources.mageTexture(options.preset.style, 'charge'));
@@ -220,11 +222,16 @@ class MageProjectile implements PoolableVFX {
     });
     this.updateTrailGeometry(options.preset.projectile.trailLength, options.preset.projectile.trailWidth);
 
-    this.light.color.set(options.preset.colors.glow);
-    this.light.visible = profile.enableSecondaryLights;
-    this.light.intensity = this.light.visible ? (options.preset.style === 'lava' ? 0.9 : 0.55) : 0;
-    this.light.distance = options.preset.projectile.radius * 8;
-    this.light.position.set(0, 0.1, 0);
+    // Borrowed from the shared pool: no scene add/remove, so no recompiles.
+    // (The glow map swap above needs no needsUpdate: the sprite is constructed
+    // with a map, so texture-to-texture swaps keep the same program.)
+    this.lightHandle = profile.enableSecondaryLights ? this.lightPool.acquire() : null;
+    if (this.lightHandle) {
+      this.lightHandle.light.color.set(options.preset.colors.glow);
+      this.lightHandle.light.intensity = options.preset.style === 'lava' ? 0.9 : 0.55;
+      this.lightHandle.light.distance = options.preset.projectile.radius * 8;
+      this.syncLightPosition();
+    }
     this.emitSecondaryWake();
   }
 
@@ -290,7 +297,10 @@ class MageProjectile implements PoolableVFX {
     this.core.rotation.y += elapsed * (this.preset.style === 'water' ? 4 : 2);
     this.iceShard.rotation.z += elapsed * 5;
     this.lavaInner.rotation.x += elapsed * 7;
-    this.light.intensity *= 0.985;
+    if (this.lightHandle) {
+      this.lightHandle.light.intensity *= 0.985;
+      this.syncLightPosition();
+    }
 
     if (this.age % 0.075 < elapsed) this.emitSecondaryWake();
 
@@ -315,7 +325,8 @@ class MageProjectile implements PoolableVFX {
     this.secondaryParticles.reset();
     this.iceShard.visible = false;
     this.lavaInner.visible = false;
-    this.light.intensity = 0;
+    this.lightHandle?.release();
+    this.lightHandle = null;
     this.trailMaterial.uniforms.uOpacity.value = 0;
   }
 
@@ -327,6 +338,18 @@ class MageProjectile implements PoolableVFX {
     this.trailMaterial.dispose();
     this.trailGeometry.dispose();
     this.secondaryParticles.dispose();
+  }
+
+  /**
+   * The pooled light lives at scene level, so mirror the exact world spot the
+   * old child light had (group transform applied to its local offset).
+   */
+  private syncLightPosition(): void {
+    if (!this.lightHandle) return;
+    this.lightHandle.light.position
+      .copy(LIGHT_LOCAL_OFFSET)
+      .applyQuaternion(this.group.quaternion)
+      .add(this.group.position);
   }
 
   private updateTrailGeometry(length: number, width: number): void {
@@ -384,10 +407,11 @@ export class ProjectileManager {
   public constructor(
     private readonly scene: THREE.Scene,
     resources: MageVFXResources,
-    quality: MageVFXQuality
+    quality: MageVFXQuality,
+    lightPool: VFXLightPool
   ) {
     this.pool = new VFXPool(
-      () => new MageProjectile(resources, quality),
+      () => new MageProjectile(resources, quality, lightPool),
       MAGE_VFX_LIMITS.maxProjectiles
     );
   }

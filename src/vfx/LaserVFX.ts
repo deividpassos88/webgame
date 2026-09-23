@@ -10,6 +10,7 @@ import {
   setEnergyTime,
   type EnergyShaderMaterial,
 } from './VFXMaterials';
+import { VFXLightPool, type VFXLightHandle } from './VFXLightPool';
 import type { MageSpellPreset, MageVFXQuality } from './VFXTypes';
 
 interface LaserOptions {
@@ -59,7 +60,7 @@ class LaserBeam implements PoolableVFX {
   private readonly originGlow: THREE.Sprite;
   private readonly impactGlow: THREE.Sprite;
   private readonly particles: PooledParticleCloud;
-  private readonly impactLight = new THREE.PointLight(0xffffff, 0, 5, 2);
+  private lightHandle: VFXLightHandle | null = null;
   private age = 0;
   private duration = 0.5;
   private impactCooldown = 0;
@@ -75,7 +76,11 @@ class LaserBeam implements PoolableVFX {
   private onFinalImpact: ((position: THREE.Vector3, target: THREE.Object3D | null) => void) | undefined;
   private impactSent = false;
 
-  public constructor(private readonly resources: MageVFXResources, private readonly quality: MageVFXQuality) {
+  public constructor(
+    private readonly resources: MageVFXResources,
+    private readonly quality: MageVFXQuality,
+    private readonly lightPool: VFXLightPool
+  ) {
     this.group.name = 'MageLaserPremiumVFX';
     this.group.visible = false;
     this.outerMaterial = createBeamMaterial({ opacity: 0, intensity: 1.15, thickness: 1.25, distortion: 1.15, scrollSpeed: 0.8 });
@@ -118,8 +123,7 @@ class LaserBeam implements PoolableVFX {
     this.originGlow.name = 'MageLaserOriginFlash';
     this.impactGlow.name = 'MageLaserImpactBloom';
     this.particles = new PooledParticleCloud(48, resources.softGlow);
-    this.impactLight.castShadow = false;
-    this.group.add(this.outer, this.body, this.core, this.discharge, this.originGlow, this.impactGlow, this.particles.points, this.impactLight);
+    this.group.add(this.outer, this.body, this.core, this.discharge, this.originGlow, this.impactGlow, this.particles.points);
   }
 
   public play(options: LaserOptions): void {
@@ -163,15 +167,18 @@ class LaserBeam implements PoolableVFX {
     const impactTexture = this.resources.mageTexture(options.preset.style, 'impact');
     const originMaterial = this.originGlow.material as THREE.SpriteMaterial;
     originMaterial.map = chargeTexture;
-    originMaterial.needsUpdate = true;
     originMaterial.color.set(options.preset.colors.glow);
     const impactMaterial = this.impactGlow.material as THREE.SpriteMaterial;
     impactMaterial.map = impactTexture;
-    impactMaterial.needsUpdate = true;
     impactMaterial.color.set(options.preset.colors.spark);
+    // No needsUpdate on the map swaps above: both sprites are constructed with
+    // a map, so texture-to-texture swaps keep the same compiled program.
     this.particles.setTexture(impactTexture);
-    this.impactLight.color.set(options.preset.colors.glow);
-    this.impactLight.visible = profile.enableSecondaryLights;
+    // The impact light is borrowed from the shared pool (this group's children
+    // are positioned in world space, so the pooled scene-level light lands on
+    // the exact same spot the old child light did).
+    this.lightHandle = profile.enableSecondaryLights ? this.lightPool.acquire() : null;
+    if (this.lightHandle) this.lightHandle.light.color.set(options.preset.colors.glow);
     this.updateTransform(0);
   }
 
@@ -192,9 +199,9 @@ class LaserBeam implements PoolableVFX {
     (this.originGlow.material as THREE.SpriteMaterial).opacity = 0.85 * intensity;
     (this.impactGlow.material as THREE.SpriteMaterial).opacity = 0.95 * intensity;
     (this.discharge.material as THREE.LineBasicMaterial).opacity = 0.58 * intensity * (0.45 + Math.random() * 0.55);
-    this.impactLight.intensity = this.impactLight.visible
-      ? this.preset.impact.lightIntensity * 0.65 * intensity
-      : 0;
+    if (this.lightHandle) {
+      this.lightHandle.light.intensity = this.preset.impact.lightIntensity * 0.65 * intensity;
+    }
     this.particles.update(elapsed);
 
     if (!this.impactSent && this.target && (!this.isTargetAlive || this.isTargetAlive(this.target))) {
@@ -233,7 +240,8 @@ class LaserBeam implements PoolableVFX {
     this.onImpact = undefined;
     this.onFinalImpact = undefined;
     this.particles.reset();
-    this.impactLight.intensity = 0;
+    this.lightHandle?.release();
+    this.lightHandle = null;
     this.outerMaterial.uniforms.uOpacity.value = 0;
     this.bodyMaterial.uniforms.uOpacity.value = 0;
     this.coreMaterial.uniforms.uOpacity.value = 0;
@@ -286,7 +294,7 @@ class LaserBeam implements PoolableVFX {
     this.originGlow.scale.setScalar(1.2 + intensity * 1.1);
     this.impactGlow.position.copy(TMP_END);
     this.impactGlow.scale.setScalar(1.5 + intensity * 1.5);
-    this.impactLight.position.copy(TMP_END);
+    if (this.lightHandle) this.lightHandle.light.position.copy(TMP_END);
   }
 
   private placeBeam(mesh: THREE.Mesh, midpoint: THREE.Vector3, direction: THREE.Vector3, length: number, width: number): void {
@@ -321,9 +329,10 @@ export class LaserVFX {
   public constructor(
     private readonly scene: THREE.Scene,
     resources: MageVFXResources,
-    quality: MageVFXQuality
+    quality: MageVFXQuality,
+    lightPool: VFXLightPool
   ) {
-    this.pool = new VFXPool(() => new LaserBeam(resources, quality), MAGE_VFX_LIMITS.maxLasers);
+    this.pool = new VFXPool(() => new LaserBeam(resources, quality, lightPool), MAGE_VFX_LIMITS.maxLasers);
   }
 
   public fire(options: LaserOptions): boolean {

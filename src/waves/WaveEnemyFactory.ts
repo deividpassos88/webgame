@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Enemy } from '../entities/Enemy';
 import type { EnemyOptions } from '../entities/Enemy';
+import type { VFXLightPool } from '../vfx/VFXLightPool';
 import {
   ARCHER_CLIP_NAMES,
   GUARDIAN_CLIP_NAMES,
@@ -96,16 +97,20 @@ export function createRegularEnemy(
   damageMultiplier: number,
   sequence: number,
   speedMultiplier = 1,
-  visual?: RegularEnemyVisual
+  visual?: RegularEnemyVisual,
+  shockLightPool?: VFXLightPool | null
 ): Enemy {
   return new Enemy(
-    createRegularEnemyOptions(
-      position,
-      hpMultiplier,
-      damageMultiplier,
-      sequence,
-      speedMultiplier
-    ),
+    {
+      ...createRegularEnemyOptions(
+        position,
+        hpMultiplier,
+        damageMultiplier,
+        sequence,
+        speedMultiplier
+      ),
+      shockLightPool: shockLightPool ?? null,
+    },
     visual
   );
 }
@@ -139,7 +144,8 @@ export function createArcherEnemy(
   hpMultiplier: number,
   damageMultiplier: number,
   speedMultiplier = 1,
-  visual?: ArcherEnemyVisual
+  visual?: ArcherEnemyVisual,
+  shockLightPool?: VFXLightPool | null
 ): Enemy {
   const options = createArcherEnemyOptions(
     position,
@@ -147,6 +153,7 @@ export function createArcherEnemy(
     damageMultiplier,
     speedMultiplier
   );
+  options.shockLightPool = shockLightPool ?? null;
   return new Enemy(
     options,
     visual,
@@ -191,7 +198,8 @@ export function createGuardianEnemy(
   hpMultiplier: number,
   damageMultiplier: number,
   speedMultiplier = 1,
-  visual?: GuardianEnemyVisual
+  visual?: GuardianEnemyVisual,
+  shockLightPool?: VFXLightPool | null
 ): Enemy {
   const options = createGuardianEnemyOptions(
     position,
@@ -199,6 +207,7 @@ export function createGuardianEnemy(
     damageMultiplier,
     speedMultiplier
   );
+  options.shockLightPool = shockLightPool ?? null;
   return new Enemy(
     options,
     visual,
