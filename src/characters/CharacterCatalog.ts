@@ -114,7 +114,7 @@ export const CHARACTERS: readonly CharacterDefinition[] = [
     name: 'Maga',
     modelPath: '/models/Maga/Maga-optimized.glb',
     // Lobby-only high mesh. Gameplay stays on Maga-optimized.glb.
-    lobbyModelPath: '/models/Maga/Maga_High.glb',
+    lobbyModelPath: '/models/Maga/Maga_Lobby.glb',
     strictLobbyModel: true,
     // Match the Mage gameplay silhouette to Guerreiro/guerreiro_animado.glb.
     // The Mage rig is authored in different units, so this smaller scale keeps
@@ -123,7 +123,7 @@ export const CHARACTERS: readonly CharacterDefinition[] = [
     // Same placement policy as Guerreiro, with only the proportional Mage boot
     // lift needed after body-grounding so the feet sit clearly on the stone floor.
     gameYOffset: 0.9,
-    previewScale: 1.78,
+    previewScale: 1.66,
     // Lobby-only framing/rotation uses the same bounds-centered pivot as Guerreiro;
     // keep her framed lower than the warrior, but a little higher/smaller and
     // farther back so the face texture is not over-magnified in the lobby.
@@ -145,9 +145,11 @@ export const CHARACTERS: readonly CharacterDefinition[] = [
       dead: 'morrendo',
     },
     clipAliases: {
-      // Lobby Maga_High.glb must play only look_around. Gameplay still has an
-      // exact `idle` clip on Maga-optimized.glb, which wins before this alias.
-      idle: ['look_around'],
+      // Lobby Maga_Lobby.glb exports its single idle clip under the generic
+      // Mixamo name `mixamo.com`. Gameplay still has an exact `idle` clip on
+      // Maga-optimized.glb, which wins before these aliases, so the gameplay
+      // death/fall clip that shares the generic name is never picked as idle.
+      idle: ['look_around', 'mixamo.com'],
       // Never use the generic Mixamo export name or the backward run as a Mage
       // run fallback: mixamo.com is a death/fall, and correr para tras walks
       // backward. The authored forward run is exported as correr rapido2.

@@ -122,7 +122,9 @@ export class PooledParticleCloud {
     const next = texture ?? EMPTY_TEXTURE;
     if (material.uniforms.uMap.value === next) return;
     material.uniforms.uMap.value = next;
-    material.needsUpdate = true;
+    // No material.needsUpdate here: swapping only the uMap uniform value never
+    // changes the compiled program, and flagging it would recompile the
+    // particle shader on the next frame (a hitch on the first skill cast).
   }
 
   public setOpacity(opacity: number): void {

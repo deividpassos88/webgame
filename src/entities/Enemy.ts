@@ -7,6 +7,7 @@ import {
 import type { BossSkillKind } from './BossSkillController';
 import { BOSS_FOLLOW_DISTANCE } from './BossCombatPolicy';
 import type { EnemyAnimator } from './EnemyAnimator';
+import type { VFXLightHandle, VFXLightPool } from '../vfx/VFXLightPool';
 import {
   applyElementalStatus,
   getElementalSlowMultiplier,
@@ -14,7 +15,7 @@ import {
   type ElementalStatusState,
   type ElementalType,
 } from '../combat/ElementalStatus';
-import { MAGE_SHOCK_LIFT_METERS } from '../combat/MageSkillImpact';
+import { MAGE_SHOCK_LIFT_METERS, MAGE_WATER_SLOW_MULTIPLIER } from '../combat/MageSkillImpact';
 import {
   animatedModelGroundY,
   hasLyingBindPose,
@@ -31,6 +32,34 @@ const ARCHER_CLOSE_DAMAGE_BONUS = 0.45;
 /** Each character hit shoves the body back and leaves it dizzy for this long. */
 export const ENEMY_HIT_STAGGER_SECONDS = 0.3;
 export const ENEMY_HIT_KNOCKBACK_METERS = 0.45;
+
+/**
+ * Shared soft-circle sprite for the freeze mist and smoke. Generated once from
+ * raw bytes (no canvas/DOM), so frozen enemies also work in headless tests.
+ */
+let freezePuffTexture: THREE.Texture | null = null;
+
+function getFreezePuffTexture(): THREE.Texture {
+  if (freezePuffTexture) return freezePuffTexture;
+  const size = 64;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const dx = (x + 0.5) / size - 0.5;
+      const dy = (y + 0.5) / size - 0.5;
+      const alpha = THREE.MathUtils.clamp(1 - Math.sqrt(dx * dx + dy * dy) * 2, 0, 1);
+      const offset = (y * size + x) * 4;
+      data[offset] = 255;
+      data[offset + 1] = 255;
+      data[offset + 2] = 255;
+      data[offset + 3] = Math.round(alpha * alpha * 255);
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.needsUpdate = true;
+  freezePuffTexture = texture;
+  return texture;
+}
 
 export type EnemyDeathEffectStage = 'animation' | 'burn' | 'ash' | 'complete';
 
@@ -57,6 +86,12 @@ export interface EnemyOptions {
   /** Drop ao morrer: recupera HP ou concede velocidade temporária ao player */
   dropOnDeath?: 'heal' | 'speed' | null;
   attackMode?: 'melee' | 'ranged';
+  /**
+   * Shared scene-level pool for the shock aura light. When provided, the aura
+   * borrows a slot instead of adding its own light (which would recompile all
+   * lit shaders). Without it, the aura keeps the historical per-enemy light.
+   */
+  shockLightPool?: VFXLightPool | null;
 }
 
 export interface EnemyRangedAttack {
@@ -140,9 +175,8 @@ export class Enemy {
   private bossMovementLocked = false;
   private formationPursuitActive = false;
   private elementalStatus: ElementalStatusState | null = null;
-  private freezeShell: THREE.Mesh | null = null;
   private mageFreezeRemaining = 0;
-  private mageRootRemaining = 0;
+  private mageSlowRemaining = 0;
   private mageLevitateRemaining = 0;
   private mageLevitateDuration = 0;
   private levitateElapsed = 0;
@@ -151,7 +185,16 @@ export class Enemy {
   private levitateUsesClip = false;
   private savedMeshRoll = 0;
   private shockAura: THREE.Group | null = null;
-  private rootRing: THREE.Mesh | null = null;
+  private readonly shockLightPool: VFXLightPool | null;
+  private shockLightHandle: VFXLightHandle | null = null;
+  private shockFallbackLight: THREE.PointLight | null = null;
+  private freezeMist: THREE.Points | null = null;
+  private freezeSmoke: THREE.Points | null = null;
+  private freezeSmokeSpeeds: Float32Array | null = null;
+  private readonly freezeTintOriginals = new Map<
+    THREE.MeshStandardMaterial,
+    { emissive: number; emissiveIntensity: number }
+  >();
   private hitStaggerRemaining = 0;
   private hitUsesClip = false;
   private dizzyActive = false;
@@ -177,6 +220,7 @@ export class Enemy {
     this.attackMode = options.attackMode ?? 'melee';
     this.groundAnimatedModel = options.groundAnimatedModel ?? false;
     this.animatedGroundOffset = options.animatedGroundOffset ?? 0;
+    this.shockLightPool = options.shockLightPool ?? null;
 
     // temperamento ajusta detecção/velocidade
     if (this.temperament === 'aggressive') {
@@ -495,7 +539,7 @@ export class Enemy {
       });
     }
 
-    this.updateFreezeShell(delta);
+    this.updateFreezeVisuals(delta);
     if (this.isFrozenByIce) {
       this.activeAnimatedAttack = null;
       this.animator?.play('idle');
@@ -558,11 +602,6 @@ export class Enemy {
         if (this.activeAnimatedAttack.elapsed < ENEMY_ATTACK_DURATION) return;
         this.activeAnimatedAttack = null;
       }
-    }
-
-    if (this.mageRootRemaining > 0) {
-      this.updateWhileRunLocked(playerPos, onAttackPlayer, onRangedAttack);
-      return;
     }
 
     if (this.isBoss && dist > this.attackRange) {
@@ -842,16 +881,15 @@ export class Enemy {
     if (duration <= 0) return;
     this.mageFreezeRemaining = Math.max(this.mageFreezeRemaining, duration);
     this.activeAnimatedAttack = null;
-    this.ensureFreezeShell();
+    this.ensureFreezeVisuals();
   }
 
-  /** Mage water. The monster cannot run or patrol, but can still attack in range. */
-  public applyMageRoot(seconds: number): void {
+  /** Mage water. The monster keeps moving and attacking, but slowly. */
+  public applyMageSlow(seconds: number): void {
     if (this.isDead) return;
     const duration = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
     if (duration <= 0) return;
-    this.mageRootRemaining = Math.max(this.mageRootRemaining, duration);
-    this.ensureRootRing();
+    this.mageSlowRemaining = Math.max(this.mageSlowRemaining, duration);
   }
 
   /**
@@ -889,11 +927,8 @@ export class Enemy {
     if (this.mageFreezeRemaining > 0) {
       this.mageFreezeRemaining = Math.max(0, this.mageFreezeRemaining - step);
     }
-    if (this.mageRootRemaining > 0) {
-      this.mageRootRemaining = Math.max(0, this.mageRootRemaining - step);
-      this.updateRootRing();
-    } else {
-      this.hideRootRing();
+    if (this.mageSlowRemaining > 0) {
+      this.mageSlowRemaining = Math.max(0, this.mageSlowRemaining - step);
     }
     if (this.mageLevitateRemaining <= 0) return;
     this.levitateElapsed += step;
@@ -940,94 +975,17 @@ export class Enemy {
 
   private clearMageControlForDeath(): void {
     this.mageFreezeRemaining = 0;
-    this.mageRootRemaining = 0;
+    this.mageSlowRemaining = 0;
     this.mageLevitateRemaining = 0;
-    this.hideRootRing();
+    this.hideFreezeVisuals();
     if (this.levitatePoseActive) this.endLevitatePose();
     else this.hideShockAura();
-  }
-
-  private updateWhileRunLocked(
-    playerPos: THREE.Vector3,
-    onAttackPlayer: (dmg: number, distance: number) => void,
-    onRangedAttack?: (attack: EnemyRangedAttack) => void
-  ): void {
-    const dist = this.root.position.distanceTo(playerPos);
-    if (this.attackMode === 'ranged') {
-      if (dist <= this.attackRange) {
-        this.updateRangedCombat(0, playerPos, dist, onAttackPlayer, onRangedAttack);
-        return;
-      }
-      this.animator?.play('idle');
-      this.faceAnimatedModel(playerPos);
-      return;
-    }
-
-    const preferredAttackDistance = this.isBoss
-      ? this.attackRange
-      : Math.min(this.attackRange, REGULAR_PREFERRED_ATTACK_DISTANCE);
-    if (dist <= preferredAttackDistance) {
-      this.faceAnimatedModel(playerPos);
-      if (this.attackCooldown <= 0) {
-        this.attackCooldown = this.attackCooldownTime;
-        if (this.animator?.playNextAttack()) {
-          this.activeAnimatedAttack = { elapsed: 0, damageApplied: false };
-        } else {
-          onAttackPlayer(this.damage, dist);
-          this.playLungeAnimation();
-        }
-      } else if (!this.activeAnimatedAttack) {
-        this.animator?.play('idle');
-      }
-      return;
-    }
-
-    this.activeAnimatedAttack = null;
-    this.animator?.play('idle');
-    this.faceAnimatedModel(playerPos);
-  }
-
-  private ensureRootRing(): void {
-    if (this.rootRing) return;
-    const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
-    const ring = new THREE.Mesh(
-      this.ownGeometry(new THREE.RingGeometry(0.55 * bodyScale, 0.82 * bodyScale, 28)),
-      new THREE.MeshBasicMaterial({
-        color: 0x4ec8ff,
-        transparent: true,
-        opacity: 0.7,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        toneMapped: false,
-      })
-    );
-    ring.name = 'EnemyRunLockRing';
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.06;
-    ring.visible = false;
-    this.root.add(ring);
-    this.rootRing = ring;
-    this.fadeMaterials.push(ring.material);
-  }
-
-  private updateRootRing(): void {
-    this.ensureRootRing();
-    if (!this.rootRing) return;
-    this.rootRing.visible = true;
-    const material = this.rootRing.material as THREE.MeshBasicMaterial;
-    material.opacity = 0.42 + Math.sin(performance.now() * 0.012) * 0.18;
-    this.rootRing.rotation.z += 0.04;
-  }
-
-  private hideRootRing(): void {
-    if (!this.rootRing) return;
-    this.rootRing.visible = false;
   }
 
   private ensureShockAura(): void {
     if (this.shockAura) {
       this.shockAura.visible = true;
+      this.acquireShockLight();
       return;
     }
     const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
@@ -1050,17 +1008,57 @@ export class Enemy {
       group.add(line);
       this.fadeMaterials.push(material);
     }
-    const light = new THREE.PointLight(0xb7e6ff, 1.7, 3.4 * bodyScale, 2);
-    light.position.y = 0.9 * bodyScale;
-    light.castShadow = false;
-    group.add(light);
     this.root.add(group);
     this.shockAura = group;
+    this.acquireShockLight();
+  }
+
+  /**
+   * The aura light is borrowed from the shared pool so shocking a monster
+   * never changes the scene light count (which would recompile every lit
+   * shader mid-fight). Without a pool it falls back to the historical
+   * per-enemy light; with an exhausted pool the aura renders unlit.
+   */
+  private acquireShockLight(): void {
+    if (this.shockLightHandle || !this.shockAura) return;
+    const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
+    const handle = this.shockLightPool?.acquire() ?? null;
+    if (handle) {
+      handle.light.color.set(0xb7e6ff);
+      handle.light.distance = 3.4 * bodyScale;
+      handle.light.intensity = 1.7;
+      this.shockLightHandle = handle;
+      this.positionShockLight();
+      return;
+    }
+    if (!this.shockLightPool && !this.shockFallbackLight) {
+      const light = new THREE.PointLight(0xb7e6ff, 1.7, 3.4 * bodyScale, 2);
+      light.position.y = 0.9 * bodyScale;
+      light.castShadow = false;
+      this.shockAura.add(light);
+      this.shockFallbackLight = light;
+    }
+  }
+
+  private positionShockLight(): void {
+    if (!this.shockLightHandle) return;
+    const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
+    this.shockLightHandle.light.position.set(
+      this.root.position.x,
+      this.root.position.y + 0.9 * bodyScale,
+      this.root.position.z
+    );
+  }
+
+  private releaseShockLight(): void {
+    this.shockLightHandle?.release();
+    this.shockLightHandle = null;
   }
 
   private updateShockAura(): void {
     if (!this.shockAura) return;
     this.shockAura.visible = true;
+    this.positionShockLight();
     const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
     const time = performance.now() * 0.018;
     let lineIndex = 0;
@@ -1100,6 +1098,7 @@ export class Enemy {
   private hideShockAura(): void {
     if (!this.shockAura) return;
     this.shockAura.visible = false;
+    this.releaseShockLight();
   }
 
   private applyHitKnockback(from: THREE.Vector3): void {
@@ -1143,66 +1142,148 @@ export class Enemy {
     this.dizzyActive = false;
   }
 
-  public applyElementalHit(element: ElementalType, damagePerSecond: number): void {
+  public applyElementalHit(element: ElementalType, damagePerSecond: number, durationSeconds?: number): void {
     if (this.isDead) return;
     this.elementalStatus = applyElementalStatus(
       this.elementalStatus,
       element,
-      damagePerSecond
+      damagePerSecond,
+      durationSeconds
     );
-    if (element === 'ice') this.ensureFreezeShell();
+    if (element === 'ice') this.ensureFreezeVisuals();
   }
 
   private get isFrozenByIce(): boolean {
     return this.elementalStatus?.element === 'ice' || this.mageFreezeRemaining > 0;
   }
 
-  private ensureFreezeShell(): void {
-    if (this.freezeShell) return;
+  private ensureFreezeVisuals(): void {
+    if (this.freezeMist || this.freezeSmoke) return;
     const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
-    const geometry = this.ownGeometry(new THREE.IcosahedronGeometry(0.92 * bodyScale, 2));
-    const material = new THREE.MeshBasicMaterial({
-      color: 0xbff7ff,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      wireframe: true,
-      toneMapped: false,
-    });
-    const shell = new THREE.Mesh(geometry, material);
-    shell.name = 'EnemyIceFreezeShell';
-    shell.position.y = 1.05 * bodyScale;
-    shell.scale.set(0.95, 1.35, 0.95);
-    shell.visible = false;
-    this.root.add(shell);
-    this.freezeShell = shell;
-    this.fadeMaterials.push(material);
+    this.freezeMist = this.buildFreezePuffs('EnemyIceMist', 0xffffff, 0.5 * bodyScale, 34, 0.45, 1.05);
+    this.freezeSmoke = this.buildFreezePuffs('EnemyIceSmoke', 0xcdd6e0, 0.72 * bodyScale, 20, 0.85, 2);
   }
 
-  private updateFreezeShell(delta: number): void {
-    if (!this.freezeShell) return;
-    const material = this.freezeShell.material as THREE.MeshBasicMaterial;
+  /**
+   * White mist / pale smoke cloud for the frozen body. Mist puffs orbit with
+   * the points object; smoke puffs rise and loop (speeds kept for update).
+   */
+  private buildFreezePuffs(
+    name: string,
+    color: number,
+    size: number,
+    count: number,
+    radius: number,
+    height: number
+  ): THREE.Points {
+    const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
+    const positions = new Float32Array(count * 3);
+    for (let index = 0; index < count; index += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const spread = (0.35 + Math.random() * 0.65) * radius * bodyScale;
+      positions[index * 3] = Math.cos(angle) * spread;
+      positions[index * 3 + 1] = (0.1 + Math.random() * 0.9) * height * bodyScale;
+      positions[index * 3 + 2] = Math.sin(angle) * spread;
+    }
+    const geometry = this.ownGeometry(new THREE.BufferGeometry());
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const material = new THREE.PointsMaterial({
+      map: getFreezePuffTexture(),
+      color,
+      size,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const points = new THREE.Points(geometry, material);
+    points.name = name;
+    points.frustumCulled = false;
+    points.visible = false;
+    this.root.add(points);
+    this.fadeMaterials.push(material);
+    if (name === 'EnemyIceSmoke') {
+      const speeds = new Float32Array(count);
+      for (let index = 0; index < count; index += 1) {
+        speeds[index] = (0.45 + Math.random() * 0.6) * bodyScale;
+      }
+      this.freezeSmokeSpeeds = speeds;
+    }
+    return points;
+  }
+
+  private updateFreezeVisuals(delta: number): void {
+    if (!this.freezeMist || !this.freezeSmoke) return;
     const active = this.isFrozenByIce && !this.isDead;
-    this.freezeShell.visible = active;
+    this.freezeMist.visible = active;
+    this.freezeSmoke.visible = active;
     if (!active) {
-      material.opacity = 0;
+      this.restoreFreezeTint();
       return;
     }
-    this.freezeShell.rotation.y += Math.max(0, delta) * 0.7;
-    this.freezeShell.rotation.x += Math.max(0, delta) * 0.25;
-    material.opacity = 0.28 + Math.sin(performance.now() * 0.012) * 0.05;
+    this.applyFreezeTint();
+    const step = Math.max(0, delta);
+    if (this.freezeMist) {
+      this.freezeMist.rotation.y -= step * 0.9;
+      const mistMaterial = this.freezeMist.material as THREE.PointsMaterial;
+      mistMaterial.opacity = 0.38 + Math.sin(performance.now() * 0.009) * 0.08;
+    }
+    this.updateFreezeSmoke(step);
+  }
+
+  private updateFreezeSmoke(delta: number): void {
+    if (!this.freezeSmoke || !this.freezeSmokeSpeeds || delta <= 0) return;
+    const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
+    const attribute = this.freezeSmoke.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const positions = attribute.array as Float32Array;
+    const top = 2 * bodyScale;
+    for (let index = 0; index < this.freezeSmokeSpeeds.length; index += 1) {
+      const offset = index * 3 + 1;
+      positions[offset] += this.freezeSmokeSpeeds[index] * delta;
+      if (positions[offset] > top) positions[offset] = 0.1 * bodyScale;
+    }
+    attribute.needsUpdate = true;
+  }
+
+  /** Tints the body ice-blue while frozen; originals are restored on release. */
+  private applyFreezeTint(): void {
+    for (const material of this.fadeMaterials) {
+      if (!(material instanceof THREE.MeshStandardMaterial)) continue;
+      if (!this.freezeTintOriginals.has(material)) {
+        this.freezeTintOriginals.set(material, {
+          emissive: material.emissive.getHex(),
+          emissiveIntensity: this.hitFlashBaseIntensities.get(material) ?? material.emissiveIntensity,
+        });
+      }
+      material.emissive.setHex(0x2a7fff);
+      if (material.emissiveIntensity < 0.55) material.emissiveIntensity = 0.55;
+    }
+  }
+
+  private restoreFreezeTint(): void {
+    if (this.freezeTintOriginals.size === 0) return;
+    this.freezeTintOriginals.forEach((original, material) => {
+      material.emissive.setHex(original.emissive);
+      material.emissiveIntensity = original.emissiveIntensity;
+    });
+    this.freezeTintOriginals.clear();
+  }
+
+  private hideFreezeVisuals(): void {
+    if (this.freezeMist) this.freezeMist.visible = false;
+    if (this.freezeSmoke) this.freezeSmoke.visible = false;
+    this.restoreFreezeTint();
   }
 
   public get elementalSpeedMultiplier(): number {
     if (
-      this.mageRootRemaining > 0
-      || this.mageLevitateRemaining > 0
+      this.mageLevitateRemaining > 0
       || this.mageFreezeRemaining > 0
       || this.hitStaggerRemaining > 0
     ) {
       return 0;
     }
+    if (this.mageSlowRemaining > 0) return MAGE_WATER_SLOW_MULTIPLIER;
     return getElementalSlowMultiplier(this.elementalStatus);
   }
 
@@ -1253,6 +1334,7 @@ export class Enemy {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.releaseShockLight();
     const ownedSkeletons = new Set<THREE.Skeleton>();
     this.meshGroup.traverse((object) => {
       const skinnedMesh = object as THREE.SkinnedMesh;

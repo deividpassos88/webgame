@@ -25,14 +25,18 @@ const TIME_EPSILON = 1e-8;
 export function applyElementalStatus(
   current: ElementalStatusState | null,
   element: ElementalType,
-  damagePerSecond: number
+  damagePerSecond: number,
+  durationSeconds: number = ELEMENTAL_STATUS_DURATION_SECONDS
 ): ElementalStatusState {
   const safeDamagePerSecond = Number.isFinite(damagePerSecond)
     ? Math.max(0, damagePerSecond)
     : 0;
+  const safeDuration = Number.isFinite(durationSeconds)
+    ? Math.max(0, durationSeconds)
+    : ELEMENTAL_STATUS_DURATION_SECONDS;
   return Object.freeze({
     element,
-    remainingSeconds: ELEMENTAL_STATUS_DURATION_SECONDS,
+    remainingSeconds: safeDuration,
     damagePerSecond: safeDamagePerSecond,
     pendingDamage:
       current?.element === element && Number.isFinite(current.pendingDamage)

@@ -240,4 +240,35 @@ describe('Mage gameplay player', () => {
       expect(player.isAttackInSwing()).toBe(false);
     }
   });
+
+  it('frees Mage movement at spell launch while recovery still owns the action slot', async () => {
+    const player = new Player('mage', createMageAssets());
+    await player.load();
+    player.root.position.set(2, 0, -3);
+
+    expect(player.tryStartSkillAttack('pulo_atacando')).toBe(true);
+    player.moveByDirection(new THREE.Vector3(1, 0, 0), 0.1);
+    expect(player.root.position.x).toBeCloseTo(2);
+
+    // The VFX bridge calls this when the spell launches.
+    player.releaseSkillCastAnchor();
+    expect(player.isCastingSkill).toBe(true);
+
+    player.moveByDirection(new THREE.Vector3(1, 0, 0), 0.1);
+    expect(player.root.position.x).toBeGreaterThan(2);
+    const afterStep = player.root.position.x;
+    player.update(0.1);
+    // The anchor no longer snaps the Mage back while recovery plays out.
+    expect(player.root.position.x).toBeCloseTo(afterStep);
+
+    // The action slot stays owned: clicks cannot queue attacks behind the skill.
+    const target = new THREE.Group();
+    player.attackEnemy(target, () => undefined);
+    expect(player.isCastingSkill).toBe(true);
+
+    player.moveTo(new THREE.Vector3(6, 0, -3));
+    for (let step = 0; step < 25; step += 1) player.update(0.1);
+    expect(player.isCastingSkill).toBe(false);
+    expect(player.root.position.x).toBeGreaterThan(afterStep);
+  });
 });

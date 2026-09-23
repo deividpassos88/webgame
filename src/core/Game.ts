@@ -114,13 +114,15 @@ import { WarriorSkillController, type WarriorSkillsSnapshot } from '../combat/Wa
 import { FatigueMeter, MAX_FATIGUE, DASH_FATIGUE_COST } from '../combat/FatigueMeter';
 import { mageSkillFatiguePercent } from '../combat/MageSkillCost';
 import { firstColumnHit, mageSkillAttackId } from '../combat/MageSpellFlight';
-import { isInsideMageShockRadius, mageSkillImpactEffect } from '../combat/MageSkillImpact';
+import { isInsideMageSkillRadius, mageSkillImpactEffect } from '../combat/MageSkillImpact';
 import {
   MAGE_TELEPORT_FATIGUE_PERCENT,
   mageTeleportManaCost,
   resolveMageTeleportDestination,
 } from '../entities/MageTeleport';
 import type { MageSpellId } from '../vfx/VFXTypes';
+import { MAGE_VFX_LIMITS } from '../vfx/VFXConfig';
+import { VFXLightPool } from '../vfx/VFXLightPool';
 import {
   getWarriorSkill,
   isWarriorSkillUnlocked,
@@ -202,7 +204,8 @@ export class Game {
   /** Id do mini-boss dono da barra de vida visivel no HUD. */
   private miniBossBarId: string | null = null;
   private readonly miniBossEffects = new MiniBossSkillEffects(this.scene);
-  private readonly mageVFX = new MageVFX(this.scene);
+  private readonly vfxLightPool = new VFXLightPool(this.scene, MAGE_VFX_LIMITS.maxTemporaryLights);
+  private readonly mageVFX = new MageVFX(this.scene, { lightPool: this.vfxLightPool });
   private cameraController: CameraController;
   private input: InputManager;
   private clock = new THREE.Clock();
@@ -433,6 +436,7 @@ export class Game {
           target,
           fallbackDirection: event.fallbackDirection,
           onImpact: (hit) => this.onMageSpellImpact(event.spellId, hit, event.onImpact),
+          onLaunch: () => this.player.releaseSkillCastAnchor(),
           isTargetAlive: (candidate) => this.isMageVFXTargetAlive(candidate),
           queryBodyHit: (from, to, radius) => this.queryMageSpellBody(from, to, radius),
         });
@@ -1009,16 +1013,20 @@ export class Game {
     if (role === 'boss') {
       return createBoss(
         point,
-        this.bossAssets.hasBoss() ? this.bossAssets.createBossVisual() : undefined
+        this.bossAssets.hasBoss() ? this.bossAssets.createBossVisual() : undefined,
+        this.vfxLightPool
       );
     }
     const visual = this.enemyAssets.hasRegularEnemy()
       ? this.enemyAssets.createRegularEnemyVisual()
       : undefined;
     if (role === 'mini-boss') {
-      return new Enemy(createMiniBossOptions(point, 1, 1, 1), visual);
+      return new Enemy(
+        { ...createMiniBossOptions(point, 1, 1, 1), shockLightPool: this.vfxLightPool },
+        visual
+      );
     }
-    return createRegularEnemy(point, 1, 1, this.adminSpawnSequence, 1, visual);
+    return createRegularEnemy(point, 1, 1, this.adminSpawnSequence, 1, visual, this.vfxLightPool);
   }
 
   private resolveAdminSpawnPoint(): THREE.Vector3 {
@@ -1099,7 +1107,8 @@ export class Game {
               request.hpMultiplier,
               request.damageMultiplier,
               request.speedMultiplier,
-              visual
+              visual,
+              this.vfxLightPool
             )
             : variant === 'guardian'
               ? createGuardianEnemy(
@@ -1107,7 +1116,8 @@ export class Game {
                 request.hpMultiplier,
                 request.damageMultiplier,
                 request.speedMultiplier,
-                visual
+                visual,
+                this.vfxLightPool
               )
             : createRegularEnemy(
               point,
@@ -1115,15 +1125,19 @@ export class Game {
               request.damageMultiplier,
               sequence,
               request.speedMultiplier,
-              visual
+              visual,
+              this.vfxLightPool
             )
           : new Enemy(
-              createMiniBossOptions(
-                point,
-                request.hpMultiplier,
-                request.damageMultiplier,
-                request.speedMultiplier
-              ),
+              {
+                ...createMiniBossOptions(
+                  point,
+                  request.hpMultiplier,
+                  request.damageMultiplier,
+                  request.speedMultiplier
+                ),
+                shockLightPool: this.vfxLightPool,
+              },
               visual
             );
         if (!this.combatRegistry.register({
@@ -1156,7 +1170,8 @@ export class Game {
       try {
         const boss = createBoss(
           layout.boss,
-          this.bossAssets.hasBoss() ? this.bossAssets.createBossVisual() : undefined
+          this.bossAssets.hasBoss() ? this.bossAssets.createBossVisual() : undefined,
+          this.vfxLightPool
         );
         if (this.combatRegistry.register({
           id,
@@ -1208,7 +1223,8 @@ export class Game {
                 request.hpMultiplier,
                 request.damageMultiplier,
                 request.speedMultiplier,
-                visual
+                visual,
+                this.vfxLightPool
               )
             : variant === 'guardian'
               ? createGuardianEnemy(
@@ -1216,7 +1232,8 @@ export class Game {
                   request.hpMultiplier,
                   request.damageMultiplier,
                   request.speedMultiplier,
-                  visual
+                  visual,
+                  this.vfxLightPool
                 )
               : createRegularEnemy(
                   point,
@@ -1224,7 +1241,8 @@ export class Game {
                   request.damageMultiplier,
                   sequence,
                   request.speedMultiplier,
-                  visual
+                  visual,
+                  this.vfxLightPool
                 );
 
           if (!this.combatRegistry.register({
@@ -1821,9 +1839,10 @@ export class Game {
   }
 
   /**
-   * Ice freezes the body that was hit. Water stops that body from running.
-   * Lightning lifts every living monster within 2m of the impact, including
-   * the one that was hit when it survives.
+   * Ice paralyzes the body that was hit. Water slows that body down. Lava
+   * burns every living monster within 2m of the impact. Lightning lifts every
+   * living monster within 2m of the impact, including the one that was hit
+   * when it survives.
    */
   private applyMageSkillControl(
     spellId: MageSpellId,
@@ -1836,8 +1855,18 @@ export class Game {
       if (!target.isDead) target.applyMageFreeze(effect.seconds);
       return;
     }
-    if (effect.kind === 'root') {
-      if (!target.isDead) target.applyMageRoot(effect.seconds);
+    if (effect.kind === 'slow') {
+      if (!target.isDead) target.applyMageSlow(effect.seconds);
+      return;
+    }
+    if (effect.kind === 'burn') {
+      for (const root of this.combatRegistry.activeRoots()) {
+        const record = this.combatRegistry.findByRoot(root);
+        if (!record || record.enemy.isDead) continue;
+        const position = record.enemy.root.position;
+        if (!isInsideMageSkillRadius(impact.x, impact.z, position.x, position.z, effect.radius)) continue;
+        record.enemy.applyElementalHit('fire', effect.damagePerSecond, effect.seconds);
+      }
       return;
     }
     this.mageVFX.playShockImpact(impact);
@@ -1845,7 +1874,7 @@ export class Game {
       const record = this.combatRegistry.findByRoot(root);
       if (!record || record.enemy.isDead) continue;
       const position = record.enemy.root.position;
-      if (!isInsideMageShockRadius(impact.x, impact.z, position.x, position.z, effect.radius)) continue;
+      if (!isInsideMageSkillRadius(impact.x, impact.z, position.x, position.z, effect.radius)) continue;
       record.enemy.applyMageShockLevitate(effect.seconds);
     }
   }

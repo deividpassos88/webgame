@@ -504,7 +504,7 @@ export class Player {
   }
 
   public moveTo(point: THREE.Vector3) {
-    if (this.isMageSkillLocked()) return;
+    if (this.isMageMovementLocked()) return;
     if (this.isSwinging) this.cancelCombo();
     if (!this.canAcceptInput()) return;
     this.animationPreview.clear();
@@ -1033,6 +1033,11 @@ export class Player {
     if (target && this.isTargetAlive(target) && this.characterId !== 'mage') {
       this.facePoint(target.position, delta);
     }
+    // After the spell launches the Mage walks while recovery still owns the
+    // action slot. Warriors keep the historical full-skill root.
+    if (this.characterId === 'mage' && this.skillCastAnchor === null) {
+      this.updateLaunchedSkillLocomotion(delta);
+    }
 
     for (const event of this.skillAttackController.update(delta)) {
       switch (event.type) {
@@ -1174,7 +1179,7 @@ export class Player {
     delta: number,
     preserveMarkedAttack = false
   ) {
-    if (this.isDashing || this.isMageSkillLocked()) {
+    if (this.isDashing || this.isMageMovementLocked()) {
       this.holdMageSkillCastPosition();
       return;
     }
@@ -1438,6 +1443,33 @@ export class Player {
 
   private isMageSkillLocked(): boolean {
     return this.characterId === 'mage' && this.skillAttackController.active;
+  }
+
+  /**
+   * Frees Mage movement the moment a spell launches (VFX onLaunch). The skill
+   * attack stays active until recovery ends, so the action slot keeps
+   * rejecting new attacks/skills — only walking is released early.
+   */
+  public releaseSkillCastAnchor(): void {
+    if (!this.isMageSkillLocked() || !this.skillCastAnchor) return;
+    this.skillCastAnchor = null;
+    this.playState(this.keyboardMoving || this.moveTarget ? 'running' : 'idle', 0.15);
+  }
+
+  /** Movement stays pinned only until the spell launches. */
+  private isMageMovementLocked(): boolean {
+    return this.isMageSkillLocked() && this.skillCastAnchor !== null;
+  }
+
+  /** Walk/click integration while a launched Mage skill still owns the action
+   * slot. The animation is driven explicitly because getLocomotionState
+   * reports null while swinging. */
+  private updateLaunchedSkillLocomotion(delta: number): void {
+    if (this.moveTarget) {
+      this.updateMoveBehavior(delta);
+      return;
+    }
+    this.playState(this.keyboardMoving ? 'running' : 'idle', 0.15);
   }
 
   private holdMageSkillCastPosition(): void {

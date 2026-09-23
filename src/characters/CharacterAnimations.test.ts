@@ -169,7 +169,7 @@ describe('resolveCharacterClips', () => {
     }
   });
 
-  it('uses only Maga_High look_around as lobby idle and ignores wait', () => {
+  it('uses only lobby look_around as mage idle and ignores wait', () => {
     const animations: Record<CharacterId, THREE.AnimationClip[]> = {
       'dragon-miner': [],
       paladin: [],
@@ -192,6 +192,34 @@ describe('resolveCharacterClips', () => {
     const values = Array.from(track?.values ?? []);
     expect(values.slice(0, 3).map(Math.fround)).toEqual([
       Math.fround(0.002), Math.fround(0.56), Math.fround(0.01),
+    ]);
+    expect(values.slice(3, 6)).toEqual(values.slice(0, 3));
+  });
+
+  it('uses the Maga_Lobby generic mixamo.com clip as mage lobby idle', () => {
+    // Maga_Lobby.glb carries a single idle clip exported under the generic
+    // Mixamo name; the lobby must still resolve it as the mage idle.
+    const animations: Record<CharacterId, THREE.AnimationClip[]> = {
+      'dragon-miner': [],
+      paladin: [],
+      mage: [
+        clipWithRootMotion('mixamo.com', [0.001, 0.62, -0.002], [0.003, 0.62, 0.001], 14.37),
+      ],
+    };
+
+    const clips = resolveCharacterClips('mage', {
+      getAnimations: (id) => animations[id],
+      getBoneNames: () => new Set(['mixamorig:Hips']),
+      getBoneRestRotations: () => new Map(),
+      getBoneRestTranslations: () => new Map(),
+    });
+
+    expect(clips.idle?.name).toBe('mage:idle');
+    expect(clips.idle?.duration).toBeCloseTo(14.37);
+    const track = clips.idle?.tracks.find((candidate) => candidate.name === 'mixamorig:Hips.position');
+    const values = Array.from(track?.values ?? []);
+    expect(values.slice(0, 3).map(Math.fround)).toEqual([
+      Math.fround(0.001), Math.fround(0.62), Math.fround(-0.002),
     ]);
     expect(values.slice(3, 6)).toEqual(values.slice(0, 3));
   });
