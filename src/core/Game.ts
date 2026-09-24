@@ -114,7 +114,6 @@ import {
 import { WarriorSkillController, type WarriorSkillsSnapshot } from '../combat/WarriorSkillController';
 import { FatigueMeter, MAX_FATIGUE, DASH_FATIGUE_COST } from '../combat/FatigueMeter';
 import { mageBasicAttackManaCost, mageSkillFatiguePercent } from '../combat/MageSkillCost';
-import { archerDamageAgainstClass } from '../combat/ArcherDamage';
 import { firstColumnHit, mageSkillAttackId } from '../combat/MageSpellFlight';
 import { isInsideMageSkillRadius, mageSkillImpactEffect } from '../combat/MageSkillImpact';
 import {
@@ -2182,14 +2181,7 @@ export class Game {
   private updateCombatEntities(delta: number): void {
     this.updateMiniBossSkills(delta);
     this.archerProjectiles.update(delta, (hit) => {
-      // Monstro_arch arrows hit the Maga 30% harder; the Guerreiro takes the
-      // projectile damage unchanged.
-      this.onEnemyHitPlayer(
-        archerDamageAgainstClass(hit.damage, this.profile.selectedClass),
-        'regular',
-        hit.distance,
-        true
-      );
+      this.onEnemyHitPlayer(hit.damage, 'regular', hit.distance, true);
     });
     this.combatRegistry.update(
       delta,
