@@ -88,6 +88,7 @@ import {
   loadPlayerProfile,
   resetRunProgression,
   savePlayerProfile,
+  syncStarterWeaponToClass,
   type InventoryStack,
   type PlayerProfile,
 } from '../profile/PlayerProfile';
@@ -112,7 +113,8 @@ import {
 } from '../rewards/FinalBossLoot';
 import { WarriorSkillController, type WarriorSkillsSnapshot } from '../combat/WarriorSkillController';
 import { FatigueMeter, MAX_FATIGUE, DASH_FATIGUE_COST } from '../combat/FatigueMeter';
-import { mageSkillFatiguePercent } from '../combat/MageSkillCost';
+import { mageBasicAttackManaCost, mageSkillFatiguePercent } from '../combat/MageSkillCost';
+import { archerDamageAgainstClass } from '../combat/ArcherDamage';
 import { firstColumnHit, mageSkillAttackId } from '../combat/MageSpellFlight';
 import { isInsideMageSkillRadius, mageSkillImpactEffect } from '../combat/MageSkillImpact';
 import {
@@ -300,6 +302,9 @@ export class Game {
     try {
       const profileResult = loadPlayerProfile();
       this.profile = profileResult.profile;
+      // Classes are separate: the Guerreiro keeps the sword and the Maga the
+      // cajado, even when an older save still carried the other starter.
+      Object.assign(this.profile, syncStarterWeaponToClass(this.profile));
       Object.assign(this.profile, resetRunProgression(this.profile));
       this.persistProfileState();
       this.inventory = InventoryStore.fromProfile(this.profile);
@@ -372,6 +377,10 @@ export class Game {
             firstRun: this.flow.state === 'class-select',
             onClassConfirmed: (selectedClass) => {
               this.profile.selectedClass = selectedClass;
+              // Choosing the class swaps the starter weapon shown: sword only
+              // for the Guerreiro, cajado only for the Maga.
+              Object.assign(this.profile, syncStarterWeaponToClass(this.profile));
+              this.inventory.commitProfile(this.profile);
               this.flow.transition({ type: 'class-confirmed' });
               savePlayerProfile(this.profile);
             },
@@ -516,7 +525,10 @@ export class Game {
         this.hud.setPlayerPortrait('/assets/ui/portrait/warrior-portrait.png');
       }
       this.hud.setAnimationTestPanelForced(this.isAdminTrainingRun());
-      if (!this.isAdminTrainingRun() && this.player.equippedWeaponId !== null) {
+      // Any durable equipped weapon counts, not just the mounted 3D sword:
+      // the Maga unlocks the run with her cajado the same way the Guerreiro
+      // does with the sword.
+      if (!this.isAdminTrainingRun() && this.hasEquippedWeaponForProgression()) {
         this.runProgression.weaponEquipped();
       }
 
@@ -622,6 +634,11 @@ export class Game {
     this.lightingRig = new GameLightingRig(this.scene);
   }
 
+  /** True when the profile wears a weapon, regardless of its 3D attachment. */
+  private hasEquippedWeaponForProgression(): boolean {
+    return this.player.equippedWeaponId !== null || getPrimaryWeaponId(this.profile.equipment) !== null;
+  }
+
   /** Makes the rendered weapon reflect the durable primary-weapon slot. */
   private synchronizeEquippedWeapon(): void {
     if (getPrimaryWeaponId(this.profile.equipment) !== 'starter-sword') {
@@ -662,6 +679,21 @@ export class Game {
     this.hud.onOpenStatus(() => this.openRpgOverlay('status'));
     this.hud.updateProgression(this.profile.progression, this.profile.attributePointsRemaining);
     this.hud.onBasicAttack(() => this.triggerBasicAttack());
+    // The Maga's basic cast spends MP (mana) — 1% da barra por ataque (treino
+    // ADM incluso). É mana, não fadiga; o Guerreiro continua de graça.
+    this.player.basicAttackCost = {
+      canAfford: () => this.profile.selectedClass !== 'mage'
+        || this.warriorSkills.canSpend(
+          mageBasicAttackManaCost(this.warriorSkills.snapshot().maxEnergy)
+        ),
+      spend: () => {
+        if (this.profile.selectedClass === 'mage') {
+          this.warriorSkills.spend(
+            mageBasicAttackManaCost(this.warriorSkills.snapshot().maxEnergy)
+          );
+        }
+      },
+    };
     this.hud.onCycleTarget(() => this.cycleTarget());
     this.hud.onWarriorSkill((id) => this.tryActivateWarriorSkill(id));
   }
@@ -1318,7 +1350,10 @@ export class Game {
       this.hud.hideWaveStatus();
       this.applyCharacterBuild(true);
       this.hud.setAnimationTestPanelForced(this.isAdminTrainingRun());
-      if (!this.isAdminTrainingRun() && this.player.equippedWeaponId !== null) {
+      // Any durable equipped weapon counts, not just the mounted 3D sword:
+      // the Maga unlocks the run with her cajado the same way the Guerreiro
+      // does with the sword.
+      if (!this.isAdminTrainingRun() && this.hasEquippedWeaponForProgression()) {
         this.runProgression.weaponEquipped();
       }
       this.flow.state = 'playing';
@@ -2147,7 +2182,14 @@ export class Game {
   private updateCombatEntities(delta: number): void {
     this.updateMiniBossSkills(delta);
     this.archerProjectiles.update(delta, (hit) => {
-      this.onEnemyHitPlayer(hit.damage, 'regular', hit.distance, true);
+      // Monstro_arch arrows hit the Maga 30% harder; the Guerreiro takes the
+      // projectile damage unchanged.
+      this.onEnemyHitPlayer(
+        archerDamageAgainstClass(hit.damage, this.profile.selectedClass),
+        'regular',
+        hit.distance,
+        true
+      );
     });
     this.combatRegistry.update(
       delta,
@@ -2492,7 +2534,7 @@ export class Game {
         castingMageSkill
       );
       this.updateHealthPlasma(delta);
-      this.warriorSkills.update(delta, false);
+      this.warriorSkills.update(delta, false, this.player.currentMoveSpeed > 0.05);
       this.hud.setActiveAnimationTest(this.player.activeAnimationPreview);
       this.clampPlayerToArena();
       this.player.enforceSkillCastAnchor();

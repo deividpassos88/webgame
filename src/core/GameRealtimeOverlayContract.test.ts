@@ -12,7 +12,7 @@ describe('Game real-time overlay contract', () => {
 
   it('does not gate the game loop or skill cooldowns on a presentation pause', () => {
     expect(gameSource).not.toContain('this.flow.isSimulationPaused');
-    expect(gameSource).toContain('this.warriorSkills.update(delta, false)');
+    expect(gameSource).toContain('this.warriorSkills.update(delta, false,');
   });
 
   it('dismisses an open panel before either terminal combat state takes over', () => {

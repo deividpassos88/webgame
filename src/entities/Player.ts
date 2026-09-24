@@ -43,6 +43,8 @@ import type { MageSpellId } from '../vfx/VFXTypes';
 import { MAGE_TELEPORT_INVULNERABILITY_SECONDS } from './MageTeleport';
 
 const BASIC_ACTION_INVULNERABILITY_SECONDS = 0.7;
+/** A Maga's basic cast grants no action immunity window at all (0 seconds). */
+const MAGE_BASIC_ACTION_INVULNERABILITY_SECONDS = 0;
 const SKILL_ACTION_INVULNERABILITY_SECONDS = 1.5;
 const POST_HIT_INVULNERABILITY_SECONDS = 0.4;
 const DASH_DISTANCE = 5.4;
@@ -86,6 +88,14 @@ export interface MageSpellCastEvent {
 
 /** Compatibility alias for older tests/embeddings that only listened to the Mage basic cast. */
 export type MageBasicAttackCastEvent = MageSpellCastEvent;
+
+/** MP cost hook for basic attacks: the Maga spends a percent of the bar per cast. */
+export interface BasicAttackCost {
+  /** When false the basic swing never starts and nothing is spent. */
+  canAfford(): boolean;
+  /** Called only once the basic swing actually commits. */
+  spend(): void;
+}
 
 const MAGE_SPELL_BY_ATTACK_ID: Partial<Record<WarriorAttackId, MageSpellId>> = {
   ataque_basico: 'basic',
@@ -132,6 +142,11 @@ export class Player {
 
   private attackCooldown = 0;
   public attackCooldownTime = 0.9;
+  /**
+   * Optional MP (mana) cost for basic casts. The Game wires this to the Mage
+   * mana bar (1% per cast); the Guerreiro leaves it null and swings for free.
+   */
+  public basicAttackCost: BasicAttackCost | null = null;
   /** Segundos de invulnerabilidade restantes após tomar hit (anti-stunlock) */
   private hitInvulnerability = 0;
   /** Invulnerabilidade concedida pela ação aceita, independente do anti-stunlock. */
@@ -926,10 +941,19 @@ export class Player {
     const action = this.warriorAttackActions.ataque_basico
       ?? this.comboActions[0]
       ?? this.actions.attacking;
-    if (!action || !this.comboController.request()) return false;
+    if (!action) return false;
+    // The Maga's basic cast spends MP through this hook; the Guerreiro has
+    // no hook and swings for free. An unaffordable cast never starts.
+    if (this.basicAttackCost && !this.basicAttackCost.canAfford()) return false;
+    if (!this.comboController.request()) return false;
+    if (this.basicAttackCost) this.basicAttackCost.spend();
     this.isSwinging = true;
-    this.actionInvulnerability = BASIC_ACTION_INVULNERABILITY_SECONDS;
-    this.actionInvulnerabilityFresh = true;
+    // Only the Guerreiro's basic combo keeps the anti-stunlock window: the
+    // Maga's basic cast sets the post-action immunity to 0 seconds.
+    this.actionInvulnerability = this.characterId === 'mage'
+      ? MAGE_BASIC_ACTION_INVULNERABILITY_SECONDS
+      : BASIC_ACTION_INVULNERABILITY_SECONDS;
+    this.actionInvulnerabilityFresh = this.actionInvulnerability > 0;
     this.emptyHandAttackPreview = false;
     this.attackCooldown = this.attackCooldownTime;
     this.comboHitTargets.clear();
