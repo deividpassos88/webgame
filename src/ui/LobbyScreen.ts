@@ -16,6 +16,7 @@ import {
 } from '../inventory/BackpackExpansion';
 import type { InventorySnapshot, InventoryStore } from '../inventory/InventoryStore';
 import type { PlayerProfile, RpgEquipmentSlot, InventoryStack } from '../profile/PlayerProfile';
+import { getPrimaryWeaponId } from '../profile/PlayerProfile';
 import { getInventoryItem, type InventoryItemDefinition } from '../inventory/InventoryCatalog';
 import {
   displayPlayerHotkey,
@@ -435,6 +436,8 @@ export class LobbyScreen {
   );
   private readonly startButton = document.getElementById('start-game') as HTMLButtonElement;
   private readonly adminTrainingButton = this.resolveAdminTrainingButton();
+  private startNotice: HTMLElement | null = null;
+  private startNoticeTimer: number | null = null;
   private readonly heroStage = document.querySelector('.lobby-hero-stage') as HTMLElement;
   private readonly scene = new THREE.Scene();
   private readonly backdropScene = new THREE.Scene();
@@ -1097,10 +1100,10 @@ export class LobbyScreen {
     const view = buildRpgUiViewModel(this.profile, inventory);
     const equipmentMarkup = view.equipment.map(({ slot, label, item }) => item
       ? `<button class="equipment-slot is-equipped" type="button" data-lobby-equipped-slot="${slot}" data-rarity="${item.rarity ?? 'common'}" aria-label="${label}: ${item.label}. Abrir ações do item.">
-          ${renderEquipmentSlotContent(slot, item)}
+          ${renderEquipmentSlotContent(slot, item, this.profile.selectedClass)}
         </button>`
       : `<div class="equipment-slot" data-equipment-slot="${slot}" aria-label="${label}: Vazio">
-          ${renderEquipmentSlotContent(slot, null)}
+          ${renderEquipmentSlotContent(slot, null, this.profile.selectedClass)}
         </div>`).join('');
     document.getElementById('lobby-equipment-slots')!.innerHTML = equipmentMarkup;
     document.getElementById('lobby-current-status')!.innerHTML = renderLobbyCurrentStatus(view.currentStatus);
@@ -1126,6 +1129,41 @@ export class LobbyScreen {
       this.hotkeyMessage,
       this.profile.autoBasicAttack
     );
+    this.syncStartButtonWeaponState();
+  }
+
+  /**
+   * "Iniciar partida" stays locked until the hero has a weapon equipped.
+   * The button stays clickable so the click can explain why (center notice).
+   */
+  private syncStartButtonWeaponState(): void {
+    const armed = Boolean(getPrimaryWeaponId(this.inventory.snapshot().equipment));
+    this.startButton.classList.toggle('is-weapon-locked', !armed);
+    this.startButton.setAttribute('aria-disabled', String(!armed));
+    if (armed) this.hideStartWeaponNotice();
+  }
+
+  private showStartWeaponNotice(): void {
+    if (!this.startNotice) {
+      const notice = document.createElement('div');
+      notice.className = 'lobby-start-notice hidden';
+      notice.setAttribute('role', 'alert');
+      notice.setAttribute('aria-live', 'assertive');
+      this.lobbyScreen.append(notice);
+      this.startNotice = notice;
+    }
+    this.startNotice.textContent = 'Equipe sua arma antes de iniciar a partida.';
+    this.startNotice.classList.remove('hidden');
+    if (this.startNoticeTimer !== null) window.clearTimeout(this.startNoticeTimer);
+    this.startNoticeTimer = window.setTimeout(() => this.hideStartWeaponNotice(), 4000);
+  }
+
+  private hideStartWeaponNotice(): void {
+    if (this.startNoticeTimer !== null) {
+      window.clearTimeout(this.startNoticeTimer);
+      this.startNoticeTimer = null;
+    }
+    this.startNotice?.classList.add('hidden');
   }
 
   private bind(): void {
@@ -1192,6 +1230,9 @@ export class LobbyScreen {
     this.profile.selectedClass = rawId;
     this.mountLobbyCharacter(rawId);
     this.classConfirm?.(rawId);
+    // The starter weapon is swapped with the class (sword for Guerreiro, cajado
+    // for Maga), so the equipment and backpack grids need a fresh render.
+    this.renderData();
     this.classScreen.classList.add('hidden');
     this.lobbyScreen.classList.remove('hidden');
     this.requestFrame();
@@ -1199,6 +1240,12 @@ export class LobbyScreen {
   };
 
   private startGame = (): void => {
+    // Iniciar partida exige arma equipada: sem arma, avisa no centro da tela
+    // e o botão só é liberado depois de equipar (syncStartButtonWeaponState).
+    if (!getPrimaryWeaponId(this.inventory.snapshot().equipment)) {
+      this.showStartWeaponNotice();
+      return;
+    }
     const adminModeActive = this.adminModeSelected
       && !this.adminTrainingButton.classList.contains('hidden')
       && !this.adminTrainingButton.disabled;
@@ -1893,6 +1940,10 @@ export class LobbyScreen {
     if (this.noticeTimer !== null) {
       window.clearTimeout(this.noticeTimer);
       this.noticeTimer = null;
+    }
+    if (this.startNoticeTimer !== null) {
+      window.clearTimeout(this.startNoticeTimer);
+      this.startNoticeTimer = null;
     }
     cancelAnimationFrame(this.frameId);
     this.frameId = 0;

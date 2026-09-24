@@ -465,6 +465,9 @@ describe('lobby character preparation', () => {
     vi.stubGlobal('cancelAnimationFrame', () => undefined);
     vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
     const profile = createDefaultPlayerProfile();
+    // O gate de Iniciar partida exige arma equipada desde o primeiro clique.
+    profile.equipment.weapon = 'starter-sword';
+    profile.equipment.primaryWeapon = 'starter-sword';
     const lobby = new LobbyScreen(
       createLobbyRenderer(),
       document.createElement('canvas'),
@@ -507,6 +510,9 @@ describe('lobby character preparation', () => {
     vi.stubGlobal('cancelAnimationFrame', () => undefined);
     vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
     const profile = createDefaultPlayerProfile();
+    // O gate de Iniciar partida exige arma equipada desde o primeiro clique.
+    profile.equipment.weapon = 'starter-sword';
+    profile.equipment.primaryWeapon = 'starter-sword';
     const lobby = new LobbyScreen(
       createLobbyRenderer(),
       document.createElement('canvas'),
@@ -537,6 +543,59 @@ describe('lobby character preparation', () => {
     await shown;
 
     expect(selectedMode).toBe('campaign');
+  });
+
+  it('blocks Iniciar partida until a weapon is equipped and shows the center notice', async () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    const store = InventoryStore.fromProfile(profile);
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      store
+    );
+    let selectedMode: string | null = null;
+    const shown = lobby.show({
+      firstRun: false,
+      onClassConfirmed: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+      onHotkeysChanged: () => undefined,
+      onAutoBasicAttackChanged: () => undefined,
+      onBlacksmithLicensePurchase: () => ({ message: '' }),
+      onBlacksmithCraft: () => ({ message: '' }),
+      adminTrainingEnabled: true,
+      onRunModeSelected: (mode) => { selectedMode = mode; },
+    });
+
+    const startButton = document.getElementById('start-game') as HTMLButtonElement;
+    expect(startButton.classList.contains('is-weapon-locked')).toBe(true);
+    expect(startButton.getAttribute('aria-disabled')).toBe('true');
+
+    startButton.click();
+    const notice = document.querySelector('.lobby-start-notice');
+    expect(notice?.classList.contains('hidden')).toBe(false);
+    expect(notice?.textContent).toBe('Equipe sua arma antes de iniciar a partida.');
+    expect(selectedMode).toBeNull();
+
+    // Equipar a arma pela mochila libera o botão e recolhe o aviso.
+    document.querySelector<HTMLButtonElement>('[data-lobby-inventory-index="0"]')?.click();
+    document.querySelector<HTMLButtonElement>('[data-item-action="equip"]')?.click();
+
+    expect(store.snapshot().equipment.primaryWeapon).toBe('starter-sword');
+    expect(startButton.classList.contains('is-weapon-locked')).toBe(false);
+    expect(startButton.getAttribute('aria-disabled')).toBe('false');
+    expect(notice?.classList.contains('hidden')).toBe(true);
+
+    startButton.click();
+    await shown;
+
+    expect(selectedMode).toBe('campaign');
+    lobby.dispose();
   });
 
   it('renders automatic basic attack and registration controls for the five Warrior skills', () => {
