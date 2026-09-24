@@ -94,6 +94,29 @@ describe('BlacksmithScreen', () => {
     expect(host.querySelector('[data-craft-recipe="common-forged-helmet-atk:attack"]')).not.toBeNull();
   });
 
+  it('shows only the Maga recipes for a Maga profile in her workshop', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.selectedClass = 'mage';
+    profile.blacksmith.availableUntil = Date.now() + 36 * 60 * 60 * 1000;
+    const host = mountWorkshop();
+    const screen = new BlacksmithScreen(host, profile, InventoryStore.fromProfile(profile), {
+      onLicensePurchase: () => ({ message: '' }),
+      onCraft: () => ({ message: '' }),
+      onBack: () => undefined,
+    });
+
+    screen.show();
+    selectCraftLine(host, 'defense');
+
+    const recipeButtons = [...host.querySelectorAll<HTMLButtonElement>('[data-craft-recipe]')];
+    expect(recipeButtons).toHaveLength(5);
+    for (const button of recipeButtons) {
+      expect(button.dataset.craftRecipe).toContain('maga-forged-');
+    }
+    expect(host.querySelector('[data-craft-recipe="maga-forged-helmet:defense"]')).not.toBeNull();
+    expect(host.querySelector('[data-craft-recipe="common-forged-helmet:defense"]')).toBeNull();
+  });
+
   it('shows available recipe materials in green and missing materials in red', () => {
     const profile = createDefaultPlayerProfile();
     profile.blacksmith.availableUntil = Date.now() + 36 * 60 * 60 * 1000;
@@ -249,7 +272,7 @@ describe('BlacksmithScreen', () => {
     const notification = host.querySelector('.workshop-craft-notification');
     expect(notification?.textContent).toContain('Criada Com Sucesso');
     expect(host.querySelector<HTMLImageElement>('.workshop-craft-notification__art')?.getAttribute('src'))
-      .toBe('/items/equipment/common-forged/helmet.webp');
+      .toBe('/items/equipment/common-forged/guerreiro/helmet.webp');
   });
 
   it('reveals a recipe description only while its card is hovered or pinned', () => {

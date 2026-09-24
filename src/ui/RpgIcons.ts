@@ -1,5 +1,6 @@
 import type { WarriorSkillDefinition } from '../combat/WarriorSkillCatalog';
 import type { InventoryItemKind } from '../inventory/InventoryCatalog';
+import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import type { UiEquipmentSlot } from './RpgUiViewModel';
 
 const base = (paths: string) =>
@@ -11,26 +12,34 @@ const base = (paths: string) =>
  * an item shows that item's art, never this placeholder.
  *
  * The seven files live in public/assets/ui/lobby/arena/slots and were cut out
- * from the same bronze-line art direction as the equipped pieces.
+ * from the same bronze-line art direction as the equipped pieces. The primary
+ * weapon socket is class-bound: the sword placeholder appears only for the
+ * Guerreiro and the cajado placeholder only for the Maga.
  */
 const EQUIPMENT_SLOT_ICON_SOURCES: Record<UiEquipmentSlot, string> = {
-  helmet: 'helmet',
-  chest: 'chest',
-  pants: 'pants',
-  gloves: 'gloves',
-  boots: 'boots',
-  primaryWeapon: 'sword',
-  secondaryWeapon: 'shield',
+  helmet: 'helmet.png',
+  chest: 'chest.png',
+  pants: 'pants.png',
+  gloves: 'gloves.png',
+  boots: 'boots.png',
+  primaryWeapon: 'sword.png',
+  secondaryWeapon: 'shield.png',
 };
 
-export function equipmentSlotIconSource(slot: UiEquipmentSlot): string {
-  const file = EQUIPMENT_SLOT_ICON_SOURCES[slot];
-  return `/assets/ui/lobby/arena/slots/${file}.png`;
+const CLASS_WEAPON_SLOT_ICONS: Partial<Record<PlayableCharacterId, string>> = {
+  mage: 'cajado.webp',
+};
+
+export function equipmentSlotIconSource(slot: UiEquipmentSlot, classId?: PlayableCharacterId): string {
+  const classIcon = slot === 'primaryWeapon' && classId
+    ? CLASS_WEAPON_SLOT_ICONS[classId]
+    : undefined;
+  return `/assets/ui/lobby/arena/slots/${classIcon ?? EQUIPMENT_SLOT_ICON_SOURCES[slot]}`;
 }
 
 /** Markup for the placeholder inside an empty socket. Decorative only. */
-export function equipmentSlotIcon(slot: UiEquipmentSlot): string {
-  return `<img class="equipment-slot__icon" src="${equipmentSlotIconSource(slot)}" alt="" aria-hidden="true" loading="lazy" decoding="async">`;
+export function equipmentSlotIcon(slot: UiEquipmentSlot, classId?: PlayableCharacterId): string {
+  return `<img class="equipment-slot__icon" src="${equipmentSlotIconSource(slot, classId)}" alt="" aria-hidden="true" loading="lazy" decoding="async">`;
 }
 
 export function equipmentIcon(slot: UiEquipmentSlot): string {

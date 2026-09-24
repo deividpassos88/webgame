@@ -130,7 +130,7 @@ export class BlacksmithScreen {
     this.root.dataset.workshopPanel = this.activePanel;
     const equipment = buildRpgUiViewModel(this.profile, inventory).equipment.map(({ slot, label, item }) => `
       <div class="equipment-slot${item ? ' is-equipped' : ''}" data-equipment-slot="${slot}" aria-label="${label}: ${item?.label ?? 'Vazio'}">
-        ${renderEquipmentSlotContent(slot, item)}
+        ${renderEquipmentSlotContent(slot, item, this.profile.selectedClass)}
       </div>`).join('');
     const isLicensed = hasActiveLicense(this.profile, Date.now());
     const remainingHours = isLicensed
@@ -304,7 +304,7 @@ export class BlacksmithScreen {
   }
 
   private renderRecipes(inventory: InventorySnapshot): string {
-    return `<div class="blacksmith-recipes">${recipesForLine(this.craftLine)
+    return `<div class="blacksmith-recipes">${recipesForLine(this.craftLine, this.profile.selectedClass)
       .map((recipe) => this.renderRecipe(recipe, inventory))
       .join('')}</div>`;
   }

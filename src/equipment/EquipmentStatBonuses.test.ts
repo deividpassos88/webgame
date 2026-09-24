@@ -21,6 +21,17 @@ function dragonicSet(suffix = ''): PlayerEquipment {
   };
 }
 
+function magaDragonicSet(suffix = ''): PlayerEquipment {
+  return {
+    ...createDefaultPlayerProfile().equipment,
+    helmet: `maga-forged-helmet${suffix}`,
+    chest: `maga-forged-chest${suffix}`,
+    pants: `maga-forged-pants${suffix}`,
+    gloves: `maga-forged-gloves${suffix}`,
+    boots: `maga-forged-boots${suffix}`,
+  };
+}
+
 describe('Dragonic equipment set bonuses', () => {
   it('adds the five-piece bonus only when the whole set is worn', () => {
     const equipment = dragonicSet();
@@ -55,6 +66,31 @@ describe('Dragonic equipment set bonuses', () => {
 
     expect(equippedForgedSetLine(equipment)).toBeNull();
     expect(hasCommonForgedSet(equipment)).toBe(false);
+  });
+
+  it('adds the same five-piece bonus for the Maga set on her own item ids', () => {
+    const equipment = magaDragonicSet();
+
+    expect(hasCommonForgedSet(equipment)).toBe(true);
+    expect(equippedForgedSetLine(equipment)).toBe('defense');
+    // The Maga mirrors the Guerreiro piece for piece and set for set.
+    expect(equippedAttributeBonuses(equipment)).toEqual(
+      equippedAttributeBonuses(dragonicSet())
+    );
+  });
+
+  it('grants no set bonus while the armor mixes Guerreiro and Maga pieces', () => {
+    const equipment = magaDragonicSet();
+    equipment.gloves = 'common-forged-gloves';
+
+    expect(equippedForgedSetLine(equipment)).toBeNull();
+    expect(hasCommonForgedSet(equipment)).toBe(false);
+  });
+
+  it('resolves the Maga cajado damage exactly like the sword', () => {
+    const equipment = { ...createDefaultPlayerProfile().equipment, weapon: 'starter-staff' };
+
+    expect(equippedWeaponDamage(equipment)).toBe(5);
   });
 
   it('grants piece stats without the set bonus while one slot is empty', () => {

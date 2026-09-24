@@ -4,6 +4,7 @@ import {
   createDefaultCharacterAttributes,
   type CharacterAttributes,
 } from '../profile/CharacterAttributes';
+import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import type { PlayerEquipment } from '../profile/PlayerProfile';
 
 import type { CraftLineId } from '../crafting/CraftLine';
@@ -11,21 +12,42 @@ import type { CraftLineId } from '../crafting/CraftLine';
 /**
  * The forged lines, worn as a full set. Both share the five slots; the ids
  * differ because the workshop now forges an ATK and a DEF variant of each.
+ * Classes are separate too: the Guerreiro wears `common-forged-*` and the Maga
+ * the mirror `maga-forged-*` pieces, so each set is checked on its own ids and
+ * a loadout that mixes classes earns no set bonus.
  */
-const FORGE_SET_IDS: Readonly<Record<CraftLineId, Readonly<Record<ArmorSlot, string>>>> = {
+const FORGE_SET_IDS: Readonly<Record<CraftLineId, Readonly<Record<PlayableCharacterId, Readonly<Record<ArmorSlot, string>>>>>> = {
   defense: {
-    helmet: 'common-forged-helmet',
-    chest: 'common-forged-chest',
-    pants: 'common-forged-pants',
-    gloves: 'common-forged-gloves',
-    boots: 'common-forged-boots',
+    paladin: {
+      helmet: 'common-forged-helmet',
+      chest: 'common-forged-chest',
+      pants: 'common-forged-pants',
+      gloves: 'common-forged-gloves',
+      boots: 'common-forged-boots',
+    },
+    mage: {
+      helmet: 'maga-forged-helmet',
+      chest: 'maga-forged-chest',
+      pants: 'maga-forged-pants',
+      gloves: 'maga-forged-gloves',
+      boots: 'maga-forged-boots',
+    },
   },
   attack: {
-    helmet: 'common-forged-helmet-atk',
-    chest: 'common-forged-chest-atk',
-    pants: 'common-forged-pants-atk',
-    gloves: 'common-forged-gloves-atk',
-    boots: 'common-forged-boots-atk',
+    paladin: {
+      helmet: 'common-forged-helmet-atk',
+      chest: 'common-forged-chest-atk',
+      pants: 'common-forged-pants-atk',
+      gloves: 'common-forged-gloves-atk',
+      boots: 'common-forged-boots-atk',
+    },
+    mage: {
+      helmet: 'maga-forged-helmet-atk',
+      chest: 'maga-forged-chest-atk',
+      pants: 'maga-forged-pants-atk',
+      gloves: 'maga-forged-gloves-atk',
+      boots: 'maga-forged-boots-atk',
+    },
   },
 };
 
@@ -111,12 +133,14 @@ export function hasCommonForgedSet(equipment: PlayerEquipment): boolean {
 
 /**
  * Which forged line is worn as a complete set, or `null` when the armor is
- * incomplete or mixes the two lines - a mixed loadout earns no set bonus.
+ * incomplete or mixes lines or classes - a mixed loadout earns no set bonus.
  */
 export function equippedForgedSetLine(equipment: PlayerEquipment): CraftLineId | null {
   for (const line of ['defense', 'attack'] as const) {
-    const ids = FORGE_SET_IDS[line];
-    if (ARMOR_SLOTS.every((slot) => equipment[slot] === ids[slot])) return line;
+    for (const classRole of ['paladin', 'mage'] as const) {
+      const ids = FORGE_SET_IDS[line][classRole];
+      if (ARMOR_SLOTS.every((slot) => equipment[slot] === ids[slot])) return line;
+    }
   }
   return null;
 }

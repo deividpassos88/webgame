@@ -189,11 +189,15 @@ describe('PlayerProfile progression', () => {
       'verdant-draco-talisman',
       'crimson-draco-talon',
       'obsidian-draco-eye',
+      // The Maga starter and her forged line postdate the legacy schema too.
+      'starter-staff',
       ...['helmet', 'chest', 'pants', 'gloves', 'boots'].flatMap((slot) => [
         `predator-forged-${slot}`,
         `bulwark-forged-${slot}`,
         // The offensive forged line postdates the legacy schema too.
         `common-forged-${slot}-atk`,
+        `maga-forged-${slot}`,
+        `maga-forged-${slot}-atk`,
       ]),
     ]);
     const itemIds = [

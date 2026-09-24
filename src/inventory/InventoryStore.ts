@@ -60,7 +60,7 @@ export class InventoryStore {
   ) {
     this.backpack = backpack.map((item) => ({ ...item }));
     this.equipment = { ...equipment };
-    this.removeDuplicateStarterSwords();
+    this.removeDuplicateStarterWeapons();
   }
 
   public static empty(capacity = BACKPACK_CAPACITY): InventoryStore {
@@ -82,33 +82,43 @@ export class InventoryStore {
       delete this.equipment[key as keyof PlayerEquipment];
     }
     Object.assign(this.equipment, profile.equipment);
-    this.removeDuplicateStarterSwords();
+    this.removeDuplicateStarterWeapons();
   }
 
-  /** Repairs duplicate starter swords created by older equipment-slot sync code. */
-  private removeDuplicateStarterSwords(): void {
-    const starterSwordInBackpack = this.backpack.some((stack) => stack.itemId === 'starter-sword');
+  /**
+   * Repairs duplicate starter weapons (sword and cajado) created by older
+   * equipment-slot sync code. Each class starter obeys the same rule: exactly
+   * one copy exists, either equipped or in the backpack, never both.
+   */
+  private removeDuplicateStarterWeapons(): void {
+    for (const starterId of ['starter-sword', 'starter-staff'] as const) {
+      this.removeDuplicateStarterWeapon(starterId);
+    }
+  }
+
+  private removeDuplicateStarterWeapon(starterId: 'starter-sword' | 'starter-staff'): void {
+    const starterInBackpack = this.backpack.some((stack) => stack.itemId === starterId);
     // Older desequip code cleared only primaryWeapon and left weapon set. When
-    // it also left swords in the backpack, that durable state means equipped
+    // it also left weapons in the backpack, that durable state means equipped
     // no longer and must keep exactly one backpack copy.
     if (
-      this.equipment.weapon === 'starter-sword'
+      this.equipment.weapon === starterId
       && this.equipment.primaryWeapon === null
-      && starterSwordInBackpack
+      && starterInBackpack
     ) {
       this.equipment.weapon = null;
-    } else if (this.equipment.weapon === 'starter-sword' && this.equipment.primaryWeapon === null) {
-      this.equipment.primaryWeapon = 'starter-sword';
-    } else if (this.equipment.primaryWeapon === 'starter-sword' && this.equipment.weapon === null) {
-      this.equipment.weapon = 'starter-sword';
+    } else if (this.equipment.weapon === starterId && this.equipment.primaryWeapon === null) {
+      this.equipment.primaryWeapon = starterId;
+    } else if (this.equipment.primaryWeapon === starterId && this.equipment.weapon === null) {
+      this.equipment.weapon = starterId;
     }
-    const starterSwordEquipped = this.equipment.weapon === 'starter-sword'
-      || this.equipment.primaryWeapon === 'starter-sword';
+    const starterEquipped = this.equipment.weapon === starterId
+      || this.equipment.primaryWeapon === starterId;
     let retainedInBackpack = false;
     for (let index = this.backpack.length - 1; index >= 0; index -= 1) {
       const stack = this.backpack[index];
-      if (stack.itemId !== 'starter-sword') continue;
-      if (starterSwordEquipped || retainedInBackpack) {
+      if (stack.itemId !== starterId) continue;
+      if (starterEquipped || retainedInBackpack) {
         this.backpack.splice(index, 1);
       } else {
         retainedInBackpack = true;

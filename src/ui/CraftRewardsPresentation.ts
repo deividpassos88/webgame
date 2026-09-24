@@ -3,6 +3,7 @@ import {
   isCraftMaterial,
   type InventoryItemDefinition,
 } from '../inventory/InventoryCatalog';
+import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import type { InventoryStack } from '../profile/PlayerProfile';
 import type { UiEquipmentSlot } from './RpgUiViewModel';
 import { equipmentSlotIcon, itemKindIcon } from './RpgIcons';
@@ -72,14 +73,17 @@ export function itemTooltipDataAttributes(
  * The socket used to print its name (CAPACETE, PEITORAL...) under the art.
  * Every socket now carries a picture - the painted placeholder when empty, the
  * item art when equipped - so the caption was dropped and the cell stays clean.
- * The name still reaches assistive tech through the socket's aria-label.
+ * The name still reaches assistive tech through the socket's aria-label. The
+ * empty weapon socket is class-bound: sword for the Guerreiro, cajado for the
+ * Maga.
  */
 export function renderEquipmentSlotContent(
   slot: UiEquipmentSlot,
-  item: InventoryItemDefinition | null
+  item: InventoryItemDefinition | null,
+  classId?: PlayableCharacterId
 ): string {
   return `
-    <span class="equipment-slot__art"${item ? '' : ' aria-hidden="true"'}>${item ? equippedItemArt(item) : equipmentSlotIcon(slot)}</span>`;
+    <span class="equipment-slot__art"${item ? '' : ' aria-hidden="true"'}>${item ? equippedItemArt(item) : equipmentSlotIcon(slot, classId)}</span>`;
 }
 
 /** True when the inspector can present the item, i.e. craft materials and equipment. */
