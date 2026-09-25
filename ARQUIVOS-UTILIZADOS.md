@@ -31,16 +31,25 @@
 - `assets/ui/backpack-icon.png` - Ícone da mochila
 - `assets/ui/status-icon.png` - Ícone de status
 
-#### Skills do Guerreiro (6)
-- `assets/ui/skills/basic-attack.png` - Ataque básico
-- `assets/ui/skills/spin.png` - Ataque giratório
-- `assets/ui/skills/frost-spin.png` - Ataque giratório 2
-- `assets/ui/skills/jump-impact.png` - Pulo atacando
-- `assets/ui/skills/flame-strike.png` - Triplo ataque
-- `assets/ui/skills/double-cut.png` - Corte duplo
+#### Skills do Guerreiro (6, pasta `skills/guerreiro/`)
+- `assets/ui/skills/guerreiro/basic-attack.png` - Ataque básico
+- `assets/ui/skills/guerreiro/spin.png` - Ataque giratório
+- `assets/ui/skills/guerreiro/frost-spin.png` - Ataque giratório 2
+- `assets/ui/skills/guerreiro/jump-impact.png` - Pulo atacando
+- `assets/ui/skills/guerreiro/flame-strike.png` - Triplo ataque
+- `assets/ui/skills/guerreiro/double-cut.png` - Corte duplo
 
-#### Retratos (1)
+#### Skills da Maga (6, pasta `skills/maga/`)
+- `assets/ui/skills/maga/1.webp` - Ataque básico
+- `assets/ui/skills/maga/2.webp` - Ataque giratório
+- `assets/ui/skills/maga/3.webp` - Ataque giratório 2
+- `assets/ui/skills/maga/4.webp` - Pulo atacando
+- `assets/ui/skills/maga/5.webp` - Triplo ataque
+- `assets/ui/skills/maga/6.webp` - Corte duplo
+
+#### Retratos (2)
 - `assets/ui/portrait/warrior-portrait.png` - Retrato do guerreiro
+- `assets/ui/portrait/maga-portrait.webp` - Retrato da maga
 
 #### Lobby/Cenário (2)
 - `ui/lobby/cinzafogo-war-courtyard-v1.jpg` - Backdrop do lobby

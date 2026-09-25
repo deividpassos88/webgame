@@ -1082,7 +1082,6 @@ html, body {
   background:
     radial-gradient(circle at 50% 40%, rgba(105, 201, 255, .08), transparent 38%),
     linear-gradient(135deg, rgba(5, 7, 9, .97), rgba(12, 15, 18, .94));
-  backdrop-filter: blur(8px);
 }
 
 .character-overlay .overlay-header {
@@ -3504,6 +3503,29 @@ body #lobby-screen #lobby-backpack .inventory-slot { min-width: 0; min-height: 8
 #character-overlay::-webkit-scrollbar-thumb { border: 2px solid rgba(7, 15, 27, .9); border-radius: 8px; background: linear-gradient(#e9c56f, #8d5c2d); }
 
 /* ---------- Tooltips de item e cartões de equipamento ---------- */
+/* Lobby skill hover card: floats above the lobby, attached to <body>. */
+.lobby-skill-tip {
+  position: fixed;
+  z-index: 10060;
+  width: min(320px, calc(100vw - 24px));
+  padding: 13px 15px;
+  border: 1px solid rgba(225, 189, 104, 0.88);
+  border-bottom: 3px solid #8e5131;
+  border-radius: 8px 8px 2px 2px;
+  color: #f0dba1;
+  background:
+    linear-gradient(145deg, rgba(35, 42, 48, 0.98), rgba(13, 17, 23, 0.98) 62%, rgba(35, 25, 20, 0.98));
+  box-shadow: inset 0 1px rgba(255, 236, 192, 0.12), 0 14px 34px rgba(0, 0, 0, 0.58);
+  pointer-events: none;
+}
+.lobby-skill-tip[hidden] { display: none; }
+.lobby-skill-tip__title { margin: 0 0 6px; color: #f0dba1; font: 700 17px/1.15 Georgia, 'Times New Roman', serif; }
+.lobby-skill-tip__description { margin: 0 0 9px; color: #c6c9bf; font: 12.5px/1.45 'Segoe UI', sans-serif; }
+.lobby-skill-tip__stats { margin: 0; display: grid; gap: 5px; }
+.lobby-skill-tip__stats div { display: flex; justify-content: space-between; gap: 10px; }
+.lobby-skill-tip__stats dt { color: #b7b1a3; font: 700 9.5px/1.4 Consolas, monospace; letter-spacing: .07em; text-transform: uppercase; }
+.lobby-skill-tip__stats dd { margin: 0; color: #f2e3b6; font: 700 12px/1.3 Consolas, monospace; }
+
 .item-tooltip {
   position: fixed;
   z-index: 320;
@@ -4374,4 +4396,191 @@ body #lobby-screen .equipment-slot.is-equipped,
   .unsupported-viewport strong { color: #f0d79a; font-size: 12px; letter-spacing: .22em; text-transform: uppercase; }
   .unsupported-viewport h2 { margin: 0; color: #f4e6bd; font-size: 21px; }
   .unsupported-viewport p { margin: 0; color: #b6ad97; font-size: 14px; line-height: 1.55; }
+}
+
+/* ==========================================================================
+   Ficha do personagem in-game: janelas separadas (Equipar / Mochila / Status
+   com abas de livro), botão de fechar moderno e mochila com itens que
+   preenchem o slot inteiro — sem rolagem horizontal e sem conteúdo cortado.
+   ========================================================================== */
+.character-overlay {
+  background:
+    radial-gradient(ellipse at 50% 18%, rgba(44, 83, 111, 0.14), transparent 36%),
+    linear-gradient(125deg, rgba(4, 8, 13, 0.86), rgba(12, 21, 30, 0.78) 50%, rgba(4, 8, 13, 0.86));
+  font-family: 'Segoe UI', 'Trebuchet MS', system-ui, sans-serif;
+  font-size: 14.5px;
+  overflow-x: hidden;
+}
+.character-overlay .overlay-header,
+.character-overlay .character-panel {
+  max-width: 1480px;
+  width: 100%;
+}
+.character-overlay .overlay-header h2 { font: 700 clamp(18px, 1.6vw, 24px)/1.1 Georgia, 'Times New Roman', serif; letter-spacing: 0.02em; }
+.character-overlay .overlay-header .section-label { font-size: 10px; letter-spacing: 0.18em; }
+
+/* Botão de fechar moderno: X dourado com halo, fácil de achar. */
+.character-overlay .overlay-header .overlay-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 16px 8px 12px;
+  border: 1px solid rgba(232, 190, 96, 0.85);
+  border-radius: 8px;
+  color: #f4d98a;
+  font: 700 13px/1 'Segoe UI', sans-serif;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  background: linear-gradient(160deg, rgba(58, 40, 18, 0.9), rgba(16, 12, 8, 0.94));
+  box-shadow: inset 0 1px rgba(255, 236, 181, 0.22), 0 4px 14px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+.character-overlay .overlay-header .overlay-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.character-overlay .overlay-header .overlay-close:hover,
+.character-overlay .overlay-header .overlay-close:focus-visible {
+  color: #1c1206;
+  border-color: #ffe2a0;
+  background: linear-gradient(#f2c96c, #c98a2f);
+  box-shadow: 0 0 18px rgba(240, 200, 110, 0.5);
+  outline: none;
+}
+
+/* Janelas: cada modo com o próprio formato, nunca cortando conteúdo. */
+.character-overlay .character-panel { margin-inline: auto; }
+.character-overlay .character-panel[data-character-panel='equipment'] {
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  align-items: start;
+  min-height: 0;
+}
+.character-overlay .character-panel[data-character-panel='backpack'] {
+  grid-template-columns: minmax(0, 760px);
+  justify-content: center;
+  min-height: 0;
+}
+.character-overlay .character-panel[data-character-panel='status'] {
+  grid-template-columns: minmax(0, 980px);
+  justify-content: center;
+  min-height: 0;
+}
+.character-overlay .character-panel .overlay-panel,
+.character-overlay .character-panel .status-window {
+  min-width: 0;
+  max-width: 100%;
+}
+.character-overlay .overlay-panel h3 { font: 700 17px/1.2 Georgia, 'Times New Roman', serif; letter-spacing: 0.05em; }
+.character-overlay .section-label { font: 700 10px/1.2 'Segoe UI', sans-serif; letter-spacing: 0.2em; }
+.character-overlay .equipment-note p:not(.section-label),
+.character-overlay .backpack-copy,
+.character-overlay .status-window p:not(.section-label),
+.character-overlay .status-gate-message { font: 14px/1.6 'Segoe UI', sans-serif; }
+
+/* ---- Mochila: só a grade, itens preenchendo o slot, tudo alinhado. ---- */
+.character-overlay .backpack-card {
+  display: grid;
+  gap: 12px;
+}
+.character-overlay .backpack-card .inventory-grid {
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+}
+.character-overlay .backpack-card .inventory-slot {
+  position: relative;
+  aspect-ratio: 1;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 8px;
+}
+.character-overlay .backpack-card .inventory-slot .inventory-item-art {
+  position: absolute;
+  inset: 5px;
+  z-index: 0;
+  width: calc(100% - 10px);
+  height: calc(100% - 10px);
+  object-fit: contain;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.72));
+  transition: transform 0.15s ease;
+}
+.character-overlay .backpack-card .inventory-slot.has-item:hover .inventory-item-art { transform: scale(1.08); }
+.character-overlay .backpack-card .inventory-slot small { display: none; }
+.character-overlay .backpack-card .inventory-slot .item-quantity {
+  position: absolute;
+  top: 4px;
+  right: 7px;
+  z-index: 1;
+  color: #fff;
+  font: 800 13px/1 Consolas, monospace;
+  text-shadow: 0 1px 3px #000, 0 0 6px rgba(0, 0, 0, 0.8);
+}
+.character-overlay .backpack-card .inventory-slot .equip-indicator { z-index: 1; }
+.character-overlay .backpack-card .inventory-slot.has-item { box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.55); }
+
+/* ---- Status: livro com abas horizontais fixas no topo da janela. ---- */
+.status-window {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 0;
+}
+.status-book-tabs {
+  display: flex;
+  gap: 6px;
+  margin-inline: -1px;
+  border-bottom: 2px solid rgba(215, 169, 81, 0.75);
+}
+.status-book-tabs button {
+  min-height: 44px;
+  padding: 10px 20px 8px;
+  border: 1px solid rgba(215, 169, 81, 0.4);
+  border-top: 3px solid rgba(215, 169, 81, 0.4);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  color: #cfc4a6;
+  font: 700 12.5px/1 'Segoe UI', sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, rgba(10, 16, 22, 0.95), rgba(18, 26, 34, 0.7));
+  cursor: pointer;
+}
+.status-book-tabs button:hover { color: #ffe6a8; border-color: rgba(240, 200, 110, 0.7); }
+.status-book-tabs button[aria-selected='true'] {
+  color: #17100a;
+  border-color: #f2cf7a;
+  background: linear-gradient(#e8c265, #bd8232);
+  box-shadow: 0 -6px 16px rgba(240, 200, 110, 0.18);
+}
+.status-book-page { display: grid; gap: 14px; align-content: start; }
+.status-book-page[hidden] { display: none; }
+.status-window .status-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 4px 0; }
+.status-window .status-metrics > div { display: grid; gap: 5px; min-height: 92px; padding: 14px; border: 1px solid rgba(198, 157, 81, 0.3); border-radius: 8px; background: rgba(3, 7, 11, 0.52); }
+.status-window .status-metrics strong { color: #f1c66c; font: 700 22px Georgia, serif; }
+.status-window .status-metrics span { color: #adc0c9; font: 11px Consolas, monospace; }
+.status-window .status-metrics .attribute-budget { margin: 0; border-left: 3px solid #71d1bc; }
+.status-window .status-metrics .attribute-budget strong { font-size: 34px; color: #7fe1ca; }
+.status-window #status-derived-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px 18px; margin: 0; }
+.status-window #status-derived-stats div { display: flex; justify-content: space-between; gap: 8px; padding: 7px 10px; border: 1px solid rgba(198, 157, 81, 0.22); border-radius: 6px; background: rgba(3, 7, 11, 0.5); }
+.status-window #status-derived-stats dt { color: #aeb5b9; font: 600 12px/1.3 'Segoe UI', sans-serif; }
+.status-window #status-derived-stats dd { color: #f1d28a; font: 700 13px/1.2 Consolas, monospace; }
+.status-window .attribute-reset { display: grid; gap: 8px; padding: 12px; border: 1px dashed rgba(198, 157, 81, 0.4); border-radius: 8px; }
+.status-window .attribute-reset strong { color: #e8e2d6; font: 600 13px Georgia, serif; }
+.status-window .attribute-reset button { min-height: 32px; border: 1px solid #4c555d; border-radius: 6px; color: #8c938d; background: #11151a; cursor: not-allowed; }
+.status-window .attribute-reset small { color: #93a3a9; font-size: 11px; }
+.status-gate-message { min-height: 0; padding: 12px; border-left: 3px solid #73d5c0; border-radius: 0 6px 6px 0; background: rgba(3, 8, 12, 0.48); }
+.character-overlay .attribute-row { grid-template-columns: minmax(150px, 1fr) 52px 48px 52px; min-height: 0; }
+.character-overlay .attribute-row > span strong { font-size: 16px; }
+.character-overlay .attribute-row > span small { font-size: 11px; }
+
+/* Tooltip de item em zoom, posicionado fora dos painéis. */
+.item-tooltip { width: min(330px, calc(100vw - 24px)); grid-template-columns: 94px minmax(0, 1fr); }
+.item-tooltip__art { min-height: 92px; }
+.item-tooltip__art .inventory-item-art,
+.item-tooltip__art .inventory-item-glyph { width: 76px; height: 76px; object-fit: contain; }
+.item-tooltip__title { font-size: 17px; }
+.item-tooltip__description { font-size: 13px; line-height: 1.45; }
+
+@media (max-width: 720px) {
+  .status-window .status-metrics { grid-template-columns: 1fr; }
+  .character-overlay .overlay-header .overlay-close span { display: none; }
+  .character-overlay .overlay-header .overlay-close { padding: 10px; }
 }

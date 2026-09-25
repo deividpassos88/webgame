@@ -102,14 +102,14 @@ describe('WaveEnemyFactory', () => {
     expect(options.position).toEqual(new THREE.Vector3(-3, 0, -11));
   });
 
-  it('creates an archer with a long attack range and the ranged combat mode', () => {
+  it('creates an archer with a shortened attack range and the ranged combat mode', () => {
     const options = createArcherEnemyOptions(new THREE.Vector3(2, 0, -5), 1.2, 1.1, 1.05);
     const archer = createArcherEnemy(new THREE.Vector3(), 1, 1);
 
     expect(options).toMatchObject({
       hp: 120,
-      attackRange: 10.5,
-      detectionRange: 26,
+      attackRange: 7,
+      detectionRange: 20,
       attackMode: 'ranged',
       collisionRadius: 0.34,
       groundAnimatedModel: true,

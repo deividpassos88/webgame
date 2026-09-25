@@ -30,8 +30,9 @@ const ARCHER_BASE = {
   hp: 100,
   damage: 7,
   scale: 0.68,
-  detectionRange: 26,
-  attackRange: 10.5,
+  // Alcance reduzido: o arqueiro pressionava de longe demais (era 26/10.5).
+  detectionRange: 20,
+  attackRange: 7,
   speed: 3.15,
 } as const;
 

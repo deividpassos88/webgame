@@ -1,5 +1,4 @@
 import { getInventoryItem, isCraftMaterial } from '../inventory/InventoryCatalog';
-import { prepareGuildTokenBackpackExpansion } from '../inventory/BackpackExpansion';
 import type { InventorySnapshot, InventoryStore } from '../inventory/InventoryStore';
 import {
   allocateAttributePoint,
@@ -7,6 +6,7 @@ import {
   type PlayerProfile,
   type RpgEquipmentSlot,
 } from '../profile/PlayerProfile';
+import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import {
   ATTRIBUTE_KEYS,
   attributeAllocationAllowance,
@@ -53,13 +53,6 @@ export function renderInventoryBackpackContents(
   allowEquip = false
 ): string {
   const view = buildRpgUiViewModel(profile, inventory);
-  const preparation = prepareGuildTokenBackpackExpansion(profile, inventory);
-  const guildTokenAvailable = preparation.kind === 'expanded';
-  const availability = preparation.kind === 'capacity-maximum'
-    ? 'Limite de 60 espaços atingido.'
-    : guildTokenAvailable
-      ? 'Expanda a mochila em 5 espaços.'
-      : 'São necessários 30 Token da Guilda.';
   const slots = view.backpack.map(({ index, item, quantity }) => {
     const isEquipment = item && item.kind === 'equipment' && item.slot;
     const equipLabel = isEquipment && allowEquip ? '<span class="equip-indicator">Equipar</span>' : '';
@@ -68,17 +61,9 @@ export function renderInventoryBackpackContents(
         ${item ? `${inventoryItemArt(item)}<span class="item-quantity">${quantity}</span><small>${item.label}</small>${equipLabel}` : ''}
       </button>`;
   }).join('');
-  return `
-    <div class="backpack-expansion-actions" role="group" aria-label="Expandir mochila">
-      <button class="backpack-expansion-option" type="button" data-expand-backpack="guild-token" ${guildTokenAvailable ? '' : 'disabled aria-disabled="true"'}>
-        <strong>+5 espaços</strong><small>30 Token da Guilda</small>
-      </button>
-      <button class="backpack-expansion-option is-unavailable" type="button" data-expand-backpack="cm" disabled aria-disabled="true">
-        <strong>5 CM — indisponível</strong><small>Carteira CM ainda não integrada.</small>
-      </button>
-      <p class="backpack-expansion-availability">${availability}</p>
-    </div>
-    <div class="inventory-grid backpack-slot-grid">${slots}</div>`;
+  // Expansão de mochila (+5 espaços / CM) existe somente no Lobby; dentro da
+  // masmorra o jogador apenas visualiza e inspeciona os itens.
+  return `<div class="inventory-grid backpack-slot-grid">${slots}</div>`;
 }
 
 /**
@@ -126,7 +111,7 @@ export class InventoryOverlay {
   public hide(): void {
     if (this.root.classList.contains('hidden')) return;
     this.hideCraftInspector(false);
-    const tooltip = this.root.querySelector<HTMLElement>('[data-item-tooltip]');
+    const tooltip = this.root.ownerDocument.querySelector<HTMLElement>('[data-item-tooltip]');
     if (tooltip) {
       tooltip.hidden = true;
       tooltip.setAttribute('aria-hidden', 'true');
@@ -148,7 +133,7 @@ export class InventoryOverlay {
     const view = buildRpgUiViewModel(this.profile, this.store.snapshot());
     this.equipment.innerHTML = view.equipment.map(({ slot, label, item }) => `
       <div class="equipment-slot${item ? ' is-equipped' : ''}" data-equipment-slot="${slot}" aria-label="${label}: ${item?.label ?? 'Vazio'}">
-        ${renderEquipmentSlotContent(slot, item)}
+        ${renderEquipmentSlotContent(slot, item, this.profile.selectedClass)}
       </div>`).join('');
   }
 
@@ -226,11 +211,37 @@ export class InventoryOverlay {
   private setMode(mode: RpgOverlayMode): void {
     this.activeMode = mode;
     this.root.dataset.characterMode = mode;
-    const heading = OVERLAY_HEADINGS[mode];
+    const heading = overlayHeading(mode, this.profile.selectedClass);
     this.eyebrow.textContent = heading.eyebrow;
     this.title.textContent = heading.title;
     this.root.querySelectorAll<HTMLElement>('[data-character-panel]').forEach((panel) => {
       panel.classList.toggle('hidden', panel.dataset.characterPanel !== mode);
+    });
+    if (mode === 'status') this.selectStatusSection('progress');
+    this.syncClassCrest();
+  }
+
+  /** Keeps the equipment window crest in the selected class. */
+  private syncClassCrest(): void {
+    const crest = this.root.querySelector<HTMLElement>('[data-character-crest]');
+    if (!crest) return;
+    const mage = this.profile.selectedClass === 'mage';
+    crest.querySelector('span')!.textContent = mage ? 'M' : 'W';
+    crest.querySelector('strong')!.textContent = mage ? 'Maga' : 'Guerreiro';
+    crest.querySelector('small')!.textContent = mage
+      ? 'Arcana de Cinzafogo'
+      : 'Vanguarda de Cinzafogo';
+  }
+
+  /** Switches the status book to the requested horizontal tab page. */
+  private selectStatusSection(section: StatusSectionId): void {
+    this.root.querySelectorAll<HTMLButtonElement>('[data-status-tab]').forEach((tab) => {
+      const selected = tab.dataset.statusTab === section;
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+    });
+    this.root.querySelectorAll<HTMLElement>('[data-status-section]').forEach((page) => {
+      page.hidden = page.dataset.statusSection !== section;
     });
   }
 
@@ -242,6 +253,11 @@ export class InventoryOverlay {
     }
     if (target.closest('[data-close-overlay]')) {
       this.options.onClose();
+      return;
+    }
+    const bookTab = target.closest<HTMLButtonElement>('[data-status-tab]');
+    if (bookTab?.dataset.statusTab) {
+      this.selectStatusSection(bookTab.dataset.statusTab as StatusSectionId);
       return;
     }
     const expansionButton = target.closest<HTMLButtonElement>('[data-expand-backpack]');
@@ -383,11 +399,26 @@ export class InventoryOverlay {
   };
 }
 
-const OVERLAY_HEADINGS: Readonly<Record<RpgOverlayMode, { eyebrow: string; title: string }>> = {
-  equipment: { eyebrow: 'Ficha do Guerreiro', title: 'Equipamentos' },
-  backpack: { eyebrow: 'Itens conquistados', title: 'Mochila' },
-  status: { eyebrow: 'Progressão do Guerreiro', title: 'Status' },
+type StatusSectionId = 'progress' | 'attributes' | 'combat';
+
+const CLASS_LABEL: Readonly<Record<PlayableCharacterId, string>> = {
+  paladin: 'do Guerreiro',
+  mage: 'da Maga',
 };
+
+const OVERLAY_HEADINGS: Readonly<Record<RpgOverlayMode, { title: string; eyebrowFor: (className: string) => string }>> = {
+  equipment: { title: 'Equipamentos', eyebrowFor: (c) => `Ficha ${c}` },
+  backpack: { title: 'Mochila', eyebrowFor: () => 'Itens conquistados' },
+  status: { title: 'Status', eyebrowFor: (c) => `Progressão ${c}` },
+};
+
+function overlayHeading(
+  mode: RpgOverlayMode,
+  playerClass: PlayableCharacterId
+): { eyebrow: string; title: string } {
+  const heading = OVERLAY_HEADINGS[mode];
+  return { title: heading.title, eyebrow: heading.eyebrowFor(CLASS_LABEL[playerClass]) };
+}
 
 const ATTRIBUTE_CONTENT: Readonly<Record<CharacterAttributeKey, { label: string; help: string }>> = {
   vitality: { label: 'Vitalidade', help: 'Adiciona 3 de vida máxima por ponto.' },

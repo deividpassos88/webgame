@@ -146,7 +146,7 @@ import {
   MAGE_MAX_RANGE_METERS,
   type DistanceFalloffProfile,
 } from '../combat/DistanceDamage';
-import { getTypedAttackBaseDamage, quantizeCombatDamage } from '../combat/CombatDamage';
+import { applyArcherDamageVsPlayerClass, getTypedAttackBaseDamage, quantizeCombatDamage } from '../combat/CombatDamage';
 import { MiniBossSkillController } from '../combat/MiniBossSkillController';
 import { MiniBossSkillEffects } from '../effects/MiniBossSkillEffects';
 import { deriveCharacterStats, type DerivedCharacterStats } from '../profile/CharacterAttributes';
@@ -419,6 +419,7 @@ export class Game {
 
       this.hud.setLoadingProgress(90, `Preparando ${definition.name}...`);
       this.hud.setPlayerCharacter(definition.name);
+      this.hud.setPlayerClass(characterId);
       Logger.info('Game', `Personagem escolhido: ${definition.name}`);
 
       this.setupLights();
@@ -512,9 +513,11 @@ export class Game {
           restoredVault.saved
         );
       }
-      if (characterId === 'paladin') {
-        this.hud.setPlayerPortrait('/assets/ui/portrait/warrior-portrait.png');
-      }
+      // Cada classe usa o próprio retrato: Guerreiro (png) e Maga (webp) vivem
+      // em public/assets/ui/portrait.
+      this.hud.setPlayerPortrait(characterId === 'mage'
+        ? '/assets/ui/portrait/maga-portrait.webp'
+        : '/assets/ui/portrait/warrior-portrait.png');
       this.hud.setAnimationTestPanelForced(this.isAdminTrainingRun());
       if (!this.isAdminTrainingRun() && this.player.equippedWeaponId !== null) {
         this.runProgression.weaponEquipped();
@@ -631,13 +634,20 @@ export class Game {
     if (this.player.equippedWeaponId === 'sword') return;
     const definition = getWeaponDefinition('sword');
     if (!definition) throw new Error('Definição da espada inicial não encontrada.');
-    const model = this.rewardAssets.hasWeapon('sword')
+    // A Maga nunca recebe o modelo da espada (só os status de combate); o
+    // cajado embutido no modelo dela continua sendo a arma visual.
+    const model = this.profile.selectedClass !== 'mage' && this.rewardAssets.hasWeapon('sword')
       ? this.rewardAssets.createWeapon('sword')
       : new THREE.Group();
     if (!this.player.equipWeapon(definition, model)) {
       throw new Error('A espada inicial não pôde ser equipada no Guerreiro.');
     }
-    Logger.info('Game:Equipment', 'Espada inicial sincronizada com o equipamento salvo.');
+    Logger.info(
+      'Game:Equipment',
+      this.profile.selectedClass === 'mage'
+        ? 'Maga: espada sincronizada só como status — visual continua o cajado.'
+        : 'Espada inicial sincronizada com o equipamento salvo.'
+    );
   }
 
   private setupRpgInterfaces(): void {
@@ -2206,7 +2216,14 @@ export class Game {
     const rangedDamage = !isRangedAttack && (role === 'regular' || role === 'mini-boss')
       ? applyDistanceFalloff(damage, distance, role)
       : damage;
-    const deliveredDamage = this.resolveIncomingDamage(rangedDamage);
+    // monster_arch (flecha à distância) causa 40% menos dano na Maga;
+    // o Guerreiro continua recebendo o dano cheio.
+    const archerAdjustedDamage = applyArcherDamageVsPlayerClass(
+      rangedDamage,
+      isRangedAttack,
+      this.profile.selectedClass === 'mage' ? 'mage' : 'warrior'
+    );
+    const deliveredDamage = this.resolveIncomingDamage(archerAdjustedDamage);
     if (deliveredDamage <= 0) return;
     const hpBeforeHit = this.player.hp;
     this.player.takeDamage(deliveredDamage);
