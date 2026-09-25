@@ -22,7 +22,13 @@ describe('character build HUD contract', () => {
     expect(html).toContain('id="player-xp-fill"');
     expect(html).toContain('id="player-xp-text"');
     expect(html.indexOf('id="gameplay-utility-dock"')).toBeLessThan(html.indexOf('id="bottom-hud"'));
+    // Sem barra de abas compartilhada no topo: Mochila e Status são janelas
+    // próprias. O Status usa abas de livro horizontais internas.
     expect(html).not.toContain('data-character-tab=');
+    expect(html).toContain('data-status-tab="progress"');
+    expect(html).toContain('data-status-tab="attributes"');
+    expect(html).toContain('data-status-tab="combat"');
+    expect(html).toContain('class="overlay-close"');
   });
 
   it('uses an automatic final reward chest rather than a click-to-move world-loot interaction', () => {

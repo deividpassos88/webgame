@@ -12,7 +12,7 @@ import {
 describe('prepareLobbyModel', () => {
   it('hides weapon nodes without hiding the character', () => {
     const model = new THREE.Group();
-    for (const name of ['sword', 'Axe', 'weapon_socket', 'staff', 'cajado', 'personagem']) {
+    for (const name of ['sword', 'Axe', 'weapon_socket', 'espada', 'escudo', 'staff', 'cajado', 'personagem']) {
       const node = new THREE.Object3D();
       node.name = name;
       model.add(node);
@@ -21,8 +21,9 @@ describe('prepareLobbyModel', () => {
     expect(model.getObjectByName('sword')?.visible).toBe(false);
     expect(model.getObjectByName('Axe')?.visible).toBe(false);
     expect(model.getObjectByName('weapon_socket')?.visible).toBe(false);
-    expect(model.getObjectByName('staff')?.visible).toBe(false);
-    expect(model.getObjectByName('cajado')?.visible).toBe(false);
+    // O cajado da Maga NÃO é escondido: é parte da silhueta dela no lobby.
+    expect(model.getObjectByName('staff')?.visible).toBe(true);
+    expect(model.getObjectByName('cajado')?.visible).toBe(true);
     expect(model.getObjectByName('personagem')?.visible).toBe(true);
   });
 });

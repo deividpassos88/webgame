@@ -1,3 +1,4 @@
+import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import type { WarriorSkillDefinition } from '../combat/WarriorSkillCatalog';
 import type { InventoryItemKind } from '../inventory/InventoryCatalog';
 import type { PlayableCharacterId } from '../characters/CharacterCatalog';

@@ -97,6 +97,11 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+function equipStarterSword(profile: ReturnType<typeof createDefaultPlayerProfile>): void {
+  profile.equipment.weapon = 'starter-sword';
+  profile.equipment.primaryWeapon = 'starter-sword';
+}
+
 describe('lobby idle selection', () => {
   it('keeps Dwarf Idle active for the entire lobby session', () => {
     expect(resolveLobbyIdlePhase(0)).toBe('lobby_dwarf_idle');
@@ -425,6 +430,7 @@ describe('lobby character preparation', () => {
     vi.stubGlobal('cancelAnimationFrame', () => undefined);
     vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
     const profile = createDefaultPlayerProfile();
+    equipStarterSword(profile);
     const lobby = new LobbyScreen(
       createLobbyRenderer(),
       document.createElement('canvas'),
@@ -502,6 +508,45 @@ describe('lobby character preparation', () => {
     await shown;
 
     expect(selectedMode).toBe('admin-training');
+  });
+
+  it('blocks Iniciar partida until the player equips a weapon', async () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    const store = InventoryStore.fromProfile(profile);
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      store
+    );
+    const options = {
+      firstRun: false,
+      onClassConfirmed: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+      onHotkeysChanged: () => undefined,
+      onAutoBasicAttackChanged: () => undefined,
+      onBlacksmithLicensePurchase: () => ({ message: '' }),
+      onBlacksmithCraft: () => ({ message: '' }),
+      adminTrainingEnabled: false,
+    } as const;
+
+    void lobby.show(options);
+    const start = document.getElementById('start-game') as HTMLButtonElement;
+    expect(start.disabled).toBe(true);
+    expect(start.title).toContain('Equipe uma arma');
+
+    equipStarterSword(profile);
+    store.commitProfile(profile);
+    void lobby.show(options);
+
+    expect(start.disabled).toBe(false);
+    expect(start.title).toBe('');
+    lobby.dispose();
   });
 
   it('keeps Iniciar partida on the normal campaign when MODO ADM stays off', async () => {

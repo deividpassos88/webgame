@@ -19,7 +19,8 @@ import {
   type WarriorSkillId,
 } from '../combat/WarriorSkillCatalog';
 import type { WarriorSkillsSnapshot } from '../combat/WarriorSkillController';
-import { warriorSkillAsset } from './WarriorSkillAssets';
+import { classSkillAsset, type WarriorSkillArtId } from './WarriorSkillAssets';
+import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import {
   getLockedSkillButtonState,
   getSkillButtonState,
@@ -52,10 +53,13 @@ export function isPrimaryMouseClick(event: Pick<MouseEvent, 'button' | 'detail'>
   return event.button === 0 && event.detail > 0;
 }
 
-export function renderCombatActionMarkup(hotkeys: PlayerHotkeys = DEFAULT_PLAYER_HOTKEYS): string {
+export function renderCombatActionMarkup(
+  hotkeys: PlayerHotkeys = DEFAULT_PLAYER_HOTKEYS,
+  playerClass: PlayableCharacterId = 'paladin'
+): string {
   return `
     <button class="skill-slot combat-skill-card attack-slot" type="button" data-basic-attack aria-label="Ataque básico">
-      <img class="skill-art" src="${warriorSkillAsset('ataque_basico')}" alt="">
+      <img class="skill-art" data-skill-art="ataque_basico" src="${classSkillAsset('ataque_basico', playerClass)}" alt="">
       <span class="skill-card-copy"><strong class="skill-card-name" title="Ataque básico">Ataque básico</strong><small class="skill-card-meta">Clique esquerdo · Livre</small></span>
       <kbd>Mouse</kbd>
     </button>
@@ -65,7 +69,7 @@ export function renderCombatActionMarkup(hotkeys: PlayerHotkeys = DEFAULT_PLAYER
     ${WARRIOR_SKILLS.map((skill) => `
       <button class="skill-slot combat-skill-card" type="button" data-warrior-skill="${skill.id}" aria-label="${skill.label}, tecla ${skill.input}, custo ${skill.energyCost} de energia">
         <span class="skill-cooldown" aria-hidden="true"></span>
-        <img class="skill-art" src="${warriorSkillAsset(skill.id)}" alt="">
+        <img class="skill-art" data-skill-art="${skill.id}" src="${classSkillAsset(skill.id, playerClass)}" alt="">
         <span class="skill-card-copy"><strong class="skill-card-name" title="${skill.label}">${skill.label}</strong><small class="skill-card-meta">${skill.energyCost} energia · ${skill.cooldown.toFixed(1)}s recarga</small></span>
         <kbd data-action-hotkey="${skill.id}">${displayPlayerHotkey(hotkeys[skill.id])}</kbd>
       </button>`).join('')}`;
@@ -112,6 +116,8 @@ export class HUD {
   private craftRewardNotification: HTMLElement;
   private craftRewardTimer: number | undefined;
   private hotkeys: PlayerHotkeys = { ...DEFAULT_PLAYER_HOTKEYS };
+  /** Skill-card art follows the selected class until told otherwise. */
+  private playerClass: PlayableCharacterId = 'paladin';
   private gameplayVisible = false;
   private forceAnimationTestPanel = false;
 
@@ -243,7 +249,21 @@ export class HUD {
   }
 
   private renderCombatActions(): void {
-    this.combatActions.innerHTML = renderCombatActionMarkup(this.hotkeys);
+    this.combatActions.innerHTML = renderCombatActionMarkup(this.hotkeys, this.playerClass);
+  }
+
+  /**
+   * Swaps the skill-card art when the chosen class is known, without
+   * re-rendering the bar: the Guerreiro keeps its PNG set and the Maga gets
+   * the webp set, while every already-bound button listener stays intact.
+   */
+  public setPlayerClass(playerClass: PlayableCharacterId): void {
+    if (this.playerClass === playerClass) return;
+    this.playerClass = playerClass;
+    this.combatActions.querySelectorAll<HTMLImageElement>('img[data-skill-art]').forEach((img) => {
+      const skillId = img.dataset.skillArt as WarriorSkillArtId | undefined;
+      if (skillId) img.src = classSkillAsset(skillId, playerClass);
+    });
   }
 
   public onBasicAttack(callback: () => void): void {

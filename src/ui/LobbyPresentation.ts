@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 
-const WEAPON_NODE = /(sword|axe|weapon|staff|cajado|espada|machado|shield|escudo)/i;
+/**
+ * Weapon nodes hidden in the lobby/selection previews. `cajado`/`staff` stay
+ * OUT of this list on purpose: the Maga's staff is part of her silhouette and
+ * must always render (it used to vanish in the lobby, leaving her empty-handed).
+ */
+const WEAPON_NODE = /(sword|axe|weapon|espada|machado|shield|escudo)/i;
 
 export const LOBBY_BACKDROP_URL = '/assets/ui/lobby/arena/backdrop-v4.webp';
 
