@@ -378,6 +378,73 @@ export function getSecondaryWeaponId(equipment: PlayerEquipment): string | null 
   return equipment.secondaryWeapon ?? null;
 }
 
+/** The two class-bound starter weapons. Each class only ever handles its own. */
+export type ClassStarterWeaponId = 'starter-sword' | 'starter-staff';
+
+const CLASS_STARTER_WEAPONS: Readonly<Record<PlayableCharacterId, ClassStarterWeaponId>> = {
+  paladin: 'starter-sword',
+  mage: 'starter-staff',
+};
+
+/** Guerreiro starts with the sword, Maga with the cajado. */
+export function classStarterWeaponId(selectedClass: PlayableCharacterId): ClassStarterWeaponId {
+  return CLASS_STARTER_WEAPONS[selectedClass];
+}
+
+function isClassStarterWeapon(itemId: string | null | undefined): itemId is ClassStarterWeaponId {
+  return itemId === 'starter-sword' || itemId === 'starter-staff';
+}
+
+/**
+ * Keeps the class starter weapon in lockstep with the chosen class: the sword
+ * is shown only for the Guerreiro and the cajado only for the Maga. A starter
+ * of the other class is swapped in place (equipped stays equipped, stored stays
+ * stored) and duplicates collapse to a single copy. Profiles without any
+ * starter are left untouched, so a deliberately discarded weapon stays gone.
+ */
+export function syncStarterWeaponToClass(profile: PlayerProfile): PlayerProfile {
+  const wanted = classStarterWeaponId(profile.selectedClass);
+  const equipped = getPrimaryWeaponId(profile.equipment);
+  const hadStarter = isClassStarterWeapon(equipped)
+    || profile.backpack.some((stack) => isClassStarterWeapon(stack.itemId));
+  if (!hadStarter) return profile;
+
+  // A starter in the weapon slot always becomes the class starter; anything
+  // else worn (future drops) is preserved as-is.
+  const equipTarget: string | null = isClassStarterWeapon(equipped) ? wanted : equipped;
+
+  const backpack: InventoryStack[] = [];
+  let retainedStarter = false;
+  for (const stack of profile.backpack) {
+    if (!isClassStarterWeapon(stack.itemId)) {
+      backpack.push({ ...stack });
+      continue;
+    }
+    // At most one starter exists across backpack and equipment, and never
+    // beside an equipped one - the same invariant InventoryStore enforces.
+    if (equipTarget === null && stack.itemId === wanted && !retainedStarter) {
+      backpack.push({ itemId: wanted, quantity: 1 });
+      retainedStarter = true;
+    }
+  }
+
+  // A starter of the other class is exchanged for the class starter instead
+  // of vanishing: the durable total of starter weapons never shrinks here.
+  if (equipTarget === null && !retainedStarter) {
+    backpack.push({ itemId: wanted, quantity: 1 });
+  }
+
+  return {
+    ...profile,
+    equipment: {
+      ...profile.equipment,
+      weapon: equipTarget,
+      primaryWeapon: equipTarget,
+    },
+    backpack,
+  };
+}
+
 function isPlayerProfile(value: unknown): value is PlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== PROFILE_SCHEMA_VERSION) return false;

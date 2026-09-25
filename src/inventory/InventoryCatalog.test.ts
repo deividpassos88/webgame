@@ -10,9 +10,24 @@ describe('final boss craft catalog', () => {
       maxStack: 1,
       slot: 'weapon',
       iconSrc: '/items/equipment/armas/sword.webp',
+      equippedIconSrc: '/items/equipment/equipado/guerreiro/sword.webp',
       description: 'Uma espada de treino confiável, entregue à recruta da guilda.',
       baseDamage: 5,
     });
+  });
+
+  it('catalogues the Maga starter cajado with its own art and the same base damage', () => {
+    expect(getInventoryItem('starter-staff')).toMatchObject({
+      id: 'starter-staff',
+      label: 'Cajado Arcano',
+      kind: 'equipment',
+      maxStack: 1,
+      slot: 'weapon',
+      iconSrc: '/items/equipment/armas/cajado.webp',
+      equippedIconSrc: '/items/equipment/equipado/cajado_equipado.webp',
+      baseDamage: 5,
+    });
+    expect(getInventoryItem('starter-staff')?.description?.trim().length).toBeGreaterThan(0);
   });
 
   it('catalogues the five additional common draconic materials with supplied WebP art', () => {
@@ -60,21 +75,61 @@ describe('final boss craft catalog', () => {
         slot,
         craftLine,
         maxStack: 1,
-        iconSrc: `/items/equipment/common-forged/${slot}.webp`,
-        equippedIconSrc: `/items/equipment/equipado/${slot}.png`,
+        iconSrc: `/items/equipment/common-forged/guerreiro/${slot}.webp`,
+        equippedIconSrc: `/items/equipment/equipado/guerreiro/${slot}.png`,
       });
     }
   });
 
-  it('focuses every defensive piece on Defense and every offensive piece on Attack', () => {
-    for (const slot of ['helmet', 'chest', 'pants', 'gloves', 'boots'] as const) {
-      const defense = getInventoryItem(`common-forged-${slot}`);
-      const attack = getInventoryItem(`common-forged-${slot}-atk`);
+  it('catalogues both Maga forged lines on the Maga artwork folders', () => {
+    const expected = [
+      ['maga-forged-helmet', 'Dragonic Helmet [DEF]', 'helmet', 'defense'],
+      ['maga-forged-chest', 'Dragonic Chestplate [DEF]', 'chest', 'defense'],
+      ['maga-forged-pants', 'Dragonic Pants [DEF]', 'pants', 'defense'],
+      ['maga-forged-gloves', 'Dragonic Gloves [DEF]', 'gloves', 'defense'],
+      ['maga-forged-boots', 'Dragonic Boots [DEF]', 'boots', 'defense'],
+      ['maga-forged-helmet-atk', 'Dragonic Helmet [ATK]', 'helmet', 'attack'],
+      ['maga-forged-chest-atk', 'Dragonic Chestplate [ATK]', 'chest', 'attack'],
+      ['maga-forged-pants-atk', 'Dragonic Pants [ATK]', 'pants', 'attack'],
+      ['maga-forged-gloves-atk', 'Dragonic Gloves [ATK]', 'gloves', 'attack'],
+      ['maga-forged-boots-atk', 'Dragonic Boots [ATK]', 'boots', 'attack'],
+    ] as const;
 
-      expect(defense?.statBonuses?.defense ?? 0).toBeGreaterThan(0);
-      expect(defense?.statBonuses?.defense ?? 0).toBeGreaterThan(defense?.statBonuses?.attack ?? 0);
-      expect(attack?.statBonuses?.attack ?? 0).toBeGreaterThan(0);
-      expect(attack?.statBonuses?.attack ?? 0).toBeGreaterThan(attack?.statBonuses?.defense ?? 0);
+    for (const [id, label, slot, craftLine] of expected) {
+      expect(getInventoryItem(id)).toMatchObject({
+        id,
+        label,
+        kind: 'equipment',
+        rarity: 'common',
+        slot,
+        craftLine,
+        maxStack: 1,
+        iconSrc: `/items/equipment/common-forged/maga/${slot}.webp`,
+        equippedIconSrc: `/items/equipment/equipado/maga/${slot}.webp`,
+      });
+    }
+  });
+
+  it('mirrors the Maga pieces stat for stat against the Guerreiro set', () => {
+    for (const slot of ['helmet', 'chest', 'pants', 'gloves', 'boots'] as const) {
+      for (const suffix of ['', '-atk']) {
+        expect(getInventoryItem(`maga-forged-${slot}${suffix}`)?.statBonuses)
+          .toEqual(getInventoryItem(`common-forged-${slot}${suffix}`)?.statBonuses);
+      }
+    }
+  });
+
+  it('focuses every defensive piece on Defense and every offensive piece on Attack', () => {
+    for (const prefix of ['common-forged', 'maga-forged'] as const) {
+      for (const slot of ['helmet', 'chest', 'pants', 'gloves', 'boots'] as const) {
+        const defense = getInventoryItem(`${prefix}-${slot}`);
+        const attack = getInventoryItem(`${prefix}-${slot}-atk`);
+
+        expect(defense?.statBonuses?.defense ?? 0).toBeGreaterThan(0);
+        expect(defense?.statBonuses?.defense ?? 0).toBeGreaterThan(defense?.statBonuses?.attack ?? 0);
+        expect(attack?.statBonuses?.attack ?? 0).toBeGreaterThan(0);
+        expect(attack?.statBonuses?.attack ?? 0).toBeGreaterThan(attack?.statBonuses?.defense ?? 0);
+      }
     }
   });
 

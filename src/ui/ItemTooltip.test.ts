@@ -137,7 +137,7 @@ describe('item tooltip', () => {
     // The socket shows the art alone; its name lives in the aria-label the
     // surfaces build around this markup.
     expect(host.querySelector('.equipment-slot__label')).toBeNull();
-    expect(host.querySelector('img')?.getAttribute('src')).toBe('/items/equipment/equipado/sword.webp');
+    expect(host.querySelector('img')?.getAttribute('src')).toBe('/items/equipment/equipado/guerreiro/sword.webp');
     expect(host.querySelector('strong')).toBeNull();
   });
 
@@ -145,15 +145,15 @@ describe('item tooltip', () => {
     const sword = getInventoryItem('starter-sword')!;
 
     expect(inventoryItemArt(sword)).toContain('/items/equipment/armas/sword.webp');
-    expect(equippedItemArt(sword)).toContain('/items/equipment/equipado/sword.webp');
+    expect(equippedItemArt(sword)).toContain('/items/equipment/equipado/guerreiro/sword.webp');
     expect(equippedItemArt(sword)).toContain('is-equipped-art');
   });
 
   it('uses the supplied equipped art for common forged equipment', () => {
     const gloves = { ...getInventoryItem('common-forged-gloves')! };
 
-    expect(gloves.equippedIconSrc).toBe('/items/equipment/equipado/gloves.png');
-    expect(equippedItemArt(gloves)).toContain('/items/equipment/equipado/gloves.png');
+    expect(gloves.equippedIconSrc).toBe('/items/equipment/equipado/guerreiro/gloves.png');
+    expect(equippedItemArt(gloves)).toContain('/items/equipment/equipado/guerreiro/gloves.png');
     expect(equippedItemArt(gloves)).toContain('is-equipped-art');
   });
 });

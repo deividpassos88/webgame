@@ -1,7 +1,41 @@
-import { INVENTORY_ITEMS } from '../inventory/InventoryCatalog';
+import { INVENTORY_ITEMS, type InventoryItemDefinition } from '../inventory/InventoryCatalog';
 import type { WaveSnapshot } from '../waves/WaveManager';
 import type { AdminCommand, AdminSpawnRole, AdminWave } from './AdminCommandGate';
 import type { AdminCommandResult } from './AdminGameActions';
+
+/**
+ * Owner shown in the admin item picker. Classes are separate and their forged
+ * pieces share the same labels ("Dragonic Helmet [DEF]"), so every option is
+ * grouped and tagged to keep the Maga items tellable apart from the Guerreiro
+ * ones instead of looking like duplicated warrior gear.
+ */
+export type AdminItemGroup = 'Guerreiro' | 'Maga' | 'Materiais' | 'Consumíveis';
+
+export function adminItemGroup(item: InventoryItemDefinition): AdminItemGroup {
+  if (item.kind === 'consumable') return 'Consumíveis';
+  if (item.kind === 'material') return 'Materiais';
+  if (item.id === 'starter-staff' || item.id.startsWith('maga-forged-')) return 'Maga';
+  return 'Guerreiro';
+}
+
+const ADMIN_ITEM_GROUP_ORDER: readonly AdminItemGroup[] = [
+  'Guerreiro', 'Maga', 'Materiais', 'Consumíveis',
+];
+
+/** One optgroup per owner, every class option tagged with its class name. */
+export function renderAdminInventoryItemOptions(): string {
+  const items = Object.values(INVENTORY_ITEMS) as readonly InventoryItemDefinition[];
+  return ADMIN_ITEM_GROUP_ORDER.map((group) => {
+    const options = items
+      .filter((item) => adminItemGroup(item) === group)
+      .map((item) => {
+        const owner = group === 'Guerreiro' || group === 'Maga' ? ` · ${group}` : '';
+        return `<option value="${item.id}">${item.label}${owner}</option>`;
+      })
+      .join('');
+    return options.length > 0 ? `<optgroup label="${group}">${options}</optgroup>` : '';
+  }).join('');
+}
 
 export interface AdminPanelDefinition {
   waveButtons: readonly AdminWave[];
@@ -86,7 +120,7 @@ export class AdminPanel {
         <section class="admin-inventory" aria-label="Adicionar item ao inventário">
           <label>Item
             <select data-admin-inventory-item>
-              ${Object.values(INVENTORY_ITEMS).map((item) => `<option value="${item.id}">${item.label}</option>`).join('')}
+              ${renderAdminInventoryItemOptions()}
             </select>
           </label>
           <label>Quantidade

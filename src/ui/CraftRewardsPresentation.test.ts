@@ -41,6 +41,18 @@ describe('craft reward presentation', () => {
     }
   });
 
+  it('keeps the sword placeholder on the Guerreiro socket and the cajado on the Maga one', () => {
+    expect(equipmentSlotIconSource('primaryWeapon')).toContain('sword');
+    expect(equipmentSlotIconSource('primaryWeapon', 'paladin')).toContain('sword');
+    expect(equipmentSlotIconSource('primaryWeapon', 'mage')).toContain('cajado');
+    expect(existsSync(`${process.cwd()}/public${equipmentSlotIconSource('primaryWeapon', 'mage')}`)).toBe(true);
+
+    const magaSocket = document.createElement('div');
+    magaSocket.innerHTML = renderEquipmentSlotContent('primaryWeapon', null, 'mage');
+    expect(magaSocket.querySelector<HTMLImageElement>('.equipment-slot__icon')?.src)
+      .toContain('cajado');
+  });
+
   it('replaces the placeholder with the equipped art once an item fills the socket', () => {
     const equipado = getInventoryItem('common-forged-helmet')!;
     const comItem = document.createElement('div');

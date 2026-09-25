@@ -14,6 +14,7 @@ import { createDefaultPlayerProfile } from '../profile/PlayerProfile';
 const NOW = 1_789_000_000_000;
 const DRAGONIC_HELMET_DEFENSE = 'common-forged-helmet:defense';
 const DRAGONIC_HELMET_ATTACK = 'common-forged-helmet-atk:attack';
+const MAGA_DRAGONIC_HELMET_DEFENSE = 'maga-forged-helmet:defense';
 
 function profileWithCommonMaterials(quantity = 10) {
   const profile = createDefaultPlayerProfile();
@@ -29,30 +30,31 @@ describe('BlacksmithWorkshop', () => {
     });
   });
 
-  it('defines the five Dragonic pieces twice, once per craft line', () => {
-    expect(BLACKSMITH_RECIPES).toHaveLength(10);
-    expect(recipesForLine('defense').map((recipe) => recipe.label)).toEqual([
+  it('defines the five Dragonic pieces per craft line for each class', () => {
+    // Two classes x two lines x five slots. Guerreiro and Maga never mix.
+    expect(BLACKSMITH_RECIPES).toHaveLength(20);
+    expect(recipesForLine('defense', 'paladin').map((recipe) => recipe.label)).toEqual([
       'Dragonic Helmet [DEF]',
       'Dragonic Chestplate [DEF]',
       'Dragonic Pants [DEF]',
       'Dragonic Gloves [DEF]',
       'Dragonic Boots [DEF]',
     ]);
-    expect(recipesForLine('attack').map((recipe) => recipe.label)).toEqual([
+    expect(recipesForLine('attack', 'paladin').map((recipe) => recipe.label)).toEqual([
       'Dragonic Helmet [ATK]',
       'Dragonic Chestplate [ATK]',
       'Dragonic Pants [ATK]',
       'Dragonic Gloves [ATK]',
       'Dragonic Boots [ATK]',
     ]);
-    expect(recipesForLine('defense').map((recipe) => recipe.outputItemId)).toEqual([
+    expect(recipesForLine('defense', 'paladin').map((recipe) => recipe.outputItemId)).toEqual([
       'common-forged-helmet',
       'common-forged-chest',
       'common-forged-pants',
       'common-forged-gloves',
       'common-forged-boots',
     ]);
-    expect(recipesForLine('attack').map((recipe) => recipe.outputItemId)).toEqual([
+    expect(recipesForLine('attack', 'paladin').map((recipe) => recipe.outputItemId)).toEqual([
       'common-forged-helmet-atk',
       'common-forged-chest-atk',
       'common-forged-pants-atk',
@@ -61,12 +63,44 @@ describe('BlacksmithWorkshop', () => {
     ]);
   });
 
-  it('charges 15 units of each material for the ATK line and 10 for the DEF line', () => {
-    for (const recipe of recipesForLine('defense')) {
+  it('mirrors the same five-piece lines for the Maga on her own item ids', () => {
+    expect(recipesForLine('defense', 'mage').map((recipe) => recipe.outputItemId)).toEqual([
+      'maga-forged-helmet',
+      'maga-forged-chest',
+      'maga-forged-pants',
+      'maga-forged-gloves',
+      'maga-forged-boots',
+    ]);
+    expect(recipesForLine('attack', 'mage').map((recipe) => recipe.outputItemId)).toEqual([
+      'maga-forged-helmet-atk',
+      'maga-forged-chest-atk',
+      'maga-forged-pants-atk',
+      'maga-forged-gloves-atk',
+      'maga-forged-boots-atk',
+    ]);
+    expect(recipesForLine('defense', 'mage').map((recipe) => recipe.label)).toEqual([
+      'Dragonic Helmet [DEF]',
+      'Dragonic Chestplate [DEF]',
+      'Dragonic Pants [DEF]',
+      'Dragonic Gloves [DEF]',
+      'Dragonic Boots [DEF]',
+    ]);
+    for (const recipe of recipesForLine('defense', 'mage')) {
       expect(recipe.ingredients).toHaveLength(5);
       expect(recipe.ingredients.every(({ quantity }) => quantity === 10)).toBe(true);
     }
-    for (const recipe of recipesForLine('attack')) {
+    for (const recipe of recipesForLine('attack', 'mage')) {
+      expect(recipe.ingredients).toHaveLength(5);
+      expect(recipe.ingredients.every(({ quantity }) => quantity === 15)).toBe(true);
+    }
+  });
+
+  it('charges 15 units of each material for the ATK line and 10 for the DEF line', () => {
+    for (const recipe of recipesForLine('defense', 'paladin')) {
+      expect(recipe.ingredients).toHaveLength(5);
+      expect(recipe.ingredients.every(({ quantity }) => quantity === 10)).toBe(true);
+    }
+    for (const recipe of recipesForLine('attack', 'paladin')) {
       expect(recipe.ingredients).toHaveLength(5);
       expect(recipe.ingredients.every(({ quantity }) => quantity === 15)).toBe(true);
     }
@@ -138,6 +172,33 @@ describe('BlacksmithWorkshop', () => {
     const result = craftBlacksmithRecipe(profile, DRAGONIC_HELMET_DEFENSE, NOW);
 
     expect(result).toEqual({ kind: 'license-expired', profile });
+  });
+
+  it('crafts the Maga line into her own item ids', () => {
+    const profile = profileWithCommonMaterials(10);
+    profile.selectedClass = 'mage';
+    profile.blacksmith.availableUntil = NOW + 1;
+
+    const result = craftBlacksmithRecipe(profile, MAGA_DRAGONIC_HELMET_DEFENSE, NOW);
+
+    expect(result.kind).toBe('crafted');
+    if (result.kind !== 'crafted') return;
+    expect(result.profile.backpack).toContainEqual({ itemId: 'maga-forged-helmet', quantity: 1 });
+    expect(result.profile.equipment.helmet).toBeNull();
+  });
+
+  it('never crafts a recipe that belongs to the other class', () => {
+    const mage = profileWithCommonMaterials(15);
+    mage.selectedClass = 'mage';
+    mage.blacksmith.availableUntil = NOW + 1;
+
+    expect(craftBlacksmithRecipe(mage, DRAGONIC_HELMET_DEFENSE, NOW).kind).toBe('unknown-recipe');
+    expect(craftBlacksmithRecipe(mage, DRAGONIC_HELMET_ATTACK, NOW).kind).toBe('unknown-recipe');
+
+    const warrior = profileWithCommonMaterials(10);
+    warrior.blacksmith.availableUntil = NOW + 1;
+
+    expect(craftBlacksmithRecipe(warrior, MAGA_DRAGONIC_HELMET_DEFENSE, NOW).kind).toBe('unknown-recipe');
   });
 
   it('uses slots freed by consumed materials when an initially full backpack crafts equipment', () => {

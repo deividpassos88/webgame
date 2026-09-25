@@ -1,6 +1,7 @@
 import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import type { WarriorSkillDefinition } from '../combat/WarriorSkillCatalog';
 import type { InventoryItemKind } from '../inventory/InventoryCatalog';
+import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import type { UiEquipmentSlot } from './RpgUiViewModel';
 
 const base = (paths: string) =>
@@ -11,49 +12,35 @@ const base = (paths: string) =>
  * player reads where the item goes instead of a generic outline. A socket with
  * an item shows that item's art, never this placeholder.
  *
- * Each playable class has its own set inside
- * public/assets/ui/lobby/arena/slots: the Guerreiro keeps the bronze-line PNGs
- * (sword/shield kit) and the Maga uses the webp set (cajado/book kit).
+ * The seven files live in public/assets/ui/lobby/arena/slots and were cut out
+ * from the same bronze-line art direction as the equipped pieces. The primary
+ * weapon socket is class-bound: the sword placeholder appears only for the
+ * Guerreiro and the cajado placeholder only for the Maga.
  */
 const EQUIPMENT_SLOT_ICON_SOURCES: Record<UiEquipmentSlot, string> = {
-  helmet: 'helmet',
-  chest: 'chest',
-  pants: 'pants',
-  gloves: 'gloves',
-  boots: 'boots',
-  primaryWeapon: 'sword',
-  secondaryWeapon: 'shield',
+  helmet: 'helmet.png',
+  chest: 'chest.png',
+  pants: 'pants.png',
+  gloves: 'gloves.png',
+  boots: 'boots.png',
+  primaryWeapon: 'sword.png',
+  secondaryWeapon: 'shield.png',
 };
 
-/** Maga webp placeholders (staff + arcane tome instead of sword + shield). */
-const MAGE_EQUIPMENT_SLOT_ICON_SOURCES: Record<UiEquipmentSlot, string> = {
-  helmet: 'maga_helmet',
-  chest: 'maga_chest',
-  pants: 'maga_pants',
-  gloves: 'maga_gloves',
-  boots: 'maga_boots',
-  primaryWeapon: 'cajado',
-  secondaryWeapon: 'book',
+const CLASS_WEAPON_SLOT_ICONS: Partial<Record<PlayableCharacterId, string>> = {
+  mage: 'cajado.webp',
 };
 
-export function equipmentSlotIconSource(
-  slot: UiEquipmentSlot,
-  playerClass: PlayableCharacterId = 'paladin'
-): string {
-  if (playerClass === 'mage') {
-    const file = MAGE_EQUIPMENT_SLOT_ICON_SOURCES[slot];
-    return `/assets/ui/lobby/arena/slots/maga/${file}.webp`;
-  }
-  const file = EQUIPMENT_SLOT_ICON_SOURCES[slot];
-  return `/assets/ui/lobby/arena/slots/guerreiro/${file}.png`;
+export function equipmentSlotIconSource(slot: UiEquipmentSlot, classId?: PlayableCharacterId): string {
+  const classIcon = slot === 'primaryWeapon' && classId
+    ? CLASS_WEAPON_SLOT_ICONS[classId]
+    : undefined;
+  return `/assets/ui/lobby/arena/slots/${classIcon ?? EQUIPMENT_SLOT_ICON_SOURCES[slot]}`;
 }
 
 /** Markup for the placeholder inside an empty socket. Decorative only. */
-export function equipmentSlotIcon(
-  slot: UiEquipmentSlot,
-  playerClass: PlayableCharacterId = 'paladin'
-): string {
-  return `<img class="equipment-slot__icon" src="${equipmentSlotIconSource(slot, playerClass)}" alt="" aria-hidden="true" loading="lazy" decoding="async">`;
+export function equipmentSlotIcon(slot: UiEquipmentSlot, classId?: PlayableCharacterId): string {
+  return `<img class="equipment-slot__icon" src="${equipmentSlotIconSource(slot, classId)}" alt="" aria-hidden="true" loading="lazy" decoding="async">`;
 }
 
 export function equipmentIcon(slot: UiEquipmentSlot): string {

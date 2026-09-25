@@ -43,7 +43,11 @@ export interface WarriorSkillsSnapshot {
 }
 
 const MAX_ENERGY = 50;
-const REGENERATION_PER_SECOND = 6;
+/**
+ * Mana recovers like the fatigue bar: 100% in 4 seconds while standing
+ * still, nothing while moving (the fatigue "parado" signal).
+ */
+const RECOVERY_PER_SECOND = MAX_ENERGY / 4;
 const REGENERATION_DELAY = 1;
 
 export class WarriorSkillController {
@@ -106,7 +110,7 @@ export class WarriorSkillController {
     return true;
   }
 
-  public update(delta: number, paused: boolean): void {
+  public update(delta: number, paused: boolean, moving = false): void {
     if (paused || !Number.isFinite(delta) || delta <= 0) return;
     this.refundableActivation = null;
 
@@ -114,17 +118,10 @@ export class WarriorSkillController {
       this.cooldowns[skill.id] = Math.max(0, this.cooldowns[skill.id] - delta);
     }
 
-    let regenerationTime = delta;
-    if (this.regenerationDelayRemaining > 0) {
-      const delayTime = Math.min(this.regenerationDelayRemaining, regenerationTime);
-      this.regenerationDelayRemaining -= delayTime;
-      regenerationTime -= delayTime;
-    }
-    if (regenerationTime > 0) {
-      this.energy = Math.min(
-        MAX_ENERGY,
-        this.energy + regenerationTime * REGENERATION_PER_SECOND
-      );
+    this.regenerationDelayRemaining = Math.max(0, this.regenerationDelayRemaining - delta);
+    // Igual à fadiga: parado recupera 100% em 4 segundos; andando não recupera.
+    if (!moving) {
+      this.energy = Math.min(MAX_ENERGY, this.energy + delta * RECOVERY_PER_SECOND);
     }
   }
 

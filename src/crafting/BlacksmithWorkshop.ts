@@ -1,10 +1,18 @@
 import { CRAFT_LINES, type CraftLineId } from './CraftLine';
 import { getInventoryItem } from '../inventory/InventoryCatalog';
+import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import type { InventoryStack, PlayerProfile } from '../profile/PlayerProfile';
 
 export const BLACKSMITH_LICENSE_COST = 30;
 export const BLACKSMITH_LICENSE_DURATION_MS = 36 * 60 * 60 * 1000;
 export const BLACKSMITH_LICENSE_DURATION_HOURS = BLACKSMITH_LICENSE_DURATION_MS / (60 * 60 * 1000);
+
+/**
+ * The workshop forges the Dragonic lines for both playable classes. Classes
+ * are separate: the Guerreiro forges `common-forged-*` pieces and the Maga the
+ * mirror `maga-forged-*` ones, each with its own artwork.
+ */
+export const FORGE_CLASS_ROLES: readonly PlayableCharacterId[] = ['paladin', 'mage'];
 
 /** Shared player-facing labels so the license terms cannot drift between UI surfaces. */
 export function getBlacksmithLicensePresentation(): {
@@ -40,29 +48,35 @@ export type BlacksmithSlotRecipeId = (typeof SLOT_RECIPES)[number]['slot'];
 /**
  * The output of a slot recipe. The defensive line keeps the historical ids so
  * profiles saved before the two lines existed stay valid; the offensive line
- * adds the `-atk` suffix.
+ * adds the `-atk` suffix. The Maga mirrors the same scheme on her own ids.
  */
-function outputItemId(slot: BlacksmithSlotRecipeId, line: CraftLineId): string {
-  return line === 'attack' ? `common-forged-${slot}-atk` : `common-forged-${slot}`;
+function outputItemId(slot: BlacksmithSlotRecipeId, line: CraftLineId, classRole: PlayableCharacterId): string {
+  const suffix = line === 'attack' ? '-atk' : '';
+  return classRole === 'mage' ? `maga-forged-${slot}${suffix}` : `common-forged-${slot}${suffix}`;
 }
 
-/** The forge sells the five-piece common line in both ATK and DEF variants. */
-export const BLACKSMITH_RECIPES = CRAFT_LINES.flatMap((line) =>
-  SLOT_RECIPES.map((slotRecipe) => ({
-    id: `${outputItemId(slotRecipe.slot, line.id)}:${line.id}`,
-    line: line.id,
-    slot: slotRecipe.slot,
-    outputItemId: outputItemId(slotRecipe.slot, line.id),
-    label: `${slotRecipe.label} [${line.tag}]`,
-    ingredients: slotRecipe.materials.map((itemId) => ({
-      itemId: itemId as (typeof COMMON_CRAFT_MATERIAL_IDS)[number],
-      quantity: line.materialCost,
+/** Every class forges the five-piece common line in both ATK and DEF variants. */
+export const BLACKSMITH_RECIPES: readonly BlacksmithRecipe[] = FORGE_CLASS_ROLES.flatMap((classRole) =>
+  CRAFT_LINES.flatMap((line) =>
+    SLOT_RECIPES.map((slotRecipe) => ({
+      id: `${outputItemId(slotRecipe.slot, line.id, classRole)}:${line.id}`,
+      classRole,
+      line: line.id,
+      slot: slotRecipe.slot,
+      outputItemId: outputItemId(slotRecipe.slot, line.id, classRole),
+      label: `${slotRecipe.label} [${line.tag}]`,
+      ingredients: slotRecipe.materials.map((itemId) => ({
+        itemId: itemId as (typeof COMMON_CRAFT_MATERIAL_IDS)[number],
+        quantity: line.materialCost,
+      })),
     })),
-  })),
-) as readonly BlacksmithRecipe[];
+  ),
+);
 
 export interface BlacksmithRecipe {
   readonly id: string;
+  /** The only class whose workshop sells this recipe. */
+  readonly classRole: PlayableCharacterId;
   readonly line: CraftLineId;
   readonly slot: BlacksmithSlotRecipeId;
   readonly outputItemId: string;
@@ -72,9 +86,15 @@ export interface BlacksmithRecipe {
 
 export type BlacksmithRecipeId = (typeof BLACKSMITH_RECIPES)[number]['id'];
 
-/** Every recipe of one line, in the slot order the catalog lists them. */
-export function recipesForLine(line: CraftLineId): readonly BlacksmithRecipe[] {
-  return BLACKSMITH_RECIPES.filter((recipe) => recipe.line === line);
+/**
+ * Every recipe of one line for one class, in the slot order the catalog lists
+ * them. Each class only ever sees its own line of pieces.
+ */
+export function recipesForLine(
+  line: CraftLineId,
+  classRole: PlayableCharacterId
+): readonly BlacksmithRecipe[] {
+  return BLACKSMITH_RECIPES.filter((recipe) => recipe.line === line && recipe.classRole === classRole);
 }
 
 export function findBlacksmithRecipe(recipeId: string): BlacksmithRecipe | undefined {
@@ -119,7 +139,8 @@ export function craftBlacksmithRecipe(
   now: number
 ): BlacksmithCraftResult {
   const recipe = findBlacksmithRecipe(recipeId);
-  if (!recipe) return { kind: 'unknown-recipe', profile };
+  // Classes are separate: a recipe forged for another class never crafts.
+  if (!recipe || recipe.classRole !== profile.selectedClass) return { kind: 'unknown-recipe', profile };
   if (!hasActiveLicense(profile, now)) return { kind: 'license-expired', profile };
   if (!recipe.ingredients.every(({ itemId, quantity }) => countItem(profile.backpack, itemId) >= quantity)) {
     return { kind: 'insufficient-materials', profile };

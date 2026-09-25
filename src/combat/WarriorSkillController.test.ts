@@ -18,7 +18,7 @@ describe('WarriorSkillController', () => {
     ).toBe(true);
   });
 
-  it('spends energy, starts cooldown, and regenerates only after one second', () => {
+  it('spends energy and starts cooldowns', () => {
     const skills = new WarriorSkillController();
 
     expect(skills.tryActivate('ataque_giratorio')).toEqual({
@@ -28,10 +28,25 @@ describe('WarriorSkillController', () => {
     expect(skills.snapshot().energy).toBe(42);
     expect(skills.snapshot().skills.ataque_giratorio.cooldownRemaining).toBe(6);
 
-    skills.update(0.9, false);
-    expect(skills.snapshot().energy).toBe(42);
-    skills.update(1.1, false);
-    expect(skills.snapshot().energy).toBeCloseTo(48);
+    skills.update(1, false, true);
+    expect(skills.snapshot().skills.ataque_giratorio.cooldownRemaining).toBeCloseTo(5);
+  });
+
+  it('recovers mana only while standing still, 100% in four seconds', () => {
+    const skills = new WarriorSkillController();
+
+    expect(skills.spend(50)).toBe(true);
+    expect(skills.snapshot().energy).toBe(0);
+
+    // Andando não recupera nada (mesmo sinal de "parado" da fadiga).
+    skills.update(4, false, true);
+    expect(skills.snapshot().energy).toBe(0);
+
+    // Parado recupera linear: metade em 2s, 100% em 4s — sem espera.
+    skills.update(2, false, false);
+    expect(skills.snapshot().energy).toBeCloseTo(25);
+    skills.update(2, false, false);
+    expect(skills.snapshot().energy).toBeCloseTo(50);
   });
 
 
@@ -122,13 +137,11 @@ describe('WarriorSkillController', () => {
     expect(skills.refund('ataque_giratorio_2')).toBe(false);
   });
 
-  it('spends a generic mana cost and holds regeneration for one second', () => {
+  it('spends a generic mana cost and rejects spends beyond the current bar', () => {
     const skills = new WarriorSkillController();
 
     expect(skills.canSpend(5)).toBe(true);
     expect(skills.spend(5)).toBe(true);
-    expect(skills.snapshot().energy).toBe(45);
-    skills.update(0.9, false);
     expect(skills.snapshot().energy).toBe(45);
     expect(skills.spend(46)).toBe(false);
     expect(skills.snapshot().energy).toBe(45);

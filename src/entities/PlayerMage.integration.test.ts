@@ -271,4 +271,36 @@ describe('Mage gameplay player', () => {
     expect(player.isCastingSkill).toBe(false);
     expect(player.root.position.x).toBeGreaterThan(afterStep);
   });
+
+  it('grants the Mage basic cast no action immunity at all (0 seconds)', async () => {
+    const player = new Player('mage', createMageAssets());
+    await player.load();
+
+    player.attackAtCursor();
+    expect(player.isAttackInSwing()).toBe(true);
+    expect(player.actionInvulnerabilityRemaining).toBe(0);
+    player.takeDamage(40);
+    expect(player.hp).toBe(60);
+  });
+
+  it('spends the Mage basic-attack MP cost only when the cast commits', async () => {
+    const player = new Player('mage', createMageAssets());
+    await player.load();
+
+    let canAfford = false;
+    let spent = 0;
+    player.basicAttackCost = {
+      canAfford: () => canAfford,
+      spend: () => { spent += 1; },
+    };
+
+    player.attackAtCursor();
+    expect(player.isAttackInSwing()).toBe(false);
+    expect(spent).toBe(0);
+
+    canAfford = true;
+    player.attackAtCursor();
+    expect(player.isAttackInSwing()).toBe(true);
+    expect(spent).toBe(1);
+  });
 });

@@ -304,7 +304,7 @@ export class BlacksmithScreen {
   }
 
   private renderRecipes(inventory: InventorySnapshot): string {
-    return `<div class="blacksmith-recipes">${recipesForLine(this.craftLine)
+    return `<div class="blacksmith-recipes">${recipesForLine(this.craftLine, this.profile.selectedClass)
       .map((recipe) => this.renderRecipe(recipe, inventory))
       .join('')}</div>`;
   }
