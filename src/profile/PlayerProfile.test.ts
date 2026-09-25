@@ -85,7 +85,7 @@ describe('PlayerProfile progression', () => {
     });
     expect(profile.attributePointsRemaining).toBe(0);
     expect(profile.hotkeys).not.toHaveProperty('ataque_basico');
-    expect(profile.autoBasicAttack).toBe(false);
+    expect(profile.autoBasicAttack).toBe(true);
     expect(profile.blacksmith).toEqual({ availableUntil: null });
   });
 
@@ -284,7 +284,7 @@ describe('PlayerProfile progression', () => {
       triplo_ataque: '4',
       corte_duplo: '5',
     });
-    expect(result.profile.autoBasicAttack).toBe(false);
+    expect(result.profile.autoBasicAttack).toBe(true);
     expect(result.profile.blacksmith).toEqual({ availableUntil: null });
   });
 
@@ -305,7 +305,7 @@ describe('PlayerProfile progression', () => {
     const result = loadPlayerProfile(memoryStorage(JSON.stringify(schemaSeven)));
 
     expect(result.kind).toBe('loaded');
-    expect(result.profile.autoBasicAttack).toBe(false);
+    expect(result.profile.autoBasicAttack).toBe(true);
     expect(result.profile.hotkeys).not.toHaveProperty('ataque_basico');
     expect(result.profile.blacksmith).toEqual({ availableUntil: null });
   });

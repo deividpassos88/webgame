@@ -220,20 +220,43 @@
     <section id="character-overlay" class="rpg-overlay character-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="character-title">
       <header class="overlay-header">
         <div><p id="character-eyebrow" class="section-label">Ficha do Guerreiro</p><h2 id="character-title">Equipamentos</h2></div>
-        <button type="button" data-close-overlay aria-label="Fechar ficha do personagem">Fechar</button>
+        <button type="button" class="overlay-close" data-close-overlay aria-label="Fechar janela">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5l14 14M19 5 5 19"/></svg>
+          <span>Fechar</span>
+        </button>
       </header>
       <div class="character-panel" data-character-panel="equipment">
         <section class="overlay-panel equipment-card"><p class="section-label">Armadura e armas</p><h3>Equipamento</h3><div id="inventory-equipment" class="equipment-grid equipment-silhouette"></div></section>
-        <div class="character-sheet-crest" aria-hidden="true"><span>W</span><strong>Guerreiro</strong><small>Vanguarda de Cinzafogo</small></div>
+        <div class="character-sheet-crest" data-character-crest aria-hidden="true"><span>W</span><strong>Guerreiro</strong><small>Vanguarda de Cinzafogo</small></div>
         <aside class="overlay-panel equipment-note"><p class="section-label">Preparação</p><h3>Arsenal ativo</h3><p>Selecione a mochila para equipar peças conquistadas. A arma secundária permanece vazia para o Guerreiro.</p></aside>
       </div>
       <div class="character-panel hidden" data-character-panel="backpack">
         <section class="overlay-panel backpack-card"><div class="panel-heading"><div><p class="section-label">Itens obtidos</p><h3>Mochila</h3></div><span id="inventory-capacity" tabindex="-1" aria-label="Capacidade da mochila">0 / 20</span></div><p class="backpack-copy">Clique em um item para inspecionar, ou equipe uma peça compatível.</p><div id="inventory-backpack"></div></section>
       </div>
       <div class="character-panel hidden" data-character-panel="status">
-        <section class="status-overview overlay-panel"><p class="section-label">Progresso da campanha</p><h3>Build do Guerreiro</h3><div class="status-metrics"><div><strong id="status-level">Nível 1</strong><span id="status-experience">0 / 100 XP</span></div><div class="attribute-budget"><strong id="status-attribute-points">0</strong><span>pontos disponíveis</span></div></div><p>Todo nível concede 2 pontos (total de 40 pontos no nível 20). Uma especialização pode chegar a 30; para passar disso, outro status também precisa atingir 30.</p></section>
-        <section class="overlay-panel status-controls-card"><p class="section-label">Distribuir pontos</p><div id="status-controls" class="attribute-controls" aria-label="Atributos do Guerreiro"></div><p id="status-gate-message" class="status-gate-message" role="status"></p></section>
-        <aside class="attribute-preview overlay-panel" aria-live="polite"><p class="section-label">Impacto atual</p><dl id="status-derived-stats"></dl><div class="attribute-reset"><strong>Reset futuro</strong><button type="button" disabled>5 USDT · indisponível</button><button type="button" disabled>1000 Guild Tokens · indisponível</button><small>O reset será ativado quando a integração de pagamento existir.</small></div></aside>
+        <section class="overlay-panel status-window">
+          <nav class="status-book-tabs" role="tablist" aria-label="Seções de status">
+            <button type="button" role="tab" data-status-tab="progress" aria-selected="true" tabindex="0">Progresso</button>
+            <button type="button" role="tab" data-status-tab="attributes" aria-selected="false" tabindex="-1">Atributos</button>
+            <button type="button" role="tab" data-status-tab="combat" aria-selected="false" tabindex="-1">Combate</button>
+          </nav>
+          <div class="status-book-page" data-status-section="progress">
+            <p class="section-label">Progresso da campanha</p>
+            <h3>Build do Guerreiro</h3>
+            <div class="status-metrics"><div><strong id="status-level">Nível 1</strong><span id="status-experience">0 / 100 XP</span></div><div class="attribute-budget"><strong id="status-attribute-points">0</strong><span>pontos disponíveis</span></div></div>
+            <p>Todo nível concede 2 pontos (total de 40 pontos no nível 20). Uma especialização pode chegar a 30; para passar disso, outro status também precisa atingir 30.</p>
+          </div>
+          <div class="status-book-page" data-status-section="attributes" hidden>
+            <p class="section-label">Distribuir pontos</p>
+            <div id="status-controls" class="attribute-controls" aria-label="Atributos"></div>
+            <p id="status-gate-message" class="status-gate-message" role="status"></p>
+          </div>
+          <div class="status-book-page" data-status-section="combat" hidden>
+            <p class="section-label">Impacto atual</p>
+            <dl id="status-derived-stats"></dl>
+            <div class="attribute-reset"><strong>Reset futuro</strong><button type="button" disabled>5 USDT · indisponível</button><button type="button" disabled>1000 Guild Tokens · indisponível</button><small>O reset será ativado quando a integração de pagamento existir.</small></div>
+          </div>
+        </section>
       </div>
       <p id="inventory-message" class="overlay-message" role="status"></p>
       <section id="craft-item-inspector" class="craft-item-inspector hidden" role="dialog" aria-modal="true" aria-labelledby="craft-item-inspector-name" aria-describedby="craft-item-inspector-copy">

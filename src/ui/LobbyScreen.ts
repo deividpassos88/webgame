@@ -24,8 +24,13 @@ import {
   type PlayerHotkeyAction,
   type PlayerHotkeys,
 } from '../profile/PlayerHotkeys';
-import { WARRIOR_SKILLS } from '../combat/WarriorSkillCatalog';
-import { renderSkillStars, warriorSkillAsset } from './WarriorSkillAssets';
+import {
+  WARRIOR_SKILLS,
+  getWarriorSkill,
+  type WarriorSkillId,
+} from '../combat/WarriorSkillCatalog';
+import { mageSkillFatiguePercent } from '../combat/MageSkillCost';
+import { classSkillAsset, renderSkillStars } from './WarriorSkillAssets';
 import {
   itemTooltipDataAttributes,
   renderEquipmentSlotContent,
@@ -206,6 +211,45 @@ export function renderLobbyBackpackContents(
         ${item ? renderInventorySlotContent(item, quantity) : ''}
       </button>`;
   }).join('');
+}
+
+/** Short player-facing explanation of what each skill does in combat. */
+const SKILL_TIP_DESCRIPTIONS: Readonly<Record<WarriorSkillId, string>> = {
+  ataque_giratorio: 'Giro de 360° que atinge todos os monstros ao redor do herói.',
+  ataque_giratorio_2: 'Giro glacial: fere e congela os inimigos próximos (gelo).',
+  pulo_atacando: 'Salto com impacto em área à frente do herói.',
+  triplo_ataque: 'Golpes em chamas que queimam os inimigos na frente (fogo).',
+  corte_duplo: 'Dois cortes rápidos e largos à frente do herói.',
+};
+
+/** One tooltip card with everything a player needs to understand the skill. */
+function buildLobbySkillTip(
+  skillId: WarriorSkillId,
+  playerClass: PlayableCharacterId
+): string {
+  const skill = getWarriorSkill(skillId);
+  const elementLabel = skill.element === 'ice'
+    ? 'Gelo'
+    : skill.element === 'fire'
+      ? 'Fogo'
+      : 'Físico';
+  const cost = playerClass === 'mage'
+    ? `${skill.energyCost} MP · ${mageSkillFatiguePercent(skill.id)}% fadiga`
+    : `${skill.energyCost} energia`;
+  const rows: readonly (readonly [string, string])[] = [
+    ['Dano', `×${skill.damageMultiplier.toFixed(2)} do ataque`],
+    ['Custo', cost],
+    ['Recarga', `${skill.cooldown.toFixed(1)}s`],
+    ['Área', `raio ${skill.area.radius.toFixed(1)}m`],
+    ['Elemento', elementLabel],
+    ['Desbloqueio', `Nível ${skill.unlockLevel}`],
+  ];
+  return `
+    <h4 class="lobby-skill-tip__title">${skill.label}</h4>
+    <p class="lobby-skill-tip__description">${SKILL_TIP_DESCRIPTIONS[skillId]}</p>
+    <dl class="lobby-skill-tip__stats">
+      ${rows.map(([term, value]) => `<div><dt>${term}</dt><dd>${value}</dd></div>`).join('')}
+    </dl>`;
 }
 
 export function renderLobbyHotkeys(
@@ -494,6 +538,12 @@ export class LobbyScreen {
   private readonly destroyConfirmDialog = document.getElementById('lobby-item-destroy-confirm')!;
   private readonly destroyConfirmName = document.getElementById('lobby-item-destroy-name')!;
   private lobbyInventoryChanged: (() => void) | null = null;
+  /** "Iniciar partida" fica bloqueado até o jogador equipar uma arma. */
+  private startBlockedByWeapon = true;
+  private startActionsDisabled = false;
+  private readonly skillTipHost = document.getElementById('lobby-skills');
+  private readonly skillTip = this.createSkillTip();
+  private skillTipTrigger: HTMLElement | null = null;
   private readonly adminInventoryChanged = (): void => {
     if (!this.active) return;
     this.hideItemActions();
@@ -529,6 +579,10 @@ export class LobbyScreen {
     this.selectedCharacterId = this.profile.selectedClass;
     this.setupScene();
     this.unbindItemTooltip = bindItemTooltip(this.lobbyScreen);
+    this.skillTipHost?.addEventListener('pointerover', this.skillTipOver);
+    this.skillTipHost?.addEventListener('pointerout', this.skillTipOut);
+    this.skillTipHost?.addEventListener('focusin', this.skillTipOver);
+    this.skillTipHost?.addEventListener('focusout', this.skillTipOut);
     this.itemActionsPanel.addEventListener('click', this.itemActionClick);
     this.itemActionsPanel.addEventListener('keydown', this.itemActionKeyDown);
     this.destroyConfirmDialog.addEventListener('click', this.destroyConfirmClick);
@@ -1095,12 +1149,13 @@ export class LobbyScreen {
   private renderData(): void {
     const inventory = this.inventory.snapshot();
     const view = buildRpgUiViewModel(this.profile, inventory);
+    this.syncStartGate();
     const equipmentMarkup = view.equipment.map(({ slot, label, item }) => item
       ? `<button class="equipment-slot is-equipped" type="button" data-lobby-equipped-slot="${slot}" data-rarity="${item.rarity ?? 'common'}" aria-label="${label}: ${item.label}. Abrir ações do item.">
-          ${renderEquipmentSlotContent(slot, item)}
+          ${renderEquipmentSlotContent(slot, item, this.profile.selectedClass)}
         </button>`
       : `<div class="equipment-slot" data-equipment-slot="${slot}" aria-label="${label}: Vazio">
-          ${renderEquipmentSlotContent(slot, null)}
+          ${renderEquipmentSlotContent(slot, null, this.profile.selectedClass)}
         </div>`).join('');
     document.getElementById('lobby-equipment-slots')!.innerHTML = equipmentMarkup;
     document.getElementById('lobby-current-status')!.innerHTML = renderLobbyCurrentStatus(view.currentStatus);
@@ -1115,9 +1170,9 @@ export class LobbyScreen {
     );
     this.syncInventoryTools();
     document.getElementById('lobby-skills')!.innerHTML = view.skills.map((skill) => `
-      <article class="lobby-skill-row">
-        <img class="skill-art" src="${warriorSkillAsset(skill.id)}" alt="">
-        <span><strong>${skill.label}</strong><small>${skill.energyCost} energia · ${skill.cooldown.toFixed(1)}s</small></span>
+      <article class="lobby-skill-row" data-skill-tip="${skill.id}" tabindex="0" aria-label="${skill.label}. Passe o mouse para ver os detalhes.">
+        <img class="skill-art" src="${classSkillAsset(skill.id, this.profile.selectedClass)}" alt="">
+        <span class="lobby-skill-copy"><strong>${skill.label}</strong><small>${skill.energyCost} energia · ${skill.cooldown.toFixed(1)}s</small></span>
         ${renderSkillStars(skill.stars.filter(Boolean).length)}
       </article>`).join('');
     document.getElementById('lobby-hotkeys')!.innerHTML = renderLobbyHotkeys(
@@ -1176,6 +1231,12 @@ export class LobbyScreen {
     this.lobbyScreen.removeEventListener('click', this.hotkeyRegistrationClick);
     this.lobbyScreen.removeEventListener('click', this.autoBasicAttackClick);
     this.lobbyScreen.removeEventListener('click', this.lobbyInventoryClick);
+    this.skillTipHost?.removeEventListener('pointerover', this.skillTipOver);
+    this.skillTipHost?.removeEventListener('pointerout', this.skillTipOut);
+    this.skillTipHost?.removeEventListener('focusin', this.skillTipOver);
+    this.skillTipHost?.removeEventListener('focusout', this.skillTipOut);
+    this.hideSkillTip();
+    this.skillTip.remove();
     this.lobbyScreen.removeEventListener('click', this.lobbyEquipmentClick);
     this.lobbyScreen.removeEventListener('input', this.inventorySearchInput);
     this.lobbyScreen.removeEventListener('change', this.inventoryFilterChange);
@@ -1336,10 +1397,77 @@ export class LobbyScreen {
   }
 
   private setStartActionsDisabled(disabled: boolean): void {
-    this.startButton.disabled = disabled;
-    if (!this.adminTrainingButton.classList.contains('hidden')) {
-      this.adminTrainingButton.disabled = disabled;
+    this.startActionsDisabled = disabled;
+    this.applyStartButtonState();
+  }
+
+  /** Reconciles the blacksmith lock with the equipped-weapon gate. */
+  private applyStartButtonState(): void {
+    const blocked = this.startActionsDisabled || this.startBlockedByWeapon;
+    this.startButton.disabled = blocked;
+    this.startButton.title = this.startBlockedByWeapon
+      ? 'Equipe uma arma na aba Equipamentos antes de iniciar a partida.'
+      : '';
+    this.startButton.setAttribute('aria-disabled', String(this.startBlockedByWeapon));
+  }
+
+  private syncStartGate(): void {
+    this.startBlockedByWeapon = this.inventory.snapshot().equipment.primaryWeapon === null;
+    this.applyStartButtonState();
+  }
+
+  private createSkillTip(): HTMLElement {
+    const tip = document.createElement('aside');
+    tip.className = 'lobby-skill-tip';
+    tip.id = 'lobby-skill-tip';
+    tip.setAttribute('role', 'tooltip');
+    tip.setAttribute('aria-hidden', 'true');
+    tip.hidden = true;
+    tip.style.position = 'fixed';
+    document.body.append(tip);
+    return tip;
+  }
+
+  private skillTipOver = (event: Event): void => {
+    const trigger = (event.target as HTMLElement).closest<HTMLElement>('[data-skill-tip]');
+    const skillId = trigger?.dataset.skillTip as WarriorSkillId | undefined;
+    if (!trigger || !skillId) return;
+    this.skillTipTrigger = trigger;
+    this.skillTip.innerHTML = buildLobbySkillTip(skillId, this.profile.selectedClass);
+    this.skillTip.hidden = false;
+    this.skillTip.setAttribute('aria-hidden', 'false');
+    this.positionSkillTip(trigger);
+  };
+
+  private skillTipOut = (event: Event): void => {
+    const trigger = (event.target as HTMLElement).closest<HTMLElement>('[data-skill-tip]');
+    if (!trigger || trigger !== this.skillTipTrigger) return;
+    const related = (event as PointerEvent).relatedTarget;
+    if (related instanceof Node && trigger.contains(related)) return;
+    this.hideSkillTip();
+  };
+
+  private hideSkillTip(): void {
+    this.skillTipTrigger = null;
+    this.skillTip.hidden = true;
+    this.skillTip.setAttribute('aria-hidden', 'true');
+  }
+
+  private positionSkillTip(trigger: HTMLElement): void {
+    const bounds = trigger.getBoundingClientRect();
+    const margin = 12;
+    const width = this.skillTip.offsetWidth || 260;
+    const height = this.skillTip.offsetHeight || 160;
+    const left = Math.min(
+      Math.max(margin, bounds.right + margin),
+      Math.max(margin, window.innerWidth - width - margin)
+    );
+    let top = bounds.top;
+    if (top + height > window.innerHeight - margin) {
+      top = Math.max(margin, window.innerHeight - height - margin);
     }
+    this.skillTip.style.left = `${Math.round(left)}px`;
+    this.skillTip.style.top = `${Math.round(top)}px`;
   }
 
   private openBlacksmith(button: HTMLButtonElement): void {

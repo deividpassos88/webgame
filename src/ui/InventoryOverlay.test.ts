@@ -13,7 +13,7 @@ function mountInventoryMarkup(): HTMLElement {
       <header><p id="character-eyebrow"></p><h2 id="character-title"></h2><button type="button" data-close-overlay>Fechar</button></header>
       <section data-character-panel="equipment"><div id="inventory-equipment"></div></section>
       <section data-character-panel="backpack" class="hidden"><span id="inventory-capacity" tabindex="-1"></span><div id="inventory-backpack"></div></section>
-      <section data-character-panel="status" class="hidden"><output id="status-level"></output><output id="status-experience"></output><output id="status-attribute-points"></output><div id="status-controls"></div><dl id="status-derived-stats"></dl><p id="status-gate-message"></p></section>
+      <section data-character-panel="status" class="hidden"><nav class="status-book-tabs"><button type="button" data-status-tab="progress" aria-selected="true">Progresso</button><button type="button" data-status-tab="attributes" aria-selected="false">Atributos</button><button type="button" data-status-tab="combat" aria-selected="false">Combate</button></nav><div data-status-section="progress"><output id="status-level"></output><output id="status-experience"></output><output id="status-attribute-points"></output></div><div data-status-section="attributes" hidden><div id="status-controls"></div><p id="status-gate-message"></p></div><div data-status-section="combat" hidden><dl id="status-derived-stats"></dl></div></section>
       <p id="inventory-message"></p>
       <section id="craft-item-inspector" class="hidden" role="dialog" aria-labelledby="craft-item-inspector-name">
         <button type="button" data-close-craft-inspector>Voltar</button>
@@ -29,10 +29,9 @@ function mountInventoryMarkup(): HTMLElement {
 }
 
 describe('InventoryOverlay', () => {
-  it('renders real Guild Token expansion controls without surfacing the Guild Vault', () => {
+  it('keeps backpack expansion purchases out of the in-game backpack', () => {
     const profile = createDefaultPlayerProfile();
     profile.backpack = [{ itemId: 'guild-token', quantity: 30 }];
-    profile.guildVault = [{ itemId: 'runic-crystal', quantity: 2 }];
     const snapshot = InventoryStore.fromProfile(profile).snapshot();
     const renderBackpack = (InventoryOverlayModule as unknown as {
       renderInventoryBackpackContents?: (profile: unknown, inventory: unknown) => string;
@@ -43,16 +42,43 @@ describe('InventoryOverlay', () => {
       return;
     }
 
+    // Expansão de mochila (+5 espaços / CM) existe somente no Lobby.
     const markup = renderBackpack(profile, snapshot);
-    expect(markup).toContain('data-expand-backpack="guild-token"');
-    expect(markup).toContain('+5 espaços');
-    expect(markup).toContain('30 Token da Guilda');
-    expect(markup).toContain('5 CM — indisponível');
+    expect(markup).not.toContain('data-expand-backpack');
+    expect(markup).not.toContain('+5 espaços');
+    expect(markup).not.toContain('5 CM — indisponível');
+    expect(markup).toContain('backpack-slot-grid');
     expect(markup).not.toContain('Proteção de recompensa');
     expect(markup).not.toContain('Cofre da Guilda');
   });
 
-  it('keeps focus on the usable capacity status after spending exactly thirty Guild Tokens', () => {
+  it('switches the status book tabs without reloading the panel', () => {
+    const root = mountInventoryMarkup();
+    const profile = createDefaultPlayerProfile();
+    const store = InventoryStore.fromProfile(profile);
+    const overlay = new InventoryOverlay(profile, store, {
+      onClose: () => undefined,
+      onInventoryChanged: () => undefined,
+      onStatusChanged: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+    });
+
+    overlay.show('status');
+
+    // Página padrão: Progresso.
+    expect(root.querySelector<HTMLElement>('[data-status-section="progress"]')?.hidden).toBe(false);
+    expect(root.querySelector<HTMLElement>('[data-status-section="combat"]')?.hidden).toBe(true);
+
+    const combatTab = root.querySelector<HTMLButtonElement>('[data-status-tab="combat"]')!;
+    combatTab.click();
+
+    expect(root.querySelector<HTMLElement>('[data-status-section="progress"]')?.hidden).toBe(true);
+    expect(root.querySelector<HTMLElement>('[data-status-section="combat"]')?.hidden).toBe(false);
+    expect(combatTab.getAttribute('aria-selected')).toBe('true');
+    expect(root.querySelector('[data-status-tab="progress"]')?.getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('renders the dungeon backpack grid with capacity and no purchase actions', () => {
     const root = mountInventoryMarkup();
     const profile = createDefaultPlayerProfile();
     profile.backpack = [{ itemId: 'guild-token', quantity: 30 }];
@@ -64,29 +90,16 @@ describe('InventoryOverlay', () => {
       onStatusChanged: () => undefined,
       onGuildTokenBackpackExpansion: () => {
         purchaseAttempts++;
-        profile.backpackCapacity = 25;
-        profile.backpack = [];
-        store.commitProfile(profile);
-        return 'Mochila expandida para 25 espaços.';
+        return 'Mochila expandida.';
       },
     });
 
     overlay.show('backpack');
-    const guildButton = root.querySelector<HTMLButtonElement>('[data-expand-backpack="guild-token"]');
-    const cmButton = root.querySelector<HTMLButtonElement>('[data-expand-backpack="cm"]');
-    expect(guildButton).not.toBeNull();
-    if (!guildButton) return;
-    expect(guildButton.disabled).toBe(false);
-    expect(cmButton?.disabled).toBe(true);
 
-    guildButton.click();
-
-    expect(purchaseAttempts).toBe(1);
-    expect(root.querySelector<HTMLButtonElement>('[data-expand-backpack="guild-token"]')?.disabled).toBe(true);
-    expect(document.activeElement).toBe(document.getElementById('inventory-capacity'));
-    expect(document.getElementById('inventory-message')?.textContent).toBe(
-      'Mochila expandida para 25 espaços.'
-    );
+    expect(purchaseAttempts).toBe(0);
+    expect(root.querySelector('[data-expand-backpack]')).toBeNull();
+    expect(root.querySelector('.backpack-slot-grid')).not.toBeNull();
+    expect(document.getElementById('inventory-capacity')?.textContent).toBe('1 / 20');
   });
 
   it('opens a craft inspector from the backpack by click or Enter, then Escape restores item focus', () => {

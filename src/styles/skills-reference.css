@@ -48,12 +48,13 @@
 #lobby-screen .lobby-skill-row {
   position: relative;
   display: grid;
-  grid-template-columns: 43px minmax(0, 1fr);
+  grid-template-columns: 62px minmax(0, 1fr);
   grid-template-rows: minmax(17px, auto) auto;
-  column-gap: 8px;
-  row-gap: 2px;
-  min-height: 61px;
-  padding: 7px 7px 6px;
+  column-gap: 10px;
+  row-gap: 3px;
+  min-height: 76px;
+  padding: 8px 9px 7px;
+  cursor: help;
   overflow: hidden;
   border: 1px solid rgba(184, 146, 69, .43);
   border-left-color: rgba(235, 196, 100, .82);
@@ -78,9 +79,9 @@
 
 #lobby-screen .lobby-skill-row .skill-art {
   grid-row: 1 / span 2;
-  width: 41px;
-  height: 41px;
-  padding: 3px;
+  width: 60px;
+  height: 60px;
+  padding: 4px;
   align-self: center;
   border: 1px solid #c08d35;
   border-radius: 0;
@@ -89,10 +90,10 @@
 }
 
 #lobby-screen .lobby-skill-row > span { min-width: 0; }
-#lobby-screen .lobby-skill-row strong,
-#lobby-screen .lobby-skill-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#lobby-screen .lobby-skill-row strong { color: #f0e2bf; font: 700 13px/1.08 Georgia, 'Times New Roman', serif; text-shadow: 0 1px #000; }
-#lobby-screen .lobby-skill-row small { margin-top: 3px; color: #b7b1a3; font: 700 8px/1 Consolas, 'Courier New', monospace; letter-spacing: .015em; }
+#lobby-screen .lobby-skill-row .lobby-skill-copy strong,
+#lobby-screen .lobby-skill-row .lobby-skill-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#lobby-screen .lobby-skill-row strong { color: #f0e2bf; font: 700 16px/1.12 Georgia, 'Times New Roman', serif; text-shadow: 0 1px #000; }
+#lobby-screen .lobby-skill-row small { margin-top: 4px; color: #b7b1a3; font: 700 10.5px/1.1 Consolas, 'Courier New', monospace; letter-spacing: .015em; }
 
 #lobby-screen .lobby-skill-row .skill-stars {
   grid-column: 2;

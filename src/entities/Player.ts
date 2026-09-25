@@ -156,6 +156,7 @@ export class Player {
   private inputLocked = false;
   private characterModel: THREE.Group | null = null;
   private embeddedSword: THREE.Object3D | null = null;
+  private embeddedStaff: THREE.Object3D | null = null;
   private weaponEquipment = new WeaponEquipment();
   private readonly actionBaseTimeScales: Partial<Record<PlayerState, number>> = {};
   public missingAnimationsInfo: MissingAnimationsInfo = {
@@ -179,6 +180,14 @@ export class Player {
     model.scale.setScalar(definition.gameScale);
     this.embeddedSword = model.getObjectByName('sword') ?? null;
     if (this.embeddedSword) this.embeddedSword.visible = false;
+    // A Maga luta com o cajado embutido no próprio modelo: garanta que ele
+    // esteja sempre visível e que nenhuma espada residual apareça nela.
+    this.embeddedStaff = model.getObjectByName('cajado') ?? null;
+    const straySword = model.getObjectByName('espada');
+    if (straySword) straySword.visible = false;
+    if (this.characterId === 'mage' && this.embeddedStaff) {
+      this.embeddedStaff.visible = true;
+    }
 
     let meshCount = 0;
     model.traverse((child) => {
@@ -831,10 +840,15 @@ export class Player {
   ): boolean {
     if (!this.characterModel) return false;
     this.cancelCombo(false);
+    // A Maga luta com o cajado embutido no próprio modelo: a arma equipada
+    // entra só como status de combate e nunca é anexada visualmente (a espada
+    // não pode aparecer junto do cajado dela).
+    const hideWeaponVisual = this.characterId === 'mage';
     const mountedEmbeddedSword =
+      !hideWeaponVisual &&
       definition.id === 'sword' &&
       this.embeddedSword !== null;
-    const equipped = mountedEmbeddedSword
+    const equipped = mountedEmbeddedSword || hideWeaponVisual
       ? this.weaponEquipment.equipVirtual(definition.id)
       : this.weaponEquipment.equip(this.characterModel, weapon, definition);
     if (equipped) {
@@ -842,17 +856,16 @@ export class Player {
       this.attackRange = definition.attackRange;
       this.attackDamage = definition.attackDamage;
       this.attackCooldownTime = definition.attackCooldownTime;
-      if (definition.id === 'sword') {
-        if (this.embeddedSword) {
-          this.embeddedSword.visible = true;
-        }
-      } else {
+      if (hideWeaponVisual || definition.id !== 'sword') {
         if (this.embeddedSword) this.embeddedSword.visible = false;
+      } else if (this.embeddedSword) {
+        this.embeddedSword.visible = true;
       }
       Logger.info(
         'Player:Equipment',
         `${definition.label} equipada em ${definition.socketName}. ` +
-          `Dano=${definition.attackDamage} Alcance=${definition.attackRange}`
+          `Dano=${definition.attackDamage} Alcance=${definition.attackRange}` +
+          (hideWeaponVisual ? ' (visual ignorado: classe usa arma embutida)' : '')
       );
     } else {
       Logger.error(
@@ -868,6 +881,7 @@ export class Player {
     const unequipped = this.weaponEquipment.unequip();
     if (unequipped) {
       if (this.embeddedSword) this.embeddedSword.visible = false;
+      if (this.embeddedStaff) this.embeddedStaff.visible = true;
     }
     return unequipped;
   }

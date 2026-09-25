@@ -3,6 +3,7 @@ import {
   isCraftMaterial,
   type InventoryItemDefinition,
 } from '../inventory/InventoryCatalog';
+import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import type { InventoryStack } from '../profile/PlayerProfile';
 import type { UiEquipmentSlot } from './RpgUiViewModel';
 import { equipmentSlotIcon, itemKindIcon } from './RpgIcons';
@@ -76,10 +77,11 @@ export function itemTooltipDataAttributes(
  */
 export function renderEquipmentSlotContent(
   slot: UiEquipmentSlot,
-  item: InventoryItemDefinition | null
+  item: InventoryItemDefinition | null,
+  playerClass: PlayableCharacterId = 'paladin'
 ): string {
   return `
-    <span class="equipment-slot__art"${item ? '' : ' aria-hidden="true"'}>${item ? equippedItemArt(item) : equipmentSlotIcon(slot)}</span>`;
+    <span class="equipment-slot__art"${item ? '' : ' aria-hidden="true"'}>${item ? equippedItemArt(item) : equipmentSlotIcon(slot, playerClass)}</span>`;
 }
 
 /** True when the inspector can present the item, i.e. craft materials and equipment. */
