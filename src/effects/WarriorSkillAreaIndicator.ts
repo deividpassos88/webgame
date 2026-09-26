@@ -1,9 +1,15 @@
 import * as THREE from 'three';
 import type { WarriorSkillId } from '../combat/WarriorSkillCatalog';
 import { getWarriorSkillArea } from '../combat/WarriorSkillArea';
-import { getWarriorAttackVfxProfile } from './WarriorAttackVfxProfiles';
 
 const SEGMENTS = 64;
+const SKILL_AREA_COLORS: Readonly<Record<WarriorSkillId, number>> = {
+  ataque_giratorio: 0x1986ff,
+  ataque_giratorio_2: 0x4b27ff,
+  pulo_atacando: 0x25eaff,
+  triplo_ataque: 0x36d9ff,
+  corte_duplo: 0x5db7ff,
+};
 const DURATION = 0.7;
 
 /** Pooled ground decal whose geometry is driven by the real combat area policy. */
@@ -64,7 +70,7 @@ export class WarriorSkillAreaIndicator {
       this.positions[offset + 1] = Math.cos(theta) * area.radius;
     }
     this.positionAttribute.needsUpdate = true;
-    this.object.material.color.setHex(getWarriorAttackVfxProfile(id).secondary);
+    this.object.material.color.setHex(SKILL_AREA_COLORS[id]);
     this.object.material.opacity = 0.42;
     this.object.userData.area = area;
     this.remaining = DURATION;

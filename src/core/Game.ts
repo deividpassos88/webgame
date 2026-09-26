@@ -155,10 +155,7 @@ import {
 import { applyArcherDamageVsPlayerClass, getTypedAttackBaseDamage, quantizeCombatDamage } from '../combat/CombatDamage';
 import { MiniBossSkillController } from '../combat/MiniBossSkillController';
 import { MiniBossSkillEffects } from '../effects/MiniBossSkillEffects';
-import { SwordTrail } from '../effects/SwordTrail';
-import { WarriorVfxController } from '../effects/WarriorVfxController';
-import { WarriorImpactVFX } from '../effects/WarriorImpactVFX';
-import { WarriorAttackWaveVFX } from '../effects/WarriorAttackWaveVFX';
+import { WarriorReferenceVFX } from '../effects/WarriorReferenceVFX';
 import { CameraShake } from '../vfx/CameraShake';
 import { deriveCharacterStats, type DerivedCharacterStats } from '../profile/CharacterAttributes';
 import { attributesWithEquipment, equippedWeaponDamage } from '../equipment/EquipmentStatBonuses';
@@ -217,16 +214,11 @@ export class Game {
   private readonly miniBossEffects = new MiniBossSkillEffects(this.scene);
   private readonly vfxLightPool = new VFXLightPool(this.scene, MAGE_VFX_LIMITS.maxTemporaryLights);
   private readonly mageVFX = new MageVFX(this.scene, { lightPool: this.vfxLightPool });
-  private readonly warriorSwordTrail = new SwordTrail();
-  private readonly warriorVfxController = new WarriorVfxController(this.warriorSwordTrail);
-  private readonly warriorImpactVfx = new WarriorImpactVFX(this.scene);
   private readonly warriorCameraShake = new CameraShake();
-  private readonly warriorAttackWaveVfx = new WarriorAttackWaveVFX(
+  private readonly warriorReferenceVfx = new WarriorReferenceVFX(
     this.scene,
     () => this.warriorCameraShake.add(0.14, 0.28)
   );
-  private warriorVfxAttackId: WarriorAttackId | null = null;
-  private warriorVfxStage = -1;
   private cameraController: CameraController;
   private input: InputManager;
   private clock = new THREE.Clock();
@@ -660,24 +652,9 @@ export class Game {
     this.lightingRig = new GameLightingRig(this.scene);
   }
 
-  /**
-   * The sword trail is scene-owned instead of player-owned: it follows the
-   * animated weapon, but never becomes a child of the authored warrior root.
-   * This avoids contaminating the character asset hierarchy and keeps the
-   * effect alive while the hand bones are being blended by the mixer.
-   */
+  /** Loads only the rebuilt reference-style Warrior presentation. */
   private async setupWarriorVfx(): Promise<void> {
-    const weapon = this.player.visualWeaponObject;
-    if (!weapon) {
-      Logger.warn('Game:WarriorVFX', 'Espada visual não encontrada; VFX de espada desativado.');
-      return;
-    }
-    this.warriorSwordTrail.attach(weapon, this.scene);
-    await Promise.all([
-      this.warriorSwordTrail.loadTextureAssets(),
-      this.warriorImpactVfx.loadTextureAssets(),
-      this.warriorAttackWaveVfx.loadTextureAssets(),
-    ]);
+    await this.warriorReferenceVfx.loadTextureAssets();
   }
 
   /** True when the profile wears a weapon, regardless of its 3D attachment. */
@@ -1004,22 +981,22 @@ export class Game {
     if (!adminPreview) {
       if (!isWarriorSkillUnlocked(id, this.profile.progression.level)) return;
     }
-    if (!this.fatigue.canUseSkills) return;
+    if (!adminPreview && !this.fatigue.canUseSkills) return;
     if (mage && this.player.blocksSkillsWhileMoving) return;
-    if (mage && !this.fatigue.canAffordPercent(mageSkillFatiguePercent(id))) return;
+    if (!adminPreview && mage && !this.fatigue.canAffordPercent(mageSkillFatiguePercent(id))) return;
     const activation = this.warriorSkills.tryActivate(id, {
       paused: false,
       dead: this.player.isDead,
       busy: this.player.isAttackInSwing(),
-      // Training can skip the cooldown, but a Mage skill always spends MP.
-      waiveCooldown: adminPreview,
+      // Admin training is a true preview: no energy, fatigue, or cooldown cost.
+      free: adminPreview,
     });
     if (activation.kind !== 'activated') return;
     if (!this.player.tryStartSkillAttack(id)) {
       this.warriorSkills.refund(id);
       return;
     }
-    if (mage) this.fatigue.consumePercent(mageSkillFatiguePercent(id));
+    if (mage && !adminPreview) this.fatigue.consumePercent(mageSkillFatiguePercent(id));
   }
 
   private mageSkillSnapshot(snapshot: WarriorSkillsSnapshot): WarriorSkillsSnapshot {
@@ -1037,12 +1014,27 @@ export class Game {
     return { ...snapshot, skills };
   }
 
+  private displayWarriorSkillsSnapshot(snapshot: WarriorSkillsSnapshot): WarriorSkillsSnapshot {
+    if (!this.hasAdminFreeSkills()) return snapshot;
+    const skills = { ...snapshot.skills };
+    for (const skill of WARRIOR_SKILLS) {
+      skills[skill.id] = {
+        ...skills[skill.id],
+        cooldownRemaining: 0,
+        available: true,
+      };
+    }
+    return { ...snapshot, energy: snapshot.maxEnergy, skills };
+  }
+
   private isAdminTrainingRun(): boolean {
     return this.activeRunMode === 'admin-training';
   }
 
   private hasAdminFreeSkills(): boolean {
-    return this.isAdminTrainingRun() && this.adminEnabled && this.profile.selectedClass === 'mage';
+    return this.isAdminTrainingRun()
+      && this.adminEnabled
+      && (this.profile.selectedClass === 'mage' || this.profile.selectedClass === 'paladin');
   }
 
   private skillDisplayLevel(): number {
@@ -1986,10 +1978,11 @@ export class Game {
       if (obj === this.trainingDummy.root || target === this.trainingDummy.root) {
         const damage = this.player.attackDamage;
         if (this.profile.selectedClass === 'paladin') {
-          this.warriorVfxController.burst();
-          this.warriorImpactVfx.play(
+          this.playWarriorAttackVisual('ataque_basico');
+          this.playWarriorImpact(
             'ataque_basico',
-            this.trainingDummy.root.position.clone().add(new THREE.Vector3(0, 1.05, 0))
+            this.trainingDummy.root,
+            0
           );
         }
         this.trainingDummy.takeDamage(damage);
@@ -2022,7 +2015,7 @@ export class Game {
     );
     const damage = this.resolveOutgoingDamage(rangedDamage, false);
     if (damage <= 0) return;
-    if (this.profile.selectedClass === 'paladin') this.warriorVfxController.burst();
+    if (this.profile.selectedClass === 'paladin') this.playWarriorAttackVisual('ataque_basico');
     record.enemy.receivePlayerHit(damage, this.player.root.position);
     if (this.profile.selectedClass === 'paladin') {
       this.playWarriorImpact('ataque_basico', record.enemy.root);
@@ -2034,16 +2027,25 @@ export class Game {
     if (record.enemy.isDead) this.handleEnemyDeath(record);
   }
 
+  private playWarriorAttackVisual(
+    attackId: WarriorAttackId,
+    origin = this.player.root.position,
+    forward = this.player.planarForward(new THREE.Vector3())
+  ): void {
+    if (this.profile.selectedClass !== 'paladin' || this.player.equippedWeaponId !== 'sword') return;
+    this.warriorReferenceVfx.playAttack(attackId, origin, forward);
+  }
+
   private playWarriorImpact(
     attackId: WarriorAttackId,
     target: THREE.Object3D,
     hitIndex = 0
   ): void {
-    if (this.profile.selectedClass !== 'paladin') return;
+    if (this.profile.selectedClass !== 'paladin' || this.player.equippedWeaponId !== 'sword') return;
     const position = target.getWorldPosition(new THREE.Vector3());
     const bodyScale = Number(target.userData?.enemyBodyScale) || 1;
     position.y += 1.02 * bodyScale;
-    this.warriorImpactVfx.play(attackId, position, hitIndex, Math.max(0.8, bodyScale));
+    this.warriorReferenceVfx.playHit(attackId, position, hitIndex, Math.max(0.8, bodyScale));
   }
 
   private playerDistanceFalloffProfile(): DistanceFalloffProfile {
@@ -2072,8 +2074,7 @@ export class Game {
 
   private onWarriorAttackWindow(event: WarriorAttackWindowEvent): void {
     if (this.profile.selectedClass !== 'paladin' || this.player.equippedWeaponId !== 'sword') return;
-    this.warriorVfxController.burst();
-    this.warriorAttackWaveVfx.play(
+    this.warriorReferenceVfx.playAttack(
       event.attackId,
       event.origin,
       event.forward,
@@ -2115,10 +2116,7 @@ export class Game {
       ) {
         const damage = this.resolveOutgoingDamage(this.player.attackDamage, false);
         this.trainingDummy.takeDamage(damage);
-        this.warriorImpactVfx.play(
-          'ataque_basico',
-          this.trainingDummy.root.position.clone().add(new THREE.Vector3(0, 1.05, 0))
-        );
+        this.playWarriorImpact('ataque_basico', this.trainingDummy.root);
         this.showFloatingDamage(this.trainingDummy.root.position, damage);
       }
     }
@@ -2353,38 +2351,11 @@ export class Game {
   }
 
   private updateWarriorVfx(delta: number): void {
-    const warriorActive = this.profile?.selectedClass === 'paladin'
-      && this.player?.equippedWeaponId === 'sword';
-    const nextAttackId = warriorActive ? this.player?.activeWarriorAttackId ?? null : null;
-    const nextStage = nextAttackId === 'ataque_basico'
-      ? this.player?.activeWarriorAttackStage ?? 0
-      : 0;
-
-    if (nextAttackId !== this.warriorVfxAttackId) {
-      if (this.warriorVfxAttackId !== null) this.warriorVfxController.closeTrail();
-      if (nextAttackId !== null) {
-        this.warriorVfxController.prepare(nextAttackId);
-        this.warriorVfxController.setStageDirection(nextStage);
-        this.warriorVfxController.openTrail();
-      }
-      this.warriorVfxAttackId = nextAttackId;
-      this.warriorVfxStage = nextAttackId === null ? -1 : nextStage;
-    } else if (nextAttackId !== null && nextStage !== this.warriorVfxStage) {
-      this.warriorVfxController.setStageDirection(nextStage);
-      this.warriorVfxStage = nextStage;
-    }
-
-    this.warriorVfxController.update(delta);
-    this.warriorImpactVfx.update(delta);
-    this.warriorAttackWaveVfx.update(delta);
+    this.warriorReferenceVfx.update(delta);
   }
 
   private clearWarriorVfx(): void {
-    this.warriorVfxAttackId = null;
-    this.warriorVfxStage = -1;
-    this.warriorVfxController.clear();
-    this.warriorImpactVfx.clear();
-    this.warriorAttackWaveVfx.clear();
+    this.warriorReferenceVfx.clear();
     this.warriorCameraShake.clear();
   }
 
@@ -2791,14 +2762,14 @@ export class Game {
       this.warriorCameraShake.apply(this.cameraController.camera, delta);
       this.hud.updatePlayerHealth(this.player.hp, this.player.maxHP);
       this.hud.updatePlayerFatigue(fatigue, this.fatigue.currentMaxFatigue);
-      const skills = this.warriorSkills.snapshot();
+      const skills = this.displayWarriorSkillsSnapshot(this.warriorSkills.snapshot());
       this.player.mana = skills.energy;
       this.player.maxMana = skills.maxEnergy;
       const skillLock = this.player.isDead
         ? 'dead'
         : !this.canAcceptGameplayInput()
           ? 'unavailable'
-          : !this.fatigue.canUseSkills
+          : !this.hasAdminFreeSkills() && !this.fatigue.canUseSkills
             ? 'fatigue-exhausted'
             : this.player.isAttackInSwing()
               ? 'busy'

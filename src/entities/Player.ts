@@ -595,13 +595,6 @@ export class Player {
     return this.isSwinging ? 'ataque_basico' : null;
   }
 
-  /** Current basic-combo stage, used to give each slash a different sweep. */
-  public get activeWarriorAttackStage(): number {
-    return this.skillAttackController.active
-      ? 0
-      : this.comboController.activeStage ?? 0;
-  }
-
   public onWarriorSkillHit(callback: (event: WarriorSkillHitEvent) => void): void {
     this.onWarriorSkillHitCallback = callback;
   }
@@ -875,13 +868,6 @@ export class Player {
 
   public get equippedWeaponId(): EquipmentId | null {
     return this.weaponEquipment.equippedWeaponId;
-  }
-
-  /** Render object used by the scene-level warrior VFX bridge. */
-  public get visualWeaponObject(): THREE.Object3D | null {
-    if (this.characterId !== 'paladin' || this.equippedWeaponId !== 'sword') return null;
-    if (this.embeddedSword?.visible) return this.embeddedSword;
-    return this.weaponEquipment.equippedObject;
   }
 
   /** The authored Blender GLB replaces the retired procedural runtime warrior. */
