@@ -3,6 +3,7 @@ import { CameraController } from './CameraController';
 import { InputManager, readMovementInput } from './InputManager';
 import {
   Player,
+  type WarriorAttackImpactEvent,
   type WarriorAttackWindowEvent,
   type WarriorSkillHitEvent,
 } from '../entities/Player';
@@ -448,6 +449,7 @@ export class Game {
       await this.player.load();
       this.player.onWarriorSkillHit((event) => this.onWarriorSkillHit(event));
       this.player.onWarriorAttackWindow((event) => this.onWarriorAttackWindow(event));
+      this.player.onWarriorAttackImpact((event) => this.onWarriorAttackImpact(event));
       this.player.onMageSpellCast((event) => {
         const target = this.resolveMageSpellTarget(event.target);
         this.mageVFX.cast(event.spellId, {
@@ -2074,15 +2076,33 @@ export class Game {
 
   private onWarriorAttackWindow(event: WarriorAttackWindowEvent): void {
     if (this.profile.selectedClass !== 'paladin' || this.player.equippedWeaponId !== 'sword') return;
+    // The jump owns a separate impact marker. Its VFX and damage are released
+    // together at the landing frame instead of trailing the animation.
+    if (event.attackId !== 'pulo_atacando') {
+      this.warriorReferenceVfx.playAttack(
+        event.attackId,
+        event.origin,
+        event.forward,
+        event.hitIndex
+      );
+    }
+    if (event.attackId === 'ataque_basico') {
+      this.applyWarriorBasicWaveDamage(event);
+    }
+  }
+
+  private onWarriorAttackImpact(event: WarriorAttackImpactEvent): void {
+    if (
+      event.attackId !== 'pulo_atacando'
+      || this.profile.selectedClass !== 'paladin'
+      || this.player.equippedWeaponId !== 'sword'
+    ) return;
     this.warriorReferenceVfx.playAttack(
       event.attackId,
       event.origin,
       event.forward,
       event.hitIndex
     );
-    if (event.attackId === 'ataque_basico') {
-      this.applyWarriorBasicWaveDamage(event);
-    }
   }
 
   /**

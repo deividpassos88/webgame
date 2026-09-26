@@ -198,6 +198,9 @@ class ReferenceEffect {
   private readonly landingRingB: THREE.Mesh;
   private readonly flare: THREE.Sprite;
   private readonly glow: THREE.Sprite;
+  private readonly bladeSprite: THREE.Sprite;
+  private readonly groundSprite: THREE.Sprite;
+  private readonly impactSprite: THREE.Sprite;
   private readonly shards: THREE.LineSegments;
   private readonly shardGeometry = new THREE.BufferGeometry();
   private readonly shardPositions = new Float32Array(SHARD_COUNT * 2 * 3);
@@ -309,7 +312,25 @@ class ReferenceEffect {
     this.flare.name = 'ReferenceImpactFlare';
     this.glow.renderOrder = 90;
     this.flare.renderOrder = 91;
-    this.resources.push(this.glow, this.flare);
+    const bladeSpriteMaterial = glowMaterial.clone();
+    const groundSpriteMaterial = glowMaterial.clone();
+    this.bladeSprite = new THREE.Sprite(bladeSpriteMaterial);
+    this.groundSprite = new THREE.Sprite(groundSpriteMaterial);
+    const impactSpriteMaterial = glowMaterial.clone();
+    this.impactSprite = new THREE.Sprite(impactSpriteMaterial);
+    this.bladeSprite.name = 'ReferenceBladeTexture';
+    this.groundSprite.name = 'ReferenceGroundWaveTexture';
+    this.impactSprite.name = 'ReferenceImpactBurstTexture';
+    this.bladeSprite.renderOrder = 89;
+    this.groundSprite.renderOrder = 88;
+    this.impactSprite.renderOrder = 87;
+    this.resources.push(
+      this.glow,
+      this.flare,
+      this.bladeSprite,
+      this.groundSprite,
+      this.impactSprite
+    );
 
     this.core = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), material(0xffffff, 0));
     this.core.name = 'ReferenceImpactCore';
@@ -346,21 +367,39 @@ class ReferenceEffect {
       this.spinContainer,
       this.jumpContainer,
       this.hitContainer,
+      this.groundSprite,
+      this.bladeSprite,
       this.glow,
       this.flare,
       this.core,
+      this.impactSprite,
       this.shards,
       this.debris
     );
   }
 
-  public setTextures(glowTexture: THREE.Texture, flareTexture: THREE.Texture): void {
+  public setTextures(
+    glowTexture: THREE.Texture,
+    flareTexture: THREE.Texture,
+    slashTexture: THREE.Texture,
+    groundTexture: THREE.Texture,
+    impactTexture: THREE.Texture
+  ): void {
     const glowMaterial = this.glow.material as THREE.SpriteMaterial;
     glowMaterial.map = glowTexture;
     glowMaterial.needsUpdate = true;
     const flareMaterial = this.flare.material as THREE.SpriteMaterial;
     flareMaterial.map = flareTexture;
     flareMaterial.needsUpdate = true;
+    const bladeMaterial = this.bladeSprite.material as THREE.SpriteMaterial;
+    bladeMaterial.map = slashTexture;
+    bladeMaterial.needsUpdate = true;
+    const groundMaterial = this.groundSprite.material as THREE.SpriteMaterial;
+    groundMaterial.map = groundTexture;
+    groundMaterial.needsUpdate = true;
+    const impactMaterial = this.impactSprite.material as THREE.SpriteMaterial;
+    impactMaterial.map = impactTexture;
+    impactMaterial.needsUpdate = true;
   }
 
   public playAttack(
@@ -410,7 +449,13 @@ class ReferenceEffect {
     this.debris.visible = true;
     this.glow.visible = true;
     this.flare.visible = true;
+    this.bladeSprite.visible = this.kind === 'slash' || this.kind === 'jump';
+    this.groundSprite.visible = this.kind === 'spin' || this.kind === 'jump';
+    this.impactSprite.visible = this.kind === 'jump' || this.kind === 'hit';
     this.core.visible = this.kind === 'jump' || this.kind === 'hit';
+    this.bladeSprite.position.set(0, this.kind === 'jump' ? 1.45 : 1.08, this.kind === 'jump' ? 0 : 0.45);
+    this.groundSprite.position.y = this.kind === 'jump' ? 0.04 : 0.09;
+    this.impactSprite.position.set(0, this.kind === 'jump' ? 0.56 : 0.9, 0.06);
     this.configureColors();
     this.resetDynamicState();
   }
@@ -432,6 +477,9 @@ class ReferenceEffect {
     (this.debris.material as THREE.PointsMaterial).color.set(0x071426);
     (this.glow.material as THREE.SpriteMaterial).color.set(this.style.secondary);
     (this.flare.material as THREE.SpriteMaterial).color.set(this.style.primary);
+    (this.bladeSprite.material as THREE.SpriteMaterial).color.set(this.style.primary);
+    (this.groundSprite.material as THREE.SpriteMaterial).color.set(this.style.secondary);
+    (this.impactSprite.material as THREE.SpriteMaterial).color.set(this.style.primary);
     (this.core.material as THREE.MeshBasicMaterial).color.set(this.style.primary);
   }
 
@@ -442,6 +490,21 @@ class ReferenceEffect {
     this.hitContainer.scale.setScalar(this.baseScale);
     this.glow.scale.setScalar(this.baseScale * (this.kind === 'spin' ? 2.2 : 1.25));
     this.flare.scale.setScalar(this.baseScale * (this.kind === 'jump' ? 1.4 : 0.72));
+    this.bladeSprite.scale.set(
+      this.baseScale * (this.kind === 'jump' ? 4.2 : 2.35),
+      this.baseScale * (this.kind === 'jump' ? 3.6 : 2.35),
+      1
+    );
+    this.groundSprite.scale.set(
+      this.baseScale * (this.kind === 'jump' ? 5.4 : 4.6),
+      this.baseScale * (this.kind === 'jump' ? 2.2 : 1.55),
+      1
+    );
+    this.impactSprite.scale.set(
+      this.baseScale * (this.kind === 'jump' ? 3.2 : 1.9),
+      this.baseScale * (this.kind === 'jump' ? 3.2 : 1.9),
+      1
+    );
     this.core.scale.setScalar(this.baseScale);
     this.landingRingA.scale.setScalar(0.06);
     this.landingRingB.scale.setScalar(0.06);
@@ -478,10 +541,22 @@ class ReferenceEffect {
       );
       this.glow.position.z = 0.15 + progress * 0.9;
       this.glow.scale.setScalar(this.baseScale * (1.1 + progress * 0.9));
+      this.bladeSprite.position.z = 0.35 + progress * 0.72;
+      this.bladeSprite.scale.set(
+        this.baseScale * (2.1 + progress * 0.75),
+        this.baseScale * (2.05 + progress * 0.55),
+        1
+      );
+      this.bladeSprite.material.rotation = (this.hitIndex % 2 === 0 ? -0.08 : 0.08) + progress * 0.1;
     } else if (this.kind === 'spin') {
       const radius = Math.max(0.06, this.style.maxRadius * smooth(progress));
       this.spinContainer.scale.setScalar(radius * this.baseScale);
       this.spinContainer.rotation.y += elapsed * 1.9;
+      this.groundSprite.scale.set(
+        this.baseScale * (1.7 + progress * 4.8),
+        this.baseScale * (0.65 + progress * 1.5),
+        1
+      );
       this.glow.position.y = 0.22;
       this.glow.scale.setScalar(this.baseScale * (1.2 + progress * 2.8));
     } else if (this.kind === 'jump') {
@@ -490,12 +565,29 @@ class ReferenceEffect {
       const ringScale = this.style.maxRadius * smooth(progress);
       this.landingRingA.scale.setScalar(Math.max(0.06, ringScale));
       this.landingRingB.scale.setScalar(Math.max(0.06, ringScale * 0.72));
+      this.groundSprite.scale.set(
+        this.baseScale * (2.2 + progress * 4.6),
+        this.baseScale * (0.85 + progress * 1.5),
+        1
+      );
       this.glow.position.y = 0.15;
       this.glow.scale.setScalar(this.baseScale * (1.7 + progress * 2.2));
       this.flare.scale.setScalar(this.baseScale * (1.1 + progress * 2.1));
+      this.impactSprite.scale.set(
+        this.baseScale * (0.35 + smooth(progress) * 3.7),
+        this.baseScale * (0.35 + smooth(progress) * 3.7),
+        1
+      );
+      this.impactSprite.material.rotation = progress * 0.24;
     } else {
       const ringScale = 0.2 + smooth(progress) * 1.35;
       this.hitContainer.scale.setScalar(this.baseScale * ringScale);
+      this.impactSprite.scale.set(
+        this.baseScale * (0.2 + smooth(progress) * 1.7),
+        this.baseScale * (0.2 + smooth(progress) * 1.7),
+        1
+      );
+      this.impactSprite.material.rotation = -progress * 0.18;
       this.glow.scale.setScalar(this.baseScale * (0.75 + progress * 1.15));
       this.flare.scale.setScalar(this.baseScale * (0.55 + progress * 0.85));
     }
@@ -553,6 +645,9 @@ class ReferenceEffect {
     (this.landingRingB.material as THREE.MeshBasicMaterial).opacity = fade * 0.62;
     (this.glow.material as THREE.SpriteMaterial).opacity = fade * 0.72 * pulse;
     (this.flare.material as THREE.SpriteMaterial).opacity = fade * 0.88 * pulse;
+    (this.bladeSprite.material as THREE.SpriteMaterial).opacity = fade * (this.kind === 'jump' ? 0.82 : 0.74) * pulse;
+    (this.groundSprite.material as THREE.SpriteMaterial).opacity = fade * (this.kind === 'jump' ? 0.76 : 0.6) * pulse;
+    (this.impactSprite.material as THREE.SpriteMaterial).opacity = fade * (this.kind === 'jump' ? 0.9 : 0.72) * pulse;
     (this.core.material as THREE.MeshBasicMaterial).opacity = fade * 0.92;
     (this.shards.material as THREE.LineBasicMaterial).opacity = fade * 0.92;
   }
@@ -569,6 +664,9 @@ class ReferenceEffect {
     this.debris.visible = false;
     this.glow.visible = false;
     this.flare.visible = false;
+    this.bladeSprite.visible = false;
+    this.groundSprite.visible = false;
+    this.impactSprite.visible = false;
     this.core.visible = false;
     this.setFade(0, 1);
   }
@@ -591,6 +689,36 @@ class ReferenceEffect {
 
 }
 
+type ScreenPulse = 'slash' | 'impact';
+
+class WarriorScreenFx {
+  private readonly element: HTMLElement | null;
+
+  public constructor() {
+    if (typeof document === 'undefined') {
+      this.element = null;
+      return;
+    }
+    const element = document.createElement('div');
+    element.className = 'warrior-vfx-screen';
+    element.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(element);
+    this.element = element;
+  }
+
+  public pulse(kind: ScreenPulse): void {
+    if (!this.element) return;
+    this.element.classList.remove('is-slash', 'is-impact');
+    // Force the animation to restart for consecutive hits in a combo.
+    void this.element.offsetWidth;
+    this.element.classList.add(kind === 'impact' ? 'is-impact' : 'is-slash');
+  }
+
+  public dispose(): void {
+    this.element?.remove();
+  }
+}
+
 /**
  * Warrior presentation rebuilt around the attached references: broad cyan
  * brush crescents, layered horizontal spin ribbons, white-hot cores, sharp
@@ -604,6 +732,10 @@ export class WarriorReferenceVFX {
   private readonly onHeavyImpact?: () => void;
   private glowTexture: THREE.Texture | null = null;
   private flareTexture: THREE.Texture | null = null;
+  private slashTexture: THREE.Texture | null = null;
+  private groundTexture: THREE.Texture | null = null;
+  private impactTexture: THREE.Texture | null = null;
+  private readonly screenFx = new WarriorScreenFx();
 
   public constructor(scene: THREE.Scene, onHeavyImpact?: () => void) {
     this.scene = scene;
@@ -617,15 +749,24 @@ export class WarriorReferenceVFX {
     loader: WarriorReferenceTextureLoader = new THREE.TextureLoader()
   ): Promise<boolean> {
     try {
-      const [glow, flare] = await Promise.all([
+      const [glow, flare, slash, ground, impact] = await Promise.all([
         loader.loadAsync('/vfx/warrior/soft-glow.png'),
         loader.loadAsync('/vfx/warrior/impact-flare.png'),
+        loader.loadAsync('/vfx/warrior/reference-blade-slash.png'),
+        loader.loadAsync('/vfx/warrior/reference-ground-wave.png'),
+        loader.loadAsync('/vfx/warrior/reference-impact-burst.png'),
       ]);
       configureTexture(glow);
       configureTexture(flare);
+      configureTexture(slash);
+      configureTexture(ground);
+      configureTexture(impact);
       this.glowTexture = glow;
       this.flareTexture = flare;
-      this.pool.forEach((effect) => effect.setTextures(glow, flare));
+      this.slashTexture = slash;
+      this.groundTexture = ground;
+      this.impactTexture = impact;
+      this.pool.forEach((effect) => effect.setTextures(glow, flare, slash, ground, impact));
       return true;
     } catch {
       return false;
@@ -641,7 +782,12 @@ export class WarriorReferenceVFX {
     const effect = this.acquire();
     if (!effect) return;
     effect.playAttack(attackId, origin, forward, hitIndex);
-    if (attackId === 'pulo_atacando') this.onHeavyImpact?.();
+    if (attackId === 'pulo_atacando') {
+      this.screenFx.pulse('impact');
+      this.onHeavyImpact?.();
+    } else if (attackId === 'ataque_giratorio_2') {
+      this.screenFx.pulse('slash');
+    }
   }
 
   public playHit(
@@ -658,7 +804,21 @@ export class WarriorReferenceVFX {
   private acquire(): ReferenceEffect | null {
     const effect = this.pool.find((candidate) => !candidate.active);
     if (!effect) return null;
-    if (this.glowTexture && this.flareTexture) effect.setTextures(this.glowTexture, this.flareTexture);
+    if (
+      this.glowTexture
+      && this.flareTexture
+      && this.slashTexture
+      && this.groundTexture
+      && this.impactTexture
+    ) {
+      effect.setTextures(
+        this.glowTexture,
+        this.flareTexture,
+        this.slashTexture,
+        this.groundTexture,
+        this.impactTexture
+      );
+    }
     this.scene.add(effect.group);
     this.active.push(effect);
     return effect;
@@ -683,8 +843,15 @@ export class WarriorReferenceVFX {
     this.pool.length = 0;
     this.glowTexture?.dispose();
     this.flareTexture?.dispose();
+    this.slashTexture?.dispose();
+    this.groundTexture?.dispose();
+    this.impactTexture?.dispose();
     this.glowTexture = null;
     this.flareTexture = null;
+    this.slashTexture = null;
+    this.groundTexture = null;
+    this.impactTexture = null;
+    this.screenFx.dispose();
   }
 
   public get activeCount(): number {

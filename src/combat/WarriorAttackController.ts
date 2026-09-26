@@ -63,7 +63,9 @@ export class WarriorAttackController {
         ? []
         : [{
             normalizedTime: at(timeline.impactTime),
-            order: 11,
+            // Impact is emitted before the hit callback at the same timestamp so
+            // the visual landing flash and the damage resolve in one frame.
+            order: 9,
             event: { type: 'impact', attackId } as WarriorAttackEvent,
           }]),
       {

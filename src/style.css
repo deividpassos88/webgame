@@ -4625,3 +4625,33 @@ body #lobby-screen .equipment-slot.is-equipped,
   .character-overlay .overlay-header .overlay-close span { display: none; }
   .character-overlay .overlay-header .overlay-close { padding: 10px; }
 }
+
+/* Warrior cinematic hit treatment: a restrained screen-space layer complements
+   the WebGL burst without replacing the scene lighting or blocking input. */
+.warrior-vfx-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
+  background: radial-gradient(circle at 50% 52%, rgba(213, 252, 255, 0.68) 0, rgba(70, 207, 255, 0.23) 16%, rgba(20, 98, 255, 0.08) 38%, transparent 68%);
+}
+.warrior-vfx-screen.is-slash {
+  animation: warrior-vfx-screen-slash 0.18s cubic-bezier(0.15, 0.8, 0.25, 1) both;
+}
+.warrior-vfx-screen.is-impact {
+  background: radial-gradient(circle at 50% 52%, rgba(255, 255, 255, 0.92) 0, rgba(107, 239, 255, 0.5) 14%, rgba(22, 121, 255, 0.2) 42%, transparent 72%);
+  animation: warrior-vfx-screen-impact 0.34s cubic-bezier(0.12, 0.74, 0.2, 1) both;
+}
+@keyframes warrior-vfx-screen-slash {
+  0% { opacity: 0; transform: scale(1.08); }
+  22% { opacity: 0.16; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.98); }
+}
+@keyframes warrior-vfx-screen-impact {
+  0% { opacity: 0; transform: scale(1.18); }
+  14% { opacity: 0.62; transform: scale(1); }
+  36% { opacity: 0.22; transform: scale(1.02); }
+  100% { opacity: 0; transform: scale(0.98); }
+}
