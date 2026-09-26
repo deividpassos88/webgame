@@ -210,6 +210,8 @@ class ReferenceEffect {
   private readonly debrisVelocities = new Float32Array(DEBRIS_COUNT * 3);
   private readonly core: THREE.Mesh;
   private readonly resources: THREE.Object3D[] = [];
+  private slashTexture: THREE.Texture | null = null;
+  private basicSlashTexture: THREE.Texture | null = null;
 
   private kind: ReferenceKind = 'slash';
   private style = STYLES.ataque_basico;
@@ -383,8 +385,11 @@ class ReferenceEffect {
     flareTexture: THREE.Texture,
     slashTexture: THREE.Texture,
     groundTexture: THREE.Texture,
-    impactTexture: THREE.Texture
+    impactTexture: THREE.Texture,
+    basicSlashTexture: THREE.Texture
   ): void {
+    this.slashTexture = slashTexture;
+    this.basicSlashTexture = basicSlashTexture;
     const glowMaterial = this.glow.material as THREE.SpriteMaterial;
     glowMaterial.map = glowTexture;
     glowMaterial.needsUpdate = true;
@@ -408,7 +413,8 @@ class ReferenceEffect {
     forward: THREE.Vector3,
     hitIndex = 0
   ): void {
-    this.start(attackId, origin, forward, hitIndex, 1, false);
+    const scale = attackId === 'ataque_basico' ? 1.35 : attackId === 'pulo_atacando' ? 1.2 : 1;
+    this.start(attackId, origin, forward, hitIndex, scale, false);
   }
 
   public playHit(
@@ -432,6 +438,11 @@ class ReferenceEffect {
     this.attackId = attackId;
     this.style = STYLES[attackId];
     this.kind = hit ? 'hit' : this.style.kind;
+    const bladeMaterial = this.bladeSprite.material as THREE.SpriteMaterial;
+    bladeMaterial.map = attackId === 'ataque_basico' && this.basicSlashTexture
+      ? this.basicSlashTexture
+      : this.slashTexture;
+    bladeMaterial.needsUpdate = true;
     this.age = 0;
     this.baseScale = scale;
     this.hitIndex = hitIndex;
@@ -441,18 +452,20 @@ class ReferenceEffect {
     this.group.position.copy(origin);
     this.group.rotation.y = Math.atan2(this.forward.x, this.forward.z);
     this.group.visible = true;
-    this.slashContainer.visible = this.kind === 'slash';
+    const imageOnlySlash = this.kind === 'slash' && attackId === 'ataque_basico';
+    const imageOnlyImpact = this.kind === 'jump';
+    this.slashContainer.visible = this.kind === 'slash' && !imageOnlySlash;
     this.spinContainer.visible = this.kind === 'spin';
-    this.jumpContainer.visible = this.kind === 'jump';
+    this.jumpContainer.visible = this.kind === 'jump' && !imageOnlyImpact;
     this.hitContainer.visible = this.kind === 'hit';
-    this.shards.visible = true;
-    this.debris.visible = true;
-    this.glow.visible = true;
-    this.flare.visible = true;
-    this.bladeSprite.visible = this.kind === 'slash' || this.kind === 'jump';
-    this.groundSprite.visible = this.kind === 'spin' || this.kind === 'jump';
+    this.shards.visible = !imageOnlySlash && !imageOnlyImpact;
+    this.debris.visible = !imageOnlySlash && !imageOnlyImpact;
+    this.glow.visible = !imageOnlySlash && !imageOnlyImpact;
+    this.flare.visible = !imageOnlySlash && !imageOnlyImpact;
+    this.bladeSprite.visible = this.kind === 'slash';
+    this.groundSprite.visible = this.kind === 'spin';
     this.impactSprite.visible = this.kind === 'jump' || this.kind === 'hit';
-    this.core.visible = this.kind === 'jump' || this.kind === 'hit';
+    this.core.visible = this.kind === 'hit';
     this.bladeSprite.position.set(0, this.kind === 'jump' ? 1.45 : 1.08, this.kind === 'jump' ? 0 : 0.45);
     this.groundSprite.position.y = this.kind === 'jump' ? 0.04 : 0.09;
     this.impactSprite.position.set(0, this.kind === 'jump' ? 0.56 : 0.9, 0.06);
@@ -490,9 +503,10 @@ class ReferenceEffect {
     this.hitContainer.scale.setScalar(this.baseScale);
     this.glow.scale.setScalar(this.baseScale * (this.kind === 'spin' ? 2.2 : 1.25));
     this.flare.scale.setScalar(this.baseScale * (this.kind === 'jump' ? 1.4 : 0.72));
+    const basicSlash = this.kind === 'slash' && this.attackId === 'ataque_basico';
     this.bladeSprite.scale.set(
-      this.baseScale * (this.kind === 'jump' ? 4.2 : 2.35),
-      this.baseScale * (this.kind === 'jump' ? 3.6 : 2.35),
+      this.baseScale * (this.kind === 'jump' ? 4.2 : basicSlash ? 4.6 : 2.35),
+      this.baseScale * (this.kind === 'jump' ? 3.6 : basicSlash ? 2.7 : 2.35),
       1
     );
     this.groundSprite.scale.set(
@@ -501,8 +515,8 @@ class ReferenceEffect {
       1
     );
     this.impactSprite.scale.set(
-      this.baseScale * (this.kind === 'jump' ? 3.2 : 1.9),
-      this.baseScale * (this.kind === 'jump' ? 3.2 : 1.9),
+      this.baseScale * (this.kind === 'jump' ? 6.8 : 1.9),
+      this.baseScale * (this.kind === 'jump' ? 6.8 : 1.9),
       1
     );
     this.core.scale.setScalar(this.baseScale);
@@ -542,9 +556,10 @@ class ReferenceEffect {
       this.glow.position.z = 0.15 + progress * 0.9;
       this.glow.scale.setScalar(this.baseScale * (1.1 + progress * 0.9));
       this.bladeSprite.position.z = 0.35 + progress * 0.72;
+      const basicSlash = this.attackId === 'ataque_basico';
       this.bladeSprite.scale.set(
-        this.baseScale * (2.1 + progress * 0.75),
-        this.baseScale * (2.05 + progress * 0.55),
+        this.baseScale * (basicSlash ? 4.4 + progress * 1.2 : 2.1 + progress * 0.75),
+        this.baseScale * (basicSlash ? 2.6 + progress * 0.65 : 2.05 + progress * 0.55),
         1
       );
       this.bladeSprite.material.rotation = (this.hitIndex % 2 === 0 ? -0.08 : 0.08) + progress * 0.1;
@@ -560,25 +575,11 @@ class ReferenceEffect {
       this.glow.position.y = 0.22;
       this.glow.scale.setScalar(this.baseScale * (1.2 + progress * 2.8));
     } else if (this.kind === 'jump') {
-      this.jumpContainer.scale.setScalar(this.baseScale * (0.82 + smooth(progress) * 0.3));
-      this.jumpContainer.rotation.y += elapsed * 1.35;
-      const ringScale = this.style.maxRadius * smooth(progress);
-      this.landingRingA.scale.setScalar(Math.max(0.06, ringScale));
-      this.landingRingB.scale.setScalar(Math.max(0.06, ringScale * 0.72));
-      this.groundSprite.scale.set(
-        this.baseScale * (2.2 + progress * 4.6),
-        this.baseScale * (0.85 + progress * 1.5),
-        1
-      );
-      this.glow.position.y = 0.15;
-      this.glow.scale.setScalar(this.baseScale * (1.7 + progress * 2.2));
-      this.flare.scale.setScalar(this.baseScale * (1.1 + progress * 2.1));
-      this.impactSprite.scale.set(
-        this.baseScale * (0.35 + smooth(progress) * 3.7),
-        this.baseScale * (0.35 + smooth(progress) * 3.7),
-        1
-      );
-      this.impactSprite.material.rotation = progress * 0.24;
+      // The landing is intentionally image-only: the approved impact artwork
+      // replaces the old ribbons, rings, shards, glow, and debris layers.
+      const impactScale = this.baseScale * (6.2 + smooth(progress) * 2.8);
+      this.impactSprite.scale.set(impactScale, impactScale, 1);
+      this.impactSprite.material.rotation = progress * 0.16;
     } else {
       const ringScale = 0.2 + smooth(progress) * 1.35;
       this.hitContainer.scale.setScalar(this.baseScale * ringScale);
@@ -592,8 +593,12 @@ class ReferenceEffect {
       this.flare.scale.setScalar(this.baseScale * (0.55 + progress * 0.85));
     }
 
-    this.updateShards(progress);
-    this.updateDebris(elapsed, fade);
+    const imageOnly = this.kind === 'jump'
+      || (this.kind === 'slash' && this.attackId === 'ataque_basico');
+    if (!imageOnly) {
+      this.updateShards(progress);
+      this.updateDebris(elapsed, fade);
+    }
     const pulse = 0.88 + Math.sin(this.age * 38) * 0.12;
     this.setFade(fade, pulse);
 
@@ -733,6 +738,7 @@ export class WarriorReferenceVFX {
   private glowTexture: THREE.Texture | null = null;
   private flareTexture: THREE.Texture | null = null;
   private slashTexture: THREE.Texture | null = null;
+  private basicSlashTexture: THREE.Texture | null = null;
   private groundTexture: THREE.Texture | null = null;
   private impactTexture: THREE.Texture | null = null;
   private readonly screenFx = new WarriorScreenFx();
@@ -749,24 +755,34 @@ export class WarriorReferenceVFX {
     loader: WarriorReferenceTextureLoader = new THREE.TextureLoader()
   ): Promise<boolean> {
     try {
-      const [glow, flare, slash, ground, impact] = await Promise.all([
+      const [glow, flare, slash, basicSlash, ground, impact] = await Promise.all([
         loader.loadAsync('/vfx/warrior/soft-glow.png'),
         loader.loadAsync('/vfx/warrior/impact-flare.png'),
         loader.loadAsync('/vfx/warrior/reference-blade-slash.png'),
+        loader.loadAsync('/vfx/warrior/basic-attack-slash.png'),
         loader.loadAsync('/vfx/warrior/reference-ground-wave.png'),
         loader.loadAsync('/vfx/warrior/reference-impact-burst.png'),
       ]);
       configureTexture(glow);
       configureTexture(flare);
       configureTexture(slash);
+      configureTexture(basicSlash);
       configureTexture(ground);
       configureTexture(impact);
       this.glowTexture = glow;
       this.flareTexture = flare;
       this.slashTexture = slash;
+      this.basicSlashTexture = basicSlash;
       this.groundTexture = ground;
       this.impactTexture = impact;
-      this.pool.forEach((effect) => effect.setTextures(glow, flare, slash, ground, impact));
+      this.pool.forEach((effect) => effect.setTextures(
+        glow,
+        flare,
+        slash,
+        ground,
+        impact,
+        basicSlash
+      ));
       return true;
     } catch {
       return false;
@@ -808,6 +824,7 @@ export class WarriorReferenceVFX {
       this.glowTexture
       && this.flareTexture
       && this.slashTexture
+      && this.basicSlashTexture
       && this.groundTexture
       && this.impactTexture
     ) {
@@ -816,7 +833,8 @@ export class WarriorReferenceVFX {
         this.flareTexture,
         this.slashTexture,
         this.groundTexture,
-        this.impactTexture
+        this.impactTexture,
+        this.basicSlashTexture
       );
     }
     this.scene.add(effect.group);
@@ -844,11 +862,13 @@ export class WarriorReferenceVFX {
     this.glowTexture?.dispose();
     this.flareTexture?.dispose();
     this.slashTexture?.dispose();
+    this.basicSlashTexture?.dispose();
     this.groundTexture?.dispose();
     this.impactTexture?.dispose();
     this.glowTexture = null;
     this.flareTexture = null;
     this.slashTexture = null;
+    this.basicSlashTexture = null;
     this.groundTexture = null;
     this.impactTexture = null;
     this.screenFx.dispose();

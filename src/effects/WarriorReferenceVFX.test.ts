@@ -13,6 +13,10 @@ describe('WarriorReferenceVFX', () => {
     vfx.playAttack('ataque_basico', new THREE.Vector3(), new THREE.Vector3(0, 0, 1));
     const effect = scene.getObjectByName('WarriorReferenceVFX');
     expect(effect?.getObjectByName('ReferenceVerticalSlash')?.children).toHaveLength(3);
+    expect(effect?.getObjectByName('ReferenceVerticalSlash')?.visible).toBe(false);
+    expect(effect?.getObjectByName('ReferenceBladeTexture')?.visible).toBe(true);
+    expect(effect?.getObjectByName('ReferenceEnergyShards')?.visible).toBe(false);
+    expect(effect?.getObjectByName('ReferenceDarkDebris')?.visible).toBe(false);
     expect(vfx.activeCount).toBe(1);
     vfx.update(0.2);
     expect(effect?.position.z).toBeGreaterThan(0);
@@ -34,7 +38,14 @@ describe('WarriorReferenceVFX', () => {
     expect(spin?.children).toHaveLength(3);
 
     vfx.playAttack('pulo_atacando', new THREE.Vector3(), new THREE.Vector3(0, 0, 1));
+    const jumpEffects = scene.children.filter((child) => child.name === 'WarriorReferenceVFX');
+    const jump = jumpEffects[jumpEffects.length - 1];
     expect(heavyImpact).toBe(1);
+    expect(jump?.getObjectByName('ReferenceJumpImpact')?.visible).toBe(false);
+    expect(jump?.getObjectByName('ReferenceImpactBurstTexture')?.visible).toBe(true);
+    expect(jump?.getObjectByName('ReferenceGroundWaveTexture')?.visible).toBe(false);
+    expect(jump?.getObjectByName('ReferenceEnergyShards')?.visible).toBe(false);
+    expect(jump?.getObjectByName('ReferenceDarkDebris')?.visible).toBe(false);
     vfx.playHit('ataque_giratorio_2', new THREE.Vector3(2, 0, 2), 1, 1.2);
     expect(vfx.activeCount).toBe(3);
     vfx.clear();
