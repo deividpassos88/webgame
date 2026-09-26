@@ -75,6 +75,13 @@ export interface WarriorSkillHitEvent {
   readonly forward: THREE.Vector3;
 }
 
+export interface WarriorAttackWindowEvent {
+  readonly attackId: WarriorAttackId;
+  readonly hitIndex: number;
+  readonly origin: THREE.Vector3;
+  readonly forward: THREE.Vector3;
+}
+
 export interface MageSpellCastEvent {
   readonly spellId: MageSpellId;
   readonly caster: THREE.Object3D;
@@ -164,6 +171,7 @@ export class Player {
   private skillCastAnchor: THREE.Vector3 | null = null;
   private onAttackHitCallback: ((target: THREE.Object3D) => void) | null = null;
   private onWarriorSkillHitCallback: ((event: WarriorSkillHitEvent) => void) | null = null;
+  private onWarriorAttackWindowCallback: ((event: WarriorAttackWindowEvent) => void) | null = null;
   private onMageSpellCastCallback: ((event: MageSpellCastEvent) => void) | null = null;
 
   private loaded = false;
@@ -587,8 +595,20 @@ export class Player {
     return this.isSwinging ? 'ataque_basico' : null;
   }
 
+  /** Current basic-combo stage, used to give each slash a different sweep. */
+  public get activeWarriorAttackStage(): number {
+    return this.skillAttackController.active
+      ? 0
+      : this.comboController.activeStage ?? 0;
+  }
+
   public onWarriorSkillHit(callback: (event: WarriorSkillHitEvent) => void): void {
     this.onWarriorSkillHitCallback = callback;
+  }
+
+  /** Called at each authored sword damage window, including a basic swing. */
+  public onWarriorAttackWindow(callback: (event: WarriorAttackWindowEvent) => void): void {
+    this.onWarriorAttackWindowCallback = callback;
   }
 
   public onMageSpellCast(callback: (event: MageSpellCastEvent) => void): void {
@@ -598,6 +618,17 @@ export class Player {
   public onMageBasicAttackCast(callback: (event: MageBasicAttackCastEvent) => void): void {
     this.onMageSpellCast((event) => {
       if (event.spellId === 'basic') callback(event);
+    });
+  }
+
+  private emitWarriorAttackWindow(attackId: WarriorAttackId, hitIndex: number): void {
+    if (!this.onWarriorAttackWindowCallback) return;
+    this.planarForward(this.faceDirection);
+    this.onWarriorAttackWindowCallback({
+      attackId,
+      hitIndex,
+      origin: this.root.getWorldPosition(new THREE.Vector3()),
+      forward: this.faceDirection.clone(),
     });
   }
 
@@ -640,8 +671,10 @@ export class Player {
     if (!action) return false;
 
     const playbackRate = getWarriorSkill(id).playbackRate;
-    const duration = (action.getClip().duration || 1) / playbackRate;
-    if (!this.skillAttackController.start(id, duration)) return false;
+    const animationDuration = (action.getClip().duration || 1) / playbackRate;
+    const landingRecovery = id === 'pulo_atacando' ? 0.28 : 0;
+    const duration = animationDuration + landingRecovery;
+    if (!this.skillAttackController.start(id, animationDuration, landingRecovery)) return false;
 
     this.animationPreview.clear();
     this.moveTarget = null;
@@ -842,6 +875,13 @@ export class Player {
 
   public get equippedWeaponId(): EquipmentId | null {
     return this.weaponEquipment.equippedWeaponId;
+  }
+
+  /** Render object used by the scene-level warrior VFX bridge. */
+  public get visualWeaponObject(): THREE.Object3D | null {
+    if (this.characterId !== 'paladin' || this.equippedWeaponId !== 'sword') return null;
+    if (this.embeddedSword?.visible) return this.embeddedSword;
+    return this.weaponEquipment.equippedObject;
   }
 
   /** The authored Blender GLB replaces the retired procedural runtime warrior. */
@@ -1046,9 +1086,13 @@ export class Player {
         this.playComboStage(event.stage);
         break;
       case 'damage-opened':
-        // Mage basic attacks deal damage on projectile impact. If no VFX bridge
-        // is registered (tests/legacy embedding), keep the old direct hit path.
-        if (this.characterId !== 'mage' || !this.onMageSpellCastCallback) {
+        // The scene bridge turns a Warrior basic window into a directional
+        // cutting wave. Without that bridge (unit tests/legacy embeddings),
+        // preserve the original single-target callback path.
+        if (this.characterId === 'paladin' && this.onWarriorAttackWindowCallback) {
+          this.emitWarriorAttackWindow('ataque_basico', event.stage);
+        } else if (this.characterId !== 'mage' || !this.onMageSpellCastCallback) {
+          // Mage basic attacks deal damage on projectile impact.
           this.tryDealComboDamage();
         }
         break;
@@ -1081,15 +1125,18 @@ export class Player {
       switch (event.type) {
         case 'trail-start':
           break;
-        case 'hit':
+        case 'hit': {
           this.comboHitTargets.clear();
-          this.onWarriorSkillHitCallback?.({
+          const attackEvent = {
             attackId: event.attackId as WarriorSkillId,
             hitIndex: event.hitIndex,
             origin: this.root.getWorldPosition(new THREE.Vector3()),
-            forward: this.root.getWorldDirection(new THREE.Vector3()).setY(0).normalize(),
-          });
+            forward: this.planarForward(new THREE.Vector3()),
+          };
+          this.onWarriorAttackWindowCallback?.(attackEvent);
+          this.onWarriorSkillHitCallback?.(attackEvent);
           break;
+        }
         case 'impact':
           break;
         case 'trail-end':

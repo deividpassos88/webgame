@@ -29,36 +29,52 @@ export class WarriorAttackController {
     return this.attackId;
   }
 
-  public start(attackId: WarriorAttackId, durationSeconds: number): boolean {
-    if (this.active || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+  public start(
+    attackId: WarriorAttackId,
+    animationDurationSeconds: number,
+    recoverySeconds = 0
+  ): boolean {
+    if (
+      this.active
+      || !Number.isFinite(animationDurationSeconds)
+      || animationDurationSeconds <= 0
+      || !Number.isFinite(recoverySeconds)
+      || recoverySeconds < 0
+    ) {
       return false;
     }
     const timeline = getWarriorAttackTimeline(attackId);
+    const totalDuration = animationDurationSeconds + recoverySeconds;
+    const animationProgress = animationDurationSeconds / totalDuration;
+    const at = (normalizedTime: number): number =>
+      normalizedTime * animationProgress;
     const schedule: ScheduledAttackEvent[] = [
       {
-        normalizedTime: timeline.trailStart,
+        normalizedTime: at(timeline.trailStart),
         order: 0,
         event: { type: 'trail-start', attackId },
       },
       ...timeline.hitTimes.map((normalizedTime, hitIndex) => ({
-        normalizedTime,
+        normalizedTime: at(normalizedTime),
         order: 10 + hitIndex * 2,
         event: { type: 'hit', attackId, hitIndex } as WarriorAttackEvent,
       })),
       ...(timeline.impactTime === undefined
         ? []
         : [{
-            normalizedTime: timeline.impactTime,
+            normalizedTime: at(timeline.impactTime),
             order: 11,
             event: { type: 'impact', attackId } as WarriorAttackEvent,
           }]),
       {
-        normalizedTime: timeline.trailEnd,
+        normalizedTime: at(timeline.trailEnd),
         order: 90,
         event: { type: 'trail-end', attackId },
       },
       {
-        normalizedTime: timeline.recoveryEnd,
+        // The attack owns the final recovery tail; the impact can finish
+        // without cutting the landing animation short.
+        normalizedTime: 1,
         order: 100,
         event: { type: 'attack-ended', attackId },
       },
@@ -68,7 +84,7 @@ export class WarriorAttackController {
         left.normalizedTime - right.normalizedTime || left.order - right.order
     );
     this.attackId = attackId;
-    this.duration = durationSeconds;
+    this.duration = totalDuration;
     this.elapsed = 0;
     this.nextEventIndex = 0;
     return true;

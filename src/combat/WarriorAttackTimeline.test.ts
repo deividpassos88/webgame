@@ -29,7 +29,7 @@ describe('WarriorAttackTimeline', () => {
 
   it('defines the jump impact at its only damage hit', () => {
     const jump = getWarriorAttackTimeline('pulo_atacando');
-    expect(jump.impactTime).toBe(0.68);
-    expect(jump.hitTimes).toEqual([0.68]);
+    expect(jump.impactTime).toBe(0.82);
+    expect(jump.hitTimes).toEqual([0.82]);
   });
 });

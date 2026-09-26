@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import type { WarriorSkillId } from './WarriorSkillCatalog';
 import { WARRIOR_MAX_RANGE_METERS } from './DistanceDamage';
 
+/** The two full spins throw a cutting ring well beyond normal sword reach. */
+export const WARRIOR_SPIN_RANGE_METERS = 10;
+
 export type WarriorSkillAreaShape = 'circle' | 'arc' | 'impact';
 
 export interface WarriorSkillAreaDefinition {
@@ -12,12 +15,13 @@ export interface WarriorSkillAreaDefinition {
 }
 
 const AREAS: Readonly<Record<WarriorSkillId, WarriorSkillAreaDefinition>> = Object.freeze({
-  ataque_giratorio: Object.freeze({ shape: 'circle', radius: WARRIOR_MAX_RANGE_METERS }),
-  ataque_giratorio_2: Object.freeze({ shape: 'circle', radius: WARRIOR_MAX_RANGE_METERS }),
+  ataque_giratorio: Object.freeze({ shape: 'circle', radius: WARRIOR_SPIN_RANGE_METERS }),
+  ataque_giratorio_2: Object.freeze({ shape: 'circle', radius: WARRIOR_SPIN_RANGE_METERS }),
+  // The landing is a true 360-degree shockwave: every monster around the
+  // warrior is inside the impact instead of only the forward cone.
   pulo_atacando: Object.freeze({
-    shape: 'impact',
-    radius: WARRIOR_MAX_RANGE_METERS - 1.8,
-    forwardOffset: 1.8,
+    shape: 'circle',
+    radius: WARRIOR_MAX_RANGE_METERS,
   }),
   triplo_ataque: Object.freeze({ shape: 'arc', radius: WARRIOR_MAX_RANGE_METERS, angleDegrees: 140 }),
   corte_duplo: Object.freeze({ shape: 'arc', radius: WARRIOR_MAX_RANGE_METERS, angleDegrees: 125 }),

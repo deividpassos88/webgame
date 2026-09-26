@@ -14,8 +14,11 @@ describe('WarriorSkillCatalog', () => {
     expect(WARRIOR_SKILLS.filter(({ element }) => element === null)).toHaveLength(3);
   });
 
-  it('keeps every skill inside five meters from the warrior and playback no faster than 1.2x', () => {
-    expect(WARRIOR_SKILLS.every(({ area }) => area.radius + (area.forwardOffset ?? 0) <= 5)).toBe(true);
+  it('keeps the two spins at ten meters while other skills stay inside five meters', () => {
+    expect(WARRIOR_SKILLS.filter(({ id }) => id === 'ataque_giratorio' || id === 'ataque_giratorio_2')
+      .every(({ area }) => area.radius === 10)).toBe(true);
+    expect(WARRIOR_SKILLS.filter(({ id }) => id !== 'ataque_giratorio' && id !== 'ataque_giratorio_2')
+      .every(({ area }) => area.radius + (area.forwardOffset ?? 0) <= 5)).toBe(true);
     expect(WARRIOR_SKILLS.every(({ playbackRate }) => playbackRate >= 1 && playbackRate <= 1.2)).toBe(true);
   });
 

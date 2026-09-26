@@ -8,7 +8,7 @@ describe('WarriorSkillAreaIndicator', () => {
     const geometry = indicator.object.geometry;
     indicator.show('ataque_giratorio', new THREE.Vector3(2, 0, 3), new THREE.Vector3(0, 0, 1));
     expect(indicator.object.visible).toBe(true);
-    expect(indicator.object.userData.area).toMatchObject({ shape: 'circle', radius: 5 });
+    expect(indicator.object.userData.area).toMatchObject({ shape: 'circle', radius: 10 });
     indicator.show('triplo_ataque', new THREE.Vector3(), new THREE.Vector3(1, 0, 0));
     expect(indicator.object.geometry).toBe(geometry);
     expect(indicator.object.userData.area).toMatchObject({ shape: 'arc', radius: 5, angleDegrees: 140 });

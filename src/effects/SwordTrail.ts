@@ -303,14 +303,18 @@ export class SwordTrail {
     }
   }
 
-  public attach(weapon: THREE.Object3D): void {
+  public attach(weapon: THREE.Object3D, presentationRoot?: THREE.Object3D): void {
     if (this.disposed) return;
     this.detach();
     this.weapon = weapon;
     this.baseAnchor = weapon.getObjectByName('VFX_SwordBase') ?? null;
     this.tipAnchor = weapon.getObjectByName('VFX_SwordTip') ?? null;
     this.impactAnchor = weapon.getObjectByName('VFX_Impact') ?? null;
-    this.blade = weapon.getObjectByName('RuntimeWarrior_SwordBlade') ?? null;
+    // Reward swords exported from Blender do not carry the runtime anchor
+    // names. Use their first renderable mesh as a safe blade fallback so the
+    // authored sword also receives the same trail as the runtime sword.
+    this.blade = weapon.getObjectByName('RuntimeWarrior_SwordBlade')
+      ?? this.findRenderableBlade(weapon);
 
     if (!this.baseAnchor || !this.tipAnchor) {
       this.baseAnchor = null;
@@ -329,11 +333,15 @@ export class SwordTrail {
         }
       }
     }
-    let stableRoot: THREE.Object3D = weapon;
-    while (stableRoot.parent && !(stableRoot.parent as THREE.Scene).isScene) {
-      stableRoot = stableRoot.parent;
+    if (presentationRoot) {
+      presentationRoot.add(this.root);
+    } else {
+      let stableRoot: THREE.Object3D = weapon;
+      while (stableRoot.parent && !(stableRoot.parent as THREE.Scene).isScene) {
+        stableRoot = stableRoot.parent;
+      }
+      stableRoot.add(this.root);
     }
-    stableRoot.add(this.root);
     this.clearAll();
   }
 
@@ -489,6 +497,16 @@ export class SwordTrail {
     this.flameMaterial.dispose();
     this.impactMaterial.dispose();
     this.root.clear();
+  }
+
+  private findRenderableBlade(root: THREE.Object3D): THREE.Object3D | null {
+    let blade: THREE.Object3D | null = null;
+    root.traverse((object) => {
+      if (blade) return;
+      const mesh = object as THREE.Mesh;
+      if (mesh.isMesh && mesh.geometry) blade = mesh;
+    });
+    return blade;
   }
 
   private sampleBlade(): void {

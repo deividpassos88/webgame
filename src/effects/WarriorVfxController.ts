@@ -3,6 +3,7 @@ import { getWarriorAttackTimeline } from '../combat/WarriorAttackTimeline';
 
 export interface WarriorVfxPort {
   setAttack(id: WarriorAttackId): void;
+  setStageDirection?(stage: number): void;
   setActive(active: boolean): void;
   beginFade(seconds: number): void;
   burst(): void;
@@ -25,6 +26,10 @@ export class WarriorVfxController {
     this.attackId = id;
     this.fadeRemaining = 0;
     this.port.setAttack(id);
+  }
+
+  public setStageDirection(stage: number): void {
+    this.port.setStageDirection?.(stage);
   }
 
   public openTrail(): void {
