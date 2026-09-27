@@ -82,9 +82,6 @@ export interface WarriorAttackWindowEvent {
   readonly forward: THREE.Vector3;
 }
 
-/** Exact authored impact marker, emitted before the matching damage callback. */
-export type WarriorAttackImpactEvent = WarriorAttackWindowEvent;
-
 export interface MageSpellCastEvent {
   readonly spellId: MageSpellId;
   readonly caster: THREE.Object3D;
@@ -175,7 +172,6 @@ export class Player {
   private onAttackHitCallback: ((target: THREE.Object3D) => void) | null = null;
   private onWarriorSkillHitCallback: ((event: WarriorSkillHitEvent) => void) | null = null;
   private onWarriorAttackWindowCallback: ((event: WarriorAttackWindowEvent) => void) | null = null;
-  private onWarriorAttackImpactCallback: ((event: WarriorAttackImpactEvent) => void) | null = null;
   private onMageSpellCastCallback: ((event: MageSpellCastEvent) => void) | null = null;
 
   private loaded = false;
@@ -606,11 +602,6 @@ export class Player {
   /** Called at each authored sword damage window, including a basic swing. */
   public onWarriorAttackWindow(callback: (event: WarriorAttackWindowEvent) => void): void {
     this.onWarriorAttackWindowCallback = callback;
-  }
-
-  /** Called at the exact authored impact marker, before damage is resolved. */
-  public onWarriorAttackImpact(callback: (event: WarriorAttackImpactEvent) => void): void {
-    this.onWarriorAttackImpactCallback = callback;
   }
 
   public onMageSpellCast(callback: (event: MageSpellCastEvent) => void): void {
@@ -1132,16 +1123,8 @@ export class Player {
           this.onWarriorSkillHitCallback?.(attackEvent);
           break;
         }
-        case 'impact': {
-          const impactEvent: WarriorAttackImpactEvent = {
-            attackId: event.attackId as WarriorSkillId,
-            hitIndex: 0,
-            origin: this.root.getWorldPosition(new THREE.Vector3()),
-            forward: this.planarForward(new THREE.Vector3()),
-          };
-          this.onWarriorAttackImpactCallback?.(impactEvent);
+        case 'impact':
           break;
-        }
         case 'trail-end':
           break;
         case 'attack-ended':
