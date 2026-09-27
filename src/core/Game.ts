@@ -1,7 +1,11 @@
 import * as THREE from 'three';
 import { CameraController } from './CameraController';
 import { InputManager, readMovementInput } from './InputManager';
-import { Player, type WarriorSkillHitEvent } from '../entities/Player';
+import {
+  Player,
+  type WarriorAttackWindowEvent,
+  type WarriorSkillHitEvent,
+} from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
 import { TrainingDummy } from '../entities/TrainingDummy';
 import { createBoss } from '../entities/Boss';
@@ -435,6 +439,7 @@ export class Game {
       this.player = new Player(characterId, this.characterAssets);
       await this.player.load();
       this.player.onWarriorSkillHit((event) => this.onWarriorSkillHit(event));
+      this.player.onWarriorAttackWindow((event) => this.onWarriorAttackWindow(event));
       this.player.onMageSpellCast((event) => {
         const target = this.resolveMageSpellTarget(event.target);
         this.mageVFX.cast(event.spellId, {
@@ -960,22 +965,22 @@ export class Game {
     if (!adminPreview) {
       if (!isWarriorSkillUnlocked(id, this.profile.progression.level)) return;
     }
-    if (!this.fatigue.canUseSkills) return;
+    if (!adminPreview && !this.fatigue.canUseSkills) return;
     if (mage && this.player.blocksSkillsWhileMoving) return;
-    if (mage && !this.fatigue.canAffordPercent(mageSkillFatiguePercent(id))) return;
+    if (!adminPreview && mage && !this.fatigue.canAffordPercent(mageSkillFatiguePercent(id))) return;
     const activation = this.warriorSkills.tryActivate(id, {
       paused: false,
       dead: this.player.isDead,
       busy: this.player.isAttackInSwing(),
-      // Training can skip the cooldown, but a Mage skill always spends MP.
-      waiveCooldown: adminPreview,
+      // Admin training is a true preview: no energy, fatigue, or cooldown cost.
+      free: adminPreview,
     });
     if (activation.kind !== 'activated') return;
     if (!this.player.tryStartSkillAttack(id)) {
       this.warriorSkills.refund(id);
       return;
     }
-    if (mage) this.fatigue.consumePercent(mageSkillFatiguePercent(id));
+    if (mage && !adminPreview) this.fatigue.consumePercent(mageSkillFatiguePercent(id));
   }
 
   private mageSkillSnapshot(snapshot: WarriorSkillsSnapshot): WarriorSkillsSnapshot {
@@ -993,12 +998,27 @@ export class Game {
     return { ...snapshot, skills };
   }
 
+  private displayWarriorSkillsSnapshot(snapshot: WarriorSkillsSnapshot): WarriorSkillsSnapshot {
+    if (!this.hasAdminFreeSkills()) return snapshot;
+    const skills = { ...snapshot.skills };
+    for (const skill of WARRIOR_SKILLS) {
+      skills[skill.id] = {
+        ...skills[skill.id],
+        cooldownRemaining: 0,
+        available: true,
+      };
+    }
+    return { ...snapshot, energy: snapshot.maxEnergy, skills };
+  }
+
   private isAdminTrainingRun(): boolean {
     return this.activeRunMode === 'admin-training';
   }
 
   private hasAdminFreeSkills(): boolean {
-    return this.isAdminTrainingRun() && this.adminEnabled && this.profile.selectedClass === 'mage';
+    return this.isAdminTrainingRun()
+      && this.adminEnabled
+      && (this.profile.selectedClass === 'mage' || this.profile.selectedClass === 'paladin');
   }
 
   private skillDisplayLevel(): number {
@@ -1982,6 +2002,14 @@ export class Game {
     return this.profile.selectedClass === 'mage' ? 'mage' : 'warrior';
   }
 
+  private warriorSkillDistanceFalloffProfile(
+    attackId: WarriorSkillId
+  ): DistanceFalloffProfile {
+    return attackId === 'ataque_giratorio' || attackId === 'ataque_giratorio_2'
+      ? 'warrior-spin'
+      : 'warrior';
+  }
+
   private resolvePlayerSkillArea(attackId: WarriorSkillId): ReturnType<typeof getWarriorSkillArea> {
     const area = getWarriorSkillArea(attackId);
     if (this.profile.selectedClass !== 'mage') return area;
@@ -1992,6 +2020,78 @@ export class Game {
         ? area.forwardOffset * MAGE_SKILL_RANGE_SCALE
         : undefined,
     };
+  }
+
+  private onWarriorAttackWindow(event: WarriorAttackWindowEvent): void {
+    if (this.profile.selectedClass !== 'paladin' || this.player.equippedWeaponId !== 'sword') return;
+    if (event.attackId === 'ataque_basico') {
+      this.applyWarriorBasicWaveDamage(event);
+    }
+  }
+
+  /**
+   * The basic sword now behaves like a thin directional air cut instead of a
+   * click-only melee callback. Every living body inside the forward cone can
+   * be hit once by that combo stage; the wave and the damage share the same
+   * origin and direction.
+   */
+  private applyWarriorBasicWaveDamage(event: WarriorAttackWindowEvent): void {
+    const forward = event.forward.clone().setY(0);
+    if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
+    forward.normalize();
+    const maxDistance = Math.max(WARRIOR_MAX_RANGE_METERS, this.player.attackRange);
+    const coneCosine = Math.cos(THREE.MathUtils.degToRad(24));
+    const records = this.combatRegistry.activeRoots()
+      .map((root) => this.combatRegistry.findByRoot(root))
+      .filter((record): record is CombatRecord => record !== null && !record.enemy.isDead);
+    let lifeStealDamage = 0;
+
+    if (this.trainingDummy) {
+      const dummyDelta = new THREE.Vector3(
+        this.trainingDummy.root.position.x - event.origin.x,
+        0,
+        this.trainingDummy.root.position.z - event.origin.z
+      );
+      const dummyDistance = dummyDelta.length();
+      if (
+        dummyDistance > 1e-8
+        && dummyDistance <= maxDistance
+        && forward.dot(dummyDelta.normalize()) >= coneCosine
+      ) {
+        const damage = this.resolveOutgoingDamage(this.player.attackDamage, false);
+        this.trainingDummy.takeDamage(damage);
+        this.showFloatingDamage(this.trainingDummy.root.position, damage);
+      }
+    }
+
+    for (const record of records) {
+      const target = record.enemy.root.position;
+      const delta = new THREE.Vector3(target.x - event.origin.x, 0, target.z - event.origin.z);
+      const centerDistance = delta.length();
+      if (centerDistance <= 1e-8) continue;
+      const bodyRadius = Math.max(record.enemy.collisionRadius, 0.45);
+      const distance = getEffectiveTargetDistance(centerDistance, bodyRadius);
+      if (distance > maxDistance || forward.dot(delta.normalize()) < coneCosine) continue;
+
+      const stats = this.getCharacterStats();
+      const baseDamage = getTypedAttackBaseDamage(
+        this.player.attackDamage,
+        stats.physicalDamageMultiplier,
+        false
+      );
+      const damage = this.resolveOutgoingDamage(
+        applyDistanceFalloff(baseDamage, distance, 'warrior'),
+        false
+      );
+      if (damage <= 0) continue;
+      lifeStealDamage += damage;
+      record.enemy.receivePlayerHit(damage, this.player.root.position);
+      this.showFloatingDamage(record.enemy.root.position, damage);
+      this.syncCombatHealthBars(record);
+      if (record.enemy.isDead) this.handleEnemyDeath(record);
+    }
+
+    this.healFromLifeSteal(lifeStealDamage);
   }
 
   private onWarriorSkillHit(event: WarriorSkillHitEvent): void {
@@ -2023,12 +2123,15 @@ export class Game {
       const rangedDamage = applyDistanceFalloff(
         baseDamage,
         distance,
-        this.playerDistanceFalloffProfile()
+        this.warriorSkillDistanceFalloffProfile(event.attackId)
       );
       const damage = this.resolveOutgoingDamage(rangedDamage, elemental);
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
+      if (event.attackId === 'pulo_atacando' && !record.enemy.isDead) {
+        record.enemy.applyWarriorKnockdown(1.2);
+      }
       if (skill.element && !record.enemy.isDead) {
         record.enemy.applyElementalHit(skill.element, Math.max(1, damage * 0.12));
       }
@@ -2584,14 +2687,14 @@ export class Game {
       this.mageVFX.applyCameraShake(this.cameraController.camera, delta);
       this.hud.updatePlayerHealth(this.player.hp, this.player.maxHP);
       this.hud.updatePlayerFatigue(fatigue, this.fatigue.currentMaxFatigue);
-      const skills = this.warriorSkills.snapshot();
+      const skills = this.displayWarriorSkillsSnapshot(this.warriorSkills.snapshot());
       this.player.mana = skills.energy;
       this.player.maxMana = skills.maxEnergy;
       const skillLock = this.player.isDead
         ? 'dead'
         : !this.canAcceptGameplayInput()
           ? 'unavailable'
-          : !this.fatigue.canUseSkills
+          : !this.hasAdminFreeSkills() && !this.fatigue.canUseSkills
             ? 'fatigue-exhausted'
             : this.player.isAttackInSwing()
               ? 'busy'

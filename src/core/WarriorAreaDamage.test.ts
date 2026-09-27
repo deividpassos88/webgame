@@ -25,7 +25,7 @@ const event = {
 
 describe('resolveWarriorAreaTargets', () => {
   it('returns every living circle target in deterministic registry order', () => {
-    const records = [record('first', 3, 0), record('dead', 1, 0, true), record('outside', 7.1, 0), record('second', 0, 3)];
+    const records = [record('first', 3, 0), record('dead', 1, 0, true), record('outside', 10.1, 0), record('second', 0, 3)];
     expect(resolveWarriorAreaTargets(records, event, getWarriorSkillArea('ataque_giratorio')).map(({ id }) => id)).toEqual(['first', 'second']);
   });
 
@@ -34,7 +34,7 @@ describe('resolveWarriorAreaTargets', () => {
     expect(resolveWarriorAreaTargets(records, { ...event, attackId: 'triplo_ataque' }, getWarriorSkillArea('triplo_ataque')).map(({ id }) => id)).toEqual(['front']);
   });
 
-  it('uses the forward impact center for the jump skill', () => {
+  it('uses the full circle around the warrior for the jump skill', () => {
     const records = [record('forward', 0, 5), record('outside', 0, 5.01), record('far-behind', 0, -6)];
     expect(resolveWarriorAreaTargets(records, { ...event, attackId: 'pulo_atacando' }, getWarriorSkillArea('pulo_atacando')).map(({ id }) => id)).toEqual(['forward']);
   });

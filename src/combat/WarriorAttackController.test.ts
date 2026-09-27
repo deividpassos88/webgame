@@ -34,7 +34,7 @@ describe('WarriorAttackController', () => {
     const attacks = new WarriorAttackController();
     attacks.start('pulo_atacando', 1);
 
-    expect(attacks.update(0.69)).toContainEqual({
+    expect(attacks.update(0.83)).toContainEqual({
       type: 'impact',
       attackId: 'pulo_atacando',
     });

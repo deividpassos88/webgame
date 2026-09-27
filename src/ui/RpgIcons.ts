@@ -1,7 +1,6 @@
 import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import type { WarriorSkillDefinition } from '../combat/WarriorSkillCatalog';
 import type { InventoryItemKind } from '../inventory/InventoryCatalog';
-import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import type { UiEquipmentSlot } from './RpgUiViewModel';
 
 const base = (paths: string) =>
@@ -18,13 +17,13 @@ const base = (paths: string) =>
  * Guerreiro and the cajado placeholder only for the Maga.
  */
 const EQUIPMENT_SLOT_ICON_SOURCES: Record<UiEquipmentSlot, string> = {
-  helmet: 'helmet.png',
-  chest: 'chest.png',
-  pants: 'pants.png',
-  gloves: 'gloves.png',
-  boots: 'boots.png',
-  primaryWeapon: 'sword.png',
-  secondaryWeapon: 'shield.png',
+  helmet: 'guerreiro/helmet.png',
+  chest: 'guerreiro/chest.png',
+  pants: 'guerreiro/pants.png',
+  gloves: 'guerreiro/gloves.png',
+  boots: 'guerreiro/boots.png',
+  primaryWeapon: 'guerreiro/sword.png',
+  secondaryWeapon: 'guerreiro/shield.png',
 };
 
 const CLASS_WEAPON_SLOT_ICONS: Partial<Record<PlayableCharacterId, string>> = {

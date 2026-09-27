@@ -183,6 +183,9 @@ export class Enemy {
   private levitateGroundY = 0;
   private levitatePoseActive = false;
   private levitateUsesClip = false;
+  private warriorKnockdownRemaining = 0;
+  private warriorKnockdownUsesClip = false;
+  private savedWarriorKnockdownRoll = 0;
   private savedMeshRoll = 0;
   private shockAura: THREE.Group | null = null;
   private readonly shockLightPool: VFXLightPool | null;
@@ -196,6 +199,7 @@ export class Enemy {
     { emissive: number; emissiveIntensity: number }
   >();
   private hitStaggerRemaining = 0;
+  private hitReactionElapsed = 0;
   private hitUsesClip = false;
   private dizzyActive = false;
   private savedDizzyRoll = 0;
@@ -526,6 +530,11 @@ export class Enemy {
 
     this.tickMageControl(delta);
     this.tickHitStagger(delta);
+    this.tickWarriorKnockdown(delta);
+    if (this.warriorKnockdownRemaining > 0) {
+      this.activeAnimatedAttack = null;
+      return;
+    }
     if (this.mageLevitateRemaining > 0) {
       this.activeAnimatedAttack = null;
       return;
@@ -913,8 +922,34 @@ export class Enemy {
     this.ensureShockAura();
   }
 
+  /** The Warrior jump landing keeps every nearby monster knocked down. */
+  public applyWarriorKnockdown(seconds = 1.2): void {
+    if (this.isDead) return;
+    const duration = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+    if (duration <= 0) return;
+    if (this.warriorKnockdownRemaining <= 0) {
+      this.warriorKnockdownUsesClip = this.animator?.holdLyingPose?.() ?? false;
+      if (!this.warriorKnockdownUsesClip) {
+        this.savedWarriorKnockdownRoll = this.meshGroup.rotation.z;
+        this.meshGroup.rotation.order = 'YXZ';
+        this.meshGroup.rotation.z = Math.PI / 2;
+      }
+    }
+    this.warriorKnockdownRemaining = Math.max(this.warriorKnockdownRemaining, duration);
+    this.activeAnimatedAttack = null;
+    this.hitStaggerRemaining = 0;
+    this.endHitReaction();
+  }
+
+  public get isWarriorKnockedDown(): boolean {
+    return this.warriorKnockdownRemaining > 0;
+  }
+
   public get resistsDisplacement(): boolean {
-    return this.mageLevitateRemaining > 0 || this.isFrozenByIce || this.hitStaggerRemaining > 0;
+    return this.mageLevitateRemaining > 0
+      || this.warriorKnockdownRemaining > 0
+      || this.isFrozenByIce
+      || this.hitStaggerRemaining > 0;
   }
 
   /** Body roll used when the model has no authored lying clip. */
@@ -937,6 +972,21 @@ export class Enemy {
     this.root.position.y = this.levitateGroundY + height;
     this.updateShockAura();
     if (this.mageLevitateRemaining <= 0) this.endLevitatePose();
+  }
+
+  private tickWarriorKnockdown(delta: number): void {
+    if (this.warriorKnockdownRemaining <= 0) return;
+    this.warriorKnockdownRemaining = Math.max(
+      0,
+      this.warriorKnockdownRemaining - Math.max(0, delta)
+    );
+    if (this.warriorKnockdownRemaining > 0) return;
+    if (this.warriorKnockdownUsesClip) {
+      this.animator?.releaseLyingPose?.();
+    } else {
+      this.meshGroup.rotation.z = this.savedWarriorKnockdownRoll;
+    }
+    this.warriorKnockdownUsesClip = false;
   }
 
   private levitateHeight(elapsed: number, duration: number): number {
@@ -977,6 +1027,11 @@ export class Enemy {
     this.mageFreezeRemaining = 0;
     this.mageSlowRemaining = 0;
     this.mageLevitateRemaining = 0;
+    const wasWarriorKnockedDown = this.warriorKnockdownRemaining > 0;
+    this.warriorKnockdownRemaining = 0;
+    if (this.warriorKnockdownUsesClip) this.animator?.releaseLyingPose?.();
+    else if (wasWarriorKnockedDown) this.meshGroup.rotation.z = this.savedWarriorKnockdownRoll;
+    this.warriorKnockdownUsesClip = false;
     this.hideFreezeVisuals();
     if (this.levitatePoseActive) this.endLevitatePose();
     else this.hideShockAura();
@@ -1116,7 +1171,12 @@ export class Enemy {
 
   private tickHitStagger(delta: number): void {
     if (this.hitStaggerRemaining <= 0) return;
-    this.hitStaggerRemaining = Math.max(0, this.hitStaggerRemaining - Math.max(0, delta));
+    const elapsed = Math.max(0, delta);
+    this.hitStaggerRemaining = Math.max(0, this.hitStaggerRemaining - elapsed);
+    this.hitReactionElapsed = Math.min(
+      ENEMY_HIT_STAGGER_SECONDS,
+      this.hitReactionElapsed + elapsed
+    );
     if (this.hitStaggerRemaining > 0) return;
     this.endHitReaction();
   }
@@ -1129,11 +1189,20 @@ export class Enemy {
 
   private updateDizzyPose(): void {
     if (!this.dizzyActive || this.hitUsesClip || this.levitatePoseActive) return;
-    const wobble = Math.sin(performance.now() * 0.05) * 0.38;
-    this.meshGroup.rotation.z = this.savedDizzyRoll + wobble;
+    // A single damped flinch is much cleaner than a high-frequency wobble of
+    // the whole rig. This is especially important for monster_arch, whose GLB
+    // has no authored hit clip and previously looked like it was vibrating.
+    const progress = THREE.MathUtils.clamp(
+      this.hitReactionElapsed / ENEMY_HIT_STAGGER_SECONDS,
+      0,
+      1
+    );
+    const flinch = Math.sin(progress * Math.PI) * 0.075;
+    this.meshGroup.rotation.z = this.savedDizzyRoll + flinch;
   }
 
   private endHitReaction(): void {
+    this.hitReactionElapsed = 0;
     if (this.hitUsesClip && !this.levitatePoseActive) this.animator?.releaseHit?.();
     this.hitUsesClip = false;
     if (this.dizzyActive && !this.levitatePoseActive) {
@@ -1278,6 +1347,7 @@ export class Enemy {
   public get elementalSpeedMultiplier(): number {
     if (
       this.mageLevitateRemaining > 0
+      || this.warriorKnockdownRemaining > 0
       || this.mageFreezeRemaining > 0
       || this.hitStaggerRemaining > 0
     ) {
@@ -1294,11 +1364,12 @@ export class Enemy {
    */
   public receivePlayerHit(amount: number, from: THREE.Vector3): void {
     if (this.isDead || !(amount > 0)) return;
-    this.applyHitKnockback(from);
+    if (!this.isWarriorKnockedDown) this.applyHitKnockback(from);
     const willDie = this.hp - amount <= 0;
     this.takeDamage(amount);
     if (willDie || this.isDead) return;
     this.hitStaggerRemaining = ENEMY_HIT_STAGGER_SECONDS;
+    this.hitReactionElapsed = 0;
     this.activeAnimatedAttack = null;
     if (this.levitatePoseActive) return;
     this.hitUsesClip = this.animator?.playHit?.() ?? false;
