@@ -19,6 +19,16 @@ export interface WarriorSlashPlayOptions {
   readonly isAuto?: boolean;
 }
 
+export interface WarriorTravelingSlashOptions {
+  readonly start: THREE.Vector3;
+  readonly forward: THREE.Vector3;
+  readonly target: THREE.Vector3;
+  readonly speed?: number; // m/s
+  readonly scale?: number;
+  readonly type?: 'basic' | 'combo2' | 'combo3' | 'auto';
+  readonly onHit?: (position: THREE.Vector3) => void;
+}
+
 interface WarriorSlashResources {
   readonly softGlow: THREE.Texture;
   readonly impactFlare: THREE.Texture;
@@ -627,12 +637,271 @@ class WarriorHitImpactEffect implements PoolableVFX {
   }
 }
 
+class WarriorTravelingSlashEffect implements PoolableVFX {
+  public active = false;
+  public readonly group = new THREE.Group();
+  private readonly slashMesh: THREE.Mesh;
+  private readonly coreMesh: THREE.Mesh;
+  private readonly trailMesh: THREE.Mesh;
+  private readonly slashMat: WarriorSlashMaterial;
+  private readonly coreMat: WarriorSlashMaterial;
+  private readonly trailMat: WarriorSlashMaterial;
+  private readonly glow: THREE.Sprite;
+  private readonly particles: PooledParticleCloud;
+  private readonly geometry: THREE.BufferGeometry;
+  private readonly coreGeometry: THREE.BufferGeometry;
+  private readonly trailGeometry: THREE.BufferGeometry;
+  private readonly lightHandle: { light: THREE.PointLight; release: () => void } | null = null;
+  private actualLightHandle: VFXLightHandle | null = null;
+
+  private age = 0;
+  private duration = 0.5;
+  private distance = 5;
+  private speed = 12;
+  private startPos = new THREE.Vector3();
+  private targetPos = new THREE.Vector3();
+  private forward = new THREE.Vector3(0, 0, 1);
+  private onHit: ((pos: THREE.Vector3) => void) | null = null;
+  private hasHit = false;
+  private baseScale = 1;
+
+  constructor(
+    private readonly resources: WarriorSlashResources,
+    private readonly lightPool: VFXLightPool
+  ) {
+    this.group.name = 'WarriorTravelingSlash';
+    this.group.visible = false;
+
+    // Traveling slash uses vertical crescent shape (same format as blade trail)
+    // inner small, outer large, theta ~130 deg for air cut
+    this.geometry = createArcRibbonGeometry(0.15, 1.9, (-130 * Math.PI) / 360, (130 * Math.PI) / 180, 3, 24);
+    this.coreGeometry = createArcRibbonGeometry(0.35, 1.65, (-130 * Math.PI) / 360, (130 * Math.PI) / 180, 2, 24);
+    this.trailGeometry = createArcRibbonGeometry(0.1, 2.2, (-110 * Math.PI) / 360, (110 * Math.PI) / 180, 2, 20);
+
+    this.slashMat = createWarriorSlashMaterial({
+      colorA: 0xffffff,
+      colorB: 0x7efff6,
+      colorC: 0x0a2e33,
+      opacity: 1,
+      intensity: 2.6,
+      thickness: 1.1,
+      distortion: 1.2,
+    });
+    this.coreMat = createWarriorSlashMaterial({
+      colorA: 0xffffff,
+      colorB: 0xbfffff,
+      colorC: 0x0a4a4a,
+      opacity: 0.95,
+      intensity: 3.2,
+      thickness: 0.5,
+      distortion: 0.8,
+    });
+    this.trailMat = createWarriorSlashMaterial({
+      colorA: 0xcfffff,
+      colorB: 0x4dffe9,
+      colorC: 0x082a30,
+      opacity: 0.65,
+      intensity: 1.8,
+      thickness: 1.4,
+      distortion: 1.3,
+    });
+
+    this.slashMesh = new THREE.Mesh(this.geometry, this.slashMat);
+    this.coreMesh = new THREE.Mesh(this.coreGeometry, this.coreMat);
+    this.trailMesh = new THREE.Mesh(this.trailGeometry, this.trailMat);
+
+    // Vertical orientation: rotate to be vertical blade facing forward
+    // Our arc geometry is on XZ plane, we want it vertical (standing)
+    this.slashMesh.rotation.x = Math.PI / 2;
+    this.slashMesh.rotation.y = 0;
+    this.coreMesh.rotation.x = Math.PI / 2;
+    this.trailMesh.rotation.x = Math.PI / 2;
+    this.trailMesh.position.z = -0.35; // behind main blade
+
+    this.slashMesh.frustumCulled = false;
+    this.coreMesh.frustumCulled = false;
+    this.trailMesh.frustumCulled = false;
+    this.slashMesh.renderOrder = 7;
+    this.coreMesh.renderOrder = 8;
+    this.trailMesh.renderOrder = 6;
+
+    const glowMat = new THREE.SpriteMaterial({
+      map: resources.softGlow,
+      color: 0x5efff5,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    this.glow = new THREE.Sprite(glowMat);
+    this.glow.name = 'TravelGlow';
+    this.glow.scale.setScalar(1.2);
+
+    this.particles = new PooledParticleCloud(40, resources.softGlow);
+
+    this.group.add(this.trailMesh, this.slashMesh, this.coreMesh, this.glow, this.particles.points);
+  }
+
+  public play(options: WarriorTravelingSlashOptions): void {
+    this.startPos.copy(options.start);
+    this.targetPos.copy(options.target);
+    this.forward.copy(options.forward).setY(0).normalize();
+    if (this.forward.lengthSq() < 1e-6) this.forward.set(0, 0, 1);
+    this.baseScale = options.scale ?? 1;
+    this.speed = options.speed ?? (options.type === 'auto' ? 13.5 : 11.5);
+    this.onHit = options.onHit ?? null;
+    this.hasHit = false;
+
+    const delta = this.targetPos.clone().sub(this.startPos);
+    delta.y = 0;
+    this.distance = Math.max(1, Math.min(delta.length(), 7.5)); // clamp max travel
+    this.duration = this.distance / this.speed + 0.12; // plus fade
+    this.age = 0;
+
+    this.group.visible = true;
+    this.group.position.copy(this.startPos);
+    this.group.position.y += 0.95;
+    this.group.scale.setScalar(this.baseScale);
+
+    const yaw = Math.atan2(this.forward.x, this.forward.z);
+    this.group.rotation.set(0, yaw, 0);
+
+    // Colors based on type
+    const isAuto = options.type === 'auto';
+    const isCombo3 = options.type === 'combo3';
+    const glowColor = isAuto ? 0x8affff : isCombo3 ? 0x5affff : 0x7efff6;
+    const darkColor = 0x0a2e33;
+
+    this.slashMat.uniforms.uColorA.value.set(0xffffff);
+    this.slashMat.uniforms.uColorB.value.set(glowColor);
+    this.slashMat.uniforms.uColorC.value.set(darkColor);
+    this.slashMat.uniforms.uOpacity.value = 1;
+    this.slashMat.uniforms.uIntensity.value = isAuto ? 2.9 : 2.6;
+    this.slashMat.uniforms.uTime.value = 0;
+    this.slashMat.uniforms.uProgress.value = 0;
+
+    this.coreMat.uniforms.uColorA.value.set(0xffffff);
+    this.coreMat.uniforms.uColorB.value.set(0xbfffff);
+    this.coreMat.uniforms.uColorC.value.set(glowColor);
+    this.coreMat.uniforms.uOpacity.value = 0.95;
+    this.coreMat.uniforms.uIntensity.value = isAuto ? 3.4 : 3.2;
+    this.coreMat.uniforms.uTime.value = 0;
+    this.coreMat.uniforms.uProgress.value = 0;
+
+    this.trailMat.uniforms.uColorA.value.set(0xcfffff);
+    this.trailMat.uniforms.uColorB.value.set(glowColor);
+    this.trailMat.uniforms.uColorC.value.set(darkColor);
+    this.trailMat.uniforms.uOpacity.value = 0.55;
+    this.trailMat.uniforms.uIntensity.value = 1.9;
+    this.trailMat.uniforms.uTime.value = 0;
+    this.trailMat.uniforms.uProgress.value = 0;
+
+    (this.glow.material as THREE.SpriteMaterial).opacity = 0.8;
+    (this.glow.material as THREE.SpriteMaterial).color.set(glowColor);
+    this.glow.scale.setScalar(1.1 * this.baseScale);
+
+    this.actualLightHandle = this.lightPool.acquire();
+    if (this.actualLightHandle) {
+      this.actualLightHandle.light.color.set(glowColor);
+      this.actualLightHandle.light.intensity = 1.6 * this.baseScale;
+      this.actualLightHandle.light.distance = 6 * this.baseScale;
+      this.actualLightHandle.light.position.copy(this.group.position);
+    }
+
+    this.particles.setTexture(this.resources.softGlow);
+    this.particles.emit(new THREE.Vector3(0, 0, -0.2), {
+      color: glowColor,
+      count: 20,
+      speed: 2.2,
+      spread: 0.9,
+      lifetime: this.duration,
+      upwardBias: 0.15,
+    });
+  }
+
+  public update(delta: number): boolean {
+    const elapsed = Math.max(0, delta);
+    this.age += elapsed;
+    const progress = THREE.MathUtils.clamp(this.age / this.duration, 0, 1);
+    const travelProgress = THREE.MathUtils.clamp(this.age / Math.max(0.001, this.distance / this.speed), 0, 1);
+
+    // Move forward
+    const currentPos = this.startPos.clone().lerp(this.targetPos, travelProgress);
+    currentPos.y = this.startPos.y + 0.95;
+    this.group.position.copy(currentPos);
+
+    // Fade based on overall progress
+    const fade = 1 - progress;
+    setWarriorSlashTime(this.slashMat, this.age * 2.2, travelProgress * 0.6);
+    setWarriorSlashTime(this.coreMat, this.age * 2.5, travelProgress * 0.6);
+    setWarriorSlashTime(this.trailMat, this.age * 1.8, travelProgress * 0.6);
+
+    this.slashMat.uniforms.uOpacity.value = fade;
+    this.coreMat.uniforms.uOpacity.value = fade * 0.95;
+    this.trailMat.uniforms.uOpacity.value = fade * 0.55;
+
+    // Scale pulse as it travels
+    const scale = this.baseScale * (1 + travelProgress * 0.18);
+    this.slashMesh.scale.setScalar(scale);
+    this.coreMesh.scale.setScalar(scale * 1.05);
+    this.trailMesh.scale.setScalar(scale * 0.95);
+
+    (this.glow.material as THREE.SpriteMaterial).opacity = fade * 0.8;
+    this.glow.scale.setScalar((1.1 + travelProgress * 0.6) * this.baseScale);
+
+    if (this.actualLightHandle) {
+      this.actualLightHandle.light.intensity *= Math.max(0, 1 - elapsed * 5);
+      this.actualLightHandle.light.position.copy(this.group.position);
+    }
+
+    this.particles.update(elapsed);
+
+    // Trigger hit when reaching target (once)
+    if (!this.hasHit && travelProgress >= 0.92) {
+      this.hasHit = true;
+      this.onHit?.(this.group.position.clone());
+    }
+
+    return this.age < this.duration;
+  }
+
+  public reset(): void {
+    this.group.visible = false;
+    this.group.removeFromParent();
+    this.age = 0;
+    this.hasHit = false;
+    this.onHit = null;
+    this.actualLightHandle?.release();
+    this.actualLightHandle = null;
+    this.particles.reset();
+    this.slashMat.uniforms.uOpacity.value = 0;
+    this.coreMat.uniforms.uOpacity.value = 0;
+    this.trailMat.uniforms.uOpacity.value = 0;
+    (this.glow.material as THREE.SpriteMaterial).opacity = 0;
+  }
+
+  public dispose(): void {
+    this.geometry.dispose();
+    this.coreGeometry.dispose();
+    this.trailGeometry.dispose();
+    this.slashMat.dispose();
+    this.coreMat.dispose();
+    this.trailMat.dispose();
+    (this.glow.material as THREE.Material).dispose();
+    this.particles.dispose();
+  }
+}
+
 export class WarriorSlashVFX {
   private readonly resources: WarriorSlashResources;
   private readonly pool: VFXPool<WarriorSlashEffect>;
   private readonly active: WarriorSlashEffect[] = [];
   private readonly impactPool: VFXPool<WarriorHitImpactEffect>;
   private readonly activeImpacts: WarriorHitImpactEffect[] = [];
+  private readonly travelingPool: VFXPool<WarriorTravelingSlashEffect>;
+  private readonly activeTraveling: WarriorTravelingSlashEffect[] = [];
   private readonly cameraShake = new CameraShake();
 
   public constructor(
@@ -647,6 +916,10 @@ export class WarriorSlashVFX {
     this.impactPool = new VFXPool(
       () => new WarriorHitImpactEffect(this.resources, lightPool),
       16
+    );
+    this.travelingPool = new VFXPool(
+      () => new WarriorTravelingSlashEffect(this.resources, lightPool),
+      12
     );
   }
 
@@ -675,6 +948,17 @@ export class WarriorSlashVFX {
     this.cameraShake.add(0.022 * scale, 0.11);
   }
 
+  public playTravelingSlash(options: WarriorTravelingSlashOptions): void {
+    const effect = this.travelingPool.acquire();
+    if (!effect) return;
+    effect.play(options);
+    this.scene.add(effect.group);
+    this.activeTraveling.push(effect);
+    // Extra shake for projectile launch
+    const intensity = options.type === 'auto' ? 0.038 : options.type === 'combo3' ? 0.05 : 0.028;
+    this.cameraShake.add(intensity, 0.13);
+  }
+
   public update(delta: number): void {
     for (let i = this.active.length - 1; i >= 0; i--) {
       const effect = this.active[i];
@@ -688,6 +972,12 @@ export class WarriorSlashVFX {
       this.impactPool.release(impact);
       this.activeImpacts.splice(i, 1);
     }
+    for (let i = this.activeTraveling.length - 1; i >= 0; i--) {
+      const travel = this.activeTraveling[i];
+      if (travel.update(delta)) continue;
+      this.travelingPool.release(travel);
+      this.activeTraveling.splice(i, 1);
+    }
   }
 
   public applyCameraShake(camera: THREE.Camera, delta: number): void {
@@ -699,6 +989,8 @@ export class WarriorSlashVFX {
     this.active.length = 0;
     for (const e of this.activeImpacts) this.impactPool.release(e);
     this.activeImpacts.length = 0;
+    for (const e of this.activeTraveling) this.travelingPool.release(e);
+    this.activeTraveling.length = 0;
     this.cameraShake.clear();
   }
 
@@ -706,6 +998,7 @@ export class WarriorSlashVFX {
     this.clear();
     this.pool.dispose();
     this.impactPool.dispose();
+    this.travelingPool.dispose();
     this.resources.quad.dispose();
     this.resources.ring.dispose();
     this.resources.softGlow.dispose();
@@ -714,6 +1007,6 @@ export class WarriorSlashVFX {
   }
 
   public get activeCount(): number {
-    return this.active.length + this.activeImpacts.length;
+    return this.active.length + this.activeImpacts.length + this.activeTraveling.length;
   }
 }

@@ -2048,8 +2048,10 @@ export class Game {
     // hitIndex 0 = básico, 1 = combo2, 2 = combo3 (como no SwordComboController)
     const slashType = event.hitIndex === 1 ? 'combo2' : event.hitIndex === 2 ? 'combo3' : 'basic';
     const isAuto = this.profile.autoBasicAttack && this.targetedEnemyRoot !== null;
+    const origin = event.origin.clone();
+
     this.warriorSlashVFX.play({
-      position: event.origin.clone(),
+      position: origin.clone(),
       forward,
       type: isAuto ? 'auto' : slashType,
       isAuto,
@@ -2063,11 +2065,41 @@ export class Game {
       .filter((record): record is CombatRecord => record !== null && !record.enemy.isDead);
     let lifeStealDamage = 0;
 
+    // Determine primary target for traveling slash (feixe que avança até target)
+    let primaryTargetPos: THREE.Vector3 | null = null;
+    let closestDist = Infinity;
+
+    if (this.targetedEnemyRoot && !this.targetedEnemyRoot.userData?.isDead) {
+      const t = this.targetedEnemyRoot.position.clone();
+      const d = origin.distanceTo(t);
+      if (d <= maxDistance + 1) {
+        primaryTargetPos = t;
+        closestDist = d;
+      }
+    }
+
+    // Find closest enemy in cone for traveling slash if no marked target
+    if (!primaryTargetPos) {
+      for (const record of records) {
+        const target = record.enemy.root.position;
+        const delta = new THREE.Vector3(target.x - origin.x, 0, target.z - origin.z);
+        const centerDistance = delta.length();
+        if (centerDistance <= 1e-8) continue;
+        const bodyRadius = Math.max(record.enemy.collisionRadius, 0.45);
+        const distance = getEffectiveTargetDistance(centerDistance, bodyRadius);
+        if (distance > maxDistance || forward.dot(delta.clone().normalize()) < coneCosine) continue;
+        if (distance < closestDist) {
+          closestDist = distance;
+          primaryTargetPos = target.clone();
+        }
+      }
+    }
+
     if (this.trainingDummy) {
       const dummyDelta = new THREE.Vector3(
-        this.trainingDummy.root.position.x - event.origin.x,
+        this.trainingDummy.root.position.x - origin.x,
         0,
-        this.trainingDummy.root.position.z - event.origin.z
+        this.trainingDummy.root.position.z - origin.z
       );
       const dummyDistance = dummyDelta.length();
       if (
@@ -2079,12 +2111,15 @@ export class Game {
         this.trainingDummy.takeDamage(damage);
         this.showFloatingDamage(this.trainingDummy.root.position, damage);
         this.warriorSlashVFX.playImpact(this.trainingDummy.root.position, 1);
+        if (!primaryTargetPos) {
+          primaryTargetPos = this.trainingDummy.root.position.clone();
+        }
       }
     }
 
     for (const record of records) {
       const target = record.enemy.root.position;
-      const delta = new THREE.Vector3(target.x - event.origin.x, 0, target.z - event.origin.z);
+      const delta = new THREE.Vector3(target.x - origin.x, 0, target.z - origin.z);
       const centerDistance = delta.length();
       if (centerDistance <= 1e-8) continue;
       const bodyRadius = Math.max(record.enemy.collisionRadius, 0.45);
@@ -2104,11 +2139,36 @@ export class Game {
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
+      // Impulsão / knockback no formato do corte - empurra inimigo para trás
+      const impulseStrength = slashType === 'combo3' ? 1.8 : slashType === 'combo2' ? 1.3 : isAuto ? 1.4 : 1.0;
+      record.enemy.applyImpulse(forward, impulseStrength);
+      // Chance de KO / knockdown mais forte no combo final e no auto
+      if (slashType === 'combo3' || (isAuto && Math.random() < 0.35)) {
+        record.enemy.applyWarriorKnockdown(slashType === 'combo3' ? 1.4 : 0.9);
+      }
       this.showFloatingDamage(record.enemy.root.position, damage);
       this.warriorSlashVFX.playImpact(record.enemy.root.position, 1);
       this.syncCombatHealthBars(record);
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
+
+    // Feixe no mesmo formato do rastro que avança até o target (corte no ar)
+    const travelTarget = primaryTargetPos ?? origin.clone().addScaledVector(forward, maxDistance);
+    // Garante que o feixe vá até o alvo mesmo se estiver um pouco além do alcance
+    const travelEnd = travelTarget.clone();
+    travelEnd.y = origin.y;
+    this.warriorSlashVFX.playTravelingSlash({
+      start: origin.clone(),
+      forward,
+      target: travelEnd,
+      type: isAuto ? 'auto' : slashType,
+      scale: slashType === 'combo3' ? 1.25 : isAuto ? 1.15 : 1.0,
+      speed: isAuto ? 14.5 : slashType === 'combo3' ? 12.5 : 11.5,
+      onHit: (hitPos) => {
+        // Impacto final do feixe - explosão extra no ponto de chegada
+        this.warriorSlashVFX.playImpact(hitPos, slashType === 'combo3' ? 1.4 : 1.2);
+      },
+    });
 
     this.healFromLifeSteal(lifeStealDamage);
   }

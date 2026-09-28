@@ -945,6 +945,18 @@ export class Enemy {
     return this.warriorKnockdownRemaining > 0;
   }
 
+  /** Pushes the enemy along a direction (impulse / knockback) for the air slash. */
+  public applyImpulse(direction: THREE.Vector3, distance: number): void {
+    if (this.isDead) return;
+    if (!Number.isFinite(distance) || distance <= 0) return;
+    const dir = direction.clone();
+    dir.y = 0;
+    if (dir.lengthSq() <= 1e-8) return;
+    dir.normalize();
+    // Simple immediate displacement; clamp to avoid leaving arena
+    this.root.position.addScaledVector(dir, distance);
+  }
+
   public get resistsDisplacement(): boolean {
     return this.mageLevitateRemaining > 0
       || this.warriorKnockdownRemaining > 0
