@@ -159,6 +159,7 @@ import { attributesWithEquipment, equippedWeaponDamage } from '../equipment/Equi
 import { resolveCameraRelativeMovement } from '../entities/PlayerMovement';
 import { VictoryLobbyTransition } from './VictoryLobbyTransition';
 import { MageVFX } from '../vfx/MageVFX';
+import { WarriorSlashVFX } from '../vfx/WarriorSlashVFX';
 
 /**
  * MODO DE TESTE DE ARMA/ANIMAÇÃO: quando true, desativa o spawn de monstros
@@ -211,6 +212,7 @@ export class Game {
   private readonly miniBossEffects = new MiniBossSkillEffects(this.scene);
   private readonly vfxLightPool = new VFXLightPool(this.scene, MAGE_VFX_LIMITS.maxTemporaryLights);
   private readonly mageVFX = new MageVFX(this.scene, { lightPool: this.vfxLightPool });
+  private readonly warriorSlashVFX = new WarriorSlashVFX(this.scene, this.vfxLightPool);
   private cameraController: CameraController;
   private input: InputManager;
   private clock = new THREE.Clock();
@@ -616,6 +618,7 @@ export class Game {
     this.clearTargetMarker();
     this.healthPlasma.clear();
     this.mageVFX.clear();
+    this.warriorSlashVFX.clear();
     this.archerProjectiles.clear();
     this.stopBossSkills();
     this.combatRegistry.clear();
@@ -1355,6 +1358,7 @@ export class Game {
       this.healthPlasma.clear();
       this.archerProjectiles.clear();
       this.mageVFX.clear();
+      this.warriorSlashVFX.clear();
       this.stopBossSkills();
       this.lastBossMinionTier = 1;
       this.targetedEnemyRoot = null;
@@ -2039,6 +2043,19 @@ export class Game {
     const forward = event.forward.clone().setY(0);
     if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
     forward.normalize();
+
+    // --- Warrior Slash VFX: ataque base + automático com rastro largo, brilhos e degrade ---
+    // hitIndex 0 = básico, 1 = combo2, 2 = combo3 (como no SwordComboController)
+    const slashType = event.hitIndex === 1 ? 'combo2' : event.hitIndex === 2 ? 'combo3' : 'basic';
+    const isAuto = this.profile.autoBasicAttack && this.targetedEnemyRoot !== null;
+    this.warriorSlashVFX.play({
+      position: event.origin.clone(),
+      forward,
+      type: isAuto ? 'auto' : slashType,
+      isAuto,
+      scale: 1,
+    });
+
     const maxDistance = Math.max(WARRIOR_MAX_RANGE_METERS, this.player.attackRange);
     const coneCosine = Math.cos(THREE.MathUtils.degToRad(24));
     const records = this.combatRegistry.activeRoots()
@@ -2061,6 +2078,7 @@ export class Game {
         const damage = this.resolveOutgoingDamage(this.player.attackDamage, false);
         this.trainingDummy.takeDamage(damage);
         this.showFloatingDamage(this.trainingDummy.root.position, damage);
+        this.warriorSlashVFX.playImpact(this.trainingDummy.root.position, 1);
       }
     }
 
@@ -2087,6 +2105,7 @@ export class Game {
       lifeStealDamage += damage;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
       this.showFloatingDamage(record.enemy.root.position, damage);
+      this.warriorSlashVFX.playImpact(record.enemy.root.position, 1);
       this.syncCombatHealthBars(record);
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
@@ -2419,6 +2438,7 @@ export class Game {
       this.healthPlasma.clear();
       this.archerProjectiles.clear();
       this.mageVFX.clear();
+      this.warriorSlashVFX.clear();
       this.stopBossSkills();
       this.player.setInputLocked(true);
       this.hud.showDeathScreen();
@@ -2639,6 +2659,7 @@ export class Game {
       this.updateAutoAttack();
       this.player.update(delta);
       this.mageVFX.update(delta);
+      this.warriorSlashVFX.update(delta);
       const castingMageSkill = this.profile.selectedClass === 'mage' && this.player.isCastingSkill;
       const fatigue = this.fatigue.update(
         delta,
@@ -2685,6 +2706,7 @@ export class Game {
 
       this.cameraController.update(this.player.root.position, delta);
       this.mageVFX.applyCameraShake(this.cameraController.camera, delta);
+      this.warriorSlashVFX.applyCameraShake(this.cameraController.camera, delta);
       this.hud.updatePlayerHealth(this.player.hp, this.player.maxHP);
       this.hud.updatePlayerFatigue(fatigue, this.fatigue.currentMaxFatigue);
       const skills = this.displayWarriorSkillsSnapshot(this.warriorSkills.snapshot());

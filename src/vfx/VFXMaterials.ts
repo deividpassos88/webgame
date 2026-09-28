@@ -189,3 +189,153 @@ export function configureEnergyMaterial(
 export function setEnergyTime(material: EnergyShaderMaterial, time: number): void {
   material.uniforms.uTime.value = time;
 }
+
+export type WarriorSlashMaterial = THREE.ShaderMaterial & {
+  uniforms: {
+    uTime: { value: number };
+    uColorA: { value: THREE.Color };
+    uColorB: { value: THREE.Color };
+    uColorC: { value: THREE.Color };
+    uOpacity: { value: number };
+    uIntensity: { value: number };
+    uProgress: { value: number };
+    uThickness: { value: number };
+    uDistortion: { value: number };
+  };
+};
+
+export interface WarriorSlashMaterialOptions {
+  readonly colorA?: THREE.ColorRepresentation; // core white
+  readonly colorB?: THREE.ColorRepresentation; // cyan bright
+  readonly colorC?: THREE.ColorRepresentation; // dark teal / base
+  readonly opacity?: number;
+  readonly intensity?: number;
+  readonly thickness?: number;
+  readonly distortion?: number;
+}
+
+export function createWarriorSlashMaterial(
+  options: WarriorSlashMaterialOptions = {}
+): WarriorSlashMaterial {
+  const uniforms = {
+    uTime: { value: 0 },
+    uColorA: { value: new THREE.Color(options.colorA ?? 0xffffff) },
+    uColorB: { value: new THREE.Color(options.colorB ?? 0x5efff5) },
+    uColorC: { value: new THREE.Color(options.colorC ?? 0x0a2a2e) },
+    uOpacity: { value: options.opacity ?? 1 },
+    uIntensity: { value: options.intensity ?? 1.8 },
+    uProgress: { value: 0 },
+    uThickness: { value: options.thickness ?? 1 },
+    uDistortion: { value: options.distortion ?? 1 },
+  };
+
+  return new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: COMMON_VERTEX,
+    fragmentShader: /* glsl */`
+      uniform float uTime;
+      uniform vec3 uColorA;
+      uniform vec3 uColorB;
+      uniform vec3 uColorC;
+      uniform float uOpacity;
+      uniform float uIntensity;
+      uniform float uProgress;
+      uniform float uThickness;
+      uniform float uDistortion;
+      varying vec2 vUv;
+      varying vec3 vWorldPosition;
+      ${HASH}
+      void main() {
+        float angular = clamp(vUv.x, 0.0, 1.0); // 0..1 along arc
+        float radial = clamp(vUv.y, 0.0, 1.0); // 0 inner, 1 outer
+
+        // Angular fade: smooth in at start, long tail at end (like sword swipe)
+        float angularFadeIn = smoothstep(0.0, 0.14, angular);
+        float angularFadeOut = smoothstep(1.0, 0.62, angular);
+        float angularFade = angularFadeIn * angularFadeOut;
+
+        // Radial fades for large soft edges
+        float innerFade = smoothstep(0.0, 0.18, radial);
+        float outerFade = smoothstep(1.0, 0.72, radial);
+        float radialFade = innerFade * outerFade;
+
+        // Core band: bright white stripe near outer edge (blade edge)
+        // Degrade: dark inner -> cyan mid -> white outer core
+        float coreCenter = 0.82;
+        float coreWidth = 0.12 / max(0.2, uThickness);
+        float core = 1.0 - smoothstep(0.0, coreWidth, abs(radial - coreCenter));
+        core = pow(core, 1.2);
+
+        float midGlow = smoothstep(0.22, 0.68, radial) * smoothstep(1.0, 0.32, radial);
+        midGlow = pow(midGlow, 0.9);
+
+        // Energy noise scrolling along angular direction
+        float scroll = uTime * 3.2;
+        float n1 = noise(vec2(angular * 18.0 + scroll * 0.6, radial * 9.0 + uTime * 0.8));
+        float n2 = noise(vec2(angular * 34.0 - scroll * 0.9, radial * 16.0 + uTime * 1.3));
+        float turbulence = (n1 * 0.55 + n2 * 0.45) * uDistortion;
+
+        // Motion streaks along angular
+        float streak = sin((angular * 28.0 - uTime * 18.0) + radial * 12.0 + turbulence * 6.0);
+        streak = streak * 0.5 + 0.5;
+        streak = pow(streak, 2.2);
+
+        // Progress-driven fade and expansion feel
+        float prog = clamp(uProgress, 0.0, 1.0);
+        float timeFade = 1.0 - prog;
+        timeFade = pow(timeFade, 1.25);
+
+        // Brilho extra at start (impact flash)
+        float flash = 1.0 + (1.0 - prog) * 0.85 * smoothstep(0.65, 0.85, radial);
+
+        // Color degrade: C (dark) -> B (cyan) -> A (white)
+        vec3 color = mix(uColorC, uColorB, smoothstep(0.08, 0.72, radial + turbulence * 0.12));
+        color = mix(color, uColorA, core * 0.95 + midGlow * 0.22);
+
+        // Add streak brightness
+        color += vec3(0.18, 0.45, 0.5) * streak * 0.35 * midGlow;
+
+        float energy = midGlow * 0.85 + core * 1.45 + turbulence * 0.18 + streak * 0.18;
+
+        float alpha = radialFade * angularFade * (0.22 + energy * 0.92) * uOpacity * timeFade * flash;
+
+        // Extra outer glow lift
+        alpha *= uIntensity;
+
+        // Discard nearly transparent to save fill
+        if (alpha < 0.01) discard;
+
+        gl_FragColor = vec4(color * uIntensity, clamp(alpha, 0.0, 1.0));
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  }) as WarriorSlashMaterial;
+}
+
+export function configureWarriorSlashMaterial(
+  material: WarriorSlashMaterial,
+  options: WarriorSlashMaterialOptions & { progress?: number }
+): void {
+  if (options.colorA !== undefined) material.uniforms.uColorA.value.set(options.colorA);
+  if (options.colorB !== undefined) material.uniforms.uColorB.value.set(options.colorB);
+  if (options.colorC !== undefined) material.uniforms.uColorC.value.set(options.colorC);
+  if (options.opacity !== undefined) material.uniforms.uOpacity.value = options.opacity;
+  if (options.intensity !== undefined) material.uniforms.uIntensity.value = options.intensity;
+  if (options.thickness !== undefined) material.uniforms.uThickness.value = options.thickness;
+  if (options.distortion !== undefined) material.uniforms.uDistortion.value = options.distortion;
+  if (options.progress !== undefined) material.uniforms.uProgress.value = options.progress;
+}
+
+export function setWarriorSlashTime(
+  material: WarriorSlashMaterial,
+  time: number,
+  progress: number
+): void {
+  material.uniforms.uTime.value = time;
+  material.uniforms.uProgress.value = progress;
+}
