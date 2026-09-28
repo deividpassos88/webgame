@@ -159,6 +159,7 @@ import { attributesWithEquipment, equippedWeaponDamage } from '../equipment/Equi
 import { resolveCameraRelativeMovement } from '../entities/PlayerMovement';
 import { VictoryLobbyTransition } from './VictoryLobbyTransition';
 import { MageVFX } from '../vfx/MageVFX';
+import { WarriorSlashVFX } from '../vfx/warrior/WarriorSlashVFX';
 
 /**
  * MODO DE TESTE DE ARMA/ANIMAÇÃO: quando true, desativa o spawn de monstros
@@ -211,6 +212,7 @@ export class Game {
   private readonly miniBossEffects = new MiniBossSkillEffects(this.scene);
   private readonly vfxLightPool = new VFXLightPool(this.scene, MAGE_VFX_LIMITS.maxTemporaryLights);
   private readonly mageVFX = new MageVFX(this.scene, { lightPool: this.vfxLightPool });
+  private readonly warriorSlashVFX = new WarriorSlashVFX();
   private cameraController: CameraController;
   private input: InputManager;
   private clock = new THREE.Clock();
@@ -436,6 +438,7 @@ export class Game {
 
       this.setupLights();
       this.scene.add(this.level.group);
+      this.scene.add(this.warriorSlashVFX.group);
       this.player = new Player(characterId, this.characterAssets);
       await this.player.load();
       this.player.onWarriorSkillHit((event) => this.onWarriorSkillHit(event));
@@ -2024,6 +2027,13 @@ export class Game {
 
   private onWarriorAttackWindow(event: WarriorAttackWindowEvent): void {
     if (this.profile.selectedClass !== 'paladin' || this.player.equippedWeaponId !== 'sword') return;
+    this.warriorSlashVFX.triggerSlash(
+      event.attackId,
+      event.origin,
+      event.forward,
+      event.hitIndex,
+      this.player.attackTargetEnemy
+    );
     if (event.attackId === 'ataque_basico') {
       this.applyWarriorBasicWaveDamage(event);
     }
@@ -2046,6 +2056,7 @@ export class Game {
       .filter((record): record is CombatRecord => record !== null && !record.enemy.isDead);
     let lifeStealDamage = 0;
 
+    let hitAny = false;
     if (this.trainingDummy) {
       const dummyDelta = new THREE.Vector3(
         this.trainingDummy.root.position.x - event.origin.x,
@@ -2061,6 +2072,8 @@ export class Game {
         const damage = this.resolveOutgoingDamage(this.player.attackDamage, false);
         this.trainingDummy.takeDamage(damage);
         this.showFloatingDamage(this.trainingDummy.root.position, damage);
+        this.warriorSlashVFX.reportEnemyHit(this.trainingDummy.root.position);
+        hitAny = true;
       }
     }
 
@@ -2088,6 +2101,10 @@ export class Game {
       record.enemy.receivePlayerHit(damage, this.player.root.position);
       this.showFloatingDamage(record.enemy.root.position, damage);
       this.syncCombatHealthBars(record);
+      if (!hitAny) {
+        hitAny = true;
+        this.warriorSlashVFX.reportEnemyHit(record.enemy.root.position);
+      }
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
 
@@ -2251,6 +2268,12 @@ export class Game {
       const plasmaOrigin = enemy.root.position.clone();
       plasmaOrigin.y += bodyScale * 1.1;
       this.healthPlasma.spawn(plasmaOrigin, reward.healAmount);
+
+      // Quando mata um mini-boss e recupera uma grande quantidade de vida:
+      // Dispara o pilar de cura verde com anel e cruzes médicas flutuantes (Imagem 1)
+      if (role === 'mini-boss') {
+        this.warriorSlashVFX.triggerMiniBossHeal(this.player.root);
+      }
     }
 
     Logger.info(
@@ -2639,6 +2662,7 @@ export class Game {
       this.updateAutoAttack();
       this.player.update(delta);
       this.mageVFX.update(delta);
+      this.warriorSlashVFX.update(delta);
       const castingMageSkill = this.profile.selectedClass === 'mage' && this.player.isCastingSkill;
       const fatigue = this.fatigue.update(
         delta,
