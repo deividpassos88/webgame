@@ -983,6 +983,18 @@ export class Game {
       this.warriorSkills.refund(id);
       return;
     }
+    // Efeito giratório começa na costa quase círculo completo com círculo de ar 7m
+    if (id === 'ataque_giratorio' || id === 'ataque_giratorio_2') {
+      const forward = this.player.planarForward(new THREE.Vector3());
+      if (forward.lengthSq() < 1e-6) forward.set(0, 0, 1);
+      this.warriorSlashVFX.playSpin({
+        position: this.player.root.position.clone(),
+        forward,
+        type: id === 'ataque_giratorio_2' ? 'spin_frost' : 'spin',
+        scale: id === 'ataque_giratorio_2' ? 1.2 : 1.15,
+        maxRadius: 7.0,
+      });
+    }
     if (mage && !adminPreview) this.fatigue.consumePercent(mageSkillFatiguePercent(id));
   }
 
@@ -2178,6 +2190,22 @@ export class Game {
     // area must not also splash through monsters behind that impact.
     if (this.profile.selectedClass === 'mage') return;
     if (!this.hasAdminFreeSkills() && !isWarriorSkillUnlocked(event.attackId, this.profile.progression.level)) return;
+
+    // --- Skill ataque giratório com mesmo efeito de rastro + círculo de ar 7m ---
+    if (event.attackId === 'ataque_giratorio' || event.attackId === 'ataque_giratorio_2') {
+      const spinType = event.attackId === 'ataque_giratorio_2' ? 'spin_frost' : 'spin';
+      const forward = event.forward.clone().setY(0);
+      if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
+      forward.normalize();
+      this.warriorSlashVFX.playSpin({
+        position: event.origin.clone(),
+        forward,
+        type: spinType,
+        scale: spinType === 'spin_frost' ? 1.2 : 1.15,
+        maxRadius: 7.0,
+      });
+    }
+
     const records = this.combatRegistry.activeRoots()
       .map((root) => this.combatRegistry.findByRoot(root))
       .filter((record): record is CombatRecord => record !== null);
@@ -2208,6 +2236,17 @@ export class Game {
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
+      // Giratório também empurra e dá KO leve
+      if (event.attackId === 'ataque_giratorio' || event.attackId === 'ataque_giratorio_2') {
+        const spinForward = new THREE.Vector3().subVectors(record.enemy.root.position, event.origin).setY(0).normalize();
+        if (spinForward.lengthSq() > 1e-6) {
+          record.enemy.applyImpulse(spinForward, event.attackId === 'ataque_giratorio_2' ? 1.6 : 1.4);
+        }
+        if (Math.random() < 0.45) {
+          record.enemy.applyWarriorKnockdown(0.85);
+        }
+        this.warriorSlashVFX.playImpact(record.enemy.root.position, 1.15);
+      }
       if (event.attackId === 'pulo_atacando' && !record.enemy.isDead) {
         record.enemy.applyWarriorKnockdown(1.2);
       }

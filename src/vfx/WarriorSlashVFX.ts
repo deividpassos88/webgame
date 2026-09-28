@@ -14,7 +14,7 @@ import {
 export interface WarriorSlashPlayOptions {
   readonly position: THREE.Vector3;
   readonly forward: THREE.Vector3;
-  readonly type?: 'basic' | 'combo2' | 'combo3' | 'auto';
+  readonly type?: 'basic' | 'combo2' | 'combo3' | 'auto' | 'spin' | 'spin_frost';
   readonly scale?: number;
   readonly isAuto?: boolean;
 }
@@ -150,6 +150,30 @@ const AUTO_CONFIG = {
   colors: { core: 0xffffff, glow: 0x8affff, dark: 0x0a2e33 },
 };
 
+const SPIN_CONFIG = {
+  inner: 0.45,
+  outer: 3.8,
+  theta: (Math.PI * 340) / 180, // quase círculo completo
+  thetaStart: Math.PI, // começa na costa
+  duration: 0.68,
+  intensity: 2.8,
+  thickness: 1.5,
+  colors: { core: 0xffffff, glow: 0x5efff6, dark: 0x0a2e33 },
+  waveMaxRadius: 7.0,
+};
+
+const SPIN_FROST_CONFIG = {
+  inner: 0.45,
+  outer: 4.0,
+  theta: (Math.PI * 340) / 180,
+  thetaStart: Math.PI,
+  duration: 0.72,
+  intensity: 2.9,
+  thickness: 1.55,
+  colors: { core: 0xeaffff, glow: 0x7efff6, dark: 0x0a2a3a },
+  waveMaxRadius: 7.0,
+};
+
 function configForType(type: WarriorSlashPlayOptions['type']) {
   switch (type) {
     case 'combo2':
@@ -158,6 +182,10 @@ function configForType(type: WarriorSlashPlayOptions['type']) {
       return COMBO3_CONFIG;
     case 'auto':
       return AUTO_CONFIG;
+    case 'spin':
+      return SPIN_CONFIG;
+    case 'spin_frost':
+      return SPIN_FROST_CONFIG;
     case 'basic':
     default:
       return BASIC_CONFIG;
@@ -294,10 +322,15 @@ class WarriorSlashEffect implements PoolableVFX {
   }
 
   public play(options: WarriorSlashPlayOptions): void {
-    const cfg = configForType(options.type);
-    // Rebuild geometries if theta/radius changed significantly (basic vs combo)
-    if (Math.abs(cfg.outer - BASIC_CONFIG.outer) > 0.01 || cfg.theta !== BASIC_CONFIG.theta) {
-      this.rebuildGeometries(cfg.inner, cfg.outer, cfg.theta);
+    const cfg = configForType(options.type) as any;
+    const thetaStart = cfg.thetaStart ?? -cfg.theta / 2;
+    // Rebuild geometries if theta/radius/start changed significantly (basic vs combo vs spin)
+    if (
+      Math.abs(cfg.outer - BASIC_CONFIG.outer) > 0.01 ||
+      cfg.theta !== BASIC_CONFIG.theta ||
+      Math.abs(thetaStart - -BASIC_CONFIG.theta / 2) > 0.01
+    ) {
+      this.rebuildGeometries(cfg.inner, cfg.outer, cfg.theta, thetaStart);
     }
 
     this.duration = cfg.duration * (options.isAuto ? 1.05 : 1);
@@ -484,9 +517,10 @@ class WarriorSlashEffect implements PoolableVFX {
     this.embers.dispose();
   }
 
-  private rebuildGeometries(inner: number, outer: number, theta: number): void {
-    const newArc = createArcRibbonGeometry(inner, outer, -theta / 2, theta, 6, 48);
-    const newCore = createArcRibbonGeometry(inner + 0.25, outer - 0.15, -theta / 2, theta, 4, 48);
+  private rebuildGeometries(inner: number, outer: number, theta: number, thetaStart?: number): void {
+    const start = thetaStart ?? -theta / 2;
+    const newArc = createArcRibbonGeometry(inner, outer, start, theta, 6, 48);
+    const newCore = createArcRibbonGeometry(inner + 0.25, outer - 0.15, start, theta, 4, 48);
     this.slashMesh.geometry = newArc;
     this.slashCoreMesh.geometry = newCore;
     this.arcGeometry.dispose();
@@ -894,6 +928,267 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
   }
 }
 
+class WarriorSpinWaveEffect implements PoolableVFX {
+  public active = false;
+  public readonly group = new THREE.Group();
+  private readonly mainRing: THREE.Mesh;
+  private readonly coreRing: THREE.Mesh;
+  private readonly outerRing: THREE.Mesh;
+  private readonly mainMat: WarriorSlashMaterial;
+  private readonly coreMat: WarriorSlashMaterial;
+  private readonly outerMat: EnergyShaderMaterial;
+  private readonly glow: THREE.Sprite;
+  private readonly flare: THREE.Sprite;
+  private readonly particles: PooledParticleCloud;
+  private readonly embers: PooledParticleCloud;
+  private readonly mainGeo: THREE.BufferGeometry;
+  private readonly coreGeo: THREE.BufferGeometry;
+  private readonly outerGeo: THREE.BufferGeometry;
+  private lightHandle: VFXLightHandle | null = null;
+
+  private age = 0;
+  private duration = 0.75;
+  private maxRadius = 7.0;
+  private baseScale = 1;
+  private forward = new THREE.Vector3(0, 0, 1);
+
+  constructor(
+    private readonly resources: WarriorSlashResources,
+    private readonly lightPool: VFXLightPool
+  ) {
+    this.group.name = 'WarriorSpinWave';
+    this.group.visible = false;
+
+    // Quase círculo completo 350° para efeito de círculo de ar quase fechado
+    const almostFull = (350 * Math.PI) / 180;
+    const startBack = Math.PI; // começa na costa
+
+    this.mainGeo = createArcRibbonGeometry(0.3, 1.1, startBack, almostFull, 4, 64);
+    this.coreGeo = createArcRibbonGeometry(0.45, 0.95, startBack, almostFull, 2, 64);
+    this.outerGeo = createArcRibbonGeometry(0.2, 1.4, startBack, almostFull, 3, 64);
+
+    this.mainMat = createWarriorSlashMaterial({
+      colorA: 0xffffff,
+      colorB: 0x5efff6,
+      colorC: 0x0a2e33,
+      opacity: 1,
+      intensity: 2.4,
+      thickness: 1.6,
+      distortion: 1.2,
+    });
+    this.coreMat = createWarriorSlashMaterial({
+      colorA: 0xffffff,
+      colorB: 0xbfffff,
+      colorC: 0x0a4a4a,
+      opacity: 0.95,
+      intensity: 3.0,
+      thickness: 0.6,
+      distortion: 0.9,
+    });
+    this.outerMat = createMagicCircleMaterial({
+      colorA: 0xffffff,
+      colorB: 0x5efff6,
+      opacity: 0,
+      intensity: 1.8,
+      thickness: 0.9,
+      distortion: 1.2,
+    });
+
+    this.mainRing = new THREE.Mesh(this.mainGeo, this.mainMat);
+    this.coreRing = new THREE.Mesh(this.coreGeo, this.coreMat);
+    this.outerRing = new THREE.Mesh(this.resources.ring, this.outerMat);
+
+    this.mainRing.frustumCulled = false;
+    this.coreRing.frustumCulled = false;
+    this.outerRing.frustumCulled = false;
+    this.mainRing.renderOrder = 6;
+    this.coreRing.renderOrder = 7;
+    this.outerRing.renderOrder = 5;
+    this.outerRing.rotation.x = -Math.PI / 2;
+    this.outerRing.position.y = 0.02;
+
+    const makeSprite = (name: string, map: THREE.Texture, color: number) => {
+      const mat = new THREE.SpriteMaterial({
+        map,
+        color,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      });
+      const s = new THREE.Sprite(mat);
+      s.name = name;
+      return s;
+    };
+
+    this.glow = makeSprite('SpinGlow', resources.softGlow, 0x5efff6);
+    this.flare = makeSprite('SpinFlare', resources.impactFlare, 0xffffff);
+
+    this.particles = new PooledParticleCloud(64, resources.softGlow);
+    this.embers = new PooledParticleCloud(48, resources.softGlow);
+
+    this.group.add(this.outerRing, this.mainRing, this.coreRing, this.glow, this.flare, this.particles.points, this.embers.points);
+  }
+
+  public play(options: { position: THREE.Vector3; forward: THREE.Vector3; type?: 'spin' | 'spin_frost'; scale?: number; maxRadius?: number }): void {
+    const isFrost = options.type === 'spin_frost';
+    const cfg = isFrost ? SPIN_FROST_CONFIG : SPIN_CONFIG;
+
+    this.age = 0;
+    this.duration = cfg.duration;
+    this.maxRadius = options.maxRadius ?? cfg.waveMaxRadius ?? 7.0;
+    this.baseScale = options.scale ?? 1;
+    this.forward.copy(options.forward).setY(0).normalize();
+    if (this.forward.lengthSq() < 1e-6) this.forward.set(0, 0, 1);
+
+    this.group.visible = true;
+    this.group.position.copy(options.position);
+    this.group.position.y += 0.35; // chão + leve altura
+    this.group.scale.setScalar(1);
+
+    const yaw = Math.atan2(this.forward.x, this.forward.z);
+    this.group.rotation.set(0.08, yaw, 0);
+
+    // Rebuild if needed for maxRadius? We scale instead
+    this.mainMat.uniforms.uColorA.value.set(cfg.colors.core);
+    this.mainMat.uniforms.uColorB.value.set(cfg.colors.glow);
+    this.mainMat.uniforms.uColorC.value.set(cfg.colors.dark);
+    this.mainMat.uniforms.uOpacity.value = 1;
+    this.mainMat.uniforms.uIntensity.value = cfg.intensity;
+    this.mainMat.uniforms.uThickness.value = cfg.thickness;
+    this.mainMat.uniforms.uTime.value = 0;
+    this.mainMat.uniforms.uProgress.value = 0;
+
+    this.coreMat.uniforms.uColorA.value.set(0xffffff);
+    this.coreMat.uniforms.uColorB.value.set(0xbfffff);
+    this.coreMat.uniforms.uColorC.value.set(cfg.colors.glow);
+    this.coreMat.uniforms.uOpacity.value = 0.9;
+    this.coreMat.uniforms.uIntensity.value = cfg.intensity * 1.25;
+    this.coreMat.uniforms.uThickness.value = cfg.thickness * 0.5;
+    this.coreMat.uniforms.uTime.value = 0;
+    this.coreMat.uniforms.uProgress.value = 0;
+
+    this.outerMat.uniforms.uColorA.value.set(cfg.colors.core);
+    this.outerMat.uniforms.uColorB.value.set(cfg.colors.glow);
+    this.outerMat.uniforms.uOpacity.value = 0.65;
+    this.outerMat.uniforms.uIntensity.value = 1.7;
+    this.outerMat.uniforms.uTime.value = 0;
+
+    (this.glow.material as THREE.SpriteMaterial).opacity = 0.75;
+    (this.glow.material as THREE.SpriteMaterial).color.set(cfg.colors.glow);
+    this.glow.position.set(0, 0.5, 0);
+    this.glow.scale.setScalar(1.5 * this.baseScale);
+
+    (this.flare.material as THREE.SpriteMaterial).opacity = 0.85;
+    this.flare.position.set(0, 0.6, 0);
+    this.flare.scale.setScalar(2.0 * this.baseScale);
+
+    this.mainRing.scale.setScalar(0.35 * this.baseScale);
+    this.coreRing.scale.setScalar(0.35 * this.baseScale);
+    this.outerRing.scale.setScalar(0.4 * this.baseScale);
+
+    this.lightHandle = this.lightPool.acquire();
+    if (this.lightHandle) {
+      this.lightHandle.light.color.set(cfg.colors.glow);
+      this.lightHandle.light.intensity = 2.8 * this.baseScale;
+      this.lightHandle.light.distance = 9 * this.baseScale;
+      this.lightHandle.light.position.copy(this.group.position);
+      this.lightHandle.light.position.y += 0.8;
+    }
+
+    this.particles.setTexture(this.resources.softGlow);
+    this.particles.emit(new THREE.Vector3(), {
+      color: cfg.colors.glow,
+      count: 42,
+      speed: 4.8 * this.baseScale,
+      spread: 1.6,
+      lifetime: this.duration * 1.1,
+      upwardBias: 0.25,
+    });
+
+    this.embers.setTexture(this.resources.softGlow);
+    this.embers.emit(new THREE.Vector3(), {
+      color: 0xbfffff,
+      count: 28,
+      speed: 3.2 * this.baseScale,
+      spread: 1.3,
+      lifetime: this.duration * 1.2,
+      upwardBias: 0.3,
+    });
+  }
+
+  public update(delta: number): boolean {
+    const elapsed = Math.max(0, delta);
+    this.age += elapsed;
+    const progress = THREE.MathUtils.clamp(this.age / this.duration, 0, 1);
+    const fade = 1 - progress;
+
+    // Expansão até 7 metros: scale vai de 0.35 até maxRadius / outerRadius
+    // mainGeo outer ~1.1, então scale final = maxRadius / 1.1
+    const targetScale = this.maxRadius / 1.1;
+    const currentScale = THREE.MathUtils.lerp(0.35, targetScale, THREE.MathUtils.clamp(progress * 1.15, 0, 1));
+
+    setWarriorSlashTime(this.mainMat, this.age * 1.8, progress);
+    setWarriorSlashTime(this.coreMat, this.age * 2.1, progress);
+    this.outerMat.uniforms.uTime.value = this.age * 1.4;
+
+    this.mainMat.uniforms.uOpacity.value = fade;
+    this.coreMat.uniforms.uOpacity.value = fade * 0.9;
+    this.outerMat.uniforms.uOpacity.value = fade * 0.55;
+
+    this.mainRing.scale.setScalar(currentScale * this.baseScale);
+    this.coreRing.scale.setScalar(currentScale * this.baseScale * 1.02);
+    this.outerRing.scale.setScalar((0.4 + progress * (this.maxRadius / 0.26)) * this.baseScale * 0.5);
+
+    (this.glow.material as THREE.SpriteMaterial).opacity = fade * 0.75;
+    this.glow.scale.setScalar((1.5 + progress * 2.5) * this.baseScale);
+
+    (this.flare.material as THREE.SpriteMaterial).opacity = fade * 0.85;
+    this.flare.scale.setScalar((2.0 + progress * 1.8) * this.baseScale);
+    (this.flare.material as THREE.SpriteMaterial).rotation = progress * 2.0;
+
+    if (this.lightHandle) {
+      this.lightHandle.light.intensity *= Math.max(0, 1 - elapsed * 4.5);
+      this.lightHandle.light.position.copy(this.group.position);
+    }
+
+    this.particles.update(elapsed);
+    this.embers.update(elapsed);
+
+    return this.age < this.duration;
+  }
+
+  public reset(): void {
+    this.group.visible = false;
+    this.group.removeFromParent();
+    this.age = 0;
+    this.lightHandle?.release();
+    this.lightHandle = null;
+    this.particles.reset();
+    this.embers.reset();
+    this.mainMat.uniforms.uOpacity.value = 0;
+    this.coreMat.uniforms.uOpacity.value = 0;
+    this.outerMat.uniforms.uOpacity.value = 0;
+    (this.glow.material as THREE.SpriteMaterial).opacity = 0;
+    (this.flare.material as THREE.SpriteMaterial).opacity = 0;
+  }
+
+  public dispose(): void {
+    this.mainGeo.dispose();
+    this.coreGeo.dispose();
+    this.outerGeo.dispose();
+    this.mainMat.dispose();
+    this.coreMat.dispose();
+    this.outerMat.dispose();
+    (this.glow.material as THREE.Material).dispose();
+    (this.flare.material as THREE.Material).dispose();
+    this.particles.dispose();
+    this.embers.dispose();
+  }
+}
+
 export class WarriorSlashVFX {
   private readonly resources: WarriorSlashResources;
   private readonly pool: VFXPool<WarriorSlashEffect>;
@@ -902,6 +1197,8 @@ export class WarriorSlashVFX {
   private readonly activeImpacts: WarriorHitImpactEffect[] = [];
   private readonly travelingPool: VFXPool<WarriorTravelingSlashEffect>;
   private readonly activeTraveling: WarriorTravelingSlashEffect[] = [];
+  private readonly spinPool: VFXPool<WarriorSpinWaveEffect>;
+  private readonly activeSpin: WarriorSpinWaveEffect[] = [];
   private readonly cameraShake = new CameraShake();
 
   public constructor(
@@ -921,6 +1218,10 @@ export class WarriorSlashVFX {
       () => new WarriorTravelingSlashEffect(this.resources, lightPool),
       12
     );
+    this.spinPool = new VFXPool(
+      () => new WarriorSpinWaveEffect(this.resources, lightPool),
+      8
+    );
   }
 
   public play(options: WarriorSlashPlayOptions): void {
@@ -931,8 +1232,8 @@ export class WarriorSlashVFX {
     this.active.push(effect);
 
     // Impact shake - subtle but punchy for large blade
-    const intensity = options.type === 'combo3' ? 0.055 : options.type === 'combo2' ? 0.038 : options.type === 'auto' ? 0.042 : 0.03;
-    const duration = options.type === 'combo3' ? 0.20 : options.type === 'auto' ? 0.16 : 0.14;
+    const intensity = options.type === 'combo3' ? 0.055 : options.type === 'combo2' ? 0.038 : options.type === 'auto' ? 0.042 : options.type === 'spin' || options.type === 'spin_frost' ? 0.06 : 0.03;
+    const duration = options.type === 'combo3' ? 0.20 : options.type === 'auto' ? 0.16 : options.type === 'spin' || options.type === 'spin_frost' ? 0.22 : 0.14;
     this.cameraShake.add(intensity, duration);
   }
 
@@ -959,6 +1260,35 @@ export class WarriorSlashVFX {
     this.cameraShake.add(intensity, 0.13);
   }
 
+  public playSpin(options: { position: THREE.Vector3; forward: THREE.Vector3; type?: 'spin' | 'spin_frost'; scale?: number; maxRadius?: number }): void {
+    // Spin = rastro quase círculo completo começando na costa + círculo de ar expandindo 7m
+    const spinType = options.type ?? 'spin';
+
+    // 1. Rastro de lâmina quase círculo completo (começa na costa, rabo fino no final, meio grosso)
+    this.play({
+      position: options.position.clone(),
+      forward: options.forward.clone(),
+      type: spinType,
+      scale: options.scale ?? 1.15,
+    });
+
+    // 2. Círculo de ar quase fechado expandindo até 7m (efeito corta do ar)
+    const wave = this.spinPool.acquire();
+    if (!wave) return;
+    wave.play({
+      position: options.position.clone(),
+      forward: options.forward.clone(),
+      type: spinType,
+      scale: options.scale ?? 1.15,
+      maxRadius: options.maxRadius ?? 7.0,
+    });
+    this.scene.add(wave.group);
+    this.activeSpin.push(wave);
+
+    // Shake mais forte para giratório
+    this.cameraShake.add(spinType === 'spin_frost' ? 0.068 : 0.062, 0.24);
+  }
+
   public update(delta: number): void {
     for (let i = this.active.length - 1; i >= 0; i--) {
       const effect = this.active[i];
@@ -978,6 +1308,12 @@ export class WarriorSlashVFX {
       this.travelingPool.release(travel);
       this.activeTraveling.splice(i, 1);
     }
+    for (let i = this.activeSpin.length - 1; i >= 0; i--) {
+      const spin = this.activeSpin[i];
+      if (spin.update(delta)) continue;
+      this.spinPool.release(spin);
+      this.activeSpin.splice(i, 1);
+    }
   }
 
   public applyCameraShake(camera: THREE.Camera, delta: number): void {
@@ -991,6 +1327,8 @@ export class WarriorSlashVFX {
     this.activeImpacts.length = 0;
     for (const e of this.activeTraveling) this.travelingPool.release(e);
     this.activeTraveling.length = 0;
+    for (const e of this.activeSpin) this.spinPool.release(e);
+    this.activeSpin.length = 0;
     this.cameraShake.clear();
   }
 
@@ -999,6 +1337,7 @@ export class WarriorSlashVFX {
     this.pool.dispose();
     this.impactPool.dispose();
     this.travelingPool.dispose();
+    this.spinPool.dispose();
     this.resources.quad.dispose();
     this.resources.ring.dispose();
     this.resources.softGlow.dispose();
@@ -1007,6 +1346,6 @@ export class WarriorSlashVFX {
   }
 
   public get activeCount(): number {
-    return this.active.length + this.activeImpacts.length + this.activeTraveling.length;
+    return this.active.length + this.activeImpacts.length + this.activeTraveling.length + this.activeSpin.length;
   }
 }
