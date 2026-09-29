@@ -2193,20 +2193,9 @@ export class Game {
     if (this.profile.selectedClass === 'mage') return;
     if (!this.hasAdminFreeSkills() && !isWarriorSkillUnlocked(event.attackId, this.profile.progression.level)) return;
 
-    // --- Skill ataque giratório com mesmo efeito de rastro + círculo de ar 7m ---
-    if (event.attackId === 'ataque_giratorio' || event.attackId === 'ataque_giratorio_2') {
-      const spinType = event.attackId === 'ataque_giratorio_2' ? 'spin_frost' : 'spin';
-      const forward = event.forward.clone().setY(0);
-      if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
-      forward.normalize();
-      this.warriorSlashVFX.playSpin({
-        position: event.origin.clone(),
-        forward,
-        type: spinType,
-        scale: spinType === 'spin_frost' ? 1.2 : 1.15,
-        maxRadius: 7.0,
-      });
-    }
+    // O rastro + círculo de ar de 7m do giratório já nasce no cast da skill
+    // (useWarriorSkill). Aqui só entra o flash de impacto em cada alvo, senão
+    // o giro era desenhado duas vezes por uso.
 
     const records = this.combatRegistry.activeRoots()
       .map((root) => this.combatRegistry.findByRoot(root))

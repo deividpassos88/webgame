@@ -118,9 +118,11 @@ const BASIC_CONFIG = {
   outer: 3.2,
   theta: (Math.PI * 260) / 180, // 260 deg large
   duration: 0.42,
-  intensity: 2.1,
+  intensity: 1.55,
   thickness: 1.25,
-  colors: { core: 0xffffff, glow: 0x7efff6, dark: 0x0a2e33 },
+  breakup: 0.62,
+  saturation: 1.35,
+  colors: { core: 0xdff8ff, glow: 0x2fd4ff, dark: 0x062a3c },
 };
 
 const COMBO2_CONFIG = {
@@ -128,9 +130,11 @@ const COMBO2_CONFIG = {
   outer: 3.5,
   theta: (Math.PI * 280) / 180,
   duration: 0.46,
-  intensity: 2.3,
+  intensity: 1.6,
   thickness: 1.35,
-  colors: { core: 0xeaffff, glow: 0x4dffe9, dark: 0x082a30 },
+  breakup: 0.6,
+  saturation: 1.35,
+  colors: { core: 0xe4fbff, glow: 0x2f9dff, dark: 0x06203c },
 };
 
 const COMBO3_CONFIG = {
@@ -138,9 +142,11 @@ const COMBO3_CONFIG = {
   outer: 3.8,
   theta: (Math.PI * 310) / 180,
   duration: 0.52,
-  intensity: 2.6,
+  intensity: 1.7,
   thickness: 1.45,
-  colors: { core: 0xffffff, glow: 0x5affff, dark: 0x0a2e33 },
+  breakup: 0.55,
+  saturation: 1.4,
+  colors: { core: 0xfff2d4, glow: 0xffa53a, dark: 0x3a1c05 },
 };
 
 const AUTO_CONFIG = {
@@ -148,9 +154,11 @@ const AUTO_CONFIG = {
   outer: 3.4,
   theta: (Math.PI * 270) / 180,
   duration: 0.44,
-  intensity: 2.4,
+  intensity: 1.6,
   thickness: 1.3,
-  colors: { core: 0xffffff, glow: 0x8affff, dark: 0x0a2e33 },
+  breakup: 0.66,
+  saturation: 1.4,
+  colors: { core: 0xdcfff4, glow: 0x25f0b8, dark: 0x04301f },
 };
 
 const SPIN_CONFIG = {
@@ -159,9 +167,11 @@ const SPIN_CONFIG = {
   theta: (Math.PI * 340) / 180, // quase círculo completo
   thetaStart: Math.PI, // começa na costa
   duration: 0.68,
-  intensity: 2.8,
+  intensity: 1.75,
   thickness: 1.5,
-  colors: { core: 0xffffff, glow: 0x5efff6, dark: 0x0a2e33 },
+  breakup: 0.58,
+  saturation: 1.45,
+  colors: { core: 0xfff0cd, glow: 0xffb43c, dark: 0x3d1f04 },
   waveMaxRadius: 7.0,
 };
 
@@ -171,9 +181,11 @@ const SPIN_FROST_CONFIG = {
   theta: (Math.PI * 340) / 180,
   thetaStart: Math.PI,
   duration: 0.72,
-  intensity: 2.9,
+  intensity: 1.8,
   thickness: 1.55,
-  colors: { core: 0xeaffff, glow: 0x7efff6, dark: 0x0a2a3a },
+  breakup: 0.56,
+  saturation: 1.4,
+  colors: { core: 0xeaf7ff, glow: 0x7fd4ff, dark: 0x0a2340 },
   waveMaxRadius: 7.0,
 };
 
@@ -218,6 +230,9 @@ class WarriorSlashEffect implements PoolableVFX {
   private duration = 0.42;
   private baseScale = 1;
   private forward = new THREE.Vector3(0, 0, 1);
+  /** No giratório o rastro da lâmina varre o corpo em vez de ficar parado. */
+  private spinSweep = false;
+  private baseYaw = 0;
 
   public constructor(
     private readonly resources: WarriorSlashResources,
@@ -252,6 +267,8 @@ class WarriorSlashEffect implements PoolableVFX {
       intensity: BASIC_CONFIG.intensity,
       thickness: BASIC_CONFIG.thickness,
       distortion: 1.1,
+      breakup: BASIC_CONFIG.breakup,
+      saturation: BASIC_CONFIG.saturation,
     });
     this.slashMesh = new THREE.Mesh(this.arcGeometry, this.slashMaterial);
     this.slashMesh.name = 'WarriorSlashMain';
@@ -259,13 +276,15 @@ class WarriorSlashEffect implements PoolableVFX {
     this.slashMesh.renderOrder = 5;
 
     this.slashCoreMaterial = createWarriorSlashMaterial({
-      colorA: 0xffffff,
-      colorB: 0xbfffff,
-      colorC: 0x0a4a4a,
+      colorA: BASIC_CONFIG.colors.core,
+      colorB: BASIC_CONFIG.colors.glow,
+      colorC: BASIC_CONFIG.colors.dark,
       opacity: 0.95,
-      intensity: 2.8,
+      intensity: 1.9,
       thickness: 0.55,
       distortion: 0.9,
+      breakup: BASIC_CONFIG.breakup * 0.7,
+      saturation: 1.1,
     });
     this.slashCoreMesh = new THREE.Mesh(this.coreGeometry, this.slashCoreMaterial);
     this.slashCoreMesh.name = 'WarriorSlashCore';
@@ -303,10 +322,10 @@ class WarriorSlashEffect implements PoolableVFX {
       return sprite;
     };
 
-    this.impactSprite = makeSprite('WarriorImpactFlare', resources.impactFlare, 0x7fffff);
-    this.glowSprite = makeSprite('WarriorCenterGlow', resources.softGlow, 0x5efff5);
-    this.edgeGlow1 = makeSprite('WarriorEdgeGlow1', resources.softGlow, 0xffffff);
-    this.edgeGlow2 = makeSprite('WarriorEdgeGlow2', resources.softGlow, 0x5efff5);
+    this.impactSprite = makeSprite('WarriorImpactFlare', resources.impactFlare, BASIC_CONFIG.colors.glow);
+    this.glowSprite = makeSprite('WarriorCenterGlow', resources.softGlow, BASIC_CONFIG.colors.glow);
+    this.edgeGlow1 = makeSprite('WarriorEdgeGlow1', resources.softGlow, BASIC_CONFIG.colors.core);
+    this.edgeGlow2 = makeSprite('WarriorEdgeGlow2', resources.softGlow, BASIC_CONFIG.colors.glow);
 
     this.particles = new PooledParticleCloud(72, resources.softGlow);
     this.embers = new PooledParticleCloud(48, resources.softGlow);
@@ -349,6 +368,7 @@ class WarriorSlashEffect implements PoolableVFX {
 
     // Orientation: group Y rotation aligns forward, with slight tilt for dynamic feel like reference image
     const yaw = Math.atan2(this.forward.x, this.forward.z);
+    this.baseYaw = yaw;
     this.group.rotation.set(0.12, yaw, 0); // slight forward tilt
 
     // Tilt slash meshes for more 3D dome feel (like image)
@@ -358,21 +378,29 @@ class WarriorSlashEffect implements PoolableVFX {
     this.slashCoreMesh.rotation.z = 0.05;
 
     // Materials colors
+    const seed = Math.random() * 10;
+    this.spinSweep = options.type === 'spin' || options.type === 'spin_frost';
     this.slashMaterial.uniforms.uColorA.value.set(cfg.colors.core);
     this.slashMaterial.uniforms.uColorB.value.set(cfg.colors.glow);
     this.slashMaterial.uniforms.uColorC.value.set(cfg.colors.dark);
     this.slashMaterial.uniforms.uOpacity.value = 1;
     this.slashMaterial.uniforms.uIntensity.value = cfg.intensity;
     this.slashMaterial.uniforms.uThickness.value = cfg.thickness;
+    this.slashMaterial.uniforms.uBreakup.value = cfg.breakup;
+    this.slashMaterial.uniforms.uSaturation.value = cfg.saturation;
+    this.slashMaterial.uniforms.uSeed.value = seed;
     this.slashMaterial.uniforms.uTime.value = 0;
     this.slashMaterial.uniforms.uProgress.value = 0;
 
-    this.slashCoreMaterial.uniforms.uColorA.value.set(0xffffff);
-    this.slashCoreMaterial.uniforms.uColorB.value.set(0xcfffff);
-    this.slashCoreMaterial.uniforms.uColorC.value.set(cfg.colors.glow);
+    this.slashCoreMaterial.uniforms.uColorA.value.set(cfg.colors.core);
+    this.slashCoreMaterial.uniforms.uColorB.value.set(cfg.colors.glow);
+    this.slashCoreMaterial.uniforms.uColorC.value.set(cfg.colors.dark);
     this.slashCoreMaterial.uniforms.uOpacity.value = 0.95;
-    this.slashCoreMaterial.uniforms.uIntensity.value = cfg.intensity * 1.35;
+    this.slashCoreMaterial.uniforms.uIntensity.value = cfg.intensity * 1.25;
     this.slashCoreMaterial.uniforms.uThickness.value = cfg.thickness * 0.55;
+    this.slashCoreMaterial.uniforms.uBreakup.value = cfg.breakup * 0.7;
+    this.slashCoreMaterial.uniforms.uSaturation.value = cfg.saturation * 0.85;
+    this.slashCoreMaterial.uniforms.uSeed.value = seed + 3.7;
     this.slashCoreMaterial.uniforms.uTime.value = 0;
     this.slashCoreMaterial.uniforms.uProgress.value = 0;
 
@@ -393,7 +421,7 @@ class WarriorSlashEffect implements PoolableVFX {
     (this.impactSprite.material as THREE.SpriteMaterial).opacity = 0.95;
     this.impactSprite.position.set(0, 0.12, cfg.outer * 0.88);
     this.impactSprite.scale.setScalar(1.8 * this.baseScale);
-    (this.impactSprite.material as THREE.SpriteMaterial).color.set(0xffffff);
+    (this.impactSprite.material as THREE.SpriteMaterial).color.set(cfg.colors.core);
 
     (this.edgeGlow1.material as THREE.SpriteMaterial).opacity = 0.75;
     this.edgeGlow1.position.set(
@@ -402,8 +430,10 @@ class WarriorSlashEffect implements PoolableVFX {
       Math.cos(cfg.theta * 0.42) * cfg.outer * 0.92
     );
     this.edgeGlow1.scale.setScalar(0.9 * this.baseScale);
+    (this.edgeGlow1.material as THREE.SpriteMaterial).color.set(cfg.colors.glow);
 
     (this.edgeGlow2.material as THREE.SpriteMaterial).opacity = 0.75;
+    (this.edgeGlow2.material as THREE.SpriteMaterial).color.set(cfg.colors.glow);
     this.edgeGlow2.position.set(
       Math.sin(-cfg.theta * 0.42) * cfg.outer * 0.92,
       0.18,
@@ -424,7 +454,7 @@ class WarriorSlashEffect implements PoolableVFX {
     // Particles - bright sparks flying outward like in image (small black dots become cyan glints)
     this.particles.setTexture(this.resources.softGlow);
     this.particles.emit(new THREE.Vector3(0, 0.2, 0.5), {
-      color: 0xbfffff,
+      color: cfg.colors.glow,
       count: 36,
       speed: 4.2 * this.baseScale,
       spread: 1.4,
@@ -454,6 +484,12 @@ class WarriorSlashEffect implements PoolableVFX {
 
     this.slashMaterial.uniforms.uOpacity.value = fade;
     this.slashCoreMaterial.uniforms.uOpacity.value = fade * 0.95;
+
+    // No giratório o rastro da lâmina varre o corpo junto com a animação.
+    if (this.spinSweep) {
+      this.group.rotation.y = this.baseYaw + progress * 2.3;
+      this.group.rotation.z = Math.sin(progress * Math.PI) * 0.1;
+    }
 
     // Expand scale slightly for large trail feel
     const scale = this.baseScale * (1 + progress * 0.22);
@@ -701,6 +737,8 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
   private onHit: ((pos: THREE.Vector3) => void) | null = null;
   private hasHit = false;
   private baseScale = 1;
+  /** Espera a lâmina terminar o rastro antes de disparar o arco de vento. */
+  private spawnDelay = 0;
 
   constructor(
     private readonly resources: WarriorSlashResources,
@@ -709,38 +747,43 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.group.name = 'WarriorTravelingSlash';
     this.group.visible = false;
 
-    // Traveling slash uses vertical crescent shape (same format as blade trail)
-    // inner small, outer large, theta ~130 deg for air cut
-    this.geometry = createArcRibbonGeometry(0.15, 1.9, (-130 * Math.PI) / 360, (130 * Math.PI) / 180, 3, 24);
-    this.coreGeometry = createArcRibbonGeometry(0.35, 1.65, (-130 * Math.PI) / 360, (130 * Math.PI) / 180, 2, 24);
-    this.trailGeometry = createArcRibbonGeometry(0.1, 2.2, (-110 * Math.PI) / 360, (110 * Math.PI) / 180, 2, 20);
+    // Arco ")" de vento: crescente vertical de 150°, leaning para o monstro.
+    this.geometry = createArcRibbonGeometry(0.2, 2.6, (-75 * Math.PI) / 180, (150 * Math.PI) / 180, 3, 30);
+    this.coreGeometry = createArcRibbonGeometry(0.45, 2.25, (-75 * Math.PI) / 180, (150 * Math.PI) / 180, 2, 30);
+    this.trailGeometry = createArcRibbonGeometry(0.12, 3.0, (-62 * Math.PI) / 180, (124 * Math.PI) / 180, 2, 26);
 
     this.slashMat = createWarriorSlashMaterial({
-      colorA: 0xffffff,
-      colorB: 0x7efff6,
-      colorC: 0x0a2e33,
+      colorA: 0xdff8ff,
+      colorB: 0x2fd4ff,
+      colorC: 0x062a3c,
       opacity: 1,
-      intensity: 2.6,
+      intensity: 1.7,
       thickness: 1.1,
       distortion: 1.2,
+      breakup: 0.55,
+      saturation: 1.35,
     });
     this.coreMat = createWarriorSlashMaterial({
       colorA: 0xffffff,
-      colorB: 0xbfffff,
-      colorC: 0x0a4a4a,
+      colorB: 0x9ff0ff,
+      colorC: 0x0a3a4a,
       opacity: 0.95,
-      intensity: 3.2,
+      intensity: 2.0,
       thickness: 0.5,
       distortion: 0.8,
+      breakup: 0.4,
+      saturation: 1.1,
     });
     this.trailMat = createWarriorSlashMaterial({
-      colorA: 0xcfffff,
-      colorB: 0x4dffe9,
-      colorC: 0x082a30,
+      colorA: 0xbfefff,
+      colorB: 0x1fa8e0,
+      colorC: 0x04202e,
       opacity: 0.65,
-      intensity: 1.8,
+      intensity: 1.3,
       thickness: 1.4,
       distortion: 1.3,
+      breakup: 0.72,
+      saturation: 1.4,
     });
 
     this.slashMesh = new THREE.Mesh(this.geometry, this.slashMat);
@@ -764,7 +807,7 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
 
     const glowMat = new THREE.SpriteMaterial({
       map: resources.softGlow,
-      color: 0x5efff5,
+      color: 0x2fd4ff,
       transparent: true,
       opacity: 0,
       depthWrite: false,
@@ -791,47 +834,73 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.onHit = options.onHit ?? null;
     this.hasHit = false;
 
+    // O arco de vento sempre sai da lâmina e voa na direção do monstro: no
+    // mínimo 4 m para sempre dar para ler o ")" e no máximo 7 m de alcance.
     const delta = this.targetPos.clone().sub(this.startPos);
     delta.y = 0;
-    this.distance = Math.max(1, Math.min(delta.length(), 7.5)); // clamp max travel
+    // Mira no monstro, mas sem passar de 30° fora do eixo do golpe, para o
+    // ")" continuar legível como o prolongamento do corte da espada.
+    if (delta.lengthSq() > 1e-6) {
+      const aim = delta.clone().normalize();
+      const angle = Math.acos(THREE.MathUtils.clamp(aim.dot(this.forward), -1, 1));
+      if (angle > 1e-3) {
+        this.forward.lerp(aim, Math.min(1, THREE.MathUtils.degToRad(30) / angle)).normalize();
+      }
+    }
+    this.distance = THREE.MathUtils.clamp(delta.length(), 4, 7);
+    const target = this.startPos.clone().addScaledVector(this.forward, this.distance);
+    target.y = this.startPos.y;
+    this.targetPos.copy(target);
     this.duration = this.distance / this.speed + 0.12; // plus fade
-    this.age = 0;
+    this.spawnDelay = 0.05;
+    this.age = -this.spawnDelay;
 
-    this.group.visible = true;
+    this.group.visible = false;
     this.group.position.copy(this.startPos);
     this.group.position.y += 0.95;
     this.group.scale.setScalar(this.baseScale);
 
     const yaw = Math.atan2(this.forward.x, this.forward.z);
-    this.group.rotation.set(0, yaw, 0);
+    // Leve inclinação para o arco de vento não ficar chapado no eixo.
+    this.group.rotation.set(0.06, yaw, options.type === 'auto' ? -0.12 : 0.12);
 
     // Colors based on type
-    const isAuto = options.type === 'auto';
-    const isCombo3 = options.type === 'combo3';
-    const glowColor = isAuto ? 0x8affff : isCombo3 ? 0x5affff : 0x7efff6;
-    const darkColor = 0x0a2e33;
+    const cfg = configForType(options.type);
+    const glowColor = cfg.colors.glow;
+    const coreColor = cfg.colors.core;
+    const darkColor = cfg.colors.dark;
+    const seed = Math.random() * 10;
 
-    this.slashMat.uniforms.uColorA.value.set(0xffffff);
+    this.slashMat.uniforms.uColorA.value.set(coreColor);
     this.slashMat.uniforms.uColorB.value.set(glowColor);
     this.slashMat.uniforms.uColorC.value.set(darkColor);
     this.slashMat.uniforms.uOpacity.value = 1;
-    this.slashMat.uniforms.uIntensity.value = isAuto ? 2.9 : 2.6;
+    this.slashMat.uniforms.uIntensity.value = cfg.intensity;
+    this.slashMat.uniforms.uSaturation.value = cfg.saturation;
+    this.slashMat.uniforms.uBreakup.value = cfg.breakup;
+    this.slashMat.uniforms.uSeed.value = seed;
     this.slashMat.uniforms.uTime.value = 0;
     this.slashMat.uniforms.uProgress.value = 0;
 
-    this.coreMat.uniforms.uColorA.value.set(0xffffff);
-    this.coreMat.uniforms.uColorB.value.set(0xbfffff);
-    this.coreMat.uniforms.uColorC.value.set(glowColor);
+    this.coreMat.uniforms.uColorA.value.set(coreColor);
+    this.coreMat.uniforms.uColorB.value.set(glowColor);
+    this.coreMat.uniforms.uColorC.value.set(darkColor);
     this.coreMat.uniforms.uOpacity.value = 0.95;
-    this.coreMat.uniforms.uIntensity.value = isAuto ? 3.4 : 3.2;
+    this.coreMat.uniforms.uIntensity.value = cfg.intensity * 1.2;
+    this.coreMat.uniforms.uSaturation.value = cfg.saturation * 0.9;
+    this.coreMat.uniforms.uBreakup.value = cfg.breakup * 0.7;
+    this.coreMat.uniforms.uSeed.value = seed + 2.3;
     this.coreMat.uniforms.uTime.value = 0;
     this.coreMat.uniforms.uProgress.value = 0;
 
-    this.trailMat.uniforms.uColorA.value.set(0xcfffff);
+    this.trailMat.uniforms.uColorA.value.set(coreColor);
     this.trailMat.uniforms.uColorB.value.set(glowColor);
     this.trailMat.uniforms.uColorC.value.set(darkColor);
     this.trailMat.uniforms.uOpacity.value = 0.55;
-    this.trailMat.uniforms.uIntensity.value = 1.9;
+    this.trailMat.uniforms.uIntensity.value = cfg.intensity * 0.85;
+    this.trailMat.uniforms.uSaturation.value = cfg.saturation;
+    this.trailMat.uniforms.uBreakup.value = Math.min(1, cfg.breakup + 0.18);
+    this.trailMat.uniforms.uSeed.value = seed + 5.1;
     this.trailMat.uniforms.uTime.value = 0;
     this.trailMat.uniforms.uProgress.value = 0;
 
@@ -861,6 +930,12 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
   public update(delta: number): boolean {
     const elapsed = Math.max(0, delta);
     this.age += elapsed;
+    // Espera a lâmina fechar o rastro antes de disparar o arco de vento.
+    if (this.age < 0) {
+      this.group.visible = false;
+      return true;
+    }
+    this.group.visible = true;
     const progress = THREE.MathUtils.clamp(this.age / this.duration, 0, 1);
     const travelProgress = THREE.MathUtils.clamp(this.age / Math.max(0.001, this.distance / this.speed), 0, 1);
 
@@ -971,22 +1046,26 @@ class WarriorSpinWaveEffect implements PoolableVFX {
     this.outerGeo = createArcRibbonGeometry(0.2, 1.4, startBack, almostFull, 3, 64);
 
     this.mainMat = createWarriorSlashMaterial({
-      colorA: 0xffffff,
-      colorB: 0x5efff6,
-      colorC: 0x0a2e33,
+      colorA: SPIN_CONFIG.colors.core,
+      colorB: SPIN_CONFIG.colors.glow,
+      colorC: SPIN_CONFIG.colors.dark,
       opacity: 1,
-      intensity: 2.4,
+      intensity: 1.75,
       thickness: 1.6,
       distortion: 1.2,
+      breakup: SPIN_CONFIG.breakup,
+      saturation: SPIN_CONFIG.saturation,
     });
     this.coreMat = createWarriorSlashMaterial({
-      colorA: 0xffffff,
-      colorB: 0xbfffff,
-      colorC: 0x0a4a4a,
+      colorA: SPIN_CONFIG.colors.core,
+      colorB: SPIN_CONFIG.colors.glow,
+      colorC: SPIN_CONFIG.colors.dark,
       opacity: 0.95,
-      intensity: 3.0,
+      intensity: 2.0,
       thickness: 0.6,
       distortion: 0.9,
+      breakup: SPIN_CONFIG.breakup * 0.6,
+      saturation: 1.1,
     });
     this.outerMat = createMagicCircleMaterial({
       colorA: 0xffffff,
@@ -1055,21 +1134,28 @@ class WarriorSpinWaveEffect implements PoolableVFX {
     this.group.rotation.set(0.08, yaw, 0);
 
     // Rebuild if needed for maxRadius? We scale instead
+    const seed = Math.random() * 10;
     this.mainMat.uniforms.uColorA.value.set(cfg.colors.core);
     this.mainMat.uniforms.uColorB.value.set(cfg.colors.glow);
     this.mainMat.uniforms.uColorC.value.set(cfg.colors.dark);
     this.mainMat.uniforms.uOpacity.value = 1;
     this.mainMat.uniforms.uIntensity.value = cfg.intensity;
     this.mainMat.uniforms.uThickness.value = cfg.thickness;
+    this.mainMat.uniforms.uBreakup.value = cfg.breakup;
+    this.mainMat.uniforms.uSaturation.value = cfg.saturation;
+    this.mainMat.uniforms.uSeed.value = seed;
     this.mainMat.uniforms.uTime.value = 0;
     this.mainMat.uniforms.uProgress.value = 0;
 
-    this.coreMat.uniforms.uColorA.value.set(0xffffff);
-    this.coreMat.uniforms.uColorB.value.set(0xbfffff);
-    this.coreMat.uniforms.uColorC.value.set(cfg.colors.glow);
+    this.coreMat.uniforms.uColorA.value.set(cfg.colors.core);
+    this.coreMat.uniforms.uColorB.value.set(cfg.colors.glow);
+    this.coreMat.uniforms.uColorC.value.set(cfg.colors.dark);
     this.coreMat.uniforms.uOpacity.value = 0.9;
-    this.coreMat.uniforms.uIntensity.value = cfg.intensity * 1.25;
+    this.coreMat.uniforms.uIntensity.value = cfg.intensity * 1.2;
     this.coreMat.uniforms.uThickness.value = cfg.thickness * 0.5;
+    this.coreMat.uniforms.uBreakup.value = cfg.breakup * 0.6;
+    this.coreMat.uniforms.uSaturation.value = cfg.saturation * 0.9;
+    this.coreMat.uniforms.uSeed.value = seed + 4.4;
     this.coreMat.uniforms.uTime.value = 0;
     this.coreMat.uniforms.uProgress.value = 0;
 
@@ -1085,6 +1171,7 @@ class WarriorSpinWaveEffect implements PoolableVFX {
     this.glow.scale.setScalar(1.5 * this.baseScale);
 
     (this.flare.material as THREE.SpriteMaterial).opacity = 0.85;
+    (this.flare.material as THREE.SpriteMaterial).color.set(cfg.colors.core);
     this.flare.position.set(0, 0.6, 0);
     this.flare.scale.setScalar(2.0 * this.baseScale);
 
@@ -1113,7 +1200,7 @@ class WarriorSpinWaveEffect implements PoolableVFX {
 
     this.embers.setTexture(this.resources.softGlow);
     this.embers.emit(new THREE.Vector3(), {
-      color: 0xbfffff,
+      color: cfg.colors.core,
       count: 28,
       speed: 3.2 * this.baseScale,
       spread: 1.3,
