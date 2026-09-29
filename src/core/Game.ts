@@ -159,7 +159,7 @@ import { attributesWithEquipment, equippedWeaponDamage } from '../equipment/Equi
 import { resolveCameraRelativeMovement } from '../entities/PlayerMovement';
 import { VictoryLobbyTransition } from './VictoryLobbyTransition';
 import { MageVFX } from '../vfx/MageVFX';
-import { WarriorSlashVFX } from '../vfx/warrior/WarriorSlashVFX';
+import { WarriorSlashVFX } from '../vfx/WarriorSlashVFX';
 
 /**
  * MODO DE TESTE DE ARMA/ANIMAÇÃO: quando true, desativa o spawn de monstros
@@ -212,7 +212,7 @@ export class Game {
   private readonly miniBossEffects = new MiniBossSkillEffects(this.scene);
   private readonly vfxLightPool = new VFXLightPool(this.scene, MAGE_VFX_LIMITS.maxTemporaryLights);
   private readonly mageVFX = new MageVFX(this.scene, { lightPool: this.vfxLightPool });
-  private readonly warriorSlashVFX = new WarriorSlashVFX();
+  private readonly warriorSlashVFX = new WarriorSlashVFX(this.scene, this.vfxLightPool);
   private cameraController: CameraController;
   private input: InputManager;
   private clock = new THREE.Clock();
@@ -619,6 +619,7 @@ export class Game {
     this.clearTargetMarker();
     this.healthPlasma.clear();
     this.mageVFX.clear();
+    this.warriorSlashVFX.clear();
     this.archerProjectiles.clear();
     this.stopBossSkills();
     this.combatRegistry.clear();
@@ -982,6 +983,18 @@ export class Game {
     if (!this.player.tryStartSkillAttack(id)) {
       this.warriorSkills.refund(id);
       return;
+    }
+    // Efeito giratório começa na costa quase círculo completo com círculo de ar 7m
+    if (id === 'ataque_giratorio' || id === 'ataque_giratorio_2') {
+      const forward = this.player.planarForward(new THREE.Vector3());
+      if (forward.lengthSq() < 1e-6) forward.set(0, 0, 1);
+      this.warriorSlashVFX.playSpin({
+        position: this.player.root.position.clone(),
+        forward,
+        type: id === 'ataque_giratorio_2' ? 'spin_frost' : 'spin',
+        scale: id === 'ataque_giratorio_2' ? 1.2 : 1.15,
+        maxRadius: 7.0,
+      });
     }
     if (mage && !adminPreview) this.fatigue.consumePercent(mageSkillFatiguePercent(id));
   }
@@ -1358,6 +1371,7 @@ export class Game {
       this.healthPlasma.clear();
       this.archerProjectiles.clear();
       this.mageVFX.clear();
+      this.warriorSlashVFX.clear();
       this.stopBossSkills();
       this.lastBossMinionTier = 1;
       this.targetedEnemyRoot = null;
@@ -2049,6 +2063,21 @@ export class Game {
     const forward = event.forward.clone().setY(0);
     if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
     forward.normalize();
+
+    // --- Warrior Slash VFX: ataque base + automático com rastro largo, brilhos e degrade ---
+    // hitIndex 0 = básico, 1 = combo2, 2 = combo3 (como no SwordComboController)
+    const slashType = event.hitIndex === 1 ? 'combo2' : event.hitIndex === 2 ? 'combo3' : 'basic';
+    const isAuto = this.profile.autoBasicAttack && this.targetedEnemyRoot !== null;
+    const origin = event.origin.clone();
+
+    this.warriorSlashVFX.play({
+      position: origin.clone(),
+      forward,
+      type: isAuto ? 'auto' : slashType,
+      isAuto,
+      scale: 1,
+    });
+
     const maxDistance = Math.max(WARRIOR_MAX_RANGE_METERS, this.player.attackRange);
     const coneCosine = Math.cos(THREE.MathUtils.degToRad(24));
     const records = this.combatRegistry.activeRoots()
@@ -2056,12 +2085,41 @@ export class Game {
       .filter((record): record is CombatRecord => record !== null && !record.enemy.isDead);
     let lifeStealDamage = 0;
 
-    let hitAny = false;
+    // Determine primary target for traveling slash (feixe que avança até target)
+    let primaryTargetPos: THREE.Vector3 | null = null;
+    let closestDist = Infinity;
+
+    if (this.targetedEnemyRoot && !this.targetedEnemyRoot.userData?.isDead) {
+      const t = this.targetedEnemyRoot.position.clone();
+      const d = origin.distanceTo(t);
+      if (d <= maxDistance + 1) {
+        primaryTargetPos = t;
+        closestDist = d;
+      }
+    }
+
+    // Find closest enemy in cone for traveling slash if no marked target
+    if (!primaryTargetPos) {
+      for (const record of records) {
+        const target = record.enemy.root.position;
+        const delta = new THREE.Vector3(target.x - origin.x, 0, target.z - origin.z);
+        const centerDistance = delta.length();
+        if (centerDistance <= 1e-8) continue;
+        const bodyRadius = Math.max(record.enemy.collisionRadius, 0.45);
+        const distance = getEffectiveTargetDistance(centerDistance, bodyRadius);
+        if (distance > maxDistance || forward.dot(delta.clone().normalize()) < coneCosine) continue;
+        if (distance < closestDist) {
+          closestDist = distance;
+          primaryTargetPos = target.clone();
+        }
+      }
+    }
+
     if (this.trainingDummy) {
       const dummyDelta = new THREE.Vector3(
-        this.trainingDummy.root.position.x - event.origin.x,
+        this.trainingDummy.root.position.x - origin.x,
         0,
-        this.trainingDummy.root.position.z - event.origin.z
+        this.trainingDummy.root.position.z - origin.z
       );
       const dummyDistance = dummyDelta.length();
       if (
@@ -2072,14 +2130,16 @@ export class Game {
         const damage = this.resolveOutgoingDamage(this.player.attackDamage, false);
         this.trainingDummy.takeDamage(damage);
         this.showFloatingDamage(this.trainingDummy.root.position, damage);
-        this.warriorSlashVFX.reportEnemyHit(this.trainingDummy.root.position);
-        hitAny = true;
+        this.warriorSlashVFX.playImpact(this.trainingDummy.root.position, 1);
+        if (!primaryTargetPos) {
+          primaryTargetPos = this.trainingDummy.root.position.clone();
+        }
       }
     }
 
     for (const record of records) {
       const target = record.enemy.root.position;
-      const delta = new THREE.Vector3(target.x - event.origin.x, 0, target.z - event.origin.z);
+      const delta = new THREE.Vector3(target.x - origin.x, 0, target.z - origin.z);
       const centerDistance = delta.length();
       if (centerDistance <= 1e-8) continue;
       const bodyRadius = Math.max(record.enemy.collisionRadius, 0.45);
@@ -2099,7 +2159,15 @@ export class Game {
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
+      // Impulsão / knockback no formato do corte - empurra inimigo para trás
+      const impulseStrength = slashType === 'combo3' ? 1.8 : slashType === 'combo2' ? 1.3 : isAuto ? 1.4 : 1.0;
+      record.enemy.applyImpulse(forward, impulseStrength);
+      // Chance de KO / knockdown mais forte no combo final e no auto
+      if (slashType === 'combo3' || (isAuto && Math.random() < 0.35)) {
+        record.enemy.applyWarriorKnockdown(slashType === 'combo3' ? 1.4 : 0.9);
+      }
       this.showFloatingDamage(record.enemy.root.position, damage);
+      this.warriorSlashVFX.playImpact(record.enemy.root.position, 1);
       this.syncCombatHealthBars(record);
       if (!hitAny) {
         hitAny = true;
@@ -2107,6 +2175,24 @@ export class Game {
       }
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
+
+    // Feixe no mesmo formato do rastro que avança até o target (corte no ar)
+    const travelTarget = primaryTargetPos ?? origin.clone().addScaledVector(forward, maxDistance);
+    // Garante que o feixe vá até o alvo mesmo se estiver um pouco além do alcance
+    const travelEnd = travelTarget.clone();
+    travelEnd.y = origin.y;
+    this.warriorSlashVFX.playTravelingSlash({
+      start: origin.clone(),
+      forward,
+      target: travelEnd,
+      type: isAuto ? 'auto' : slashType,
+      scale: slashType === 'combo3' ? 1.25 : isAuto ? 1.15 : 1.0,
+      speed: isAuto ? 14.5 : slashType === 'combo3' ? 12.5 : 11.5,
+      onHit: (hitPos) => {
+        // Impacto final do feixe - explosão extra no ponto de chegada
+        this.warriorSlashVFX.playImpact(hitPos, slashType === 'combo3' ? 1.4 : 1.2);
+      },
+    });
 
     this.healFromLifeSteal(lifeStealDamage);
   }
@@ -2116,6 +2202,22 @@ export class Game {
     // area must not also splash through monsters behind that impact.
     if (this.profile.selectedClass === 'mage') return;
     if (!this.hasAdminFreeSkills() && !isWarriorSkillUnlocked(event.attackId, this.profile.progression.level)) return;
+
+    // --- Skill ataque giratório com mesmo efeito de rastro + círculo de ar 7m ---
+    if (event.attackId === 'ataque_giratorio' || event.attackId === 'ataque_giratorio_2') {
+      const spinType = event.attackId === 'ataque_giratorio_2' ? 'spin_frost' : 'spin';
+      const forward = event.forward.clone().setY(0);
+      if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
+      forward.normalize();
+      this.warriorSlashVFX.playSpin({
+        position: event.origin.clone(),
+        forward,
+        type: spinType,
+        scale: spinType === 'spin_frost' ? 1.2 : 1.15,
+        maxRadius: 7.0,
+      });
+    }
+
     const records = this.combatRegistry.activeRoots()
       .map((root) => this.combatRegistry.findByRoot(root))
       .filter((record): record is CombatRecord => record !== null);
@@ -2146,6 +2248,17 @@ export class Game {
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
+      // Giratório também empurra e dá KO leve
+      if (event.attackId === 'ataque_giratorio' || event.attackId === 'ataque_giratorio_2') {
+        const spinForward = new THREE.Vector3().subVectors(record.enemy.root.position, event.origin).setY(0).normalize();
+        if (spinForward.lengthSq() > 1e-6) {
+          record.enemy.applyImpulse(spinForward, event.attackId === 'ataque_giratorio_2' ? 1.6 : 1.4);
+        }
+        if (Math.random() < 0.45) {
+          record.enemy.applyWarriorKnockdown(0.85);
+        }
+        this.warriorSlashVFX.playImpact(record.enemy.root.position, 1.15);
+      }
       if (event.attackId === 'pulo_atacando' && !record.enemy.isDead) {
         record.enemy.applyWarriorKnockdown(1.2);
       }
@@ -2442,6 +2555,7 @@ export class Game {
       this.healthPlasma.clear();
       this.archerProjectiles.clear();
       this.mageVFX.clear();
+      this.warriorSlashVFX.clear();
       this.stopBossSkills();
       this.player.setInputLocked(true);
       this.hud.showDeathScreen();
@@ -2709,6 +2823,7 @@ export class Game {
 
       this.cameraController.update(this.player.root.position, delta);
       this.mageVFX.applyCameraShake(this.cameraController.camera, delta);
+      this.warriorSlashVFX.applyCameraShake(this.cameraController.camera, delta);
       this.hud.updatePlayerHealth(this.player.hp, this.player.maxHP);
       this.hud.updatePlayerFatigue(fatigue, this.fatigue.currentMaxFatigue);
       const skills = this.displayWarriorSkillsSnapshot(this.warriorSkills.snapshot());
