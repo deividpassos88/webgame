@@ -129,7 +129,7 @@ describe('Visual do corte do guerreiro', () => {
     vfx.dispose();
   });
 
-  it('o arco ")" sai em pé, inteiro acima do chão, virando para o monstro', () => {
+  it('a onda nasce em pé, inteira acima do chão, virando para o monstro', () => {
     const { scene, vfx } = create();
     vfx.playTravelingSlash({
       start: new THREE.Vector3(0, 0, 0),
@@ -140,24 +140,21 @@ describe('Visual do corte do guerreiro', () => {
     vfx.update(0.06);
 
     const arc = scene.getObjectByName('WarriorTravelingSlash') as THREE.Object3D;
-    // A lua é montada no plano XY: alta em pé, com as pontas no chão. Antes
-    // ela era um arco deitado com metade enfiada embaixo do piso.
+    // O leque é montado no plano XY: alto em pé, com a ponta de baixo no
+    // chão. Antes ele era um arco deitado com metade enfiada embaixo do piso.
     arc.updateWorldMatrix(true, true);
     const box = new THREE.Box3();
     arc.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) box.expandByObject(child as THREE.Mesh);
     });
-    expect(box.max.y - box.min.y).toBeGreaterThan(3.5);
+    expect(box.max.y - box.min.y).toBeGreaterThan(2.5);
     expect(box.max.x - box.min.x).toBeLessThan(3.3);
-    // Aberta de lado (visto por trás é um ")"), não um arco raso no chão.
-    expect(box.max.x - box.min.x).toBeLessThan((box.max.y - box.min.y) * 0.9);
-    // Nada do arco abaixo do chão.
-    expect(box.min.y).toBeGreaterThan(-0.12);
-    expect(box.max.y).toBeLessThan(4);
+    expect(box.min.y).toBeGreaterThan(-0.25);
+    expect(box.max.y).toBeLessThan(3.6);
     vfx.dispose();
   });
 
-  it('o arco ")" não tem bola de brilho no centro', () => {
+  it('a onda de vento é um leque de arcos finos ")", e não uma bola de brilho', () => {
     const { scene, vfx } = create();
     vfx.playTravelingSlash({
       start: new THREE.Vector3(0, 0, 0),
@@ -168,12 +165,55 @@ describe('Visual do corte do guerreiro', () => {
     vfx.update(0.06);
 
     const arc = scene.getObjectByName('WarriorTravelingSlash') as THREE.Object3D;
-    const glow = arc.getObjectByName('TravelGlow') as THREE.Sprite;
-    expect(glow).toBeTruthy();
-    // Disco pequeno, colado na borda do arco, e com pouca opacidade.
-    expect(glow.scale.x).toBeLessThan(1);
-    expect((glow.material as THREE.SpriteMaterial).opacity).toBeLessThan(0.5);
-    expect(glow.position.x).toBeGreaterThan(0.5);
+    // Vários traços finos, como as linhas desenhadas do vento.
+    const strokes = arc.children.filter((child) => child.name.startsWith('WindWaveStroke'));
+    expect(strokes.length).toBe(6);
+    // Nenhum sprite radial: o leque não pode virar uma bola de luz.
+    expect(arc.children.some((child) => (child as THREE.Sprite).isSprite === true)).toBe(false);
+
+    // Cada traço é um ")" em pé: mais alto que largo, afunilando nas pontas.
+    const boxes = strokes.map((stroke) => new THREE.Box3().setFromObject(stroke));
+    const heights = boxes.map((box) => box.max.y - box.min.y);
+    const widths = boxes.map((box) => box.max.x - box.min.x);
+    expect(heights.every((height, index) => height > widths[index])).toBe(true);
+    // Do maior para o menor: o leque nasce encostado na lâmina.
+    expect(heights[0]).toBeGreaterThan(heights[heights.length - 1]);
+    expect(widths[0]).toBeGreaterThan(widths[widths.length - 1]);
+    vfx.dispose();
+  });
+
+  it('a onda abre em pé, acima do chão, e o leque aperta conforme ela viaja', () => {
+    const { scene, vfx } = create();
+    vfx.playTravelingSlash({
+      start: new THREE.Vector3(0, 0, 0),
+      forward: new THREE.Vector3(0, 0, 1),
+      target: new THREE.Vector3(0, 0, 5),
+      type: 'basic',
+    });
+    vfx.update(0.06);
+
+    const arc = scene.getObjectByName('WarriorTravelingSlash') as THREE.Object3D;
+    arc.updateWorldMatrix(true, true);
+    const box = new THREE.Box3();
+    arc.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) box.expandByObject(child as THREE.Mesh);
+    });
+    expect(box.max.y - box.min.y).toBeGreaterThan(2.5);
+    expect(box.max.y).toBeLessThan(3.6);
+    expect(box.min.y).toBeGreaterThan(-0.25);
+
+    const spreadOf = (): number => {
+      arc.updateWorldMatrix(true, true);
+      const strokes = arc.children.filter((child) => child.name.startsWith('WindWaveStroke'));
+      // O leque caminha para a frente, na direção do monstro.
+      const positions = strokes.map((stroke) => stroke.position.z);
+      return Math.max(...positions) - Math.min(...positions);
+    };
+    const spreadStart = spreadOf();
+    expect(spreadStart).toBeGreaterThan(0.3);
+    vfx.update(0.25);
+    // O leque fecha conforme a onda se aproxima do monstro.
+    expect(spreadOf()).toBeLessThan(spreadStart);
     vfx.dispose();
   });
 
