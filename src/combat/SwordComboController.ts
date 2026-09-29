@@ -38,9 +38,20 @@ export class SwordComboController {
   private buffered = false;
   private damageOpened = false;
   private damageClosed = false;
+  /** Relógio interno (segundos) usado para medir o intervalo entre golpes. */
+  private clock = 0;
+  private stageStartedAt = 0;
+
+  /**
+   * Intervalo mínimo entre o início de dois golpes do combo. Clicar rápido só
+   * enfileira o próximo golpe; ele nunca começa antes desse intervalo. Com 0
+   * (padrão) o combo segue só as durações de cada estágio.
+   */
+  public minStageInterval = 0;
 
   public request(): boolean {
     if (this.stage === null) {
+      this.stageStartedAt = this.clock;
       this.stage = 0;
       this.elapsed = 0;
       this.buffered = false;
@@ -71,6 +82,7 @@ export class SwordComboController {
     }
 
     let remaining = delta;
+    this.clock += delta;
     while (this.stage !== null && remaining > 0) {
       const stage: number = this.stage;
       const config = SWORD_COMBO_STAGES[stage];
@@ -126,7 +138,13 @@ export class SwordComboController {
       }
 
       if (this.buffered && stage < SWORD_COMBO_STAGES.length - 1) {
+        // Limite de velocidade: o golpe seguinte espera o intervalo mínimo desde
+        // o início do golpe atual (a pose final do golpe fica segurada).
+        if (this.clock - this.stageStartedAt + TIME_EPSILON < this.minStageInterval) {
+          break;
+        }
         const nextStage = stage + 1;
+        this.stageStartedAt = this.clock;
         this.stage = nextStage;
         this.elapsed = 0;
         this.buffered = false;

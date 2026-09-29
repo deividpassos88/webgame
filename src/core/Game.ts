@@ -157,6 +157,7 @@ import {
   applyDistanceFalloff,
   getEffectiveTargetDistance,
   WARRIOR_MAX_RANGE_METERS,
+  WARRIOR_WAVE_RANGE_METERS,
   MAGE_MAX_RANGE_METERS,
   type DistanceFalloffProfile,
 } from '../combat/DistanceDamage';
@@ -2087,15 +2088,12 @@ export class Game {
     const isAuto = this.profile.autoBasicAttack && this.targetedEnemyRoot !== null;
     const origin = event.origin.clone();
 
-    this.warriorSlashVFX.play({
-      position: origin.clone(),
-      forward,
-      type: isAuto ? 'auto' : slashType,
-      isAuto,
-      scale: 1,
-    });
+    // O rastro da lâmina e o leque de vento só tocam depois de saber se o golpe
+    // acertou alguém: sem inimigo, a animação roda e termina sem impacto.
+    let anyHit = false;
 
-    const maxDistance = Math.max(WARRIOR_MAX_RANGE_METERS, this.player.attackRange);
+    // O leque de vento que sai do rastro da espada voa até 7 m e para no primeiro inimigo.
+    const maxDistance = Math.max(WARRIOR_WAVE_RANGE_METERS, this.player.attackRange);
     const coneCosine = Math.cos(THREE.MathUtils.degToRad(24));
     const records = this.combatRegistry.activeRoots()
       .map((root) => this.combatRegistry.findByRoot(root))
@@ -2148,6 +2146,7 @@ export class Game {
         this.trainingDummy.takeDamage(damage);
         this.showFloatingDamage(this.trainingDummy.root.position, damage);
         this.warriorSlashVFX.playImpact(this.trainingDummy.root.position, 1);
+        anyHit = true;
         if (!primaryTargetPos) {
           primaryTargetPos = this.trainingDummy.root.position.clone();
         }
@@ -2171,11 +2170,12 @@ export class Game {
         false
       );
       const damage = this.resolveOutgoingDamage(
-        applyDistanceFalloff(baseDamage, distance, 'warrior'),
+        applyDistanceFalloff(baseDamage, distance, 'warrior-wave'),
         false
       );
       if (damage <= 0) continue;
       lifeStealDamage += damage;
+      anyHit = true;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
       // Recuo curto: o monstro é nervoso e apenas recua um pouco no corte.
       const impulseStrength = slashType === 'combo3' ? 0.22 : slashType === 'combo2' ? 0.16 : isAuto ? 0.17 : 0.12;
@@ -2186,9 +2186,18 @@ export class Game {
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
 
-    // Feixe no mesmo formato do rastro que avança até o target (corte no ar)
+    this.warriorSlashVFX.play({
+      position: origin.clone(),
+      forward,
+      type: isAuto ? 'auto' : slashType,
+      isAuto,
+      scale: 1,
+      hasImpact: anyHit,
+    });
+
+    // Leque de vento: sai do rastro e avança até o alvo (máx. 7 m). Sem
+    // inimigo atingido ele percorre o caminho todo e some, sem impacto.
     const travelTarget = primaryTargetPos ?? origin.clone().addScaledVector(forward, maxDistance);
-    // Garante que o feixe vá até o alvo mesmo se estiver um pouco além do alcance
     const travelEnd = travelTarget.clone();
     travelEnd.y = origin.y;
     this.warriorSlashVFX.playTravelingSlash({
@@ -2198,10 +2207,12 @@ export class Game {
       type: isAuto ? 'auto' : slashType,
       scale: slashType === 'combo3' ? 1.25 : isAuto ? 1.15 : 1.0,
       speed: isAuto ? 14.5 : slashType === 'combo3' ? 12.5 : 11.5,
-      onHit: (hitPos) => {
-        // Impacto final do feixe - explosão extra no ponto de chegada
-        this.warriorSlashVFX.playImpact(hitPos, slashType === 'combo3' ? 1.4 : 1.2);
-      },
+      onHit: anyHit
+        ? (hitPos) => {
+          // Impacto final do leque só existe se ele realmente acertou um inimigo.
+          this.warriorSlashVFX.playImpact(hitPos, slashType === 'combo3' ? 1.4 : 1.2);
+        }
+        : undefined,
     });
 
     this.healFromLifeSteal(lifeStealDamage);
