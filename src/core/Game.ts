@@ -2041,13 +2041,6 @@ export class Game {
 
   private onWarriorAttackWindow(event: WarriorAttackWindowEvent): void {
     if (this.profile.selectedClass !== 'paladin' || this.player.equippedWeaponId !== 'sword') return;
-    this.warriorSlashVFX.triggerSlash(
-      event.attackId,
-      event.origin,
-      event.forward,
-      event.hitIndex,
-      this.player.attackTargetEnemy
-    );
     if (event.attackId === 'ataque_basico') {
       this.applyWarriorBasicWaveDamage(event);
     }
@@ -2138,7 +2131,6 @@ export class Game {
     }
 
     // Só o primeiro corpo atingido dissolve o traço e acende o flash de impacto.
-    let hitAny = false;
     for (const record of records) {
       const target = record.enemy.root.position;
       const delta = new THREE.Vector3(target.x - origin.x, 0, target.z - origin.z);
@@ -2171,10 +2163,6 @@ export class Game {
       this.showFloatingDamage(record.enemy.root.position, damage);
       this.warriorSlashVFX.playImpact(record.enemy.root.position, 1);
       this.syncCombatHealthBars(record);
-      if (!hitAny) {
-        hitAny = true;
-        this.warriorSlashVFX.reportEnemyHit(record.enemy.root.position);
-      }
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
 

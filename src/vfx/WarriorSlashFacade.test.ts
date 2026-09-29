@@ -4,10 +4,10 @@ import { WarriorSlashVFX } from './WarriorSlashVFX';
 import { VFXLightPool } from './VFXLightPool';
 
 /**
- * O Game usa duas famílias de efeito do guerreiro na mesma fachada: o arco
- * clássico em pool (play/playImpact/playTravelingSlash/playSpin) e o traço
- * modular novo, que precisa de `group`, `triggerSlash`, `reportEnemyHit` e
- * `triggerMiniBossHeal`. Estes testes travam esse contrato de composição.
+ * A fachada do guerreiro serve o Game com o sistema de pool (play, playImpact,
+ * playTravelingSlash, playSpin, clear, camera shake) e encaminha para a
+ * implementação modular de `vfx/warrior/` o pilar de cura do mini-boss, que
+ * vive em um group próprio adicionado uma vez na cena.
  */
 describe('WarriorSlashVFX (fachada do guerreiro)', () => {
   beforeEach(() => {
@@ -23,54 +23,42 @@ describe('WarriorSlashVFX (fachada do guerreiro)', () => {
     return { scene, vfx: new WarriorSlashVFX(scene, new VFXLightPool(scene, 2)) };
   };
 
-  it('expõe o group do traço modular para ser adicionado na cena uma única vez', () => {
-    const { vfx } = create();
+  it('expõe o group modular para ser adicionado na cena uma única vez', () => {
+    const { scene, vfx } = create();
     expect(vfx.group.name).toBe('WarriorSlashVFXRoot');
-    // group do flash de impacto + group do pilar de cura
+    scene.add(vfx.group);
+    // flash de impacto + pilar de cura
     expect(vfx.group.children.length).toBe(2);
     vfx.dispose();
   });
 
-  it('lança o traço, dissolve no primeiro acerto e limpa tudo no clear()', () => {
+  it('mantém só o pilar de cura: o rastro duplicado não é disparado no combate', () => {
     const { vfx } = create();
     const base = vfx.group.children.length;
 
-    const id = vfx.triggerSlash(
-      'ataque_basico',
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0, 1),
-      0,
-      null
-    );
-    expect(id).toBeGreaterThan(0);
-    expect(vfx.group.children.length).toBe(base + 1);
-
-    // O primeiro corpo atingido consome o traço e acende o flash de impacto.
-    vfx.reportEnemyHit(new THREE.Vector3(0, 0, 2));
-    vfx.update(0.05);
+    // Só o pilar de cura cria algo dentro do group modular; nenhum rastro.
+    vfx.update(0.5);
     expect(vfx.group.children.length).toBe(base);
-
-    // Um novo corte entra e some no clear() usado na troca de lobby/reset.
-    vfx.triggerSlash('triplo_ataque', new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 1));
-    expect(vfx.group.children.length).toBe(base + 1);
-    vfx.clear();
-    expect(vfx.group.children.length).toBe(base);
-
-    vfx.dispose();
-  });
-
-  it('anima o pilar de cura do mini-boss dentro do mesmo group', () => {
-    const { vfx } = create();
-    const healPillarGroup = vfx.group.children[1];
-    expect(healPillarGroup.children.length).toBe(0);
 
     vfx.triggerMiniBossHeal(new THREE.Object3D());
-    expect(healPillarGroup.children.length).toBe(1);
-    vfx.update(0.1);
+    const healPillarGroup = vfx.group.children[1];
     expect(healPillarGroup.children.length).toBe(1);
 
     vfx.update(2.5);
     expect(healPillarGroup.children.length).toBe(0);
+    vfx.dispose();
+  });
+
+  it('clear() limpa o pilar de cura junto dos efeitos em pool', () => {
+    const { vfx } = create();
+    const healPillarGroup = vfx.group.children[1];
+
+    vfx.triggerMiniBossHeal(new THREE.Object3D());
+    expect(healPillarGroup.children.length).toBe(1);
+
+    vfx.clear();
+    expect(healPillarGroup.children.length).toBe(0);
+    expect(vfx.activeCount).toBe(0);
     vfx.dispose();
   });
 });

@@ -12,9 +12,7 @@ import {
 } from './VFXMaterials';
 import {
   WarriorSlashVFX as WarriorSlashTrailVFX,
-  type WarriorSlashStyle,
 } from './warrior/WarriorSlashVFX';
-import type { WarriorAttackId } from '../characters/CharacterCatalog';
 
 export interface WarriorSlashPlayOptions {
   readonly position: THREE.Vector3;
@@ -1206,9 +1204,9 @@ export class WarriorSlashVFX {
   private readonly activeSpin: WarriorSpinWaveEffect[] = [];
   private readonly cameraShake = new CameraShake();
   /**
-   * Traço modular novo (fitas curvas por estilo, flash de impacto e pilar de
-   * cura do mini-boss). Fica dentro de um group próprio que o Game adiciona
-   * na cena uma vez.
+   * Efeitos modulares do guerreiro em um group próprio que o Game adiciona na
+   * cena uma vez. Hoje só o pilar de cura do mini-boss é usado daqui; o rastro
+   * de fita curva ficou desligado por duplicar o arco clássico em pool.
    */
   private readonly trails = new WarriorSlashTrailVFX();
   public readonly group: THREE.Group;
@@ -1303,26 +1301,11 @@ export class WarriorSlashVFX {
   }
 
   /**
-   * Lança o traço novo que sai da lâmina e viaja até o alvo. É o rastro que
-   * aparece junto do arco clássico em `play()`.
+   * O rastro modular novo (fita curva colorida por estilo) foi retirado do
+   * fluxo de combate: duplicava o arco clássico em pool. Continua disponível
+   * em `./warrior/` para uso pontual; aqui só o pilar de cura do mini-boss,
+   * que não tem equivalente no sistema antigo, é encaminhado.
    */
-  public triggerSlash(
-    attackId: WarriorAttackId,
-    origin: THREE.Vector3,
-    forward: THREE.Vector3,
-    hitIndex = 0,
-    target?: THREE.Object3D | null,
-    style?: WarriorSlashStyle
-  ): number {
-    return this.trails.triggerSlash(attackId, origin, forward, hitIndex, target, style);
-  }
-
-  /** Dissolve o último traço e acende o flash no corpo atingido. */
-  public reportEnemyHit(position: THREE.Vector3, color?: THREE.ColorRepresentation): void {
-    this.trails.reportEnemyHit(position, color);
-  }
-
-  /** Pilar verde de cura quando o mini-boss devolve vida ao herói. */
   public triggerMiniBossHeal(playerRoot: THREE.Object3D): void {
     this.trails.triggerMiniBossHeal(playerRoot);
   }
