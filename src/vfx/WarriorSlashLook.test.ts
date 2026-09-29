@@ -129,6 +129,54 @@ describe('Visual do corte do guerreiro', () => {
     vfx.dispose();
   });
 
+  it('o arco ")" sai em pé, inteiro acima do chão, virando para o monstro', () => {
+    const { scene, vfx } = create();
+    vfx.playTravelingSlash({
+      start: new THREE.Vector3(0, 0, 0),
+      forward: new THREE.Vector3(0, 0, 1),
+      target: new THREE.Vector3(0, 0, 5),
+      type: 'basic',
+    });
+    vfx.update(0.06);
+
+    const arc = scene.getObjectByName('WarriorTravelingSlash') as THREE.Object3D;
+    // A lua é montada no plano XY: alta em pé, com as pontas no chão. Antes
+    // ela era um arco deitado com metade enfiada embaixo do piso.
+    arc.updateWorldMatrix(true, true);
+    const box = new THREE.Box3();
+    arc.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) box.expandByObject(child as THREE.Mesh);
+    });
+    expect(box.max.y - box.min.y).toBeGreaterThan(3.5);
+    expect(box.max.x - box.min.x).toBeLessThan(3.3);
+    // Aberta de lado (visto por trás é um ")"), não um arco raso no chão.
+    expect(box.max.x - box.min.x).toBeLessThan((box.max.y - box.min.y) * 0.9);
+    // Nada do arco abaixo do chão.
+    expect(box.min.y).toBeGreaterThan(-0.12);
+    expect(box.max.y).toBeLessThan(4);
+    vfx.dispose();
+  });
+
+  it('o arco ")" não tem bola de brilho no centro', () => {
+    const { scene, vfx } = create();
+    vfx.playTravelingSlash({
+      start: new THREE.Vector3(0, 0, 0),
+      forward: new THREE.Vector3(0, 0, 1),
+      target: new THREE.Vector3(0, 0, 5),
+      type: 'basic',
+    });
+    vfx.update(0.06);
+
+    const arc = scene.getObjectByName('WarriorTravelingSlash') as THREE.Object3D;
+    const glow = arc.getObjectByName('TravelGlow') as THREE.Sprite;
+    expect(glow).toBeTruthy();
+    // Disco pequeno, colado na borda do arco, e com pouca opacidade.
+    expect(glow.scale.x).toBeLessThan(1);
+    expect((glow.material as THREE.SpriteMaterial).opacity).toBeLessThan(0.5);
+    expect(glow.position.x).toBeGreaterThan(0.5);
+    vfx.dispose();
+  });
+
   it('o arco de vento nasce com cor e falhas, não branco', () => {
     const { scene, vfx } = create();
     vfx.playTravelingSlash({
@@ -147,7 +195,7 @@ describe('Visual do corte do guerreiro', () => {
       if (!material?.uniforms?.uBreakup) return;
       checked += 1;
       expect(material.uniforms.uColorA.value.getHex()).not.toBe(0xffffff);
-      expect(material.uniforms.uBreakup.value).toBeGreaterThan(0.3);
+      expect(material.uniforms.uBreakup.value).toBeGreaterThan(0.1);
       expect(material.uniforms.uSaturation.value).toBeGreaterThan(1);
     });
     expect(checked).toBeGreaterThanOrEqual(3);

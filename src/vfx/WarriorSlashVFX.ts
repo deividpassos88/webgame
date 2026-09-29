@@ -113,6 +113,66 @@ function createArcRibbonGeometry(
   return geo;
 }
 
+/** Altura do centro do arco de vento: a lua abre com a ponta de baixo no chão. */
+const WIND_ARC_HEIGHT = 1.75;
+
+function createWindArcGeometry(
+  radius: number,
+  thickness: number,
+  taper: number,
+  radialSegments: number,
+  angularSegments: number
+): THREE.BufferGeometry {
+  // Lua de vento: semicírculo no plano XY (o ")" que voa na direção do
+  // monstro) com as pontas afinando e recuando, como um corte de vento de
+  // verdade — não um disco cheio nem um arco raso.
+  const vertexCount = (radialSegments + 1) * (angularSegments + 1);
+  const positions = new Float32Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2);
+  const indices: number[] = [];
+
+  let idx = 0;
+  for (let a = 0; a <= angularSegments; a++) {
+    const t = a / angularSegments;
+    const phi = -Math.PI / 2 + t * Math.PI;
+    const cos = Math.cos(phi);
+    const sin = Math.sin(phi);
+    const tip = Math.sin(Math.PI * t);
+    const mid = radius * (1 - (1 - tip) * taper * 0.18);
+    const half = (thickness * 0.5) * (1 - taper + taper * tip);
+    for (let r = 0; r <= radialSegments; r++) {
+      const rt = r / radialSegments;
+      const rad = mid + THREE.MathUtils.lerp(-half, half, rt);
+      // Bulge para +X local: visto pelo guerreiro, o lado direito da tela.
+      positions[idx * 3] = rad * cos;
+      positions[idx * 3 + 1] = rad * sin;
+      positions[idx * 3 + 2] = 0;
+      uvs[idx * 2] = t;
+      uvs[idx * 2 + 1] = rt;
+      idx++;
+    }
+  }
+
+  const radialStride = radialSegments + 1;
+  for (let a = 0; a < angularSegments; a++) {
+    for (let r = 0; r < radialSegments; r++) {
+      const i0 = a * radialStride + r;
+      const i1 = (a + 1) * radialStride + r;
+      const i2 = (a + 1) * radialStride + (r + 1);
+      const i3 = a * radialStride + (r + 1);
+      indices.push(i0, i1, i3);
+      indices.push(i1, i2, i3);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 const BASIC_CONFIG = {
   inner: 0.35,
   outer: 3.2,
@@ -412,15 +472,16 @@ class WarriorSlashEffect implements PoolableVFX {
     this.shockwaveMaterial.uniforms.uTime.value = 0;
     this.shockwaveMesh.scale.setScalar(0.35 * this.baseScale);
 
-    // Sprites
-    (this.glowSprite.material as THREE.SpriteMaterial).opacity = 0.85;
+    // Sprites: volumes discretos, o brilho tem que vir do arco, não de uma
+    // bola radial no meio da lâmina.
+    (this.glowSprite.material as THREE.SpriteMaterial).opacity = 0.38;
     this.glowSprite.position.set(0, 0.15, 0.45);
-    this.glowSprite.scale.setScalar(1.4 * this.baseScale);
+    this.glowSprite.scale.setScalar(0.8 * this.baseScale);
     (this.glowSprite.material as THREE.SpriteMaterial).color.set(cfg.colors.glow);
 
-    (this.impactSprite.material as THREE.SpriteMaterial).opacity = 0.95;
+    (this.impactSprite.material as THREE.SpriteMaterial).opacity = 0.55;
     this.impactSprite.position.set(0, 0.12, cfg.outer * 0.88);
-    this.impactSprite.scale.setScalar(1.8 * this.baseScale);
+    this.impactSprite.scale.setScalar(1.1 * this.baseScale);
     (this.impactSprite.material as THREE.SpriteMaterial).color.set(cfg.colors.core);
 
     (this.edgeGlow1.material as THREE.SpriteMaterial).opacity = 0.75;
@@ -502,11 +563,11 @@ class WarriorSlashEffect implements PoolableVFX {
     this.shockwaveMesh.scale.setScalar((0.35 + progress * 3.2) * this.baseScale);
 
     // Sprites fade and scale
-    (this.glowSprite.material as THREE.SpriteMaterial).opacity = fade * 0.85;
-    this.glowSprite.scale.setScalar((1.4 + progress * 0.9) * this.baseScale);
+    (this.glowSprite.material as THREE.SpriteMaterial).opacity = fade * 0.38;
+    this.glowSprite.scale.setScalar((0.8 + progress * 0.5) * this.baseScale);
 
-    (this.impactSprite.material as THREE.SpriteMaterial).opacity = fade * 0.95;
-    this.impactSprite.scale.setScalar((1.8 + progress * 1.6) * this.baseScale);
+    (this.impactSprite.material as THREE.SpriteMaterial).opacity = fade * 0.55;
+    this.impactSprite.scale.setScalar((1.1 + progress * 0.9) * this.baseScale);
     (this.impactSprite.material as THREE.SpriteMaterial).rotation = progress * 1.5;
 
     (this.edgeGlow1.material as THREE.SpriteMaterial).opacity = fade * 0.75;
@@ -739,6 +800,8 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
   private baseScale = 1;
   /** Espera a lâmina terminar o rastro antes de disparar o arco de vento. */
   private spawnDelay = 0;
+  /** Inclinação base do ")" para o arco não ficar chapado no eixo do golpe. */
+  private baseRoll = 0.12;
 
   constructor(
     private readonly resources: WarriorSlashResources,
@@ -747,20 +810,22 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.group.name = 'WarriorTravelingSlash';
     this.group.visible = false;
 
-    // Arco ")" de vento: crescente vertical de 150°, leaning para o monstro.
-    this.geometry = createArcRibbonGeometry(0.2, 2.6, (-75 * Math.PI) / 180, (150 * Math.PI) / 180, 3, 30);
-    this.coreGeometry = createArcRibbonGeometry(0.45, 2.25, (-75 * Math.PI) / 180, (150 * Math.PI) / 180, 2, 30);
-    this.trailGeometry = createArcRibbonGeometry(0.12, 3.0, (-62 * Math.PI) / 180, (124 * Math.PI) / 180, 2, 26);
+    // Arco ")" de vento: lua vertical de ~3,4 m, montada já em pé no plano XY,
+    // com pontas afinadas, apontando para o monstro. Nada de sprite radial no
+    // centro — era isso que virava "bola de magia" em vez de arco.
+    this.geometry = createWindArcGeometry(1.75, 0.95, 0.85, 4, 40);
+    this.coreGeometry = createWindArcGeometry(1.72, 0.32, 0.7, 3, 40);
+    this.trailGeometry = createWindArcGeometry(1.95, 1.5, 0.95, 3, 34);
 
     this.slashMat = createWarriorSlashMaterial({
       colorA: 0xdff8ff,
       colorB: 0x2fd4ff,
       colorC: 0x062a3c,
       opacity: 1,
-      intensity: 1.7,
-      thickness: 1.1,
+      intensity: 1.9,
+      thickness: 1.4,
       distortion: 1.2,
-      breakup: 0.55,
+      breakup: 0.3,
       saturation: 1.35,
     });
     this.coreMat = createWarriorSlashMaterial({
@@ -768,21 +833,21 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
       colorB: 0x9ff0ff,
       colorC: 0x0a3a4a,
       opacity: 0.95,
-      intensity: 2.0,
-      thickness: 0.5,
+      intensity: 2.1,
+      thickness: 0.6,
       distortion: 0.8,
-      breakup: 0.4,
+      breakup: 0.14,
       saturation: 1.1,
     });
     this.trailMat = createWarriorSlashMaterial({
       colorA: 0xbfefff,
       colorB: 0x1fa8e0,
       colorC: 0x04202e,
-      opacity: 0.65,
-      intensity: 1.3,
+      opacity: 0.6,
+      intensity: 1.4,
       thickness: 1.4,
       distortion: 1.3,
-      breakup: 0.72,
+      breakup: 0.7,
       saturation: 1.4,
     });
 
@@ -790,13 +855,8 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.coreMesh = new THREE.Mesh(this.coreGeometry, this.coreMat);
     this.trailMesh = new THREE.Mesh(this.trailGeometry, this.trailMat);
 
-    // Vertical orientation: rotate to be vertical blade facing forward
-    // Our arc geometry is on XZ plane, we want it vertical (standing)
-    this.slashMesh.rotation.x = Math.PI / 2;
-    this.slashMesh.rotation.y = 0;
-    this.coreMesh.rotation.x = Math.PI / 2;
-    this.trailMesh.rotation.x = Math.PI / 2;
-    this.trailMesh.position.z = -0.35; // behind main blade
+    // Sem rotação: a lua já nasce em pé, perpendicular à direção do voo.
+    this.trailMesh.position.x = -0.12; // rastro largo um pouco atrás do arco
 
     this.slashMesh.frustumCulled = false;
     this.coreMesh.frustumCulled = false;
@@ -817,7 +877,9 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     });
     this.glow = new THREE.Sprite(glowMat);
     this.glow.name = 'TravelGlow';
-    this.glow.scale.setScalar(1.2);
+    // Disco pequeno e discreto colado na borda do arco: dá volume sem virar
+    // a bola de brilho que escondia o ")" no lugar dele.
+    this.glow.scale.setScalar(0.5);
 
     this.particles = new PooledParticleCloud(40, resources.softGlow);
 
@@ -857,12 +919,13 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
 
     this.group.visible = false;
     this.group.position.copy(this.startPos);
-    this.group.position.y += 0.95;
+    this.group.position.y += WIND_ARC_HEIGHT;
     this.group.scale.setScalar(this.baseScale);
 
     const yaw = Math.atan2(this.forward.x, this.forward.z);
-    // Leve inclinação para o arco de vento não ficar chapado no eixo.
-    this.group.rotation.set(0.06, yaw, options.type === 'auto' ? -0.12 : 0.12);
+    // Inclinação leve para o ")" não ficar chapado no eixo do golpe.
+    this.baseRoll = options.type === 'auto' ? -0.12 : 0.12;
+    this.group.rotation.set(0.06, yaw, this.baseRoll);
 
     // Colors based on type
     const cfg = configForType(options.type);
@@ -904,26 +967,28 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.trailMat.uniforms.uTime.value = 0;
     this.trailMat.uniforms.uProgress.value = 0;
 
-    (this.glow.material as THREE.SpriteMaterial).opacity = 0.8;
+    (this.glow.material as THREE.SpriteMaterial).opacity = 0.3;
     (this.glow.material as THREE.SpriteMaterial).color.set(glowColor);
-    this.glow.scale.setScalar(1.1 * this.baseScale);
+    this.glow.scale.setScalar(0.5 * this.baseScale);
+    this.glow.position.set(1.4, 0, 0);
 
     this.actualLightHandle = this.lightPool.acquire();
     if (this.actualLightHandle) {
       this.actualLightHandle.light.color.set(glowColor);
-      this.actualLightHandle.light.intensity = 1.6 * this.baseScale;
-      this.actualLightHandle.light.distance = 6 * this.baseScale;
+      this.actualLightHandle.light.intensity = 1.2 * this.baseScale;
+      this.actualLightHandle.light.distance = 5 * this.baseScale;
       this.actualLightHandle.light.position.copy(this.group.position);
     }
 
+    // Poeira de vento nas pontas do arco, não um aglomerado no centro.
     this.particles.setTexture(this.resources.softGlow);
-    this.particles.emit(new THREE.Vector3(0, 0, -0.2), {
+    this.particles.emit(new THREE.Vector3(0.7, 0, 0), {
       color: glowColor,
-      count: 20,
-      speed: 2.2,
-      spread: 0.9,
+      count: 10,
+      speed: 1.6,
+      spread: 1.3,
       lifetime: this.duration,
-      upwardBias: 0.15,
+      upwardBias: 0.1,
     });
   }
 
@@ -941,7 +1006,7 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
 
     // Move forward
     const currentPos = this.startPos.clone().lerp(this.targetPos, travelProgress);
-    currentPos.y = this.startPos.y + 0.95;
+    currentPos.y = this.startPos.y + WIND_ARC_HEIGHT;
     this.group.position.copy(currentPos);
 
     // Fade based on overall progress
@@ -954,14 +1019,15 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.coreMat.uniforms.uOpacity.value = fade * 0.95;
     this.trailMat.uniforms.uOpacity.value = fade * 0.55;
 
-    // Scale pulse as it travels
+    // O arco cresce e gira levemente enquanto voa, como vento sendo aberto.
     const scale = this.baseScale * (1 + travelProgress * 0.18);
     this.slashMesh.scale.setScalar(scale);
     this.coreMesh.scale.setScalar(scale * 1.05);
     this.trailMesh.scale.setScalar(scale * 0.95);
+    this.group.rotation.z = this.baseRoll + travelProgress * 0.35;
 
-    (this.glow.material as THREE.SpriteMaterial).opacity = fade * 0.8;
-    this.glow.scale.setScalar((1.1 + travelProgress * 0.6) * this.baseScale);
+    (this.glow.material as THREE.SpriteMaterial).opacity = fade * 0.3;
+    this.glow.scale.setScalar((0.5 + travelProgress * 0.25) * this.baseScale);
 
     if (this.actualLightHandle) {
       this.actualLightHandle.light.intensity *= Math.max(0, 1 - elapsed * 5);
