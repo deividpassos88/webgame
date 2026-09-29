@@ -438,6 +438,7 @@ export class Game {
 
       this.setupLights();
       this.scene.add(this.level.group);
+      this.scene.add(this.warriorSlashVFX.group);
       this.player = new Player(characterId, this.characterAssets);
       await this.player.load();
       this.player.onWarriorSkillHit((event) => this.onWarriorSkillHit(event));
@@ -2040,6 +2041,13 @@ export class Game {
 
   private onWarriorAttackWindow(event: WarriorAttackWindowEvent): void {
     if (this.profile.selectedClass !== 'paladin' || this.player.equippedWeaponId !== 'sword') return;
+    this.warriorSlashVFX.triggerSlash(
+      event.attackId,
+      event.origin,
+      event.forward,
+      event.hitIndex,
+      this.player.attackTargetEnemy
+    );
     if (event.attackId === 'ataque_basico') {
       this.applyWarriorBasicWaveDamage(event);
     }
@@ -2161,6 +2169,10 @@ export class Game {
       this.showFloatingDamage(record.enemy.root.position, damage);
       this.warriorSlashVFX.playImpact(record.enemy.root.position, 1);
       this.syncCombatHealthBars(record);
+      if (!hitAny) {
+        hitAny = true;
+        this.warriorSlashVFX.reportEnemyHit(record.enemy.root.position);
+      }
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
 
@@ -2369,6 +2381,12 @@ export class Game {
       const plasmaOrigin = enemy.root.position.clone();
       plasmaOrigin.y += bodyScale * 1.1;
       this.healthPlasma.spawn(plasmaOrigin, reward.healAmount);
+
+      // Quando mata um mini-boss e recupera uma grande quantidade de vida:
+      // Dispara o pilar de cura verde com anel e cruzes médicas flutuantes (Imagem 1)
+      if (role === 'mini-boss') {
+        this.warriorSlashVFX.triggerMiniBossHeal(this.player.root);
+      }
     }
 
     Logger.info(
