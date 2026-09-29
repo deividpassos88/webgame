@@ -2137,6 +2137,8 @@ export class Game {
       }
     }
 
+    // Só o primeiro corpo atingido dissolve o traço e acende o flash de impacto.
+    let hitAny = false;
     for (const record of records) {
       const target = record.enemy.root.position;
       const delta = new THREE.Vector3(target.x - origin.x, 0, target.z - origin.z);
