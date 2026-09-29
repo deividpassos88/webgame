@@ -42,7 +42,12 @@ import { getEffectiveTargetDistance } from '../combat/DistanceDamage';
 import type { MageSpellId } from '../vfx/VFXTypes';
 import { MAGE_TELEPORT_INVULNERABILITY_SECONDS } from './MageTeleport';
 
-const BASIC_ACTION_INVULNERABILITY_SECONDS = 0.7;
+/**
+ * O ataque normal não concede nenhuma janela de invulnerabilidade: o
+ * guerreiro pode tomar dano de monstro enquanto bate. Skills e dash mantêm as
+ * suas próprias janelas.
+ */
+const BASIC_ACTION_INVULNERABILITY_SECONDS = 0;
 /** A Maga's basic cast grants no action immunity window at all (0 seconds). */
 const MAGE_BASIC_ACTION_INVULNERABILITY_SECONDS = 0;
 const SKILL_ACTION_INVULNERABILITY_SECONDS = 1.5;

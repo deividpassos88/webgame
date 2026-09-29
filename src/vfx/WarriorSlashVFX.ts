@@ -10,6 +10,9 @@ import {
   type WarriorSlashMaterial,
   type EnergyShaderMaterial,
 } from './VFXMaterials';
+import {
+  WarriorSlashVFX as WarriorSlashTrailVFX,
+} from './warrior/WarriorSlashVFX';
 
 export interface WarriorSlashPlayOptions {
   readonly position: THREE.Vector3;
@@ -110,14 +113,76 @@ function createArcRibbonGeometry(
   return geo;
 }
 
+/** Altura do centro da onda de vento: o leque de arcos abre com a ponta no chão. */
+const WIND_WAVE_HEIGHT = 1.45;
+
+function createWindArcGeometry(
+  radius: number,
+  thickness: number,
+  taper: number,
+  radialSegments: number,
+  angularSegments: number
+): THREE.BufferGeometry {
+  // Lua de vento: semicírculo no plano XY (o ")" que voa na direção do
+  // monstro) com as pontas afinando e recuando, como um corte de vento de
+  // verdade — não um disco cheio nem um arco raso.
+  const vertexCount = (radialSegments + 1) * (angularSegments + 1);
+  const positions = new Float32Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2);
+  const indices: number[] = [];
+
+  let idx = 0;
+  for (let a = 0; a <= angularSegments; a++) {
+    const t = a / angularSegments;
+    const phi = -Math.PI / 2 + t * Math.PI;
+    const cos = Math.cos(phi);
+    const sin = Math.sin(phi);
+    const tip = Math.sin(Math.PI * t);
+    const mid = radius * (1 - (1 - tip) * taper * 0.18);
+    const half = (thickness * 0.5) * (1 - taper + taper * tip);
+    for (let r = 0; r <= radialSegments; r++) {
+      const rt = r / radialSegments;
+      const rad = mid + THREE.MathUtils.lerp(-half, half, rt);
+      // Bulge para +X local: visto pelo guerreiro, o lado direito da tela.
+      positions[idx * 3] = rad * cos;
+      positions[idx * 3 + 1] = rad * sin;
+      positions[idx * 3 + 2] = 0;
+      uvs[idx * 2] = t;
+      uvs[idx * 2 + 1] = rt;
+      idx++;
+    }
+  }
+
+  const radialStride = radialSegments + 1;
+  for (let a = 0; a < angularSegments; a++) {
+    for (let r = 0; r < radialSegments; r++) {
+      const i0 = a * radialStride + r;
+      const i1 = (a + 1) * radialStride + r;
+      const i2 = (a + 1) * radialStride + (r + 1);
+      const i3 = a * radialStride + (r + 1);
+      indices.push(i0, i1, i3);
+      indices.push(i1, i2, i3);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 const BASIC_CONFIG = {
   inner: 0.35,
   outer: 3.2,
   theta: (Math.PI * 260) / 180, // 260 deg large
   duration: 0.42,
-  intensity: 2.1,
+  intensity: 1.55,
   thickness: 1.25,
-  colors: { core: 0xffffff, glow: 0x7efff6, dark: 0x0a2e33 },
+  breakup: 0.62,
+  saturation: 1.35,
+  colors: { core: 0xdff8ff, glow: 0x2fd4ff, dark: 0x062a3c },
 };
 
 const COMBO2_CONFIG = {
@@ -125,9 +190,11 @@ const COMBO2_CONFIG = {
   outer: 3.5,
   theta: (Math.PI * 280) / 180,
   duration: 0.46,
-  intensity: 2.3,
+  intensity: 1.6,
   thickness: 1.35,
-  colors: { core: 0xeaffff, glow: 0x4dffe9, dark: 0x082a30 },
+  breakup: 0.6,
+  saturation: 1.35,
+  colors: { core: 0xe4fbff, glow: 0x2f9dff, dark: 0x06203c },
 };
 
 const COMBO3_CONFIG = {
@@ -135,9 +202,11 @@ const COMBO3_CONFIG = {
   outer: 3.8,
   theta: (Math.PI * 310) / 180,
   duration: 0.52,
-  intensity: 2.6,
+  intensity: 1.7,
   thickness: 1.45,
-  colors: { core: 0xffffff, glow: 0x5affff, dark: 0x0a2e33 },
+  breakup: 0.55,
+  saturation: 1.4,
+  colors: { core: 0xfff2d4, glow: 0xffa53a, dark: 0x3a1c05 },
 };
 
 const AUTO_CONFIG = {
@@ -145,9 +214,11 @@ const AUTO_CONFIG = {
   outer: 3.4,
   theta: (Math.PI * 270) / 180,
   duration: 0.44,
-  intensity: 2.4,
+  intensity: 1.6,
   thickness: 1.3,
-  colors: { core: 0xffffff, glow: 0x8affff, dark: 0x0a2e33 },
+  breakup: 0.66,
+  saturation: 1.4,
+  colors: { core: 0xdcfff4, glow: 0x25f0b8, dark: 0x04301f },
 };
 
 const SPIN_CONFIG = {
@@ -156,9 +227,11 @@ const SPIN_CONFIG = {
   theta: (Math.PI * 340) / 180, // quase círculo completo
   thetaStart: Math.PI, // começa na costa
   duration: 0.68,
-  intensity: 2.8,
+  intensity: 1.75,
   thickness: 1.5,
-  colors: { core: 0xffffff, glow: 0x5efff6, dark: 0x0a2e33 },
+  breakup: 0.58,
+  saturation: 1.45,
+  colors: { core: 0xfff0cd, glow: 0xffb43c, dark: 0x3d1f04 },
   waveMaxRadius: 7.0,
 };
 
@@ -168,9 +241,11 @@ const SPIN_FROST_CONFIG = {
   theta: (Math.PI * 340) / 180,
   thetaStart: Math.PI,
   duration: 0.72,
-  intensity: 2.9,
+  intensity: 1.8,
   thickness: 1.55,
-  colors: { core: 0xeaffff, glow: 0x7efff6, dark: 0x0a2a3a },
+  breakup: 0.56,
+  saturation: 1.4,
+  colors: { core: 0xeaf7ff, glow: 0x7fd4ff, dark: 0x0a2340 },
   waveMaxRadius: 7.0,
 };
 
@@ -215,6 +290,9 @@ class WarriorSlashEffect implements PoolableVFX {
   private duration = 0.42;
   private baseScale = 1;
   private forward = new THREE.Vector3(0, 0, 1);
+  /** No giratório o rastro da lâmina varre o corpo em vez de ficar parado. */
+  private spinSweep = false;
+  private baseYaw = 0;
 
   public constructor(
     private readonly resources: WarriorSlashResources,
@@ -249,6 +327,8 @@ class WarriorSlashEffect implements PoolableVFX {
       intensity: BASIC_CONFIG.intensity,
       thickness: BASIC_CONFIG.thickness,
       distortion: 1.1,
+      breakup: BASIC_CONFIG.breakup,
+      saturation: BASIC_CONFIG.saturation,
     });
     this.slashMesh = new THREE.Mesh(this.arcGeometry, this.slashMaterial);
     this.slashMesh.name = 'WarriorSlashMain';
@@ -256,13 +336,15 @@ class WarriorSlashEffect implements PoolableVFX {
     this.slashMesh.renderOrder = 5;
 
     this.slashCoreMaterial = createWarriorSlashMaterial({
-      colorA: 0xffffff,
-      colorB: 0xbfffff,
-      colorC: 0x0a4a4a,
+      colorA: BASIC_CONFIG.colors.core,
+      colorB: BASIC_CONFIG.colors.glow,
+      colorC: BASIC_CONFIG.colors.dark,
       opacity: 0.95,
-      intensity: 2.8,
+      intensity: 1.9,
       thickness: 0.55,
       distortion: 0.9,
+      breakup: BASIC_CONFIG.breakup * 0.7,
+      saturation: 1.1,
     });
     this.slashCoreMesh = new THREE.Mesh(this.coreGeometry, this.slashCoreMaterial);
     this.slashCoreMesh.name = 'WarriorSlashCore';
@@ -300,10 +382,10 @@ class WarriorSlashEffect implements PoolableVFX {
       return sprite;
     };
 
-    this.impactSprite = makeSprite('WarriorImpactFlare', resources.impactFlare, 0x7fffff);
-    this.glowSprite = makeSprite('WarriorCenterGlow', resources.softGlow, 0x5efff5);
-    this.edgeGlow1 = makeSprite('WarriorEdgeGlow1', resources.softGlow, 0xffffff);
-    this.edgeGlow2 = makeSprite('WarriorEdgeGlow2', resources.softGlow, 0x5efff5);
+    this.impactSprite = makeSprite('WarriorImpactFlare', resources.impactFlare, BASIC_CONFIG.colors.glow);
+    this.glowSprite = makeSprite('WarriorCenterGlow', resources.softGlow, BASIC_CONFIG.colors.glow);
+    this.edgeGlow1 = makeSprite('WarriorEdgeGlow1', resources.softGlow, BASIC_CONFIG.colors.core);
+    this.edgeGlow2 = makeSprite('WarriorEdgeGlow2', resources.softGlow, BASIC_CONFIG.colors.glow);
 
     this.particles = new PooledParticleCloud(72, resources.softGlow);
     this.embers = new PooledParticleCloud(48, resources.softGlow);
@@ -346,6 +428,7 @@ class WarriorSlashEffect implements PoolableVFX {
 
     // Orientation: group Y rotation aligns forward, with slight tilt for dynamic feel like reference image
     const yaw = Math.atan2(this.forward.x, this.forward.z);
+    this.baseYaw = yaw;
     this.group.rotation.set(0.12, yaw, 0); // slight forward tilt
 
     // Tilt slash meshes for more 3D dome feel (like image)
@@ -355,21 +438,29 @@ class WarriorSlashEffect implements PoolableVFX {
     this.slashCoreMesh.rotation.z = 0.05;
 
     // Materials colors
+    const seed = Math.random() * 10;
+    this.spinSweep = options.type === 'spin' || options.type === 'spin_frost';
     this.slashMaterial.uniforms.uColorA.value.set(cfg.colors.core);
     this.slashMaterial.uniforms.uColorB.value.set(cfg.colors.glow);
     this.slashMaterial.uniforms.uColorC.value.set(cfg.colors.dark);
     this.slashMaterial.uniforms.uOpacity.value = 1;
     this.slashMaterial.uniforms.uIntensity.value = cfg.intensity;
     this.slashMaterial.uniforms.uThickness.value = cfg.thickness;
+    this.slashMaterial.uniforms.uBreakup.value = cfg.breakup;
+    this.slashMaterial.uniforms.uSaturation.value = cfg.saturation;
+    this.slashMaterial.uniforms.uSeed.value = seed;
     this.slashMaterial.uniforms.uTime.value = 0;
     this.slashMaterial.uniforms.uProgress.value = 0;
 
-    this.slashCoreMaterial.uniforms.uColorA.value.set(0xffffff);
-    this.slashCoreMaterial.uniforms.uColorB.value.set(0xcfffff);
-    this.slashCoreMaterial.uniforms.uColorC.value.set(cfg.colors.glow);
+    this.slashCoreMaterial.uniforms.uColorA.value.set(cfg.colors.core);
+    this.slashCoreMaterial.uniforms.uColorB.value.set(cfg.colors.glow);
+    this.slashCoreMaterial.uniforms.uColorC.value.set(cfg.colors.dark);
     this.slashCoreMaterial.uniforms.uOpacity.value = 0.95;
-    this.slashCoreMaterial.uniforms.uIntensity.value = cfg.intensity * 1.35;
+    this.slashCoreMaterial.uniforms.uIntensity.value = cfg.intensity * 1.25;
     this.slashCoreMaterial.uniforms.uThickness.value = cfg.thickness * 0.55;
+    this.slashCoreMaterial.uniforms.uBreakup.value = cfg.breakup * 0.7;
+    this.slashCoreMaterial.uniforms.uSaturation.value = cfg.saturation * 0.85;
+    this.slashCoreMaterial.uniforms.uSeed.value = seed + 3.7;
     this.slashCoreMaterial.uniforms.uTime.value = 0;
     this.slashCoreMaterial.uniforms.uProgress.value = 0;
 
@@ -381,16 +472,17 @@ class WarriorSlashEffect implements PoolableVFX {
     this.shockwaveMaterial.uniforms.uTime.value = 0;
     this.shockwaveMesh.scale.setScalar(0.35 * this.baseScale);
 
-    // Sprites
-    (this.glowSprite.material as THREE.SpriteMaterial).opacity = 0.85;
+    // Sprites: volumes discretos, o brilho tem que vir do arco, não de uma
+    // bola radial no meio da lâmina.
+    (this.glowSprite.material as THREE.SpriteMaterial).opacity = 0.38;
     this.glowSprite.position.set(0, 0.15, 0.45);
-    this.glowSprite.scale.setScalar(1.4 * this.baseScale);
+    this.glowSprite.scale.setScalar(0.8 * this.baseScale);
     (this.glowSprite.material as THREE.SpriteMaterial).color.set(cfg.colors.glow);
 
-    (this.impactSprite.material as THREE.SpriteMaterial).opacity = 0.95;
+    (this.impactSprite.material as THREE.SpriteMaterial).opacity = 0.55;
     this.impactSprite.position.set(0, 0.12, cfg.outer * 0.88);
-    this.impactSprite.scale.setScalar(1.8 * this.baseScale);
-    (this.impactSprite.material as THREE.SpriteMaterial).color.set(0xffffff);
+    this.impactSprite.scale.setScalar(1.1 * this.baseScale);
+    (this.impactSprite.material as THREE.SpriteMaterial).color.set(cfg.colors.core);
 
     (this.edgeGlow1.material as THREE.SpriteMaterial).opacity = 0.75;
     this.edgeGlow1.position.set(
@@ -399,8 +491,10 @@ class WarriorSlashEffect implements PoolableVFX {
       Math.cos(cfg.theta * 0.42) * cfg.outer * 0.92
     );
     this.edgeGlow1.scale.setScalar(0.9 * this.baseScale);
+    (this.edgeGlow1.material as THREE.SpriteMaterial).color.set(cfg.colors.glow);
 
     (this.edgeGlow2.material as THREE.SpriteMaterial).opacity = 0.75;
+    (this.edgeGlow2.material as THREE.SpriteMaterial).color.set(cfg.colors.glow);
     this.edgeGlow2.position.set(
       Math.sin(-cfg.theta * 0.42) * cfg.outer * 0.92,
       0.18,
@@ -421,7 +515,7 @@ class WarriorSlashEffect implements PoolableVFX {
     // Particles - bright sparks flying outward like in image (small black dots become cyan glints)
     this.particles.setTexture(this.resources.softGlow);
     this.particles.emit(new THREE.Vector3(0, 0.2, 0.5), {
-      color: 0xbfffff,
+      color: cfg.colors.glow,
       count: 36,
       speed: 4.2 * this.baseScale,
       spread: 1.4,
@@ -452,6 +546,12 @@ class WarriorSlashEffect implements PoolableVFX {
     this.slashMaterial.uniforms.uOpacity.value = fade;
     this.slashCoreMaterial.uniforms.uOpacity.value = fade * 0.95;
 
+    // No giratório o rastro da lâmina varre o corpo junto com a animação.
+    if (this.spinSweep) {
+      this.group.rotation.y = this.baseYaw + progress * 2.3;
+      this.group.rotation.z = Math.sin(progress * Math.PI) * 0.1;
+    }
+
     // Expand scale slightly for large trail feel
     const scale = this.baseScale * (1 + progress * 0.22);
     this.slashMesh.scale.set(scale, 1, scale);
@@ -463,11 +563,11 @@ class WarriorSlashEffect implements PoolableVFX {
     this.shockwaveMesh.scale.setScalar((0.35 + progress * 3.2) * this.baseScale);
 
     // Sprites fade and scale
-    (this.glowSprite.material as THREE.SpriteMaterial).opacity = fade * 0.85;
-    this.glowSprite.scale.setScalar((1.4 + progress * 0.9) * this.baseScale);
+    (this.glowSprite.material as THREE.SpriteMaterial).opacity = fade * 0.38;
+    this.glowSprite.scale.setScalar((0.8 + progress * 0.5) * this.baseScale);
 
-    (this.impactSprite.material as THREE.SpriteMaterial).opacity = fade * 0.95;
-    this.impactSprite.scale.setScalar((1.8 + progress * 1.6) * this.baseScale);
+    (this.impactSprite.material as THREE.SpriteMaterial).opacity = fade * 0.55;
+    this.impactSprite.scale.setScalar((1.1 + progress * 0.9) * this.baseScale);
     (this.impactSprite.material as THREE.SpriteMaterial).rotation = progress * 1.5;
 
     (this.edgeGlow1.material as THREE.SpriteMaterial).opacity = fade * 0.75;
@@ -671,21 +771,25 @@ class WarriorHitImpactEffect implements PoolableVFX {
   }
 }
 
+/**
+ * Onda de vento do corte: um leque de arcos finos em ")" que nasce no rastro
+ * da lâmina e viaja na direção do monstro, apertando conforme avança. São
+ * vários traços finos, e não um crescente cheio — é o que faz a onda virar as
+ * "linhas" de vento em vez de uma bola de luz.
+ */
+const WAVE_STROKES = 6;
+/** Avanço dos traços na direção do monstro, em metros. */
+const WAVE_STROKE_SPREAD = 0.72;
+/** Abertura lateral do leque, em metros. */
+const WAVE_STROKE_LEAN = 0.34;
+
 class WarriorTravelingSlashEffect implements PoolableVFX {
   public active = false;
   public readonly group = new THREE.Group();
-  private readonly slashMesh: THREE.Mesh;
-  private readonly coreMesh: THREE.Mesh;
-  private readonly trailMesh: THREE.Mesh;
-  private readonly slashMat: WarriorSlashMaterial;
-  private readonly coreMat: WarriorSlashMaterial;
-  private readonly trailMat: WarriorSlashMaterial;
-  private readonly glow: THREE.Sprite;
+  private readonly strokes: THREE.Mesh[] = [];
+  private readonly strokeGeometry: THREE.BufferGeometry;
+  private readonly strokeMaterial: WarriorSlashMaterial;
   private readonly particles: PooledParticleCloud;
-  private readonly geometry: THREE.BufferGeometry;
-  private readonly coreGeometry: THREE.BufferGeometry;
-  private readonly trailGeometry: THREE.BufferGeometry;
-  private readonly lightHandle: { light: THREE.PointLight; release: () => void } | null = null;
   private actualLightHandle: VFXLightHandle | null = null;
 
   private age = 0;
@@ -698,6 +802,10 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
   private onHit: ((pos: THREE.Vector3) => void) | null = null;
   private hasHit = false;
   private baseScale = 1;
+  /** Espera a lâmina terminar o rastro antes de disparar a onda. */
+  private spawnDelay = 0;
+  /** Inclinação base do ")" para a onda não ficar chapada no eixo do golpe. */
+  private baseRoll = 0.12;
 
   constructor(
     private readonly resources: WarriorSlashResources,
@@ -706,184 +814,149 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.group.name = 'WarriorTravelingSlash';
     this.group.visible = false;
 
-    // Traveling slash uses vertical crescent shape (same format as blade trail)
-    // inner small, outer large, theta ~130 deg for air cut
-    this.geometry = createArcRibbonGeometry(0.15, 1.9, (-130 * Math.PI) / 360, (130 * Math.PI) / 180, 3, 24);
-    this.coreGeometry = createArcRibbonGeometry(0.35, 1.65, (-130 * Math.PI) / 360, (130 * Math.PI) / 180, 2, 24);
-    this.trailGeometry = createArcRibbonGeometry(0.1, 2.2, (-110 * Math.PI) / 360, (110 * Math.PI) / 180, 2, 20);
-
-    this.slashMat = createWarriorSlashMaterial({
-      colorA: 0xffffff,
-      colorB: 0x7efff6,
-      colorC: 0x0a2e33,
+    // Um traço fino de raio 1: cada mesh é escalada para formar o leque.
+    this.strokeGeometry = createWindArcGeometry(1, 0.13, 0.92, 2, 30);
+    this.strokeMaterial = createWarriorSlashMaterial({
+      colorA: 0xe6faff,
+      colorB: 0x2fd4ff,
+      colorC: 0x062a3c,
       opacity: 1,
-      intensity: 2.6,
-      thickness: 1.1,
-      distortion: 1.2,
-    });
-    this.coreMat = createWarriorSlashMaterial({
-      colorA: 0xffffff,
-      colorB: 0xbfffff,
-      colorC: 0x0a4a4a,
-      opacity: 0.95,
-      intensity: 3.2,
-      thickness: 0.5,
-      distortion: 0.8,
-    });
-    this.trailMat = createWarriorSlashMaterial({
-      colorA: 0xcfffff,
-      colorB: 0x4dffe9,
-      colorC: 0x082a30,
-      opacity: 0.65,
-      intensity: 1.8,
-      thickness: 1.4,
-      distortion: 1.3,
+      intensity: 2.2,
+      thickness: 1.5,
+      distortion: 1.15,
+      breakup: 0.34,
+      saturation: 1.35,
     });
 
-    this.slashMesh = new THREE.Mesh(this.geometry, this.slashMat);
-    this.coreMesh = new THREE.Mesh(this.coreGeometry, this.coreMat);
-    this.trailMesh = new THREE.Mesh(this.trailGeometry, this.trailMat);
+    for (let index = 0; index < WAVE_STROKES; index += 1) {
+      const stroke = new THREE.Mesh(this.strokeGeometry, this.strokeMaterial);
+      stroke.name = `WindWaveStroke${index}`;
+      stroke.frustumCulled = false;
+      stroke.renderOrder = 7;
+      this.strokes.push(stroke);
+      this.group.add(stroke);
+    }
 
-    // Vertical orientation: rotate to be vertical blade facing forward
-    // Our arc geometry is on XZ plane, we want it vertical (standing)
-    this.slashMesh.rotation.x = Math.PI / 2;
-    this.slashMesh.rotation.y = 0;
-    this.coreMesh.rotation.x = Math.PI / 2;
-    this.trailMesh.rotation.x = Math.PI / 2;
-    this.trailMesh.position.z = -0.35; // behind main blade
-
-    this.slashMesh.frustumCulled = false;
-    this.coreMesh.frustumCulled = false;
-    this.trailMesh.frustumCulled = false;
-    this.slashMesh.renderOrder = 7;
-    this.coreMesh.renderOrder = 8;
-    this.trailMesh.renderOrder = 6;
-
-    const glowMat = new THREE.SpriteMaterial({
-      map: resources.softGlow,
-      color: 0x5efff5,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      depthTest: false,
-      blending: THREE.AdditiveBlending,
-      toneMapped: false,
-    });
-    this.glow = new THREE.Sprite(glowMat);
-    this.glow.name = 'TravelGlow';
-    this.glow.scale.setScalar(1.2);
-
-    this.particles = new PooledParticleCloud(40, resources.softGlow);
-
-    this.group.add(this.trailMesh, this.slashMesh, this.coreMesh, this.glow, this.particles.points);
+    this.particles = new PooledParticleCloud(32, resources.softGlow);
+    this.group.add(this.particles.points);
   }
 
   public play(options: WarriorTravelingSlashOptions): void {
     this.startPos.copy(options.start);
     this.targetPos.copy(options.target);
     this.forward.copy(options.forward).setY(0).normalize();
-    if (this.forward.lengthSq() < 1e-6) this.forward.set(0, 0, 1);
+    if (this.forward.lengthSq() <= 1e-6) this.forward.set(0, 0, 1);
     this.baseScale = options.scale ?? 1;
     this.speed = options.speed ?? (options.type === 'auto' ? 13.5 : 11.5);
     this.onHit = options.onHit ?? null;
     this.hasHit = false;
 
+    // A onda sempre sai da lâmina e voa na direção do monstro: no mínimo 4 m
+    // para sempre dar para ler o ")" e no máximo 7 m de alcance.
     const delta = this.targetPos.clone().sub(this.startPos);
     delta.y = 0;
-    this.distance = Math.max(1, Math.min(delta.length(), 7.5)); // clamp max travel
-    this.duration = this.distance / this.speed + 0.12; // plus fade
-    this.age = 0;
+    // Mira no monstro, mas sem passar de 30° fora do eixo do golpe, para a
+    // onda continuar legível como o prolongamento do corte da espada.
+    if (delta.lengthSq() > 1e-6) {
+      const aim = delta.clone().normalize();
+      const angle = Math.acos(THREE.MathUtils.clamp(aim.dot(this.forward), -1, 1));
+      if (angle > 1e-3) {
+        this.forward.lerp(aim, Math.min(1, THREE.MathUtils.degToRad(30) / angle)).normalize();
+      }
+    }
+    this.distance = THREE.MathUtils.clamp(delta.length(), 4, 7);
+    const target = this.startPos.clone().addScaledVector(this.forward, this.distance);
+    target.y = this.startPos.y;
+    this.targetPos.copy(target);
+    this.duration = this.distance / this.speed + 0.12;
+    this.spawnDelay = 0.04;
+    this.age = -this.spawnDelay;
 
-    this.group.visible = true;
+    this.group.visible = false;
     this.group.position.copy(this.startPos);
-    this.group.position.y += 0.95;
+    this.group.position.y += WIND_WAVE_HEIGHT;
     this.group.scale.setScalar(this.baseScale);
 
     const yaw = Math.atan2(this.forward.x, this.forward.z);
-    this.group.rotation.set(0, yaw, 0);
+    this.baseRoll = options.type === 'auto' ? -0.14 : 0.14;
+    this.group.rotation.set(0.05, yaw, this.baseRoll);
 
-    // Colors based on type
-    const isAuto = options.type === 'auto';
-    const isCombo3 = options.type === 'combo3';
-    const glowColor = isAuto ? 0x8affff : isCombo3 ? 0x5affff : 0x7efff6;
-    const darkColor = 0x0a2e33;
+    const cfg = configForType(options.type);
+    this.strokeMaterial.uniforms.uColorA.value.set(cfg.colors.core);
+    this.strokeMaterial.uniforms.uColorB.value.set(cfg.colors.glow);
+    this.strokeMaterial.uniforms.uColorC.value.set(cfg.colors.dark);
+    this.strokeMaterial.uniforms.uOpacity.value = 1;
+    this.strokeMaterial.uniforms.uIntensity.value = cfg.intensity * 1.35;
+    this.strokeMaterial.uniforms.uSaturation.value = cfg.saturation;
+    this.strokeMaterial.uniforms.uBreakup.value = cfg.breakup;
+    this.strokeMaterial.uniforms.uSeed.value = Math.random() * 10;
+    this.strokeMaterial.uniforms.uTime.value = 0;
+    this.strokeMaterial.uniforms.uProgress.value = 0;
 
-    this.slashMat.uniforms.uColorA.value.set(0xffffff);
-    this.slashMat.uniforms.uColorB.value.set(glowColor);
-    this.slashMat.uniforms.uColorC.value.set(darkColor);
-    this.slashMat.uniforms.uOpacity.value = 1;
-    this.slashMat.uniforms.uIntensity.value = isAuto ? 2.9 : 2.6;
-    this.slashMat.uniforms.uTime.value = 0;
-    this.slashMat.uniforms.uProgress.value = 0;
-
-    this.coreMat.uniforms.uColorA.value.set(0xffffff);
-    this.coreMat.uniforms.uColorB.value.set(0xbfffff);
-    this.coreMat.uniforms.uColorC.value.set(glowColor);
-    this.coreMat.uniforms.uOpacity.value = 0.95;
-    this.coreMat.uniforms.uIntensity.value = isAuto ? 3.4 : 3.2;
-    this.coreMat.uniforms.uTime.value = 0;
-    this.coreMat.uniforms.uProgress.value = 0;
-
-    this.trailMat.uniforms.uColorA.value.set(0xcfffff);
-    this.trailMat.uniforms.uColorB.value.set(glowColor);
-    this.trailMat.uniforms.uColorC.value.set(darkColor);
-    this.trailMat.uniforms.uOpacity.value = 0.55;
-    this.trailMat.uniforms.uIntensity.value = 1.9;
-    this.trailMat.uniforms.uTime.value = 0;
-    this.trailMat.uniforms.uProgress.value = 0;
-
-    (this.glow.material as THREE.SpriteMaterial).opacity = 0.8;
-    (this.glow.material as THREE.SpriteMaterial).color.set(glowColor);
-    this.glow.scale.setScalar(1.1 * this.baseScale);
+    this.layoutStrokes(0);
 
     this.actualLightHandle = this.lightPool.acquire();
     if (this.actualLightHandle) {
-      this.actualLightHandle.light.color.set(glowColor);
-      this.actualLightHandle.light.intensity = 1.6 * this.baseScale;
-      this.actualLightHandle.light.distance = 6 * this.baseScale;
+      this.actualLightHandle.light.color.set(cfg.colors.glow);
+      this.actualLightHandle.light.intensity = 1.1 * this.baseScale;
+      this.actualLightHandle.light.distance = 5 * this.baseScale;
       this.actualLightHandle.light.position.copy(this.group.position);
     }
 
     this.particles.setTexture(this.resources.softGlow);
-    this.particles.emit(new THREE.Vector3(0, 0, -0.2), {
-      color: glowColor,
-      count: 20,
-      speed: 2.2,
-      spread: 0.9,
+    this.particles.emit(new THREE.Vector3(0.4, 0.2, 0), {
+      color: cfg.colors.glow,
+      count: 10,
+      speed: 1.8,
+      spread: 1.2,
       lifetime: this.duration,
-      upwardBias: 0.15,
+      upwardBias: 0.1,
     });
+  }
+
+  /**
+   * Leque de arcos: o traço 0 é o maior, colado na lâmina, e os seguintes vão
+   * encolhendo e se aproximando uns dos outros na direção do inimigo — é a
+   * mesma onda desenhada várias vezes no caminho, do rastro até o monstro.
+   * Conforme ela viaja, o leque aperta mais.
+   */
+  private layoutStrokes(conviction: number): void {
+    const spread = WAVE_STROKE_SPREAD * (1 - conviction * 0.45);
+    const lean = WAVE_STROKE_LEAN * (1 - conviction * 0.3);
+    for (let index = 0; index < this.strokes.length; index += 1) {
+      const t = index / Math.max(1, this.strokes.length - 1);
+      const radius = THREE.MathUtils.lerp(1.6, 0.95, t) * (1 - conviction * 0.1);
+      const stroke = this.strokes[index];
+      stroke.scale.set(radius, radius * (1 - t * 0.08), 1);
+      stroke.position.set(t * lean, t * 0.1, t * spread);
+      stroke.rotation.z = -lean * 0.1 + t * lean * 0.16;
+    }
   }
 
   public update(delta: number): boolean {
     const elapsed = Math.max(0, delta);
     this.age += elapsed;
+    // Espera a lâmina fechar o rastro antes de soltar a onda.
+    if (this.age < 0) {
+      this.group.visible = false;
+      return true;
+    }
+    this.group.visible = true;
     const progress = THREE.MathUtils.clamp(this.age / this.duration, 0, 1);
-    const travelProgress = THREE.MathUtils.clamp(this.age / Math.max(0.001, this.distance / this.speed), 0, 1);
+    const travelProgress = THREE.MathUtils.clamp(
+      this.age / Math.max(0.001, this.distance / this.speed),
+      0,
+      1
+    );
 
-    // Move forward
     const currentPos = this.startPos.clone().lerp(this.targetPos, travelProgress);
-    currentPos.y = this.startPos.y + 0.95;
+    currentPos.y = this.startPos.y + WIND_WAVE_HEIGHT;
     this.group.position.copy(currentPos);
 
-    // Fade based on overall progress
     const fade = 1 - progress;
-    setWarriorSlashTime(this.slashMat, this.age * 2.2, travelProgress * 0.6);
-    setWarriorSlashTime(this.coreMat, this.age * 2.5, travelProgress * 0.6);
-    setWarriorSlashTime(this.trailMat, this.age * 1.8, travelProgress * 0.6);
-
-    this.slashMat.uniforms.uOpacity.value = fade;
-    this.coreMat.uniforms.uOpacity.value = fade * 0.95;
-    this.trailMat.uniforms.uOpacity.value = fade * 0.55;
-
-    // Scale pulse as it travels
-    const scale = this.baseScale * (1 + travelProgress * 0.18);
-    this.slashMesh.scale.setScalar(scale);
-    this.coreMesh.scale.setScalar(scale * 1.05);
-    this.trailMesh.scale.setScalar(scale * 0.95);
-
-    (this.glow.material as THREE.SpriteMaterial).opacity = fade * 0.8;
-    this.glow.scale.setScalar((1.1 + travelProgress * 0.6) * this.baseScale);
+    setWarriorSlashTime(this.strokeMaterial, this.age * 2.4, travelProgress * 0.5);
+    this.strokeMaterial.uniforms.uOpacity.value = fade;
+    this.layoutStrokes(travelProgress);
 
     if (this.actualLightHandle) {
       this.actualLightHandle.light.intensity *= Math.max(0, 1 - elapsed * 5);
@@ -892,7 +965,6 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
 
     this.particles.update(elapsed);
 
-    // Trigger hit when reaching target (once)
     if (!this.hasHit && travelProgress >= 0.92) {
       this.hasHit = true;
       this.onHit?.(this.group.position.clone());
@@ -910,21 +982,148 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.actualLightHandle?.release();
     this.actualLightHandle = null;
     this.particles.reset();
-    this.slashMat.uniforms.uOpacity.value = 0;
-    this.coreMat.uniforms.uOpacity.value = 0;
-    this.trailMat.uniforms.uOpacity.value = 0;
-    (this.glow.material as THREE.SpriteMaterial).opacity = 0;
+    this.strokeMaterial.uniforms.uOpacity.value = 0;
   }
 
   public dispose(): void {
-    this.geometry.dispose();
-    this.coreGeometry.dispose();
-    this.trailGeometry.dispose();
-    this.slashMat.dispose();
-    this.coreMat.dispose();
-    this.trailMat.dispose();
-    (this.glow.material as THREE.Material).dispose();
+    this.strokeGeometry.dispose();
+    this.strokeMaterial.dispose();
     this.particles.dispose();
+  }
+}
+
+interface WarriorVerticalArcOptions {
+  readonly position: THREE.Vector3;
+  readonly forward: THREE.Vector3;
+  readonly type?: WarriorSlashPlayOptions['type'];
+  readonly scale?: number;
+  readonly tint?: number;
+}
+
+/** Arco de lâmina em pé que aparece no lugar e some — o golpe do Corte Duplo. */
+class WarriorVerticalArcEffect implements PoolableVFX {
+  public active = false;
+  public readonly group = new THREE.Group();
+  private readonly mainMesh: THREE.Mesh;
+  private readonly coreMesh: THREE.Mesh;
+  private readonly mainMat: WarriorSlashMaterial;
+  private readonly coreMat: WarriorSlashMaterial;
+  private readonly mainGeometry: THREE.BufferGeometry;
+  private readonly coreGeometry: THREE.BufferGeometry;
+  private age = 0;
+  private duration = 0.34;
+  private baseScale = 1;
+
+  public constructor() {
+    this.group.name = 'WarriorVerticalArc';
+    this.group.visible = false;
+
+    this.mainGeometry = createWindArcGeometry(1.35, 0.8, 0.9, 3, 26);
+    this.coreGeometry = createWindArcGeometry(1.3, 0.28, 0.75, 2, 26);
+
+    this.mainMat = createWarriorSlashMaterial({
+      colorA: 0xfff4dc,
+      colorB: 0xffa53a,
+      colorC: 0x3a1c05,
+      opacity: 1,
+      intensity: 2.1,
+      thickness: 1.3,
+      distortion: 1.2,
+      breakup: 0.5,
+      saturation: 1.4,
+    });
+    this.coreMat = createWarriorSlashMaterial({
+      colorA: 0xffffff,
+      colorB: 0xffd79a,
+      colorC: 0x4a2405,
+      opacity: 0.95,
+      intensity: 2.3,
+      thickness: 0.6,
+      distortion: 0.9,
+      breakup: 0.3,
+      saturation: 1.15,
+    });
+
+    this.mainMesh = new THREE.Mesh(this.mainGeometry, this.mainMat);
+    this.coreMesh = new THREE.Mesh(this.coreGeometry, this.coreMat);
+    this.mainMesh.frustumCulled = false;
+    this.coreMesh.frustumCulled = false;
+    this.mainMesh.renderOrder = 7;
+    this.coreMesh.renderOrder = 8;
+    this.group.add(this.mainMesh, this.coreMesh);
+  }
+
+  public play(options: WarriorVerticalArcOptions): void {
+    const cfg = configForType(options.type);
+    const tint = options.tint ?? cfg.colors.glow;
+    const seed = Math.random() * 10;
+
+    this.baseScale = options.scale ?? 1;
+    this.duration = 0.34;
+    this.age = 0;
+
+    this.group.visible = true;
+    this.group.position.copy(options.position);
+    this.group.position.y += 1.1;
+    const yaw = Math.atan2(options.forward.x, options.forward.z);
+    this.group.rotation.set(0.05, yaw, (Math.random() - 0.5) * 0.5);
+    this.group.scale.setScalar(this.baseScale * 0.55);
+
+    this.mainMat.uniforms.uColorA.value.set(cfg.colors.core);
+    this.mainMat.uniforms.uColorB.value.set(tint);
+    this.mainMat.uniforms.uColorC.value.set(cfg.colors.dark);
+    this.mainMat.uniforms.uOpacity.value = 1;
+    this.mainMat.uniforms.uIntensity.value = cfg.intensity * 1.25;
+    this.mainMat.uniforms.uBreakup.value = cfg.breakup;
+    this.mainMat.uniforms.uSaturation.value = cfg.saturation;
+    this.mainMat.uniforms.uSeed.value = seed;
+    this.mainMat.uniforms.uTime.value = 0;
+    this.mainMat.uniforms.uProgress.value = 0;
+
+    this.coreMat.uniforms.uColorA.value.set(cfg.colors.core);
+    this.coreMat.uniforms.uColorB.value.set(tint);
+    this.coreMat.uniforms.uColorC.value.set(cfg.colors.dark);
+    this.coreMat.uniforms.uOpacity.value = 0.95;
+    this.coreMat.uniforms.uIntensity.value = cfg.intensity * 1.4;
+    this.coreMat.uniforms.uBreakup.value = cfg.breakup * 0.6;
+    this.coreMat.uniforms.uSaturation.value = cfg.saturation;
+    this.coreMat.uniforms.uSeed.value = seed + 4.1;
+    this.coreMat.uniforms.uTime.value = 0;
+    this.coreMat.uniforms.uProgress.value = 0;
+  }
+
+  public update(delta: number): boolean {
+    const step = Math.max(0, delta);
+    this.age += step;
+    const progress = THREE.MathUtils.clamp(this.age / this.duration, 0, 1);
+    const fade = Math.pow(1 - progress, 1.1);
+
+    setWarriorSlashTime(this.mainMat, this.age * 3.2, progress);
+    setWarriorSlashTime(this.coreMat, this.age * 3.6, progress);
+    this.mainMat.uniforms.uOpacity.value = fade;
+    this.coreMat.uniforms.uOpacity.value = fade * 0.9;
+
+    // Abre rápido e some: o arco nasce, corta o espaço e evapora.
+    const scale = this.baseScale * (0.55 + progress * 0.75);
+    this.mainMesh.scale.setScalar(scale);
+    this.coreMesh.scale.setScalar(scale * 1.04);
+
+    return this.age < this.duration;
+  }
+
+  public reset(): void {
+    this.group.visible = false;
+    this.group.removeFromParent();
+    this.age = 0;
+    this.mainMat.uniforms.uOpacity.value = 0;
+    this.coreMat.uniforms.uOpacity.value = 0;
+  }
+
+  public dispose(): void {
+    this.mainGeometry.dispose();
+    this.coreGeometry.dispose();
+    this.mainMat.dispose();
+    this.coreMat.dispose();
   }
 }
 
@@ -968,22 +1167,26 @@ class WarriorSpinWaveEffect implements PoolableVFX {
     this.outerGeo = createArcRibbonGeometry(0.2, 1.4, startBack, almostFull, 3, 64);
 
     this.mainMat = createWarriorSlashMaterial({
-      colorA: 0xffffff,
-      colorB: 0x5efff6,
-      colorC: 0x0a2e33,
+      colorA: SPIN_CONFIG.colors.core,
+      colorB: SPIN_CONFIG.colors.glow,
+      colorC: SPIN_CONFIG.colors.dark,
       opacity: 1,
-      intensity: 2.4,
+      intensity: 1.75,
       thickness: 1.6,
       distortion: 1.2,
+      breakup: SPIN_CONFIG.breakup,
+      saturation: SPIN_CONFIG.saturation,
     });
     this.coreMat = createWarriorSlashMaterial({
-      colorA: 0xffffff,
-      colorB: 0xbfffff,
-      colorC: 0x0a4a4a,
+      colorA: SPIN_CONFIG.colors.core,
+      colorB: SPIN_CONFIG.colors.glow,
+      colorC: SPIN_CONFIG.colors.dark,
       opacity: 0.95,
-      intensity: 3.0,
+      intensity: 2.0,
       thickness: 0.6,
       distortion: 0.9,
+      breakup: SPIN_CONFIG.breakup * 0.6,
+      saturation: 1.1,
     });
     this.outerMat = createMagicCircleMaterial({
       colorA: 0xffffff,
@@ -1052,21 +1255,28 @@ class WarriorSpinWaveEffect implements PoolableVFX {
     this.group.rotation.set(0.08, yaw, 0);
 
     // Rebuild if needed for maxRadius? We scale instead
+    const seed = Math.random() * 10;
     this.mainMat.uniforms.uColorA.value.set(cfg.colors.core);
     this.mainMat.uniforms.uColorB.value.set(cfg.colors.glow);
     this.mainMat.uniforms.uColorC.value.set(cfg.colors.dark);
     this.mainMat.uniforms.uOpacity.value = 1;
     this.mainMat.uniforms.uIntensity.value = cfg.intensity;
     this.mainMat.uniforms.uThickness.value = cfg.thickness;
+    this.mainMat.uniforms.uBreakup.value = cfg.breakup;
+    this.mainMat.uniforms.uSaturation.value = cfg.saturation;
+    this.mainMat.uniforms.uSeed.value = seed;
     this.mainMat.uniforms.uTime.value = 0;
     this.mainMat.uniforms.uProgress.value = 0;
 
-    this.coreMat.uniforms.uColorA.value.set(0xffffff);
-    this.coreMat.uniforms.uColorB.value.set(0xbfffff);
-    this.coreMat.uniforms.uColorC.value.set(cfg.colors.glow);
+    this.coreMat.uniforms.uColorA.value.set(cfg.colors.core);
+    this.coreMat.uniforms.uColorB.value.set(cfg.colors.glow);
+    this.coreMat.uniforms.uColorC.value.set(cfg.colors.dark);
     this.coreMat.uniforms.uOpacity.value = 0.9;
-    this.coreMat.uniforms.uIntensity.value = cfg.intensity * 1.25;
+    this.coreMat.uniforms.uIntensity.value = cfg.intensity * 1.2;
     this.coreMat.uniforms.uThickness.value = cfg.thickness * 0.5;
+    this.coreMat.uniforms.uBreakup.value = cfg.breakup * 0.6;
+    this.coreMat.uniforms.uSaturation.value = cfg.saturation * 0.9;
+    this.coreMat.uniforms.uSeed.value = seed + 4.4;
     this.coreMat.uniforms.uTime.value = 0;
     this.coreMat.uniforms.uProgress.value = 0;
 
@@ -1082,6 +1292,7 @@ class WarriorSpinWaveEffect implements PoolableVFX {
     this.glow.scale.setScalar(1.5 * this.baseScale);
 
     (this.flare.material as THREE.SpriteMaterial).opacity = 0.85;
+    (this.flare.material as THREE.SpriteMaterial).color.set(cfg.colors.core);
     this.flare.position.set(0, 0.6, 0);
     this.flare.scale.setScalar(2.0 * this.baseScale);
 
@@ -1110,7 +1321,7 @@ class WarriorSpinWaveEffect implements PoolableVFX {
 
     this.embers.setTexture(this.resources.softGlow);
     this.embers.emit(new THREE.Vector3(), {
-      color: 0xbfffff,
+      color: cfg.colors.core,
       count: 28,
       speed: 3.2 * this.baseScale,
       spread: 1.3,
@@ -1199,12 +1410,22 @@ export class WarriorSlashVFX {
   private readonly activeTraveling: WarriorTravelingSlashEffect[] = [];
   private readonly spinPool: VFXPool<WarriorSpinWaveEffect>;
   private readonly activeSpin: WarriorSpinWaveEffect[] = [];
+  private readonly verticalArcPool: VFXPool<WarriorVerticalArcEffect>;
+  private readonly activeVerticalArcs: WarriorVerticalArcEffect[] = [];
   private readonly cameraShake = new CameraShake();
+  /**
+   * Efeitos modulares do guerreiro em um group próprio que o Game adiciona na
+   * cena uma vez. Hoje só o pilar de cura do mini-boss é usado daqui; o rastro
+   * de fita curva ficou desligado por duplicar o arco clássico em pool.
+   */
+  private readonly trails = new WarriorSlashTrailVFX();
+  public readonly group: THREE.Group;
 
   public constructor(
     private readonly scene: THREE.Scene,
     private readonly lightPool: VFXLightPool
   ) {
+    this.group = this.trails.group;
     this.resources = createResources();
     this.pool = new VFXPool(
       () => new WarriorSlashEffect(this.resources, lightPool),
@@ -1222,6 +1443,19 @@ export class WarriorSlashVFX {
       () => new WarriorSpinWaveEffect(this.resources, lightPool),
       8
     );
+    this.verticalArcPool = new VFXPool(() => new WarriorVerticalArcEffect(), 12);
+  }
+
+  /**
+   * Arco de lâmina vertical que nasce no lugar — cada aresta do Corte Duplo.
+   * `tint` deixa cada arco com um tom diferente dentro da mesma tempestade.
+   */
+  public playVerticalArc(options: WarriorVerticalArcOptions): void {
+    const arc = this.verticalArcPool.acquire();
+    if (!arc) return;
+    arc.play(options);
+    this.scene.add(arc.group);
+    this.activeVerticalArcs.push(arc);
   }
 
   public play(options: WarriorSlashPlayOptions): void {
@@ -1289,7 +1523,18 @@ export class WarriorSlashVFX {
     this.cameraShake.add(spinType === 'spin_frost' ? 0.068 : 0.062, 0.24);
   }
 
+  /**
+   * O rastro modular novo (fita curva colorida por estilo) foi retirado do
+   * fluxo de combate: duplicava o arco clássico em pool. Continua disponível
+   * em `./warrior/` para uso pontual; aqui só o pilar de cura do mini-boss,
+   * que não tem equivalente no sistema antigo, é encaminhado.
+   */
+  public triggerMiniBossHeal(playerRoot: THREE.Object3D): void {
+    this.trails.triggerMiniBossHeal(playerRoot);
+  }
+
   public update(delta: number): void {
+    this.trails.update(delta);
     for (let i = this.active.length - 1; i >= 0; i--) {
       const effect = this.active[i];
       if (effect.update(delta)) continue;
@@ -1314,6 +1559,12 @@ export class WarriorSlashVFX {
       this.spinPool.release(spin);
       this.activeSpin.splice(i, 1);
     }
+    for (let i = this.activeVerticalArcs.length - 1; i >= 0; i--) {
+      const arc = this.activeVerticalArcs[i];
+      if (arc.update(delta)) continue;
+      this.verticalArcPool.release(arc);
+      this.activeVerticalArcs.splice(i, 1);
+    }
   }
 
   public applyCameraShake(camera: THREE.Camera, delta: number): void {
@@ -1321,6 +1572,7 @@ export class WarriorSlashVFX {
   }
 
   public clear(): void {
+    this.trails.reset();
     for (const e of this.active) this.pool.release(e);
     this.active.length = 0;
     for (const e of this.activeImpacts) this.impactPool.release(e);
@@ -1329,15 +1581,19 @@ export class WarriorSlashVFX {
     this.activeTraveling.length = 0;
     for (const e of this.activeSpin) this.spinPool.release(e);
     this.activeSpin.length = 0;
+    for (const e of this.activeVerticalArcs) this.verticalArcPool.release(e);
+    this.activeVerticalArcs.length = 0;
     this.cameraShake.clear();
   }
 
   public dispose(): void {
     this.clear();
+    this.trails.dispose();
     this.pool.dispose();
     this.impactPool.dispose();
     this.travelingPool.dispose();
     this.spinPool.dispose();
+    this.verticalArcPool.dispose();
     this.resources.quad.dispose();
     this.resources.ring.dispose();
     this.resources.softGlow.dispose();
@@ -1346,6 +1602,10 @@ export class WarriorSlashVFX {
   }
 
   public get activeCount(): number {
-    return this.active.length + this.activeImpacts.length + this.activeTraveling.length + this.activeSpin.length;
+    return this.active.length
+      + this.activeImpacts.length
+      + this.activeTraveling.length
+      + this.activeSpin.length
+      + this.activeVerticalArcs.length;
   }
 }

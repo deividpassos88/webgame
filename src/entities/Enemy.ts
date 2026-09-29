@@ -31,7 +31,11 @@ const ARCHER_CLOSE_DAMAGE_DISTANCE = 7;
 const ARCHER_CLOSE_DAMAGE_BONUS = 0.45;
 /** Each character hit shoves the body back and leaves it dizzy for this long. */
 export const ENEMY_HIT_STAGGER_SECONDS = 0.3;
-export const ENEMY_HIT_KNOCKBACK_METERS = 0.45;
+/**
+ * Recuo no impacto. O monstro é nervoso: treme e sai alguns centímetros, sem
+ * voar para trás a cada golpe do guerreiro.
+ */
+export const ENEMY_HIT_KNOCKBACK_METERS = 0.1;
 
 /**
  * Shared soft-circle sprite for the freeze mist and smoke. Generated once from
@@ -186,6 +190,11 @@ export class Enemy {
   private warriorKnockdownRemaining = 0;
   private warriorKnockdownUsesClip = false;
   private savedWarriorKnockdownRoll = 0;
+  private warriorStunRemaining = 0;
+  private warriorStunDuration = 0;
+  private warriorStunElapsed = 0;
+  private savedStunRoll = 0;
+  private stunActive = false;
   private savedMeshRoll = 0;
   private shockAura: THREE.Group | null = null;
   private readonly shockLightPool: VFXLightPool | null;
@@ -531,8 +540,14 @@ export class Enemy {
     this.tickMageControl(delta);
     this.tickHitStagger(delta);
     this.tickWarriorKnockdown(delta);
+    this.tickWarriorStun(delta);
     if (this.warriorKnockdownRemaining > 0) {
       this.activeAnimatedAttack = null;
+      return;
+    }
+    if (this.warriorStunRemaining > 0) {
+      this.activeAnimatedAttack = null;
+      this.animator?.play('idle');
       return;
     }
     if (this.mageLevitateRemaining > 0) {
@@ -945,6 +960,64 @@ export class Enemy {
     return this.warriorKnockdownRemaining > 0;
   }
 
+  /**
+   * Skill 1 — Ataque Giratório. O monstro tonteia: fica parado, não ataca e
+   * balança de leve enquanto dura.
+   */
+  public applyWarriorStun(seconds = 1.2): void {
+    if (this.isDead) return;
+    const duration = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+    if (duration <= 0) return;
+    if (this.warriorStunRemaining <= 0) {
+      this.savedStunRoll = this.meshGroup.rotation.z;
+      this.stunActive = true;
+      this.warriorStunElapsed = 0;
+      this.hitStaggerRemaining = 0;
+      this.endHitReaction();
+    }
+    this.warriorStunRemaining = Math.max(this.warriorStunRemaining, duration);
+    this.warriorStunDuration = Math.max(this.warriorStunDuration, this.warriorStunElapsed + duration);
+    this.activeAnimatedAttack = null;
+  }
+
+  /** Skill 2 — Giro Glacial. Trava o monstro no lugar pelo tempo pedido. */
+  public applyWarriorFreeze(seconds = 1.2): void {
+    this.applyMageFreeze(seconds);
+  }
+
+  /** Skill 3 — Pulo Atacando. O monstro continua andando, mas devagar. */
+  public applyWarriorSlow(seconds = 1.5): void {
+    this.applyMageSlow(seconds);
+  }
+
+  public get isWarriorStunned(): boolean {
+    return this.warriorStunRemaining > 0;
+  }
+
+  private tickWarriorStun(delta: number): void {
+    if (this.warriorStunRemaining <= 0) return;
+    const step = Math.max(0, delta);
+    this.warriorStunElapsed += step;
+    this.warriorStunRemaining = Math.max(0, this.warriorStunRemaining - step);
+    if (this.warriorStunRemaining > 0) {
+      this.updateStunPose();
+      return;
+    }
+    if (this.stunActive) this.meshGroup.rotation.z = this.savedStunRoll;
+    this.stunActive = false;
+    this.warriorStunElapsed = 0;
+    this.warriorStunDuration = 0;
+  }
+
+  private updateStunPose(): void {
+    if (!this.stunActive || this.levitatePoseActive) return;
+    const total = Math.max(0.01, this.warriorStunDuration);
+    const progress = THREE.MathUtils.clamp(this.warriorStunElapsed / total, 0, 1);
+    // Balanço de tonteira que perde força conforme o monstro se recupera.
+    const sway = Math.sin(this.warriorStunElapsed * 11) * 0.085 * (1 - progress * 0.7);
+    this.meshGroup.rotation.z = this.savedStunRoll + sway;
+  }
+
   /** Pushes the enemy along a direction (impulse / knockback) for the air slash. */
   public applyImpulse(direction: THREE.Vector3, distance: number): void {
     if (this.isDead) return;
@@ -961,7 +1034,8 @@ export class Enemy {
     return this.mageLevitateRemaining > 0
       || this.warriorKnockdownRemaining > 0
       || this.isFrozenByIce
-      || this.hitStaggerRemaining > 0;
+      || this.hitStaggerRemaining > 0
+      || this.warriorStunRemaining > 0;
   }
 
   /** Body roll used when the model has no authored lying clip. */
@@ -1039,6 +1113,11 @@ export class Enemy {
     this.mageFreezeRemaining = 0;
     this.mageSlowRemaining = 0;
     this.mageLevitateRemaining = 0;
+    if (this.stunActive) this.meshGroup.rotation.z = this.savedStunRoll;
+    this.stunActive = false;
+    this.warriorStunRemaining = 0;
+    this.warriorStunElapsed = 0;
+    this.warriorStunDuration = 0;
     const wasWarriorKnockedDown = this.warriorKnockdownRemaining > 0;
     this.warriorKnockdownRemaining = 0;
     if (this.warriorKnockdownUsesClip) this.animator?.releaseLyingPose?.();
@@ -1362,6 +1441,7 @@ export class Enemy {
       || this.warriorKnockdownRemaining > 0
       || this.mageFreezeRemaining > 0
       || this.hitStaggerRemaining > 0
+      || this.warriorStunRemaining > 0
     ) {
       return 0;
     }

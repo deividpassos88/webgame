@@ -332,31 +332,31 @@ describe('Player sword combo integration', () => {
     expect(hits).toEqual([enemy]);
   });
 
-  it('grants 0.7 second of action invulnerability to an accepted basic attack', async () => {
+  it('grants no action invulnerability to an accepted basic attack', async () => {
     const player = await loadedPlayerWithSword();
 
     player.attackAtCursor();
+    // Monstro consegue acertar o guerreiro durante o golpe normal.
     player.takeDamage(23);
-    player.takeBossSkillDamage(19);
-    expect(player.hp).toBe(100);
+    expect(player.hp).toBe(77);
 
+    // Passados os 0,4 s anti-stunlock do hit, o monstro acerta de novo.
     player.update(0.1);
     player.update(0.69);
     player.takeBossSkillDamage(19);
-    expect(player.hp).toBe(100);
-
-    player.update(0.02);
-    player.takeBossSkillDamage(19);
-    expect(player.hp).toBe(81);
+    expect(player.hp).toBe(58);
   });
 
-  it('does not spend basic invulnerability on the frame that accepted the input', async () => {
+  it('leaves the basic attack with no invulnerability window at all', async () => {
     const player = await loadedPlayerWithSword();
 
     player.attackAtCursor();
     player.update(0.1);
+    expect(player.actionInvulnerabilityRemaining).toBe(0);
 
-    expect(player.actionInvulnerabilityRemaining).toBe(0.7);
+    player.update(0.7);
+    player.takeBossSkillDamage(19);
+    expect(player.hp).toBe(81);
   });
 
   it('does not renew basic action invulnerability for a manually buffered stage', async () => {

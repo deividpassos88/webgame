@@ -201,17 +201,26 @@ export type WarriorSlashMaterial = THREE.ShaderMaterial & {
     uProgress: { value: number };
     uThickness: { value: number };
     uDistortion: { value: number };
+    uBreakup: { value: number };
+    uSeed: { value: number };
+    uSaturation: { value: number };
   };
 };
 
 export interface WarriorSlashMaterialOptions {
-  readonly colorA?: THREE.ColorRepresentation; // core white
-  readonly colorB?: THREE.ColorRepresentation; // cyan bright
-  readonly colorC?: THREE.ColorRepresentation; // dark teal / base
+  readonly colorA?: THREE.ColorRepresentation; // miolo claro do corte
+  readonly colorB?: THREE.ColorRepresentation; // cor saturada do rastro
+  readonly colorC?: THREE.ColorRepresentation; // tom de fundo/base
   readonly opacity?: number;
   readonly intensity?: number;
   readonly thickness?: number;
   readonly distortion?: number;
+  /** 0 = fita contínua, 1 = rastro com falhas (buracos de vento). */
+  readonly breakup?: number;
+  /** Varia o padrão de falhas entre golpes. */
+  readonly seed?: number;
+  /** >1 devolve a cor que o blending aditivo estoura para branco. */
+  readonly saturation?: number;
 }
 
 export function createWarriorSlashMaterial(
@@ -227,6 +236,9 @@ export function createWarriorSlashMaterial(
     uProgress: { value: 0 },
     uThickness: { value: options.thickness ?? 1 },
     uDistortion: { value: options.distortion ?? 1 },
+    uBreakup: { value: options.breakup ?? 0 },
+    uSeed: { value: options.seed ?? 0 },
+    uSaturation: { value: options.saturation ?? 1.15 },
   };
 
   return new THREE.ShaderMaterial({
@@ -242,6 +254,9 @@ export function createWarriorSlashMaterial(
       uniform float uProgress;
       uniform float uThickness;
       uniform float uDistortion;
+      uniform float uBreakup;
+      uniform float uSeed;
+      uniform float uSaturation;
       varying vec2 vUv;
       varying vec3 vWorldPosition;
       ${HASH}
@@ -259,8 +274,7 @@ export function createWarriorSlashMaterial(
         float outerFade = smoothstep(1.0, 0.72, radial);
         float radialFade = innerFade * outerFade;
 
-        // Core band: bright white stripe near outer edge (blade edge)
-        // Degrade: dark inner -> cyan mid -> white outer core
+        // Core band: fio claro perto da borda externa (fio da lâmina)
         float coreCenter = 0.82;
         float coreWidth = 0.12 / max(0.2, uThickness);
         float core = 1.0 - smoothstep(0.0, coreWidth, abs(radial - coreCenter));
@@ -285,19 +299,36 @@ export function createWarriorSlashMaterial(
         float timeFade = 1.0 - prog;
         timeFade = pow(timeFade, 1.25);
 
-        // Brilho extra at start (impact flash)
-        float flash = 1.0 + (1.0 - prog) * 0.85 * smoothstep(0.65, 0.85, radial);
+        // Brilho extra no começo do corte, sem estourar a borda para branco
+        float flash = 1.0 + (1.0 - prog) * 0.42 * smoothstep(0.65, 0.85, radial);
 
-        // Color degrade: C (dark) -> B (cyan) -> A (white)
-        vec3 color = mix(uColorC, uColorB, smoothstep(0.08, 0.72, radial + turbulence * 0.12));
-        color = mix(color, uColorA, core * 0.95 + midGlow * 0.22);
+        // --- FALHAS DO RASTRO -------------------------------------------------
+        // Ruído em três escalas ao longo do arco abre buracos na fita, para o
+        // rastro parecer vento de lâmina em vez de arco sólido de neon. A
+        // cauda (angular baixo) se desfaz antes da cabeça.
+        float b1 = noise(vec2(angular * 6.5 + uSeed * 4.3, radial * 1.4 + uSeed));
+        float b2 = noise(vec2(angular * 21.0 - uSeed * 6.1, radial * 4.5 - uSeed * 2.0));
+        float b3 = noise(vec2(angular * 58.0 + uSeed * 9.7, radial * 2.0 + uSeed * 0.5));
+        float gaps = b1 * 0.5 + b2 * 0.32 + b3 * 0.18 + turbulence * 0.2;
+        float tailWear = smoothstep(0.0, 0.5, angular);
+        float holes = smoothstep(0.40, 0.62, gaps) * mix(0.45, 1.0, tailWear);
+        float erosion = clamp(uBreakup * (0.78 + 0.32 * prog), 0.0, 1.0);
+        float keep = mix(1.0, holes, erosion);
 
-        // Add streak brightness
-        color += vec3(0.18, 0.45, 0.5) * streak * 0.35 * midGlow;
+        // --- COR -------------------------------------------------------------
+        // Base -> cor saturada, com só um fio claro no miolo do corte.
+        vec3 color = mix(uColorC, uColorB, smoothstep(0.05, 0.7, radial + turbulence * 0.1));
+        color = mix(color, uColorA, core * 0.5 + midGlow * 0.1);
+        color += uColorB * streak * 0.3 * midGlow;
+
+        // O blending aditivo estoura tudo para branco; aqui a cor é devolvida.
+        float lum = dot(color, vec3(0.299, 0.587, 0.114));
+        color = max(mix(vec3(lum), color, uSaturation), vec3(0.0));
 
         float energy = midGlow * 0.85 + core * 1.45 + turbulence * 0.18 + streak * 0.18;
 
         float alpha = radialFade * angularFade * (0.22 + energy * 0.92) * uOpacity * timeFade * flash;
+        alpha *= keep;
 
         // Extra outer glow lift
         alpha *= uIntensity;
@@ -328,6 +359,9 @@ export function configureWarriorSlashMaterial(
   if (options.intensity !== undefined) material.uniforms.uIntensity.value = options.intensity;
   if (options.thickness !== undefined) material.uniforms.uThickness.value = options.thickness;
   if (options.distortion !== undefined) material.uniforms.uDistortion.value = options.distortion;
+  if (options.breakup !== undefined) material.uniforms.uBreakup.value = options.breakup;
+  if (options.seed !== undefined) material.uniforms.uSeed.value = options.seed;
+  if (options.saturation !== undefined) material.uniforms.uSaturation.value = options.saturation;
   if (options.progress !== undefined) material.uniforms.uProgress.value = options.progress;
 }
 
