@@ -54,6 +54,12 @@ const SKILL_ACTION_INVULNERABILITY_SECONDS = 1.5;
 const POST_HIT_INVULNERABILITY_SECONDS = 0.4;
 const DASH_DISTANCE = 5.4;
 const DASH_SPEED = 30;
+/** Tempo máximo em "atacando" sem nenhum ataque ativo antes de recuperar. */
+const ORPHAN_SWING_GRACE_SECONDS = 0.25;
+/** Folga além da duração do clipe de dano antes de forçar o fim da reação. */
+const HIT_REACTION_GRACE_SECONDS = 0.75;
+/** Folga para fades normais antes de considerar a pose inconsistente. */
+const POSE_RECONCILE_GRACE_SECONDS = 0.4;
 const DASH_COOLDOWN_SECONDS = 0.85;
 const DASH_INVULNERABILITY_SECONDS = 0.3;
 /** Peso do clip de ataque no blend com a corrida: o mixer normaliza os pesos
@@ -166,6 +172,12 @@ export class Player {
   private actionInvulnerabilityFresh = false;
   private isSwinging = false;
   private locomotionBlendActive = false;
+  /** Há quanto tempo a pose visível não bate com o estado lógico (segundos). */
+  private poseMismatchTime = 0;
+  /** Há quanto tempo o jogador está preso em "atacando" sem nenhum ataque ativo. */
+  private orphanSwingTime = 0;
+  /** Há quanto tempo a reação de dano está ativa (segundos). */
+  private hitReactionTime = 0;
   private isHitReacting = false;
   private emptyHandAttackPreview = false;
   private attackSequenceCursor = 0;
@@ -821,6 +833,7 @@ export class Player {
     this.mixer.update(delta);
 
     if (this.attackCooldown > 0) this.attackCooldown -= delta;
+    this.comboController.minStageInterval = this.attackCooldownTime;
     if (this.dashCooldown > 0) this.dashCooldown = Math.max(0, this.dashCooldown - delta);
     if (this.hitInvulnerability > 0) this.hitInvulnerability -= delta;
     if (this.actionInvulnerability > 0) {
@@ -837,6 +850,8 @@ export class Player {
       this.updateDash(delta);
       return;
     }
+    this.recoverStuckActionState(delta);
+    this.reconcileLocomotionPose(delta);
     if (this.isHitReacting) return;
     if (this.emptyHandAttackPreview) return;
 
@@ -869,6 +884,105 @@ export class Player {
       const locomotion = this.getLocomotionState();
       if (locomotion) this.playState(locomotion, 0.15);
     }
+  }
+
+  /**
+   * Rede de segurança contra "travas" de estado que deixavam o guerreiro numa
+   * pose errada depois de muito combate (ataques automáticos + skills).
+   * - "atacando" sem nenhum ataque ativo (isSwinging órfão);
+   * - reação de dano que nunca recebeu o evento de fim do clipe.
+   */
+  private recoverStuckActionState(delta: number): void {
+    if (this.isSwinging && !this.comboController.active && !this.skillAttackController.active) {
+      this.orphanSwingTime += delta;
+      if (this.orphanSwingTime > ORPHAN_SWING_GRACE_SECONDS) {
+        Logger.warn('Player', 'Estado de ataque órfão recuperado.');
+        this.orphanSwingTime = 0;
+        this.isSwinging = false;
+        this.comboHitTargets.clear();
+        this.playState(this.getLocomotionState() ?? 'idle', 0.1, true);
+      }
+    } else {
+      this.orphanSwingTime = 0;
+    }
+
+    if (this.isHitReacting) {
+      this.hitReactionTime += delta;
+      const hit = this.actions.hit;
+      const scale = Math.max(0.05, Math.abs(hit?.getEffectiveTimeScale() || 1));
+      const expected = hit ? hit.getClip().duration / scale : 0;
+      if (this.hitReactionTime > expected + HIT_REACTION_GRACE_SECONDS) {
+        Logger.warn('Player', 'Reação de dano presa recuperada.');
+        this.hitReactionTime = 0;
+        this.isHitReacting = false;
+        this.playState(this.getLocomotionState() ?? 'idle', 0.1, true);
+      }
+    } else {
+      this.hitReactionTime = 0;
+    }
+  }
+
+  /** Todas as actions que o Player controla, sem repetição. */
+  private trackedActions(): THREE.AnimationAction[] {
+    const all = new Set<THREE.AnimationAction>();
+    for (const action of Object.values(this.actions)) if (action) all.add(action);
+    for (const action of Object.values(this.warriorAttackActions)) if (action) all.add(action);
+    for (const action of this.comboActions) all.add(action);
+    return [...all];
+  }
+
+  /**
+   * Em locomoção livre (parado ou correndo) só a action do estado atual pode
+   * estar visível. Se sobrar peso em outra action (vazamento de blend/fade) ou
+   * a do estado estiver parada, o corpo aparece numa pose "misturada". Depois
+   * de uma folga para os fades normais, a pose é refeita do zero.
+   */
+  private reconcileLocomotionPose(delta: number): void {
+    if (
+      this.isDead ||
+      this.isSwinging ||
+      this.isHitReacting ||
+      this.isDashing ||
+      this.emptyHandAttackPreview ||
+      this.animationPreview.activeState ||
+      this.locomotionBlendActive ||
+      (this.state !== 'idle' && this.state !== 'running')
+    ) {
+      this.poseMismatchTime = 0;
+      return;
+    }
+    const expected = this.actions[this.state];
+    if (!expected) {
+      this.poseMismatchTime = 0;
+      return;
+    }
+    const others = this.trackedActions().filter((action) => action !== expected);
+    const leaking = others.some((action) => action.isRunning() && action.getEffectiveWeight() > 0.001);
+    const healthy =
+      this.currentAction === expected &&
+      expected.isRunning() &&
+      expected.getEffectiveWeight() > 0.95;
+
+    if (healthy && !leaking) {
+      this.poseMismatchTime = 0;
+      return;
+    }
+    this.poseMismatchTime += delta;
+    if (this.poseMismatchTime < POSE_RECONCILE_GRACE_SECONDS) return;
+
+    Logger.warn('Player', `Pose inconsistente detectada (${this.state}); refazendo a animação.`);
+    this.poseMismatchTime = 0;
+    for (const action of others) {
+      action.stopFading();
+      action.stop();
+    }
+    this.locomotionBlendActive = false;
+    expected.stopFading();
+    expected.reset();
+    expected.setEffectiveWeight(1);
+    if (this.state === 'running') this.updateRunningPlaybackRate(expected);
+    expected.play();
+    this.currentAction = expected;
   }
 
   public get equippedWeaponId(): EquipmentId | null {
@@ -992,6 +1106,7 @@ export class Player {
     if (this.basicAttackCost && !this.basicAttackCost.canAfford()) return false;
     if (!this.comboController.request()) return false;
     if (this.basicAttackCost) this.basicAttackCost.spend();
+    this.comboController.minStageInterval = this.attackCooldownTime;
     this.isSwinging = true;
     // Only the Guerreiro's basic combo keeps the anti-stunlock window: the
     // Maga's basic cast sets the post-action immunity to 0 seconds.
@@ -1072,6 +1187,9 @@ export class Player {
   private consumeComboEvent(event: SwordComboEvent): void {
     switch (event.type) {
       case 'stage-started':
+        // Cada golpe do combo reinicia o cooldown: clicar rápido nunca passa
+        // da velocidade máxima de ataque.
+        this.attackCooldown = this.attackCooldownTime;
         this.comboHitTargets.clear();
         this.playedComboStages = Math.max(this.playedComboStages, event.stage + 1);
         this.playComboStage(event.stage);

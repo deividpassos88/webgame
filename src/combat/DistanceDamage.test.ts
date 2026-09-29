@@ -35,6 +35,9 @@ describe('DistanceDamage', () => {
     ['warrior', 2, 1],
     ['warrior', 3.5, 0.65],
     ['warrior', 5, 0.3],
+    ['warrior-wave', 2, 1],
+    ['warrior-wave', 4.5, 0.65],
+    ['warrior-wave', 7, 0.3],
     ['mage', 3, 1],
     ['mage', 5, 0.675],
     ['mage', 7, 0.35],
@@ -64,6 +67,7 @@ describe('DistanceDamage', () => {
     expect(applyDistanceFalloff(-20, 1, 'warrior')).toBe(0);
     expect(applyDistanceFalloff(Number.NaN, 1, 'warrior')).toBe(0);
     expect(applyDistanceFalloff(20, 9, 'warrior')).toBe(0);
+    expect(applyDistanceFalloff(20, 7.5, 'warrior-wave')).toBe(0);
   });
 
   it('uses the same target-surface distance for range checks and falloff', () => {

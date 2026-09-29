@@ -20,6 +20,8 @@ export interface WarriorSlashPlayOptions {
   readonly type?: 'basic' | 'combo2' | 'combo3' | 'auto' | 'spin' | 'spin_frost';
   readonly scale?: number;
   readonly isAuto?: boolean;
+  /** Só há clarão de impacto no fim do rastro quando o golpe realmente acerta alguém. */
+  readonly hasImpact?: boolean;
 }
 
 export interface WarriorTravelingSlashOptions {
@@ -113,8 +115,14 @@ function createArcRibbonGeometry(
   return geo;
 }
 
-/** Altura do centro da onda de vento: o leque de arcos abre com a ponta no chão. */
-const WIND_WAVE_HEIGHT = 1.45;
+/** Altura do leque de vento: na altura da lâmina, acima do piso. */
+const WIND_WAVE_HEIGHT = 1.0;
+/** Alcance máximo do leque, em metros (bate com WARRIOR_WAVE_RANGE_METERS). */
+const WIND_WAVE_MAX_DISTANCE = 7;
+/** Onde o arco da frente nasce, a partir do jogador: logo na borda do rastro da lâmina. */
+const WIND_WAVE_START_OFFSET = 1.4;
+/** Inclinação do leque: a frente sobe um pouco para ler bem de qualquer ângulo. */
+const WIND_WAVE_PITCH = -0.26;
 
 function createWindArcGeometry(
   radius: number,
@@ -172,6 +180,67 @@ function createWindArcGeometry(
   geo.computeVertexNormals();
   return geo;
 }
+
+/**
+ * Crescente de vento deitado (plano XZ) com a barriga para a frente (+Z local):
+ * é o mesmo desenho do rastro da lâmina, só que fino e solto no ar. As pontas
+ * afinam e recuam, como um corte de vento de verdade.
+ */
+function createWindCrescentGeometry(
+  radius: number,
+  thickness: number,
+  taper: number,
+  sweep: number,
+  radialSegments: number,
+  angularSegments: number
+): THREE.BufferGeometry {
+  const vertexCount = (radialSegments + 1) * (angularSegments + 1);
+  const positions = new Float32Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2);
+  const indices: number[] = [];
+
+  let idx = 0;
+  for (let a = 0; a <= angularSegments; a++) {
+    const t = a / angularSegments;
+    const phi = (t - 0.5) * sweep;
+    const tip = Math.sin(Math.PI * t);
+    const mid = radius * (1 - (1 - tip) * taper * 0.12);
+    const half = (thickness * 0.5) * (1 - taper + taper * tip);
+    for (let r = 0; r <= radialSegments; r++) {
+      const rt = r / radialSegments;
+      const rad = mid + THREE.MathUtils.lerp(-half, half, rt);
+      // Ângulo 0 = para a frente (+Z); a barriga do arco aponta para o inimigo.
+      positions[idx * 3] = rad * Math.sin(phi);
+      positions[idx * 3 + 1] = 0;
+      positions[idx * 3 + 2] = rad * Math.cos(phi) - radius;
+      uvs[idx * 2] = t;
+      uvs[idx * 2 + 1] = rt;
+      idx++;
+    }
+  }
+
+  const radialStride = radialSegments + 1;
+  for (let a = 0; a < angularSegments; a++) {
+    for (let r = 0; r < radialSegments; r++) {
+      const i0 = a * radialStride + r;
+      const i1 = (a + 1) * radialStride + r;
+      const i2 = (a + 1) * radialStride + (r + 1);
+      const i3 = a * radialStride + (r + 1);
+      indices.push(i0, i3, i1);
+      indices.push(i1, i3, i2);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** Brilho central do golpe: só um toque, para não pintar o corpo de azul. */
+const GLOW_CENTER_OPACITY = 0.1;
 
 const BASIC_CONFIG = {
   inner: 0.35,
@@ -293,6 +362,7 @@ class WarriorSlashEffect implements PoolableVFX {
   /** No giratório o rastro da lâmina varre o corpo em vez de ficar parado. */
   private spinSweep = false;
   private baseYaw = 0;
+  private showImpact = true;
 
   public constructor(
     private readonly resources: WarriorSlashResources,
@@ -467,19 +537,20 @@ class WarriorSlashEffect implements PoolableVFX {
     // Shockwave
     this.shockwaveMaterial.uniforms.uColorA.value.set(cfg.colors.core);
     this.shockwaveMaterial.uniforms.uColorB.value.set(cfg.colors.glow);
-    this.shockwaveMaterial.uniforms.uOpacity.value = 0.72;
-    this.shockwaveMaterial.uniforms.uIntensity.value = 1.6;
+    this.shockwaveMaterial.uniforms.uOpacity.value = 0.3;
+    this.shockwaveMaterial.uniforms.uIntensity.value = 0.9;
     this.shockwaveMaterial.uniforms.uTime.value = 0;
     this.shockwaveMesh.scale.setScalar(0.35 * this.baseScale);
 
     // Sprites: volumes discretos, o brilho tem que vir do arco, não de uma
     // bola radial no meio da lâmina.
-    (this.glowSprite.material as THREE.SpriteMaterial).opacity = 0.38;
+    (this.glowSprite.material as THREE.SpriteMaterial).opacity = GLOW_CENTER_OPACITY;
     this.glowSprite.position.set(0, 0.15, 0.45);
-    this.glowSprite.scale.setScalar(0.8 * this.baseScale);
+    this.glowSprite.scale.setScalar(0.55 * this.baseScale);
     (this.glowSprite.material as THREE.SpriteMaterial).color.set(cfg.colors.glow);
 
-    (this.impactSprite.material as THREE.SpriteMaterial).opacity = 0.55;
+    this.showImpact = options.hasImpact ?? true;
+    (this.impactSprite.material as THREE.SpriteMaterial).opacity = this.showImpact ? 0.55 : 0;
     this.impactSprite.position.set(0, 0.12, cfg.outer * 0.88);
     this.impactSprite.scale.setScalar(1.1 * this.baseScale);
     (this.impactSprite.material as THREE.SpriteMaterial).color.set(cfg.colors.core);
@@ -502,12 +573,13 @@ class WarriorSlashEffect implements PoolableVFX {
     );
     this.edgeGlow2.scale.setScalar(0.9 * this.baseScale);
 
-    // Light flash - bright cyan impact
+    // Luz azul do golpe, bem discreta
     this.lightHandle = this.lightPool.acquire();
     if (this.lightHandle) {
       this.lightHandle.light.color.set(cfg.colors.glow);
-      this.lightHandle.light.intensity = 2.2 * this.baseScale;
-      this.lightHandle.light.distance = 7.5 * this.baseScale;
+      // Luz fraca: antes (2,2) ela acendia o corpo do personagem de azul.
+      this.lightHandle.light.intensity = 0.45 * this.baseScale;
+      this.lightHandle.light.distance = 4 * this.baseScale;
       this.lightHandle.light.position.copy(this.group.position);
       this.lightHandle.light.position.y += 0.5;
     }
@@ -559,14 +631,14 @@ class WarriorSlashEffect implements PoolableVFX {
 
     // Shockwave expands on ground
     this.shockwaveMaterial.uniforms.uTime.value = this.age * 1.35;
-    this.shockwaveMaterial.uniforms.uOpacity.value = fade * 0.62;
+    this.shockwaveMaterial.uniforms.uOpacity.value = fade * 0.26;
     this.shockwaveMesh.scale.setScalar((0.35 + progress * 3.2) * this.baseScale);
 
     // Sprites fade and scale
-    (this.glowSprite.material as THREE.SpriteMaterial).opacity = fade * 0.38;
-    this.glowSprite.scale.setScalar((0.8 + progress * 0.5) * this.baseScale);
+    (this.glowSprite.material as THREE.SpriteMaterial).opacity = fade * GLOW_CENTER_OPACITY;
+    this.glowSprite.scale.setScalar((0.55 + progress * 0.3) * this.baseScale);
 
-    (this.impactSprite.material as THREE.SpriteMaterial).opacity = fade * 0.55;
+    (this.impactSprite.material as THREE.SpriteMaterial).opacity = this.showImpact ? fade * 0.55 : 0;
     this.impactSprite.scale.setScalar((1.1 + progress * 0.9) * this.baseScale);
     (this.impactSprite.material as THREE.SpriteMaterial).rotation = progress * 1.5;
 
@@ -772,16 +844,16 @@ class WarriorHitImpactEffect implements PoolableVFX {
 }
 
 /**
- * Onda de vento do corte: um leque de arcos finos em ")" que nasce no rastro
- * da lâmina e viaja na direção do monstro, apertando conforme avança. São
+ * Onda de vento do corte: um leque de arcos finos em ")" deitados, como o
+ * rastro da lâmina, que nasce na borda do rastro e voa para a frente até o
+ * monstro (no máximo 7 m). São
  * vários traços finos, e não um crescente cheio — é o que faz a onda virar as
  * "linhas" de vento em vez de uma bola de luz.
  */
-const WAVE_STROKES = 6;
-/** Avanço dos traços na direção do monstro, em metros. */
-const WAVE_STROKE_SPREAD = 0.72;
-/** Abertura lateral do leque, em metros. */
-const WAVE_STROKE_LEAN = 0.34;
+const WAVE_STROKES = 1;
+/** Raio do leque ao nascer e ao chegar: ele abre enquanto avança. */
+const WAVE_RADIUS_START = 2.4;
+const WAVE_RADIUS_END = 3.4;
 
 class WarriorTravelingSlashEffect implements PoolableVFX {
   public active = false;
@@ -804,8 +876,6 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
   private baseScale = 1;
   /** Espera a lâmina terminar o rastro antes de disparar a onda. */
   private spawnDelay = 0;
-  /** Inclinação base do ")" para a onda não ficar chapada no eixo do golpe. */
-  private baseRoll = 0.12;
 
   constructor(
     private readonly resources: WarriorSlashResources,
@@ -815,7 +885,7 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.group.visible = false;
 
     // Um traço fino de raio 1: cada mesh é escalada para formar o leque.
-    this.strokeGeometry = createWindArcGeometry(1, 0.13, 0.92, 2, 30);
+    this.strokeGeometry = createWindCrescentGeometry(1, 0.34, 0.9, THREE.MathUtils.degToRad(160), 3, 48);
     this.strokeMaterial = createWarriorSlashMaterial({
       colorA: 0xe6faff,
       colorB: 0x2fd4ff,
@@ -824,7 +894,7 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
       intensity: 2.2,
       thickness: 1.5,
       distortion: 1.15,
-      breakup: 0.34,
+      breakup: 0.5,
       saturation: 1.35,
     });
 
@@ -851,8 +921,9 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.onHit = options.onHit ?? null;
     this.hasHit = false;
 
-    // A onda sempre sai da lâmina e voa na direção do monstro: no mínimo 4 m
-    // para sempre dar para ler o ")" e no máximo 7 m de alcance.
+    // A onda sai da borda do rastro da lâmina e voa para a frente até bater no
+    // monstro, sem nunca passar de 7 m do jogador. `frontDistance` é a
+    // distância do arco da frente até o jogador.
     const delta = this.targetPos.clone().sub(this.startPos);
     delta.y = 0;
     // Mira no monstro, mas sem passar de 30° fora do eixo do golpe, para a
@@ -864,11 +935,18 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
         this.forward.lerp(aim, Math.min(1, THREE.MathUtils.degToRad(30) / angle)).normalize();
       }
     }
-    this.distance = THREE.MathUtils.clamp(delta.length(), 4, 7);
+    const frontDistance = THREE.MathUtils.clamp(
+      delta.length(),
+      WIND_WAVE_START_OFFSET,
+      WIND_WAVE_MAX_DISTANCE
+    );
+    this.distance = Math.max(0, frontDistance - WIND_WAVE_START_OFFSET);
+    // O grupo é o arco da frente: ele nasce na borda do rastro e chega no alvo.
+    this.startPos.addScaledVector(this.forward, WIND_WAVE_START_OFFSET);
     const target = this.startPos.clone().addScaledVector(this.forward, this.distance);
     target.y = this.startPos.y;
     this.targetPos.copy(target);
-    this.duration = this.distance / this.speed + 0.12;
+    this.duration = this.distance / this.speed + 0.3;
     this.spawnDelay = 0.04;
     this.age = -this.spawnDelay;
 
@@ -878,8 +956,7 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.group.scale.setScalar(this.baseScale);
 
     const yaw = Math.atan2(this.forward.x, this.forward.z);
-    this.baseRoll = options.type === 'auto' ? -0.14 : 0.14;
-    this.group.rotation.set(0.05, yaw, this.baseRoll);
+    this.group.rotation.set(0, yaw, 0);
 
     const cfg = configForType(options.type);
     this.strokeMaterial.uniforms.uColorA.value.set(cfg.colors.core);
@@ -898,8 +975,8 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.actualLightHandle = this.lightPool.acquire();
     if (this.actualLightHandle) {
       this.actualLightHandle.light.color.set(cfg.colors.glow);
-      this.actualLightHandle.light.intensity = 1.1 * this.baseScale;
-      this.actualLightHandle.light.distance = 5 * this.baseScale;
+      this.actualLightHandle.light.intensity = 0.3 * this.baseScale;
+      this.actualLightHandle.light.distance = 4 * this.baseScale;
       this.actualLightHandle.light.position.copy(this.group.position);
     }
 
@@ -915,21 +992,15 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
   }
 
   /**
-   * Leque de arcos: o traço 0 é o maior, colado na lâmina, e os seguintes vão
-   * encolhendo e se aproximando uns dos outros na direção do inimigo — é a
-   * mesma onda desenhada várias vezes no caminho, do rastro até o monstro.
-   * Conforme ela viaja, o leque aperta mais.
+   * Um único leque grande de vento, deitado como o rastro da lâmina, com a
+   * barriga para o monstro. Ele abre enquanto avança até o alvo (máx. 7 m).
    */
-  private layoutStrokes(conviction: number): void {
-    const spread = WAVE_STROKE_SPREAD * (1 - conviction * 0.45);
-    const lean = WAVE_STROKE_LEAN * (1 - conviction * 0.3);
-    for (let index = 0; index < this.strokes.length; index += 1) {
-      const t = index / Math.max(1, this.strokes.length - 1);
-      const radius = THREE.MathUtils.lerp(1.6, 0.95, t) * (1 - conviction * 0.1);
-      const stroke = this.strokes[index];
-      stroke.scale.set(radius, radius * (1 - t * 0.08), 1);
-      stroke.position.set(t * lean, t * 0.1, t * spread);
-      stroke.rotation.z = -lean * 0.1 + t * lean * 0.16;
+  private layoutStrokes(progress: number): void {
+    const radius = THREE.MathUtils.lerp(WAVE_RADIUS_START, WAVE_RADIUS_END, progress);
+    for (const stroke of this.strokes) {
+      stroke.scale.set(radius, 1, radius);
+      stroke.position.set(0, 0, 0);
+      stroke.rotation.x = WIND_WAVE_PITCH;
     }
   }
 

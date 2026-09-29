@@ -221,4 +221,35 @@ describe('SwordComboController', () => {
     expect(Object.isFrozen(reusable)).toBe(false);
     expect(continuation.update(0)).toBe(reusable);
   });
+
+  it('holds a buffered next stage until the minimum attack interval has passed', () => {
+    const combo = new SwordComboController();
+    combo.minStageInterval = 0.9;
+    const starts: number[] = [];
+    let clock = 0;
+    const step = (dt: number) => {
+      clock += dt;
+      for (const event of combo.update(dt)) {
+        if (event.type === 'stage-started') starts.push(clock);
+      }
+    };
+
+    expect(combo.request()).toBe(true);
+    step(0.3);
+    expect(combo.request()).toBe(true); // buffered click
+    for (let i = 0; i < 100; i += 1) step(0.01);
+
+    expect(starts.length).toBe(1);
+    expect(starts[0]).toBeGreaterThanOrEqual(0.9 - 0.02);
+    expect(combo.activeStage).toBe(1);
+  });
+
+  it('keeps the original stage timing when no minimum interval is set', () => {
+    const combo = new SwordComboController();
+    combo.request();
+    combo.update(0.3);
+    combo.request();
+    const events = combo.update(0.2);
+    expect(events.some((event) => event.type === 'stage-started')).toBe(true);
+  });
 });

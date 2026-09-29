@@ -315,7 +315,58 @@ describe('Player sword combo integration', () => {
     player.update(0.25);
     player.update(0.18);
 
+    // O clique fica enfileirado, mas o segundo golpe respeita o intervalo
+    // mínimo de ataque (cooldown da arma) e ainda não saiu.
+    expect(hits).toEqual([enemy]);
+
+    player.update(0.5);
     expect(hits).toEqual([enemy, enemy]);
+  });
+
+  it('never attacks faster than the weapon cooldown, however fast the mouse is clicked', async () => {
+    const player = await loadedPlayerWithSword();
+    const enemy = new THREE.Object3D();
+    enemy.position.set(0, 0, 1);
+    const windows: number[] = [];
+    let clock = 0;
+    player.onWarriorAttackWindow(() => windows.push(clock));
+
+    const dt = 1 / 60;
+    const seconds = 12;
+    for (let frame = 0; frame < seconds * 60; frame += 1) {
+      // Clique em todo frame: 60 cliques por segundo.
+      player.attackEnemy(enemy, () => undefined);
+      player.attackAtCursor();
+      player.update(dt);
+      clock += dt;
+    }
+
+    expect(windows.length).toBeGreaterThan(5);
+    const cooldown = player.attackCooldownTime;
+    for (let index = 1; index < windows.length; index += 1) {
+      expect(windows[index] - windows[index - 1]).toBeGreaterThanOrEqual(cooldown - 0.03);
+    }
+    expect(windows.length).toBeLessThanOrEqual(Math.ceil(seconds / cooldown) + 1);
+  });
+
+  it('matches the automatic attack speed when the mouse is spammed on top of it', async () => {
+    const run = async (spam: boolean): Promise<number> => {
+      const player = await loadedPlayerWithSword();
+      const enemy = new THREE.Object3D();
+      enemy.position.set(0, 0, 1);
+      let count = 0;
+      player.onWarriorAttackWindow(() => { count += 1; });
+      const dt = 1 / 60;
+      for (let frame = 0; frame < 20 * 60; frame += 1) {
+        // Ataque automático: só pede golpe quando está livre.
+        if (spam || !player.isAttackInSwing()) player.attackEnemy(enemy, () => undefined);
+        player.update(dt);
+      }
+      return count;
+    };
+    const automatic = await run(false);
+    const spammed = await run(true);
+    expect(spammed).toBeLessThanOrEqual(automatic + 1);
   });
 
   it('does not buffer a continuation merely because the target remains marked', async () => {

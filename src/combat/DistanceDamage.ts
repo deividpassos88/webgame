@@ -6,7 +6,7 @@
  * animation, a skill area, or an enemy controller.
  */
 
-export type DistanceFalloffProfile = 'warrior' | 'warrior-spin' | 'mage' | 'regular' | 'mini-boss';
+export type DistanceFalloffProfile = 'warrior' | 'warrior-wave' | 'warrior-spin' | 'mage' | 'regular' | 'mini-boss';
 
 export interface DistanceFalloffDefinition {
   readonly fullDamageDistance: number;
@@ -15,12 +15,19 @@ export interface DistanceFalloffDefinition {
 }
 
 export const WARRIOR_MAX_RANGE_METERS = 5;
+/** Alcance do leque de vento que sai do rastro da espada. */
+export const WARRIOR_WAVE_RANGE_METERS = 7;
 export const MAGE_MAX_RANGE_METERS = 7;
 
 const PROFILES: Readonly<Record<DistanceFalloffProfile, DistanceFalloffDefinition>> = Object.freeze({
   warrior: Object.freeze({
     fullDamageDistance: 2,
     maxDistance: WARRIOR_MAX_RANGE_METERS,
+    minimumMultiplier: 0.3,
+  }),
+  'warrior-wave': Object.freeze({
+    fullDamageDistance: 2,
+    maxDistance: WARRIOR_WAVE_RANGE_METERS,
     minimumMultiplier: 0.3,
   }),
   'warrior-spin': Object.freeze({

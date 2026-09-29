@@ -67,16 +67,15 @@ describe('Visual do corte do guerreiro', () => {
     vfx.dispose();
   });
 
-  it('o arco ")" de vento espera a lâmina e voa 4 a 7 m na direção do monstro', () => {
+  it('o leque de vento espera a lâmina e voa para a frente até parar no monstro', () => {
     const { scene, vfx } = create();
     const start = new THREE.Vector3(0, 0, 0);
     const forward = new THREE.Vector3(0, 0, 1);
 
-    // monstro colado: mesmo assim o arco precisa dar para ser lido
     vfx.playTravelingSlash({
       start,
       forward,
-      target: new THREE.Vector3(0, 0, 2),
+      target: new THREE.Vector3(0, 0, 5),
       type: 'basic',
     });
 
@@ -87,16 +86,17 @@ describe('Visual do corte do guerreiro', () => {
 
     vfx.update(0.06);
     expect((arc as THREE.Object3D).visible).toBe(true);
+    // nasce na borda do rastro, à frente do jogador
+    expect((arc as THREE.Object3D).position.z).toBeGreaterThan(0.9);
+    expect((arc as THREE.Object3D).position.z).toBeLessThan(2.5);
 
     for (let i = 0; i < 40 && vfx.activeCount > 0; i++) vfx.update(0.05);
-    const end = (arc as THREE.Object3D).position;
-    const travelled = new THREE.Vector3(end.x, 0, end.z).distanceTo(new THREE.Vector3(0, 0, 0));
-    expect(travelled).toBeGreaterThanOrEqual(3.9);
-    expect(travelled).toBeLessThanOrEqual(7.1);
+    // o arco da frente termina exatamente no monstro
+    expect((arc as THREE.Object3D).position.z).toBeCloseTo(5, 1);
     vfx.dispose();
   });
 
-  it('o arco ")" nunca passa de 7 m mesmo com o monstro longe', () => {
+  it('o leque de vento nunca passa de 7 m mesmo com o monstro longe', () => {
     const { scene, vfx } = create();
     vfx.playTravelingSlash({
       start: new THREE.Vector3(0, 0, 0),
@@ -106,8 +106,8 @@ describe('Visual do corte do guerreiro', () => {
     });
     const arc = scene.getObjectByName('WarriorTravelingSlash') as THREE.Object3D;
     for (let i = 0; i < 40 && vfx.activeCount > 0; i++) vfx.update(0.05);
-    expect(arc.position.z).toBeLessThanOrEqual(7.1);
-    expect(arc.position.z).toBeGreaterThanOrEqual(3.9);
+    expect(arc.position.z).toBeLessThanOrEqual(7.01);
+    expect(arc.position.z).toBeGreaterThanOrEqual(6.9);
     vfx.dispose();
   });
 
@@ -129,7 +129,7 @@ describe('Visual do corte do guerreiro', () => {
     vfx.dispose();
   });
 
-  it('a onda nasce em pé, inteira acima do chão, virando para o monstro', () => {
+  it('a onda nasce deitada na altura da lâmina, inteira acima do chão', () => {
     const { scene, vfx } = create();
     vfx.playTravelingSlash({
       start: new THREE.Vector3(0, 0, 0),
@@ -140,21 +140,20 @@ describe('Visual do corte do guerreiro', () => {
     vfx.update(0.06);
 
     const arc = scene.getObjectByName('WarriorTravelingSlash') as THREE.Object3D;
-    // O leque é montado no plano XY: alto em pé, com a ponta de baixo no
-    // chão. Antes ele era um arco deitado com metade enfiada embaixo do piso.
     arc.updateWorldMatrix(true, true);
     const box = new THREE.Box3();
     arc.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) box.expandByObject(child as THREE.Mesh);
     });
-    expect(box.max.y - box.min.y).toBeGreaterThan(2.5);
-    expect(box.max.x - box.min.x).toBeLessThan(3.3);
-    expect(box.min.y).toBeGreaterThan(-0.25);
-    expect(box.max.y).toBeLessThan(3.6);
+    // deitada como o rastro da lâmina: larga e comprida, baixa, sem enfiar no piso
+    expect(box.max.x - box.min.x).toBeGreaterThan(2.5);
+    expect(box.max.z - box.min.z).toBeGreaterThan(1.8);
+    expect(box.max.y - box.min.y).toBeLessThan(2);
+    expect(box.min.y).toBeGreaterThan(0.2);
     vfx.dispose();
   });
 
-  it('a onda de vento é um leque de arcos finos ")", e não uma bola de brilho', () => {
+  it('sai um único leque grande de vento, com a barriga para o monstro', () => {
     const { scene, vfx } = create();
     vfx.playTravelingSlash({
       start: new THREE.Vector3(0, 0, 0),
@@ -165,55 +164,77 @@ describe('Visual do corte do guerreiro', () => {
     vfx.update(0.06);
 
     const arc = scene.getObjectByName('WarriorTravelingSlash') as THREE.Object3D;
-    // Vários traços finos, como as linhas desenhadas do vento.
     const strokes = arc.children.filter((child) => child.name.startsWith('WindWaveStroke'));
-    expect(strokes.length).toBe(6);
+    expect(strokes.length).toBe(1);
     // Nenhum sprite radial: o leque não pode virar uma bola de luz.
     expect(arc.children.some((child) => (child as THREE.Sprite).isSprite === true)).toBe(false);
 
-    // Cada traço é um ")" em pé: mais alto que largo, afunilando nas pontas.
-    const boxes = strokes.map((stroke) => new THREE.Box3().setFromObject(stroke));
-    const heights = boxes.map((box) => box.max.y - box.min.y);
-    const widths = boxes.map((box) => box.max.x - box.min.x);
-    expect(heights.every((height, index) => height > widths[index])).toBe(true);
-    // Do maior para o menor: o leque nasce encostado na lâmina.
-    expect(heights[0]).toBeGreaterThan(heights[heights.length - 1]);
-    expect(widths[0]).toBeGreaterThan(widths[widths.length - 1]);
+    // A ponta do ")" fica na frente (+Z) e as pontas dos braços recuam.
+    const geometry = (strokes[0] as THREE.Mesh).geometry;
+    geometry.computeBoundingBox();
+    const local = geometry.boundingBox as THREE.Box3;
+    expect(Math.abs(local.max.z)).toBeLessThan(0.25);
+    expect(local.min.z).toBeLessThan(-0.5);
+
+    // Grande: bem mais largo que o rastro fino de antes.
+    const box = new THREE.Box3().setFromObject(strokes[0]);
+    expect(box.max.x - box.min.x).toBeGreaterThan(4);
     vfx.dispose();
   });
 
-  it('a onda abre em pé, acima do chão, e o leque aperta conforme ela viaja', () => {
+  it('o leque abre enquanto a onda viaja', () => {
     const { scene, vfx } = create();
     vfx.playTravelingSlash({
       start: new THREE.Vector3(0, 0, 0),
       forward: new THREE.Vector3(0, 0, 1),
-      target: new THREE.Vector3(0, 0, 5),
+      target: new THREE.Vector3(0, 0, 7),
       type: 'basic',
     });
     vfx.update(0.06);
 
     const arc = scene.getObjectByName('WarriorTravelingSlash') as THREE.Object3D;
-    arc.updateWorldMatrix(true, true);
-    const box = new THREE.Box3();
-    arc.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) box.expandByObject(child as THREE.Mesh);
-    });
-    expect(box.max.y - box.min.y).toBeGreaterThan(2.5);
-    expect(box.max.y).toBeLessThan(3.6);
-    expect(box.min.y).toBeGreaterThan(-0.25);
-
-    const spreadOf = (): number => {
-      arc.updateWorldMatrix(true, true);
-      const strokes = arc.children.filter((child) => child.name.startsWith('WindWaveStroke'));
-      // O leque caminha para a frente, na direção do monstro.
-      const positions = strokes.map((stroke) => stroke.position.z);
-      return Math.max(...positions) - Math.min(...positions);
-    };
-    const spreadStart = spreadOf();
-    expect(spreadStart).toBeGreaterThan(0.3);
+    const stroke = arc.children.find((child) => child.name.startsWith('WindWaveStroke')) as THREE.Object3D;
+    const widthStart = stroke.scale.x;
+    const zStart = arc.position.z;
     vfx.update(0.25);
-    // O leque fecha conforme a onda se aproxima do monstro.
-    expect(spreadOf()).toBeLessThan(spreadStart);
+    expect(stroke.scale.x).toBeGreaterThan(widthStart);
+    // e avança para a frente
+    expect(arc.position.z).toBeGreaterThan(zStart);
+    vfx.dispose();
+  });
+
+  it('sem impacto: o rastro não acende o clarão de impacto e o leque termina sozinho', () => {
+    const { scene, vfx } = create();
+    vfx.play({ position: new THREE.Vector3(), forward: new THREE.Vector3(0, 0, 1), type: 'basic', hasImpact: false });
+    vfx.playTravelingSlash({
+      start: new THREE.Vector3(),
+      forward: new THREE.Vector3(0, 0, 1),
+      target: new THREE.Vector3(0, 0, 7),
+      type: 'basic',
+    });
+    const flare = scene.getObjectByName('WarriorImpactFlare') as THREE.Sprite;
+    for (let i = 0; i < 4; i++) {
+      vfx.update(0.05);
+      expect(flare.material.opacity).toBe(0);
+    }
+    for (let i = 0; i < 40 && vfx.activeCount > 0; i++) vfx.update(0.05);
+    expect(vfx.activeCount).toBe(0);
+    vfx.dispose();
+  });
+
+  it('com impacto: o clarão de impacto acende no fim do rastro', () => {
+    const { scene, vfx } = create();
+    vfx.play({ position: new THREE.Vector3(), forward: new THREE.Vector3(0, 0, 1), type: 'basic', hasImpact: true });
+    const flare = scene.getObjectByName('WarriorImpactFlare') as THREE.Sprite;
+    expect(flare.material.opacity).toBeGreaterThan(0.2);
+    vfx.dispose();
+  });
+
+  it('a luz azul do golpe fica discreta e não incendeia o corpo do personagem', () => {
+    const { scene, vfx } = create();
+    vfx.play({ position: new THREE.Vector3(), forward: new THREE.Vector3(0, 0, 1), type: 'basic' });
+    const glow = scene.getObjectByName('WarriorCenterGlow') as THREE.Sprite;
+    expect(glow.material.opacity).toBeLessThanOrEqual(0.15);
     vfx.dispose();
   });
 
@@ -238,7 +259,7 @@ describe('Visual do corte do guerreiro', () => {
       expect(material.uniforms.uBreakup.value).toBeGreaterThan(0.1);
       expect(material.uniforms.uSaturation.value).toBeGreaterThan(1);
     });
-    expect(checked).toBeGreaterThanOrEqual(3);
+    expect(checked).toBeGreaterThanOrEqual(1);
     vfx.dispose();
   });
 
