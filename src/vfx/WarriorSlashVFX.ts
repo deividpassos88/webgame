@@ -1072,6 +1072,141 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
   }
 }
 
+interface WarriorVerticalArcOptions {
+  readonly position: THREE.Vector3;
+  readonly forward: THREE.Vector3;
+  readonly type?: WarriorSlashPlayOptions['type'];
+  readonly scale?: number;
+  readonly tint?: number;
+}
+
+/** Arco de lâmina em pé que aparece no lugar e some — o golpe do Corte Duplo. */
+class WarriorVerticalArcEffect implements PoolableVFX {
+  public active = false;
+  public readonly group = new THREE.Group();
+  private readonly mainMesh: THREE.Mesh;
+  private readonly coreMesh: THREE.Mesh;
+  private readonly mainMat: WarriorSlashMaterial;
+  private readonly coreMat: WarriorSlashMaterial;
+  private readonly mainGeometry: THREE.BufferGeometry;
+  private readonly coreGeometry: THREE.BufferGeometry;
+  private age = 0;
+  private duration = 0.34;
+  private baseScale = 1;
+
+  public constructor() {
+    this.group.name = 'WarriorVerticalArc';
+    this.group.visible = false;
+
+    this.mainGeometry = createWindArcGeometry(1.35, 0.8, 0.9, 3, 26);
+    this.coreGeometry = createWindArcGeometry(1.3, 0.28, 0.75, 2, 26);
+
+    this.mainMat = createWarriorSlashMaterial({
+      colorA: 0xfff4dc,
+      colorB: 0xffa53a,
+      colorC: 0x3a1c05,
+      opacity: 1,
+      intensity: 2.1,
+      thickness: 1.3,
+      distortion: 1.2,
+      breakup: 0.5,
+      saturation: 1.4,
+    });
+    this.coreMat = createWarriorSlashMaterial({
+      colorA: 0xffffff,
+      colorB: 0xffd79a,
+      colorC: 0x4a2405,
+      opacity: 0.95,
+      intensity: 2.3,
+      thickness: 0.6,
+      distortion: 0.9,
+      breakup: 0.3,
+      saturation: 1.15,
+    });
+
+    this.mainMesh = new THREE.Mesh(this.mainGeometry, this.mainMat);
+    this.coreMesh = new THREE.Mesh(this.coreGeometry, this.coreMat);
+    this.mainMesh.frustumCulled = false;
+    this.coreMesh.frustumCulled = false;
+    this.mainMesh.renderOrder = 7;
+    this.coreMesh.renderOrder = 8;
+    this.group.add(this.mainMesh, this.coreMesh);
+  }
+
+  public play(options: WarriorVerticalArcOptions): void {
+    const cfg = configForType(options.type);
+    const tint = options.tint ?? cfg.colors.glow;
+    const seed = Math.random() * 10;
+
+    this.baseScale = options.scale ?? 1;
+    this.duration = 0.34;
+    this.age = 0;
+
+    this.group.visible = true;
+    this.group.position.copy(options.position);
+    this.group.position.y += 1.1;
+    const yaw = Math.atan2(options.forward.x, options.forward.z);
+    this.group.rotation.set(0.05, yaw, (Math.random() - 0.5) * 0.5);
+    this.group.scale.setScalar(this.baseScale * 0.55);
+
+    this.mainMat.uniforms.uColorA.value.set(cfg.colors.core);
+    this.mainMat.uniforms.uColorB.value.set(tint);
+    this.mainMat.uniforms.uColorC.value.set(cfg.colors.dark);
+    this.mainMat.uniforms.uOpacity.value = 1;
+    this.mainMat.uniforms.uIntensity.value = cfg.intensity * 1.25;
+    this.mainMat.uniforms.uBreakup.value = cfg.breakup;
+    this.mainMat.uniforms.uSaturation.value = cfg.saturation;
+    this.mainMat.uniforms.uSeed.value = seed;
+    this.mainMat.uniforms.uTime.value = 0;
+    this.mainMat.uniforms.uProgress.value = 0;
+
+    this.coreMat.uniforms.uColorA.value.set(cfg.colors.core);
+    this.coreMat.uniforms.uColorB.value.set(tint);
+    this.coreMat.uniforms.uColorC.value.set(cfg.colors.dark);
+    this.coreMat.uniforms.uOpacity.value = 0.95;
+    this.coreMat.uniforms.uIntensity.value = cfg.intensity * 1.4;
+    this.coreMat.uniforms.uBreakup.value = cfg.breakup * 0.6;
+    this.coreMat.uniforms.uSaturation.value = cfg.saturation;
+    this.coreMat.uniforms.uSeed.value = seed + 4.1;
+    this.coreMat.uniforms.uTime.value = 0;
+    this.coreMat.uniforms.uProgress.value = 0;
+  }
+
+  public update(delta: number): boolean {
+    const step = Math.max(0, delta);
+    this.age += step;
+    const progress = THREE.MathUtils.clamp(this.age / this.duration, 0, 1);
+    const fade = Math.pow(1 - progress, 1.1);
+
+    setWarriorSlashTime(this.mainMat, this.age * 3.2, progress);
+    setWarriorSlashTime(this.coreMat, this.age * 3.6, progress);
+    this.mainMat.uniforms.uOpacity.value = fade;
+    this.coreMat.uniforms.uOpacity.value = fade * 0.9;
+
+    // Abre rápido e some: o arco nasce, corta o espaço e evapora.
+    const scale = this.baseScale * (0.55 + progress * 0.75);
+    this.mainMesh.scale.setScalar(scale);
+    this.coreMesh.scale.setScalar(scale * 1.04);
+
+    return this.age < this.duration;
+  }
+
+  public reset(): void {
+    this.group.visible = false;
+    this.group.removeFromParent();
+    this.age = 0;
+    this.mainMat.uniforms.uOpacity.value = 0;
+    this.coreMat.uniforms.uOpacity.value = 0;
+  }
+
+  public dispose(): void {
+    this.mainGeometry.dispose();
+    this.coreGeometry.dispose();
+    this.mainMat.dispose();
+    this.coreMat.dispose();
+  }
+}
+
 class WarriorSpinWaveEffect implements PoolableVFX {
   public active = false;
   public readonly group = new THREE.Group();
@@ -1355,6 +1490,8 @@ export class WarriorSlashVFX {
   private readonly activeTraveling: WarriorTravelingSlashEffect[] = [];
   private readonly spinPool: VFXPool<WarriorSpinWaveEffect>;
   private readonly activeSpin: WarriorSpinWaveEffect[] = [];
+  private readonly verticalArcPool: VFXPool<WarriorVerticalArcEffect>;
+  private readonly activeVerticalArcs: WarriorVerticalArcEffect[] = [];
   private readonly cameraShake = new CameraShake();
   /**
    * Efeitos modulares do guerreiro em um group próprio que o Game adiciona na
@@ -1386,6 +1523,19 @@ export class WarriorSlashVFX {
       () => new WarriorSpinWaveEffect(this.resources, lightPool),
       8
     );
+    this.verticalArcPool = new VFXPool(() => new WarriorVerticalArcEffect(), 12);
+  }
+
+  /**
+   * Arco de lâmina vertical que nasce no lugar — cada aresta do Corte Duplo.
+   * `tint` deixa cada arco com um tom diferente dentro da mesma tempestade.
+   */
+  public playVerticalArc(options: WarriorVerticalArcOptions): void {
+    const arc = this.verticalArcPool.acquire();
+    if (!arc) return;
+    arc.play(options);
+    this.scene.add(arc.group);
+    this.activeVerticalArcs.push(arc);
   }
 
   public play(options: WarriorSlashPlayOptions): void {
@@ -1489,6 +1639,12 @@ export class WarriorSlashVFX {
       this.spinPool.release(spin);
       this.activeSpin.splice(i, 1);
     }
+    for (let i = this.activeVerticalArcs.length - 1; i >= 0; i--) {
+      const arc = this.activeVerticalArcs[i];
+      if (arc.update(delta)) continue;
+      this.verticalArcPool.release(arc);
+      this.activeVerticalArcs.splice(i, 1);
+    }
   }
 
   public applyCameraShake(camera: THREE.Camera, delta: number): void {
@@ -1505,6 +1661,8 @@ export class WarriorSlashVFX {
     this.activeTraveling.length = 0;
     for (const e of this.activeSpin) this.spinPool.release(e);
     this.activeSpin.length = 0;
+    for (const e of this.activeVerticalArcs) this.verticalArcPool.release(e);
+    this.activeVerticalArcs.length = 0;
     this.cameraShake.clear();
   }
 
@@ -1515,6 +1673,7 @@ export class WarriorSlashVFX {
     this.impactPool.dispose();
     this.travelingPool.dispose();
     this.spinPool.dispose();
+    this.verticalArcPool.dispose();
     this.resources.quad.dispose();
     this.resources.ring.dispose();
     this.resources.softGlow.dispose();
@@ -1523,6 +1682,10 @@ export class WarriorSlashVFX {
   }
 
   public get activeCount(): number {
-    return this.active.length + this.activeImpacts.length + this.activeTraveling.length + this.activeSpin.length;
+    return this.active.length
+      + this.activeImpacts.length
+      + this.activeTraveling.length
+      + this.activeSpin.length
+      + this.activeVerticalArcs.length;
   }
 }

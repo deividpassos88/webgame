@@ -202,6 +202,51 @@ describe('Visual do corte do guerreiro', () => {
     vfx.dispose();
   });
 
+  it('o arco de lâmina vertical do Corte Duplo nasce em pé, no lugar, e some', () => {
+    const { scene, vfx } = create();
+    const position = new THREE.Vector3(2, 0, 1);
+    vfx.playVerticalArc({ position, forward: new THREE.Vector3(0, 0, 1), type: 'combo3' });
+
+    const arc = scene.getObjectByName('WarriorVerticalArc') as THREE.Group;
+    expect(arc).toBeTruthy();
+    // Fica no ponto do golpe: a tempestade abre arcos, não um projétil.
+    expect(arc.position.distanceTo(position)).toBeLessThan(1.5);
+    arc.updateWorldMatrix(true, true);
+
+    const box = new THREE.Box3();
+    arc.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) box.expandByObject(child as THREE.Mesh);
+    });
+    expect(box.max.y - box.min.y).toBeGreaterThan(1);
+    expect(box.min.y).toBeGreaterThan(-0.2);
+
+    expect(vfx.activeCount).toBe(1);
+    vfx.update(0.2);
+    expect(vfx.activeCount).toBe(1);
+    vfx.update(0.2);
+    expect(vfx.activeCount).toBe(0);
+    vfx.dispose();
+  });
+
+  it('cada arco da tempestade aceita um tom próprio', () => {
+    const { scene, vfx } = create();
+    vfx.playVerticalArc({
+      position: new THREE.Vector3(),
+      forward: new THREE.Vector3(0, 0, 1),
+      type: 'combo3',
+      tint: 0xffd76a,
+    });
+    const arc = scene.getObjectByName('WarriorVerticalArc') as THREE.Group;
+    const colors: number[] = [];
+    arc.traverse((child) => {
+      const material = (child as THREE.Mesh).material as WarriorSlashMaterial | undefined;
+      if (material?.uniforms?.uBreakup) colors.push(material.uniforms.uColorB.value.getHex());
+    });
+    expect(colors.length).toBeGreaterThanOrEqual(2);
+    expect(colors.every((color) => color === 0xffd76a)).toBe(true);
+    vfx.dispose();
+  });
+
   it('o giratório ganha cor (dourado / gelo) e rastro que varre o corpo', () => {
     const { scene, vfx } = create();
 

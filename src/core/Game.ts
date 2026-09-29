@@ -143,6 +143,15 @@ import {
   getWarriorSkillDamage,
   resolveWarriorSkillAreaCenter,
 } from '../combat/WarriorSkillArea';
+import {
+  getWarriorSkillEffect,
+  warriorSkillEffectIsBladeStorm,
+  BLADE_STORM_ARC_COUNT,
+  BLADE_STORM_DAMAGE_RATIO,
+  BLADE_STORM_INTERVAL_SECONDS,
+  BLADE_STORM_RADIUS_METERS,
+} from '../combat/WarriorSkillEffects';
+import { WarriorBladeStorm } from '../combat/WarriorBladeStorm';
 import { resolveWarriorAreaTargets } from './WarriorAreaDamage';
 import {
   applyDistanceFalloff,
@@ -213,6 +222,17 @@ export class Game {
   private readonly vfxLightPool = new VFXLightPool(this.scene, MAGE_VFX_LIMITS.maxTemporaryLights);
   private readonly mageVFX = new MageVFX(this.scene, { lightPool: this.vfxLightPool });
   private readonly warriorSlashVFX = new WarriorSlashVFX(this.scene, this.vfxLightPool);
+  /** Agenda os arcos de lâmina em vertical do Corte Duplo. */
+  private readonly warriorBladeStorm = new WarriorBladeStorm(
+    () => this.releaseWarriorBladeStormArc()
+  );
+  private pendingBladeStorm: {
+    origin: THREE.Vector3;
+    forward: THREE.Vector3;
+    baseDamage: number;
+    elemental: boolean;
+    falloff: DistanceFalloffProfile;
+  } | null = null;
   private cameraController: CameraController;
   private input: InputManager;
   private clock = new THREE.Clock();
@@ -620,6 +640,8 @@ export class Game {
     this.healthPlasma.clear();
     this.mageVFX.clear();
     this.warriorSlashVFX.clear();
+    this.warriorBladeStorm.clear();
+    this.pendingBladeStorm = null;
     this.archerProjectiles.clear();
     this.stopBossSkills();
     this.combatRegistry.clear();
@@ -1372,6 +1394,8 @@ export class Game {
       this.archerProjectiles.clear();
       this.mageVFX.clear();
       this.warriorSlashVFX.clear();
+      this.warriorBladeStorm.clear();
+      this.pendingBladeStorm = null;
       this.stopBossSkills();
       this.lastBossMinionTier = 1;
       this.targetedEnemyRoot = null;
@@ -2153,13 +2177,9 @@ export class Game {
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
-      // Impulsão / knockback no formato do corte - empurra inimigo para trás
-      const impulseStrength = slashType === 'combo3' ? 1.8 : slashType === 'combo2' ? 1.3 : isAuto ? 1.4 : 1.0;
+      // Recuo curto: o monstro é nervoso e apenas recua um pouco no corte.
+      const impulseStrength = slashType === 'combo3' ? 0.22 : slashType === 'combo2' ? 0.16 : isAuto ? 0.17 : 0.12;
       record.enemy.applyImpulse(forward, impulseStrength);
-      // Chance de KO / knockdown mais forte no combo final e no auto
-      if (slashType === 'combo3' || (isAuto && Math.random() < 0.35)) {
-        record.enemy.applyWarriorKnockdown(slashType === 'combo3' ? 1.4 : 0.9);
-      }
       this.showFloatingDamage(record.enemy.root.position, damage);
       this.warriorSlashVFX.playImpact(record.enemy.root.position, 1);
       this.syncCombatHealthBars(record);
@@ -2201,6 +2221,7 @@ export class Game {
       .map((root) => this.combatRegistry.findByRoot(root))
       .filter((record): record is CombatRecord => record !== null);
     const skill = getWarriorSkill(event.attackId);
+    const effect = getWarriorSkillEffect(event.attackId);
     const area = this.resolvePlayerSkillArea(event.attackId);
     const elemental = skill.element !== null;
     const baseDamage = getTypedAttackBaseDamage(
@@ -2227,26 +2248,120 @@ export class Game {
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
-      // Giratório também empurra e dá KO leve
+      // Giratório também dá um empurrão curto e o flash de impacto.
       if (event.attackId === 'ataque_giratorio' || event.attackId === 'ataque_giratorio_2') {
         const spinForward = new THREE.Vector3().subVectors(record.enemy.root.position, event.origin).setY(0).normalize();
         if (spinForward.lengthSq() > 1e-6) {
-          record.enemy.applyImpulse(spinForward, event.attackId === 'ataque_giratorio_2' ? 1.6 : 1.4);
-        }
-        if (Math.random() < 0.45) {
-          record.enemy.applyWarriorKnockdown(0.85);
+          record.enemy.applyImpulse(spinForward, event.attackId === 'ataque_giratorio_2' ? 0.2 : 0.16);
         }
         this.warriorSlashVFX.playImpact(record.enemy.root.position, 1.15);
-      }
-      if (event.attackId === 'pulo_atacando' && !record.enemy.isDead) {
-        record.enemy.applyWarriorKnockdown(1.2);
       }
       if (skill.element && !record.enemy.isDead) {
         record.enemy.applyElementalHit(skill.element, Math.max(1, damage * 0.12));
       }
+      // Cada skill deixa seu próprio efeito de controle no monstro.
+      if (!record.enemy.isDead) this.applyWarriorSkillEffectToEnemy(record.enemy, event.attackId);
       this.showFloatingDamage(record.enemy.root.position, damage);
       this.syncCombatHealthBars(record);
       if (record.enemy.isDead) this.handleEnemyDeath(record);
+    }
+
+    // Corte Duplo: a tempestade de arcos de lâmina em vertical, cada um com
+    // seu próprio acerto na área.
+    if (warriorSkillEffectIsBladeStorm(effect.kind) && this.player.equippedWeaponId === 'sword') {
+      this.startWarriorBladeStorm({
+        origin: event.origin.clone(),
+        forward: event.forward.clone().setY(0).normalize(),
+        baseDamage,
+        elemental,
+        falloff: this.warriorSkillDistanceFalloffProfile(event.attackId),
+      });
+    }
+
+    this.healFromLifeSteal(lifeStealDamage);
+  }
+
+  /** Aplica no monstro o efeito de controle da skill que acertou. */
+  private applyWarriorSkillEffectToEnemy(enemy: Enemy, attackId: WarriorSkillId): void {
+    const effect = getWarriorSkillEffect(attackId);
+    switch (effect.kind) {
+      case 'stun':
+        enemy.applyWarriorStun(effect.durationSeconds);
+        break;
+      case 'freeze':
+        enemy.applyWarriorFreeze(effect.durationSeconds);
+        break;
+      case 'slow':
+        enemy.applyWarriorSlow(effect.durationSeconds);
+        break;
+      case 'knockdown':
+        enemy.applyWarriorKnockdown(effect.durationSeconds);
+        break;
+      case 'blade-storm':
+        // A tempestade de arcos roda no Game, não corpo a corpo.
+        break;
+    }
+  }
+
+  private startWarriorBladeStorm(context: {
+    origin: THREE.Vector3;
+    forward: THREE.Vector3;
+    baseDamage: number;
+    elemental: boolean;
+    falloff: DistanceFalloffProfile;
+  }): void {
+    const origin = context.origin.clone();
+    const forward = context.forward.lengthSq() > 1e-6
+      ? context.forward.clone().normalize()
+      : new THREE.Vector3(0, 0, 1);
+    this.pendingBladeStorm = { ...context, origin, forward };
+    this.warriorBladeStorm.start({
+      arcCount: BLADE_STORM_ARC_COUNT,
+      intervalSeconds: BLADE_STORM_INTERVAL_SECONDS,
+    });
+  }
+
+  /** Cada arco da tempestade abre e rasga o que estiver na área. */
+  private releaseWarriorBladeStormArc(): void {
+    const context = this.pendingBladeStorm;
+    if (!context) return;
+    const lateral = (Math.random() - 0.5) * BLADE_STORM_RADIUS_METERS * 1.4;
+    const center = context.origin
+      .clone()
+      .addScaledVector(context.forward, BLADE_STORM_RADIUS_METERS * 0.55)
+      .add(new THREE.Vector3(-context.forward.z, 0, context.forward.x).multiplyScalar(lateral));
+    center.y = 0;
+
+    const yaw = Math.atan2(context.forward.x, context.forward.z) + (Math.random() - 0.5) * 0.9;
+    this.warriorSlashVFX.playVerticalArc({
+      position: center,
+      forward: new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)),
+      type: 'combo3',
+      scale: 0.9 + Math.random() * 0.25,
+      tint: Math.random() > 0.5 ? 0xffa53a : 0xffd76a,
+    });
+
+    let lifeStealDamage = 0;
+    for (const record of this.combatRegistry.activeRoots()) {
+      const enemyRecord = this.combatRegistry.findByRoot(record);
+      if (!enemyRecord || enemyRecord.enemy.isDead) continue;
+      const distance = center.distanceTo(enemyRecord.enemy.root.position);
+      if (distance > BLADE_STORM_RADIUS_METERS) continue;
+      const damage = this.resolveOutgoingDamage(
+        applyDistanceFalloff(
+          context.baseDamage * BLADE_STORM_DAMAGE_RATIO,
+          distance,
+          context.falloff
+        ),
+        context.elemental
+      );
+      if (damage <= 0) continue;
+      lifeStealDamage += damage;
+      enemyRecord.enemy.receivePlayerHit(damage, center);
+      this.warriorSlashVFX.playImpact(enemyRecord.enemy.root.position, 0.7);
+      this.showFloatingDamage(enemyRecord.enemy.root.position, damage);
+      this.syncCombatHealthBars(enemyRecord);
+      if (enemyRecord.enemy.isDead) this.handleEnemyDeath(enemyRecord);
     }
     this.healFromLifeSteal(lifeStealDamage);
   }
@@ -2535,6 +2650,8 @@ export class Game {
       this.archerProjectiles.clear();
       this.mageVFX.clear();
       this.warriorSlashVFX.clear();
+      this.warriorBladeStorm.clear();
+      this.pendingBladeStorm = null;
       this.stopBossSkills();
       this.player.setInputLocked(true);
       this.hud.showDeathScreen();
@@ -2756,6 +2873,8 @@ export class Game {
       this.player.update(delta);
       this.mageVFX.update(delta);
       this.warriorSlashVFX.update(delta);
+      this.warriorBladeStorm.update(delta);
+      if (!this.warriorBladeStorm.active) this.pendingBladeStorm = null;
       const castingMageSkill = this.profile.selectedClass === 'mage' && this.player.isCastingSkill;
       const fatigue = this.fatigue.update(
         delta,
