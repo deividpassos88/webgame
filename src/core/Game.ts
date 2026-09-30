@@ -1019,6 +1019,20 @@ export class Game {
         maxRadius: 7.0,
       });
     }
+    // Pulo Atacando: sem rastro de lâmina e sem linha no chão. Todo o efeito
+    // é o IMPACTO no frame exato em que a espada bate no chão: um TORNADO de
+    // chamas gigante (fitas espirais de fogo) + onda de choque enorme. Os
+    // inimigos num raio de 4 m são levantados por 1 s em chamas.
+    if (id === 'pulo_atacando' && this.profile.selectedClass === 'paladin') {
+      const forward = this.player.planarForward(new THREE.Vector3());
+      if (forward.lengthSq() < 1e-6) forward.set(0, 0, 1);
+      const timing = this.player.getWarriorSkillTimingSeconds('pulo_atacando');
+      this.warriorSlashVFX.playJumpDive({
+        position: this.player.root.position.clone(),
+        forward,
+        impactDelay: timing?.impactSeconds,
+      });
+    }
     if (mage && !adminPreview) this.fatigue.consumePercent(mageSkillFatiguePercent(id));
   }
 
@@ -2307,6 +2321,11 @@ export class Game {
         break;
       case 'knockdown':
         enemy.applyWarriorKnockdown(effect.durationSeconds);
+        break;
+      case 'launch':
+        // Pulo Atacando: o impacto da espada no chão levanta o monstro por 1s
+        // envolto em chamas.
+        enemy.applyWarriorFlameLaunch(effect.durationSeconds);
         break;
       case 'blade-storm':
         // A tempestade de arcos roda no Game, não corpo a corpo.

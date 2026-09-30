@@ -22,7 +22,7 @@ describe('Efeito de controle de cada skill do guerreiro', () => {
     expect(byInput.map((skill) => getWarriorSkillEffect(skill.id).kind)).toEqual([
       'stun',
       'freeze',
-      'slow',
+      'launch',
       'knockdown',
       'blade-storm',
     ]);
@@ -31,7 +31,7 @@ describe('Efeito de controle de cada skill do guerreiro', () => {
   it('usa exatamente as durações pedidas', () => {
     expect(getWarriorSkillEffect('ataque_giratorio').durationSeconds).toBe(1.2);
     expect(getWarriorSkillEffect('ataque_giratorio_2').durationSeconds).toBe(1.2);
-    expect(getWarriorSkillEffect('pulo_atacando').durationSeconds).toBe(1.5);
+    expect(getWarriorSkillEffect('pulo_atacando').durationSeconds).toBe(1);
     expect(getWarriorSkillEffect('triplo_ataque').durationSeconds).toBe(1.3);
   });
 
@@ -39,6 +39,7 @@ describe('Efeito de controle de cada skill do guerreiro', () => {
     expect(warriorSkillEffectLocksTarget('stun')).toBe(true);
     expect(warriorSkillEffectLocksTarget('freeze')).toBe(true);
     expect(warriorSkillEffectLocksTarget('knockdown')).toBe(true);
+    expect(warriorSkillEffectLocksTarget('launch')).toBe(true);
     expect(warriorSkillEffectLocksTarget('slow')).toBe(false);
     expect(warriorSkillEffectLocksTarget('blade-storm')).toBe(false);
 

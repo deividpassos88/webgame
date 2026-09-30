@@ -64,21 +64,27 @@ describe('efeito de skill do guerreiro no monstro', () => {
     expect(enemy.elementalSpeedMultiplier).toBeGreaterThan(0);
   });
 
-  it('skill 3 deixa lento por 1,5 s, sem travar de vez', () => {
+  it('skill 3 levanta o monstro por 1 s envolto em chamas', () => {
     const enemy = spawnEnemy();
     const effect = getWarriorSkillEffect('pulo_atacando');
-    expect(effect.kind).toBe('slow');
+    expect(effect.kind).toBe('launch');
+    expect(effect.durationSeconds).toBe(1);
 
-    enemy.applyWarriorSlow(effect.durationSeconds);
-    const slowed = enemy.elementalSpeedMultiplier;
-    expect(slowed).toBeGreaterThan(0);
-    expect(slowed).toBeLessThan(1);
+    const groundY = enemy.root.position.y;
+    enemy.applyWarriorFlameLaunch(effect.durationSeconds);
+    // No ar, preso e em chamas.
+    expect(enemy.isWarriorFlameLaunched).toBe(true);
+    expect(enemy.elementalSpeedMultiplier).toBe(0);
 
-    idle(enemy, 1.3);
-    expect(enemy.elementalSpeedMultiplier).toBe(slowed);
+    idle(enemy, 0.5);
+    expect(enemy.root.position.y).toBeGreaterThan(groundY);
+    expect(enemy.isWarriorFlameLaunched).toBe(true);
 
-    idle(enemy, 0.3);
-    expect(enemy.elementalSpeedMultiplier).toBe(1);
+    idle(enemy, 0.6);
+    // O 1 segundo acabou: voltou ao chão e solto das chamas.
+    expect(enemy.isWarriorFlameLaunched).toBe(false);
+    expect(enemy.root.position.y).toBeCloseTo(groundY, 2);
+    expect(enemy.elementalSpeedMultiplier).toBeGreaterThan(0);
   });
 
   it('skill 4 derruba e prende no chão por 1,3 s', () => {

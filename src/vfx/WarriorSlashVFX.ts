@@ -1071,6 +1071,497 @@ interface WarriorVerticalArcOptions {
   readonly tint?: number;
 }
 
+/* ════════════════════════ PULO ATACANDO (skill 3) ════════════════════════ */
+
+export interface WarriorJumpDiveOptions {
+  /** Posição dos pés do personagem no momento do cast. */
+  readonly position: THREE.Vector3;
+  /** Direção planar do ataque. */
+  readonly forward: THREE.Vector3;
+  /** Segundos até a espada bater no chão (impacto no fim da animação). */
+  readonly impactDelay?: number;
+  readonly scale?: number;
+}
+
+interface JumpDiveShakeRequest {
+  readonly intensity: number;
+  readonly duration: number;
+}
+
+/**
+ * Pulo Atacando: SEM rastro de lâmina e SEM linha no chão. Todo o efeito é o
+ * IMPACTO, no frame exato em que a espada bate no chão: um TORNADO DE CHAMAS
+ * GRANDE sobe girando de um ponto BEM À FRENTE do herói — três fitas
+ * helicoidais de fogo formando o funil, chamas lambendo a boca — junto da
+ * onda de choque, clarão, faíscas e brasas. Inimigos num raio de 4 metros
+ * são levantados por 1 segundo em chamas (aplicado pelo Game).
+ */
+/** Onde a espada bate no chão, em metros à frente dos pés (bem afastado do herói). */
+const JUMP_DIVE_IMPACT_AHEAD = 4;
+/** Altura do tornado de chamas, em metros. */
+const JUMP_DIVE_TORNADO_HEIGHT = 11.5;
+/** O funil: largo no chão, fechando ao subir (raio base e topo, em metros). */
+const JUMP_DIVE_TORNADO_RADIUS_BASE = 3.2;
+const JUMP_DIVE_TORNADO_RADIUS_TOP = 0.65;
+/** Segundos de vida do tornado a partir do impacto. */
+const JUMP_DIVE_TORNADO_TIME = 1.25;
+/** O tornado nasce JÁ GIGANTE em décimos de segundo (impacto é instantâneo). */
+const JUMP_DIVE_TORNADO_POP_IN = 0.12;
+/** Margem após a vida do tornado antes de devolver o slot ao pool. */
+const JUMP_DIVE_END_BUFFER = 0.35;
+const JUMP_DIVE_TORNADO_BANDS = 3;
+const JUMP_DIVE_BASE_FLAMES = 16;
+/** Segundos do clarão vertical no ponto de impacto. */
+const JUMP_DIVE_FLARE_TIME = 0.3;
+/** Segundos da onda de choque expandindo no chão após o impacto. */
+const JUMP_DIVE_SHOCKWAVE_TIME = 0.55;
+
+/**
+ * Cada fita do tornado: [voltas da hélice, largura da fita, rad/s do giro].
+ * A fita de dentro gira mais rápido, como o miolo de um redemoinho de fogo.
+ */
+const JUMP_TORNADO_BAND_PARAMS: readonly (readonly [number, number, number])[] = [
+  [2.4, 1.7, 2.6],
+  [3.0, 1.4, 3.9],
+  [3.7, 1.05, 5.4],
+];
+
+/**
+ * UMA FITA DO TORNADO: superfície helicoidal enrolada num cone (funil). É a
+ * mesma fita de energia do rastro do giratório, só que enrolada em espiral:
+ * girando o mesh, o fogo sobe em hélice como um tornado de chamas de verdade.
+ */
+function createFireTornadoBandGeometry(
+  turns: number,
+  height: number,
+  radiusBase: number,
+  radiusTop: number,
+  bandWidth: number,
+  angularSegments: number
+): THREE.BufferGeometry {
+  const vertexCount = (angularSegments + 1) * 2;
+  const positions = new Float32Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2);
+  const indices: number[] = [];
+
+  for (let a = 0; a <= angularSegments; a++) {
+    const t = a / angularSegments;
+    const angle = t * turns * Math.PI * 2;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    // Funil: o raio fecha devagar (o olho do tornado fica estreito no topo).
+    const radius = THREE.MathUtils.lerp(radiusBase, radiusTop, Math.pow(t, 0.8));
+    const half = (bandWidth * 0.5) * (1 - 0.3 * t);
+    const inner = Math.max(0.04, radius - half);
+    const outer = radius + half;
+    const y = t * height;
+    const base = a * 2;
+    positions[base * 3] = cos * inner;
+    positions[base * 3 + 1] = y;
+    positions[base * 3 + 2] = sin * inner;
+    positions[(base + 1) * 3] = cos * outer;
+    positions[(base + 1) * 3 + 1] = y;
+    positions[(base + 1) * 3 + 2] = sin * outer;
+    // u sobe com a hélice: as estrias do shader correm para cima do tornado.
+    uvs[base * 2] = t;
+    uvs[base * 2 + 1] = 0;
+    uvs[(base + 1) * 2] = t;
+    uvs[(base + 1) * 2 + 1] = 1;
+  }
+  for (let a = 0; a < angularSegments; a++) {
+    const i0 = a * 2;
+    const i1 = a * 2 + 1;
+    const i2 = (a + 1) * 2 + 1;
+    const i3 = (a + 1) * 2;
+    indices.push(i0, i1, i2);
+    indices.push(i0, i2, i3);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Pulo Atacando do guerreiro: só o IMPACTO no fim da animação. Quando a
+ * espada bate no chão, um TORNADO DE CHAMAS GIGANTE nasce de uma vez, gira
+ * vivo e apaga, junto com a onda de choque enorme, o clarão, as faíscas e
+ * as brasas — tudo no mesmo frame do golpe.
+ */
+class WarriorJumpDiveEffect implements PoolableVFX {
+  public active = false;
+  public readonly group = new THREE.Group();
+  /** Tudo que nasce no ponto onde a espada bate. */
+  private readonly impactGroup = new THREE.Group();
+  /** O tornado: fitas espiraladas + chamas da base. */
+  private readonly tornadoGroup = new THREE.Group();
+  private readonly tornadoBands: THREE.Mesh[] = [];
+  private readonly tornadoBandMaterials: WarriorSlashMaterial[] = [];
+  private readonly baseFlames: THREE.Sprite[] = [];
+  private readonly shockwaveMesh: THREE.Mesh;
+  private readonly flareSprite: THREE.Sprite;
+  private readonly baseGlowSprite: THREE.Sprite;
+  private readonly shockwaveMaterial: EnergyShaderMaterial;
+  private readonly tornadoBandGeometries: THREE.BufferGeometry[] = [];
+  private readonly sparks: PooledParticleCloud;
+  private readonly embers: PooledParticleCloud;
+  private lightHandle: VFXLightHandle | null = null;
+
+  private age = 0;
+  private impactDelay = 1.15;
+  private baseScale = 1;
+  private impacted = false;
+  private shakeRequest: JumpDiveShakeRequest | null = null;
+  private readonly tmpVec = new THREE.Vector3();
+
+  public constructor(
+    private readonly resources: WarriorSlashResources,
+    private readonly lightPool: VFXLightPool
+  ) {
+    this.group.name = 'WarriorJumpDiveVFX';
+    this.group.visible = false;
+    this.impactGroup.name = 'WarriorJumpDiveImpact';
+    this.impactGroup.position.set(0, 0, JUMP_DIVE_IMPACT_AHEAD);
+    this.tornadoGroup.name = 'WarriorJumpDiveTornado';
+    this.tornadoGroup.visible = false;
+
+    // Onda de choque no chão abrindo a partir do impacto.
+    this.shockwaveMaterial = createMagicCircleMaterial({
+      colorA: 0xfff0cd,
+      colorB: 0xffb43c,
+      opacity: 0,
+      intensity: 1.8,
+      thickness: 0.85,
+      distortion: 1.15,
+    });
+    this.shockwaveMesh = new THREE.Mesh(this.resources.ring, this.shockwaveMaterial);
+    this.shockwaveMesh.name = 'WarriorJumpDiveShockwave';
+    this.shockwaveMesh.rotation.x = -Math.PI / 2;
+    this.shockwaveMesh.position.set(0, 0.03, 0);
+    this.shockwaveMesh.frustumCulled = false;
+    this.shockwaveMesh.renderOrder = 4;
+    this.shockwaveMesh.visible = false;
+
+    const makeSprite = (name: string, map: THREE.Texture, color: number) => {
+      const mat = new THREE.SpriteMaterial({
+        map,
+        color,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      });
+      const sprite = new THREE.Sprite(mat);
+      sprite.name = name;
+      sprite.frustumCulled = false;
+      sprite.visible = false;
+      return sprite;
+    };
+
+    this.flareSprite = makeSprite('WarriorJumpDiveImpactFlare', resources.impactFlare, 0xfff0cd);
+    this.baseGlowSprite = makeSprite('WarriorJumpDiveBaseGlow', resources.softGlow, 0xff8a2a);
+
+    // As fitas do tornado: a de fora é mais vermelha, a de dentro mais quente.
+    const bandColors: readonly (readonly [number, number, number])[] = [
+      [0xffa53a, 0xff4d12, 0x6a0d00],
+      [0xffd98a, 0xff7a1f, 0x7a1000],
+      [0xfff3c4, 0xffa53a, 0x8a2a00],
+    ];
+    for (let i = 0; i < JUMP_DIVE_TORNADO_BANDS; i++) {
+      const [turns, width] = JUMP_TORNADO_BAND_PARAMS[i];
+      const geometry = createFireTornadoBandGeometry(
+        turns,
+        JUMP_DIVE_TORNADO_HEIGHT,
+        JUMP_DIVE_TORNADO_RADIUS_BASE * (1 - i * 0.22),
+        JUMP_DIVE_TORNADO_RADIUS_TOP + i * 0.06,
+        width,
+        64
+      );
+      const material = createWarriorSlashMaterial({
+        colorA: bandColors[i][0],
+        colorB: bandColors[i][1],
+        colorC: bandColors[i][2],
+        opacity: 0,
+        intensity: 2.1 + i * 0.25,
+        thickness: 1.35,
+        distortion: 1.5,
+        breakup: 0.62 + i * 0.06,
+        saturation: 1.3,
+      });
+      const band = new THREE.Mesh(geometry, material);
+      band.name = `WarriorJumpDiveTornadoBand${i}`;
+      band.frustumCulled = false;
+      band.renderOrder = 7;
+      this.tornadoBandGeometries.push(geometry);
+      this.tornadoBandMaterials.push(material);
+      this.tornadoBands.push(band);
+      this.tornadoGroup.add(band);
+    }
+
+    // Chamas lambendo a boca do funil, ao redor da base do tornado.
+    const baseColors = [0xffe9c0, 0xffb457, 0xff7a1f, 0xff4d12];
+    for (let i = 0; i < JUMP_DIVE_BASE_FLAMES; i++) {
+      const flame = makeSprite(
+        `WarriorJumpDiveBaseFlame${i}`,
+        resources.softGlow,
+        baseColors[i % baseColors.length]
+      );
+      this.baseFlames.push(flame);
+      this.tornadoGroup.add(flame);
+    }
+
+    this.sparks = new PooledParticleCloud(70, resources.softGlow);
+    this.embers = new PooledParticleCloud(120, resources.softGlow);
+
+    this.impactGroup.add(this.tornadoGroup, this.shockwaveMesh, this.flareSprite, this.baseGlowSprite);
+    this.group.add(this.impactGroup);
+  }
+
+  public play(options: WarriorJumpDiveOptions): void {
+    const forward = new THREE.Vector3(options.forward.x, 0, options.forward.z);
+    if (forward.lengthSq() < 1e-8) forward.set(0, 0, 1);
+    forward.normalize();
+
+    this.baseScale = options.scale ?? 1;
+    this.age = 0;
+    this.impacted = false;
+    this.shakeRequest = null;
+    this.impactDelay = THREE.MathUtils.clamp(options.impactDelay ?? 1.15, 0.05, 4);
+
+    this.group.position.copy(options.position);
+    this.group.rotation.set(0, Math.atan2(forward.x, forward.z), 0);
+    this.group.visible = false;
+
+    const seed = Math.random() * 10;
+    this.shockwaveMesh.visible = false;
+    this.shockwaveMaterial.uniforms.uOpacity.value = 0;
+    this.shockwaveMaterial.uniforms.uTime.value = 0;
+    this.shockwaveMesh.scale.setScalar(1.2);
+    this.tornadoGroup.visible = false;
+
+    for (let i = 0; i < this.tornadoBandMaterials.length; i++) {
+      const material = this.tornadoBandMaterials[i];
+      material.uniforms.uOpacity.value = 0;
+      material.uniforms.uSeed.value = seed + i * 1.9;
+      material.uniforms.uTime.value = 0;
+      material.uniforms.uProgress.value = 0;
+    }
+    for (const flame of this.baseFlames) this.resetFlameSprite(flame);
+
+    this.flareSprite.visible = false;
+    (this.flareSprite.material as THREE.SpriteMaterial).opacity = 0;
+    this.baseGlowSprite.visible = false;
+    (this.baseGlowSprite.material as THREE.SpriteMaterial).opacity = 0;
+  }
+
+  private resetFlameSprite(flame: THREE.Sprite): void {
+    flame.visible = false;
+    flame.scale.set(0.001, 0.001, 1);
+    (flame.material as THREE.SpriteMaterial).opacity = 0;
+  }
+
+  /** O Game chama a cada frame; devolve o tremor do impacto uma única vez. */
+  public consumeImpactShake(): JumpDiveShakeRequest | null {
+    const request = this.shakeRequest;
+    this.shakeRequest = null;
+    return request;
+  }
+
+  public update(delta: number): boolean {
+    const step = Math.max(0, delta);
+    this.age += step;
+
+    // Nada antes da espada bater no chão: o efeito é só o impacto.
+    if (this.age < this.impactDelay) {
+      this.group.visible = false;
+      return true;
+    }
+    this.group.visible = true;
+
+    if (!this.impacted) this.triggerImpact();
+    this.updateImpact(step);
+
+    this.sparks.update(step);
+    this.embers.update(step);
+    return this.age < this.impactDelay + JUMP_DIVE_TORNADO_TIME + JUMP_DIVE_END_BUFFER;
+  }
+
+  private triggerImpact(): void {
+    this.impacted = true;
+    this.tornadoGroup.visible = true;
+
+    // Clarão vertical grande onde a espada encontra o chão.
+    this.flareSprite.visible = true;
+    this.flareSprite.position.set(0, 0.9, 0.1);
+    this.flareSprite.scale.set(3.4, 4.6, 1);
+    (this.flareSprite.material as THREE.SpriteMaterial).opacity = 0.95;
+
+    // Brasa acesa na boca do tornado.
+    this.baseGlowSprite.visible = true;
+    this.baseGlowSprite.position.set(0, 0.35, 0);
+    this.baseGlowSprite.scale.set(6, 3.4, 1);
+    (this.baseGlowSprite.material as THREE.SpriteMaterial).opacity = 0.9;
+
+    // A onda de choque abre no chão.
+    this.shockwaveMesh.visible = true;
+    this.shockwaveMesh.scale.setScalar(1.0 * this.baseScale);
+    this.shockwaveMaterial.uniforms.uOpacity.value = 0.32;
+
+    // Faíscas do golpe + brasas de fogo alimentando o tornado.
+    this.sparks.setTexture(this.resources.softGlow);
+    this.sparks.emit(new THREE.Vector3(0, 0.6, 0.1), {
+      color: 0xffd76a,
+      count: 56,
+      speed: 8,
+      spread: 3.6,
+      lifetime: 0.75,
+      upwardBias: 0.8,
+    });
+    this.embers.setTexture(this.resources.softGlow);
+    this.embers.emit(new THREE.Vector3(0, 0.8, 0), {
+      color: 0xff7a1f,
+      count: 92,
+      speed: 4.6,
+      spread: 2.7,
+      lifetime: 1.2,
+      upwardBias: 2.8,
+    });
+
+    // Luz de fogo acesa no coração do tornado.
+    this.lightHandle = this.lightPool.acquire();
+    if (this.lightHandle) {
+      const light = this.lightHandle.light;
+      light.color.set(0xff9a3a);
+      light.intensity = 6.5 * this.baseScale;
+      light.distance = 17 * this.baseScale;
+      light.position.copy(this.impactWorld(this.tmpVec.set(0, 4.2, 0)));
+    }
+
+    // Impacto pesado: tremor forte sem sacudir a câmera demais.
+    this.shakeRequest = { intensity: 0.22, duration: 0.45 };
+  }
+
+  private updateImpact(step: number): void {
+    const sinceImpact = this.age - this.impactDelay;
+
+    // 1) Clarão do impacto: forte e curto.
+    const flareT = THREE.MathUtils.clamp(sinceImpact / JUMP_DIVE_FLARE_TIME, 0, 1);
+    this.flareSprite.visible = flareT < 1;
+    (this.flareSprite.material as THREE.SpriteMaterial).opacity = (1 - flareT) * 0.95;
+    this.flareSprite.scale.set(3.4 + flareT * 2.6, 4.6 + flareT * 3.4, 1);
+    this.baseGlowSprite.visible = sinceImpact < JUMP_DIVE_TORNADO_TIME;
+    (this.baseGlowSprite.material as THREE.SpriteMaterial).opacity = Math.max(0, 0.9 - sinceImpact * 0.95);
+
+    // 2) O TORNADO: nasce gigante no mesmo frame do golpe e vive girando.
+    const tornadoT = THREE.MathUtils.clamp(sinceImpact / JUMP_DIVE_TORNADO_TIME, 0, 1);
+    // Pop-in rapidíssimo — o impacto não pode esperar o fogo "crescer".
+    const popIn = THREE.MathUtils.clamp(sinceImpact / JUMP_DIVE_TORNADO_POP_IN, 0, 1);
+    const popScale = THREE.MathUtils.lerp(0.55, 1, popIn);
+    // Sustain: depois do pop, o funil estica um pouco e apaga devagar.
+    const stretch = 1 + Math.max(0, tornadoT - 0.35) * 0.28;
+    const tornadoFade = tornadoT < 0.7
+      ? 1
+      : Math.pow(1 - (tornadoT - 0.7) / 0.3, 1.2);
+
+    // Fogo vivo: duas frequências fora de fase tremulam o funil.
+    const flickerX = 1 + Math.sin(sinceImpact * 18.7) * 0.05 + Math.sin(sinceImpact * 7.3) * 0.035;
+    for (let i = 0; i < this.tornadoBands.length; i++) {
+      const band = this.tornadoBands[i];
+      const [, , speed] = JUMP_TORNADO_BAND_PARAMS[i];
+      band.rotation.y = sinceImpact * speed + i * 2.1;
+      band.scale.set(popScale * flickerX, popScale * stretch, popScale * flickerX);
+      const material = this.tornadoBandMaterials[i];
+      material.uniforms.uOpacity.value = tornadoFade;
+      setWarriorSlashTime(material, sinceImpact * (2.2 + i * 0.5), 0);
+    }
+
+    // Chamas lambendo a boca do funil, cada uma tremulando por conta própria.
+    for (let i = 0; i < this.baseFlames.length; i++) {
+      const flame = this.baseFlames[i];
+      const angle = (i / this.baseFlames.length) * Math.PI * 2 + sinceImpact * 2.4;
+      const wobble = Math.sin(sinceImpact * 15.3 + i * 2.7) * 0.14;
+      const radius = JUMP_DIVE_TORNADO_RADIUS_BASE * (0.72 + wobble);
+      const envelope = Math.sin(Math.PI * Math.min(1, tornadoT / 0.85));
+      flame.visible = tornadoFade > 0.02;
+      flame.position.set(
+        Math.cos(angle) * radius,
+        0.12 + Math.abs(Math.sin(sinceImpact * 9.1 + i)) * 0.42,
+        Math.sin(angle) * radius
+      );
+      (flame.material as THREE.SpriteMaterial).opacity = envelope * (0.55 + 0.35 * Math.abs(Math.sin(sinceImpact * 12.7 + i * 1.9)));
+      const flameScale = (1.25 + 0.5 * envelope) * popScale;
+      flame.scale.set(flameScale, flameScale * 2.2, 1);
+    }
+
+    // 3) A onda de choque abre grande no chão a partir do impacto.
+    const shockT = THREE.MathUtils.clamp(sinceImpact / JUMP_DIVE_SHOCKWAVE_TIME, 0, 1);
+    this.shockwaveMesh.scale.setScalar((1.0 + shockT * 9.5) * this.baseScale);
+    this.shockwaveMaterial.uniforms.uTime.value = sinceImpact * 1.35;
+    this.shockwaveMaterial.uniforms.uOpacity.value = (1 - shockT) * 0.32;
+
+    if (this.lightHandle) {
+      this.lightHandle.light.intensity *= Math.max(0, 1 - step * 1.15);
+    }
+  }
+
+  /** Ponto local do impacto convertido para o mundo (o grupo só tem yaw). */
+  private impactWorld(out: THREE.Vector3): THREE.Vector3 {
+    const yaw = this.group.rotation.y;
+    const x = out.x;
+    const z = out.z + JUMP_DIVE_IMPACT_AHEAD;
+    out.set(
+      this.group.position.x + Math.sin(yaw) * z + Math.cos(yaw) * x,
+      this.group.position.y + out.y,
+      this.group.position.z + Math.cos(yaw) * z - Math.sin(yaw) * x
+    );
+    return out;
+  }
+
+  public reset(): void {
+    this.group.visible = false;
+    this.group.removeFromParent();
+    this.age = 0;
+    this.impacted = false;
+    this.shakeRequest = null;
+    this.lightHandle?.release();
+    this.lightHandle = null;
+
+    this.tornadoGroup.visible = false;
+    this.shockwaveMaterial.uniforms.uOpacity.value = 0;
+    this.shockwaveMesh.visible = false;
+    for (const material of this.tornadoBandMaterials) material.uniforms.uOpacity.value = 0;
+
+    for (const flame of this.baseFlames) {
+      this.resetFlameSprite(flame);
+    }
+    this.flareSprite.visible = false;
+    (this.flareSprite.material as THREE.SpriteMaterial).opacity = 0;
+    this.baseGlowSprite.visible = false;
+    (this.baseGlowSprite.material as THREE.SpriteMaterial).opacity = 0;
+
+    this.sparks.reset();
+    this.embers.reset();
+  }
+
+  public dispose(): void {
+    for (const geometry of this.tornadoBandGeometries) geometry.dispose();
+    for (const material of this.tornadoBandMaterials) material.dispose();
+    this.shockwaveMaterial.dispose();
+    (this.flareSprite.material as THREE.Material).dispose();
+    (this.baseGlowSprite.material as THREE.Material).dispose();
+    for (const flame of this.baseFlames) {
+      (flame.material as THREE.Material).dispose();
+    }
+    this.sparks.dispose();
+    this.embers.dispose();
+  }
+}
+
 /** Arco de lâmina em pé que aparece no lugar e some — o golpe do Corte Duplo. */
 class WarriorVerticalArcEffect implements PoolableVFX {
   public active = false;
@@ -1483,6 +1974,8 @@ export class WarriorSlashVFX {
   private readonly activeSpin: WarriorSpinWaveEffect[] = [];
   private readonly verticalArcPool: VFXPool<WarriorVerticalArcEffect>;
   private readonly activeVerticalArcs: WarriorVerticalArcEffect[] = [];
+  private readonly jumpDivePool: VFXPool<WarriorJumpDiveEffect>;
+  private readonly activeJumpDive: WarriorJumpDiveEffect[] = [];
   private readonly cameraShake = new CameraShake();
   /**
    * Efeitos modulares do guerreiro em um group próprio que o Game adiciona na
@@ -1515,6 +2008,10 @@ export class WarriorSlashVFX {
       8
     );
     this.verticalArcPool = new VFXPool(() => new WarriorVerticalArcEffect(), 12);
+    this.jumpDivePool = new VFXPool(
+      () => new WarriorJumpDiveEffect(this.resources, lightPool),
+      6
+    );
   }
 
   /**
@@ -1527,6 +2024,21 @@ export class WarriorSlashVFX {
     arc.play(options);
     this.scene.add(arc.group);
     this.activeVerticalArcs.push(arc);
+  }
+
+  /**
+   * Pulo Atacando: o MESMO rastro de lâmina do giratório (anel dourado de
+   * 340° que nasce nas costas, mesma espessura), só que EM PÉ — vertical,
+   * envolvendo o herói. O anel rola para frente durante o salto, engrossa e
+   * termina cortando o chão na aterrissagem, rasgando um rastro reto de fogo
+   * de 3 metros no piso, com as chamas subindo um pouco no ponto do impacto.
+   */
+  public playJumpDive(options: WarriorJumpDiveOptions): void {
+    const effect = this.jumpDivePool.acquire();
+    if (!effect) return;
+    effect.play(options);
+    this.scene.add(effect.group);
+    this.activeJumpDive.push(effect);
   }
 
   public play(options: WarriorSlashPlayOptions): void {
@@ -1636,6 +2148,17 @@ export class WarriorSlashVFX {
       this.verticalArcPool.release(arc);
       this.activeVerticalArcs.splice(i, 1);
     }
+    for (let i = this.activeJumpDive.length - 1; i >= 0; i--) {
+      const dive = this.activeJumpDive[i];
+      const alive = dive.update(delta);
+      // O tremor de câmera só existe quando a lâmina bate no chão; consumido
+      // depois do update para valer já no frame do impacto.
+      const shake = dive.consumeImpactShake();
+      if (shake) this.cameraShake.add(shake.intensity, shake.duration);
+      if (alive) continue;
+      this.jumpDivePool.release(dive);
+      this.activeJumpDive.splice(i, 1);
+    }
   }
 
   public applyCameraShake(camera: THREE.Camera, delta: number): void {
@@ -1654,6 +2177,8 @@ export class WarriorSlashVFX {
     this.activeSpin.length = 0;
     for (const e of this.activeVerticalArcs) this.verticalArcPool.release(e);
     this.activeVerticalArcs.length = 0;
+    for (const e of this.activeJumpDive) this.jumpDivePool.release(e);
+    this.activeJumpDive.length = 0;
     this.cameraShake.clear();
   }
 
@@ -1665,6 +2190,7 @@ export class WarriorSlashVFX {
     this.travelingPool.dispose();
     this.spinPool.dispose();
     this.verticalArcPool.dispose();
+    this.jumpDivePool.dispose();
     this.resources.quad.dispose();
     this.resources.ring.dispose();
     this.resources.softGlow.dispose();
@@ -1677,6 +2203,7 @@ export class WarriorSlashVFX {
       + this.activeImpacts.length
       + this.activeTraveling.length
       + this.activeSpin.length
-      + this.activeVerticalArcs.length;
+      + this.activeVerticalArcs.length
+      + this.activeJumpDive.length;
   }
 }

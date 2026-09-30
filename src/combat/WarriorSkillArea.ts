@@ -17,11 +17,11 @@ export interface WarriorSkillAreaDefinition {
 const AREAS: Readonly<Record<WarriorSkillId, WarriorSkillAreaDefinition>> = Object.freeze({
   ataque_giratorio: Object.freeze({ shape: 'circle', radius: WARRIOR_SPIN_RANGE_METERS }),
   ataque_giratorio_2: Object.freeze({ shape: 'circle', radius: WARRIOR_SPIN_RANGE_METERS }),
-  // The landing is a true 360-degree shockwave: every monster around the
-  // warrior is inside the impact instead of only the forward cone.
+  // The landing is a true 360-degree shockwave: the sword slams the ground
+  // and every monster within 4 meters is launched upward in flames.
   pulo_atacando: Object.freeze({
     shape: 'circle',
-    radius: WARRIOR_MAX_RANGE_METERS,
+    radius: 4,
   }),
   triplo_ataque: Object.freeze({ shape: 'arc', radius: WARRIOR_MAX_RANGE_METERS, angleDegrees: 140 }),
   corte_duplo: Object.freeze({ shape: 'arc', radius: WARRIOR_MAX_RANGE_METERS, angleDegrees: 125 }),

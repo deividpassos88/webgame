@@ -35,7 +35,8 @@ describe('resolveWarriorAreaTargets', () => {
   });
 
   it('uses the full circle around the warrior for the jump skill', () => {
-    const records = [record('forward', 0, 5), record('outside', 0, 5.01), record('far-behind', 0, -6)];
+    // O impacto da espada no chão alcança 4 metros em volta do herói.
+    const records = [record('forward', 0, 4), record('outside', 0, 4.01), record('far-behind', 0, -6)];
     expect(resolveWarriorAreaTargets(records, { ...event, attackId: 'pulo_atacando' }, getWarriorSkillArea('pulo_atacando')).map(({ id }) => id)).toEqual(['forward']);
   });
 
