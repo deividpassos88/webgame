@@ -52,7 +52,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     unlockLevel: 9,
     damageMultiplier: 1.18,
     icon: 'jump-impact',
-    element: null,
+    element: 'fire',
     energyCost: 14,
     cooldown: 10,
     playbackRate: 1,

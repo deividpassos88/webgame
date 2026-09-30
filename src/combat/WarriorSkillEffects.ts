@@ -4,7 +4,7 @@ import type { WarriorSkillId } from './WarriorSkillCatalog';
  * Efeito de controle que cada skill do Guerreiro deixa no monstro. O ataque
  * normal não entra aqui: monstros só reagem a impacto, nunca travados.
  */
-export type WarriorSkillEffectKind = 'stun' | 'freeze' | 'slow' | 'knockdown' | 'blade-storm';
+export type WarriorSkillEffectKind = 'stun' | 'freeze' | 'slow' | 'knockdown' | 'launch' | 'blade-storm';
 
 export interface WarriorSkillEffectDefinition {
   readonly kind: WarriorSkillEffectKind;
@@ -16,7 +16,7 @@ export interface WarriorSkillEffectDefinition {
 export const WARRIOR_SKILL_EFFECTS: Record<WarriorSkillId, WarriorSkillEffectDefinition> = {
   ataque_giratorio: { kind: 'stun', durationSeconds: 1.2, label: 'Tonteia por 1,2s' },
   ataque_giratorio_2: { kind: 'freeze', durationSeconds: 1.2, label: 'Congela por 1,2s' },
-  pulo_atacando: { kind: 'slow', durationSeconds: 1.5, label: 'Deixa lento por 1,5s' },
+  pulo_atacando: { kind: 'launch', durationSeconds: 1, label: 'Levanta em chamas por 1s' },
   triplo_ataque: { kind: 'knockdown', durationSeconds: 1.3, label: 'Derruba e prende por 1,3s' },
   corte_duplo: { kind: 'blade-storm', durationSeconds: 0, label: 'Solta arcos de lâmina em vertical' },
 };
@@ -37,7 +37,7 @@ export function getWarriorSkillEffect(id: WarriorSkillId): WarriorSkillEffectDef
 
 /** true quando o efeito prende o monstro (não anda e não ataca). */
 export function warriorSkillEffectLocksTarget(kind: WarriorSkillEffectKind): boolean {
-  return kind === 'stun' || kind === 'freeze' || kind === 'knockdown';
+  return kind === 'stun' || kind === 'freeze' || kind === 'knockdown' || kind === 'launch';
 }
 
 /** true quando o efeito apenas deixa o monstro mais lento. */

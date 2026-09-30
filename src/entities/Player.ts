@@ -34,6 +34,7 @@ import {
   type SwordComboEvent,
 } from '../combat/SwordComboController';
 import { WarriorAttackController } from '../combat/WarriorAttackController';
+import { getWarriorAttackTimeline } from '../combat/WarriorAttackTimeline';
 import {
   getWarriorSkill,
   type WarriorSkillId,
@@ -614,6 +615,25 @@ export class Player {
 
   public onWarriorSkillHit(callback: (event: WarriorSkillHitEvent) => void): void {
     this.onWarriorSkillHitCallback = callback;
+  }
+
+  /**
+   * Janelas da skill em segundos reais, medidas do início do cast, para o Game
+   * sincronizar efeitos com a animação (o rastro do Pulo Atacando nasce nas
+   * costas junto do pulo e rasga o chão na aterrissagem do clip).
+   */
+  public getWarriorSkillTimingSeconds(id: WarriorSkillId): {
+    trailStartSeconds: number;
+    impactSeconds: number;
+  } | null {
+    const clip = this.warriorAttackActions[id]?.getClip();
+    if (!clip || !Number.isFinite(clip.duration) || clip.duration <= 0) return null;
+    const animationDuration = clip.duration / getWarriorSkill(id).playbackRate;
+    const timeline = getWarriorAttackTimeline(id);
+    return {
+      trailStartSeconds: timeline.trailStart * animationDuration,
+      impactSeconds: (timeline.impactTime ?? 0.8) * animationDuration,
+    };
   }
 
   /** Called at each authored sword damage window, including a basic swing. */

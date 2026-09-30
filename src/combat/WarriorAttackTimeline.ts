@@ -40,12 +40,15 @@ const TIMELINES: Readonly<Record<WarriorAttackId, WarriorAttackTimeline>> = {
     fadeSeconds: 1.05,
   },
   pulo_atacando: {
+    // Extraído do esqueleto do clip: a mão (espada) toca o chão em t=1,25s
+    // de 1,917s (65% da animação). O impacto e o dano têm que sair nesse
+    // frame exato, senão o efeito aparece depois do golpe.
     trailStart: 0.42,
-    trailEnd: 0.94,
-    damageStart: 0.76,
-    damageEnd: 0.9,
-    hitTimes: [0.82],
-    impactTime: 0.82,
+    trailEnd: 0.78,
+    damageStart: 0.58,
+    damageEnd: 0.72,
+    hitTimes: [0.65],
+    impactTime: 0.65,
     recoveryEnd: 1,
     fadeSeconds: 1.2,
   },

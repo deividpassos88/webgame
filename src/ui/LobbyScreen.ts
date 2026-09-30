@@ -218,7 +218,7 @@ export function renderLobbyBackpackContents(
 const SKILL_TIP_DESCRIPTIONS: Readonly<Record<WarriorSkillId, string>> = {
   ataque_giratorio: 'Giro de 360° que atinge todos os monstros ao redor do herói.',
   ataque_giratorio_2: 'Giro glacial: fere e congela os inimigos próximos (gelo).',
-  pulo_atacando: 'Salto com impacto em área à frente do herói.',
+  pulo_atacando: 'Salto com impacto: a espada rasga o chão e levanta inimigos em chamas num raio de 4 m.',
   triplo_ataque: 'Golpes em chamas que queimam os inimigos na frente (fogo).',
   corte_duplo: 'Dois cortes rápidos e largos à frente do herói.',
 };

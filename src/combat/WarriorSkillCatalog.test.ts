@@ -11,7 +11,9 @@ describe('WarriorSkillCatalog', () => {
       label: 'Giro Glacial',
       element: 'ice',
     });
-    expect(WARRIOR_SKILLS.filter(({ element }) => element === null)).toHaveLength(3);
+    // O impacto do Pulo Atacando levanta os monstros em chamas: é elementar fogo.
+    expect(getWarriorSkill('pulo_atacando')).toMatchObject({ element: 'fire' });
+    expect(WARRIOR_SKILLS.filter(({ element }) => element === null)).toHaveLength(2);
   });
 
   it('keeps the two spins at ten meters while other skills stay inside five meters', () => {

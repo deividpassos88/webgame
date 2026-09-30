@@ -29,7 +29,9 @@ describe('WarriorAttackTimeline', () => {
 
   it('defines the jump impact at its only damage hit', () => {
     const jump = getWarriorAttackTimeline('pulo_atacando');
-    expect(jump.impactTime).toBe(0.82);
-    expect(jump.hitTimes).toEqual([0.82]);
+    // 65% do clip de 1,917 s = 1,25 s: o frame em que a espada toca o chão
+    // (medido no esqueleto da animação).
+    expect(jump.impactTime).toBe(0.65);
+    expect(jump.hitTimes).toEqual([0.65]);
   });
 });

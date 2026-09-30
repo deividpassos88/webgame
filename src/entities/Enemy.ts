@@ -200,6 +200,10 @@ export class Enemy {
   private readonly shockLightPool: VFXLightPool | null;
   private shockLightHandle: VFXLightHandle | null = null;
   private shockFallbackLight: THREE.PointLight | null = null;
+  /** Chamas do Pulo Atacando do Guerreiro enquanto o monstro está no ar. */
+  private flameLaunchAura: THREE.Group | null = null;
+  private flameEmbers: THREE.Points | null = null;
+  private flameSmoke: THREE.Points | null = null;
   private freezeMist: THREE.Points | null = null;
   private freezeSmoke: THREE.Points | null = null;
   private freezeSmokeSpeeds: Float32Array | null = null;
@@ -990,6 +994,68 @@ export class Enemy {
     this.applyMageSlow(seconds);
   }
 
+  /**
+   * Skill 3 do Guerreiro — Pulo Atacando (impacto da espada no chão). O
+   * monstro é LEVANTADO do chão pelo resto de 1 segundo envolto em chamas:
+   * sobe, fica preso no ar queimando e desce quando o tempo acaba.
+   */
+  public applyWarriorFlameLaunch(seconds = 1): void {
+    if (this.isDead) return;
+    const duration = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+    if (duration <= 0) return;
+    if (this.mageLevitateRemaining <= 0) {
+      this.levitateGroundY = this.root.position.y;
+      this.levitateElapsed = 0;
+      this.mageLevitateDuration = duration;
+      this.beginLevitatePose();
+    } else {
+      this.mageLevitateDuration = Math.max(this.mageLevitateDuration, this.levitateElapsed + duration);
+    }
+    this.mageLevitateRemaining = Math.max(this.mageLevitateRemaining, duration);
+    this.activeAnimatedAttack = null;
+    this.hitStaggerRemaining = 0;
+    this.endHitReaction();
+    this.ensureFlameLaunchAura();
+  }
+
+  public get isWarriorFlameLaunched(): boolean {
+    return this.mageLevitateRemaining > 0 && this.flameLaunchAura?.visible === true;
+  }
+
+  /** Envolve o monstro levantado em chamas (brasas subindo ao redor do corpo). */
+  private ensureFlameLaunchAura(): void {
+    if (this.flameLaunchAura) {
+      this.flameLaunchAura.visible = true;
+      return;
+    }
+    const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
+    const group = new THREE.Group();
+    group.name = 'EnemyFlameLaunchAura';
+    this.flameEmbers = this.buildFreezePuffs('EnemyFlameEmbers', 0xff7a1f, 0.5 * bodyScale, 30, 0.42, 1.15);
+    this.flameSmoke = this.buildFreezePuffs('EnemyFlameSmoke', 0xff3d0a, 0.72 * bodyScale, 18, 0.8, 1.6);
+    (this.flameEmbers.material as THREE.PointsMaterial).opacity = 0.55;
+    (this.flameSmoke.material as THREE.PointsMaterial).opacity = 0.4;
+    group.add(this.flameEmbers, this.flameSmoke);
+    this.root.add(group);
+    this.flameLaunchAura = group;
+  }
+
+  /** Lampejo das chamas enquanto o monstro está no ar. */
+  private updateFlameLaunchAura(): void {
+    if (!this.flameLaunchAura?.visible || !this.flameEmbers || !this.flameSmoke) return;
+    const time = performance.now() * 0.001;
+    (this.flameEmbers.material as THREE.PointsMaterial).opacity =
+      0.42 + Math.abs(Math.sin(time * 17.3)) * 0.3;
+    (this.flameSmoke.material as THREE.PointsMaterial).opacity =
+      0.3 + Math.abs(Math.sin(time * 11.1 + 1.4)) * 0.22;
+    this.flameLaunchAura.rotation.y = time * 2.2;
+  }
+
+  private hideFlameLaunchAura(): void {
+    if (!this.flameLaunchAura) return;
+    this.flameLaunchAura.visible = false;
+  }
+
   public get isWarriorStunned(): boolean {
     return this.warriorStunRemaining > 0;
   }
@@ -1057,6 +1123,7 @@ export class Enemy {
     const height = this.levitateHeight(this.levitateElapsed, this.mageLevitateDuration);
     this.root.position.y = this.levitateGroundY + height;
     this.updateShockAura();
+    this.updateFlameLaunchAura();
     if (this.mageLevitateRemaining <= 0) this.endLevitatePose();
   }
 
@@ -1099,6 +1166,7 @@ export class Enemy {
   private endLevitatePose(): void {
     if (!this.levitatePoseActive && this.mageLevitateRemaining <= 0 && !this.shockAura?.visible) {
       this.hideShockAura();
+      this.hideFlameLaunchAura();
       return;
     }
     if (this.levitateUsesClip) this.animator?.releaseLyingPose?.();
@@ -1107,6 +1175,7 @@ export class Enemy {
     this.levitatePoseActive = false;
     this.root.position.y = this.levitateGroundY;
     this.hideShockAura();
+    this.hideFlameLaunchAura();
   }
 
   private clearMageControlForDeath(): void {

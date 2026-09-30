@@ -13,7 +13,7 @@ describe('WarriorSkillArea', () => {
     expect(getWarriorSkillArea('ataque_giratorio_2')).toMatchObject({ shape: 'circle', radius: 10 });
     expect(getWarriorSkillArea('pulo_atacando')).toMatchObject({
       shape: 'circle',
-      radius: 5,
+      radius: 4,
     });
     expect(getWarriorSkillArea('triplo_ataque')).toMatchObject({ shape: 'arc', radius: 5, angleDegrees: 140 });
     expect(getWarriorSkillArea('corte_duplo')).toMatchObject({ shape: 'arc', radius: 5, angleDegrees: 125 });
@@ -47,9 +47,9 @@ describe('WarriorSkillArea', () => {
     const area = getWarriorSkillArea('pulo_atacando');
     const origin = new THREE.Vector3();
     const forward = new THREE.Vector3(0, 0, 1);
-    expect(isPointInWarriorSkillArea(origin, forward, new THREE.Vector3(0, 0, 5), area)).toBe(true);
-    expect(isPointInWarriorSkillArea(origin, forward, new THREE.Vector3(0, 0, 5.01), area)).toBe(false);
-    expect(isPointInWarriorSkillArea(origin, forward, new THREE.Vector3(0, 0, -5), area)).toBe(true);
+    expect(isPointInWarriorSkillArea(origin, forward, new THREE.Vector3(0, 0, 4), area)).toBe(true);
+    expect(isPointInWarriorSkillArea(origin, forward, new THREE.Vector3(0, 0, 4.01), area)).toBe(false);
+    expect(isPointInWarriorSkillArea(origin, forward, new THREE.Vector3(0, 0, -4), area)).toBe(true);
     expect(resolveWarriorSkillAreaCenter(origin, forward, area).toArray()).toEqual([0, 0, 0]);
   });
 });
