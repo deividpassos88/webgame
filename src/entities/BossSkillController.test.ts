@@ -51,7 +51,7 @@ describe('BossSkillController', () => {
 
   it.each([
     [0, 'circle', 4.2],
-    [0.34, 'rectangle', 3.5],
+    [0.34, 'rectangle', 2.8],
     [0.67, 'meteors', 1],
   ] as const)('uses the approved warning for %s', (random, skill, seconds) => {
     const controller = new BossSkillController(() => random);

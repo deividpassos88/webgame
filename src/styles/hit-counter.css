@@ -1,0 +1,73 @@
+/* Hit counter — small glass pill, right edge of the screen. */
+.hit-counter {
+  --hit-accent: 120, 200, 255;
+  position: fixed;
+  right: 22px;
+  top: 40%;
+  z-index: 130;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  column-gap: 7px;
+  padding: 6px 12px 9px 14px;
+  border-radius: 14px 4px 4px 14px;
+  border: 1px solid rgba(var(--hit-accent), 0.35);
+  border-right: 3px solid rgba(var(--hit-accent), 0.9);
+  background: linear-gradient(90deg, rgba(10, 14, 26, 0.05), rgba(10, 14, 26, 0.45));
+  backdrop-filter: blur(3px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 14px rgba(var(--hit-accent), 0.18);
+  font-family: 'Segoe UI', 'Trebuchet MS', system-ui, sans-serif;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  transform: translateX(14px);
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+}
+.hit-counter.is-visible { opacity: 1; transform: translateX(0); }
+.hit-counter[data-tier='1'] { --hit-accent: 255, 214, 90; }
+.hit-counter[data-tier='2'] { --hit-accent: 255, 150, 60; }
+.hit-counter[data-tier='3'] { --hit-accent: 255, 80, 90; }
+
+.hit-counter__number {
+  display: inline-block;
+  min-width: 1.4ch;
+  text-align: right;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  font-style: italic;
+  color: #fff;
+  text-shadow: 0 0 10px rgba(var(--hit-accent), 0.85), 0 2px 3px rgba(0, 0, 0, 0.7);
+  transform-origin: right center;
+}
+.hit-counter__number.is-pulsing { animation: hit-counter-pop 0.22s ease-out; }
+.hit-counter__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: rgba(var(--hit-accent), 1);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.hit-counter__timer {
+  grid-column: 1 / -1;
+  display: block;
+  height: 2px;
+  margin-top: 5px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.12);
+}
+.hit-counter__timer i {
+  display: block;
+  height: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgba(var(--hit-accent), 0.4), rgba(var(--hit-accent), 1));
+}
+@keyframes hit-counter-pop {
+  0% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hit-counter, .hit-counter__number.is-pulsing { animation: none; transition: none; }
+}

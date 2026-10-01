@@ -41,6 +41,8 @@ export interface CharacterDefinition {
   initialWeaponLabel?: string;
   clipMap: Partial<Record<CharacterAnimationState, string>>;
   clipAliases?: Partial<Record<CharacterAnimationState, readonly string[]>>;
+  /** Clips present in the GLB that must never be played (dropped when assets load). */
+  excludedClipNames?: readonly string[];
   idlePoseSource?: string;
   attackClipNames?: readonly WarriorAttackId[];
   /** Maps shared combat skill ids to authored clip names when a class uses different GLB action names. */
@@ -98,10 +100,10 @@ export const CHARACTERS: readonly CharacterDefinition[] = [
       hit: 'recebe_dano',
       dead: 'morte',
     },
+    // Guerreiro usa SOMENTE idle_sword (parado), correndo (movimento) e
+    // ataque_basico (golpe): sem aliases e sem a animação "caminhando".
+    excludedClipNames: ['caminhando'],
     clipAliases: {
-      idle: ['Idle'],
-      running: ['running'],
-      attacking: ['ataque'],
       hit: ['hit'],
     },
     attackClipNames: WARRIOR_ATTACK_IDS,

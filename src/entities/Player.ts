@@ -44,14 +44,14 @@ import type { MageSpellId } from '../vfx/VFXTypes';
 import { MAGE_TELEPORT_INVULNERABILITY_SECONDS } from './MageTeleport';
 
 /**
- * O ataque normal não concede nenhuma janela de invulnerabilidade: o
- * guerreiro pode tomar dano de monstro enquanto bate. Skills e dash mantêm as
- * suas próprias janelas.
+ * O ataque normal e as skills não concedem nenhuma janela de invulnerabilidade:
+ * o personagem pode tomar dano de monstro enquanto bate ou usa skill. A única
+ * imunidade do Guerreiro é o dash (Shift), do primeiro ao último instante dele
+ * (`isDashing`); a Maga mantém a imunidade do teleporte.
  */
 const BASIC_ACTION_INVULNERABILITY_SECONDS = 0;
 /** A Maga's basic cast grants no action immunity window at all (0 seconds). */
 const MAGE_BASIC_ACTION_INVULNERABILITY_SECONDS = 0;
-const SKILL_ACTION_INVULNERABILITY_SECONDS = 1.5;
 const POST_HIT_INVULNERABILITY_SECONDS = 0.4;
 const DASH_DISTANCE = 5.4;
 const DASH_SPEED = 30;
@@ -62,7 +62,6 @@ const HIT_REACTION_GRACE_SECONDS = 0.75;
 /** Folga para fades normais antes de considerar a pose inconsistente. */
 const POSE_RECONCILE_GRACE_SECONDS = 0.4;
 const DASH_COOLDOWN_SECONDS = 0.85;
-const DASH_INVULNERABILITY_SECONDS = 0.3;
 /** Peso do clip de ataque no blend com a corrida: o mixer normaliza os pesos
  * ativos, entao running(1) + ataque(0.45) deixa ~69% do ciclo de corrida nas
  * pernas/corpo — o guerreiro anda/corre em todas as direcoes durante o combo
@@ -81,6 +80,12 @@ export interface MissingAnimationsInfo {
   foundClipNames: string[];
   isCritical: boolean;
 }
+
+/** Limite máximo do multiplicador de velocidade (movimento e animação). */
+export const MAX_SPEED_MULTIPLIER = 1.5;
+
+/** Warrior regains movement this many seconds before a skill finishes. */
+export const WARRIOR_SKILL_MOVE_RELEASE_SECONDS = 0.25;
 
 export interface WarriorSkillHitEvent {
   readonly attackId: WarriorSkillId;
@@ -157,7 +162,15 @@ export class Player {
   public attackDamage = 18;
   public attackRange = 2.2;
   /** Multiplicador temporário de velocidade (buff de mini-boss). */
-  public speedMultiplier = 1;
+  private movementSpeedMultiplier = 1;
+  /** Buffs de velocidade nunca passam de 1.5x a velocidade original. */
+  public get speedMultiplier(): number {
+    return this.movementSpeedMultiplier;
+  }
+  public set speedMultiplier(value: number) {
+    const safe = Number.isFinite(value) ? value : 1;
+    this.movementSpeedMultiplier = THREE.MathUtils.clamp(safe, 0, MAX_SPEED_MULTIPLIER);
+  }
   public isDead = false;
   private adminImmortal = false;
 
@@ -550,6 +563,14 @@ export class Player {
   }
 
   private updateRunningPlaybackRate(action: THREE.AnimationAction): void {
+    if (this.characterId !== 'mage') {
+      // Guerreiro: o clip "correndo" toca na velocidade original e só acelera
+      // junto com o buff de velocidade (no máximo 1.5x). Nunca desacelera, para
+      // a corrida não parecer uma caminhada enquanto a velocidade sobe.
+      const rate = THREE.MathUtils.clamp(this.movementSpeedMultiplier, 1, MAX_SPEED_MULTIPLIER);
+      action.setEffectiveTimeScale((this.actionBaseTimeScales.running ?? 1) * rate);
+      return;
+    }
     const nominalSpeed = Math.max(this.speed, 0.0001);
     const playbackRate = THREE.MathUtils.clamp(
       this.currentMoveSpeed / nominalSpeed,
@@ -560,7 +581,7 @@ export class Player {
   }
 
   public moveTo(point: THREE.Vector3) {
-    if (this.isMageMovementLocked()) return;
+    if (this.isMageMovementLocked() || this.isWarriorSkillMovementLocked()) return;
     if (this.isSwinging) this.cancelCombo();
     if (!this.canAcceptInput()) return;
     this.animationPreview.clear();
@@ -639,6 +660,26 @@ export class Player {
     return {
       trailStartSeconds: timeline.trailStart * animationDuration,
       impactSeconds: (timeline.impactTime ?? 0.8) * animationDuration,
+    };
+  }
+
+  /**
+   * Length of a skill animation and the moment of its last damage, so the combo
+   * gauge can be fitted inside the cast.
+   */
+  public getWarriorSkillComboTiming(id: WarriorSkillId): {
+    durationSeconds: number;
+    lastHitSeconds: number;
+  } | null {
+    const clip = this.warriorAttackActions[id]?.getClip();
+    if (!clip || !Number.isFinite(clip.duration) || clip.duration <= 0) return null;
+    const animationDuration = clip.duration / getWarriorSkill(id).playbackRate;
+    const landingRecovery = id === 'pulo_atacando' ? 0.28 : 0;
+    const timeline = getWarriorAttackTimeline(id);
+    const lastDamage = Math.max(0, ...timeline.hitTimes, timeline.impactTime ?? 0);
+    return {
+      durationSeconds: animationDuration + landingRecovery,
+      lastHitSeconds: lastDamage * animationDuration,
     };
   }
 
@@ -796,12 +837,29 @@ export class Player {
     return this.characterModel.getObjectByName(name) ?? null;
   }
 
-  public tryStartSkillAttack(id: WarriorSkillId): boolean {
+  /**
+   * True when a running skill has already delivered all of its damage, so a
+   * combo link can cancel the recovery and start the next skill right away.
+   */
+  public get canChainSkill(): boolean {
+    return (
+      this.skillAttackController.active &&
+      !this.skillAttackController.hasPendingHits &&
+      !this.isDead &&
+      !this.isHitReacting
+    );
+  }
+
+  public tryStartSkillAttack(
+    id: WarriorSkillId,
+    options: { readonly chain?: boolean } = {}
+  ): boolean {
+    const chaining = options.chain === true && this.canChainSkill;
     if (
       !this.canUseSkillAttacks() ||
       this.isDead ||
       this.isHitReacting ||
-      this.isSwinging ||
+      (this.isSwinging && !chaining) ||
       this.inputLocked ||
       this.isDashing ||
       this.blocksSkillsWhileMoving
@@ -814,7 +872,13 @@ export class Player {
     const playbackRate = getWarriorSkill(id).playbackRate;
     const animationDuration = (action.getClip().duration || 1) / playbackRate;
     const landingRecovery = id === 'pulo_atacando' ? 0.28 : 0;
-    const duration = animationDuration + landingRecovery;
+    if (chaining) {
+      // Combo link: the previous skill already dealt its damage, so only its
+      // recovery tail is cut.
+      this.skillAttackController.cancel();
+      this.comboHitTargets.clear();
+      this.isSwinging = false;
+    }
     if (!this.skillAttackController.start(id, animationDuration, landingRecovery)) return false;
 
     this.animationPreview.clear();
@@ -826,10 +890,6 @@ export class Player {
     this.comboController.cancel();
     this.comboHitTargets.clear();
     this.isSwinging = true;
-    this.actionInvulnerability = this.characterId === 'mage'
-      ? duration + 1
-      : SKILL_ACTION_INVULNERABILITY_SECONDS;
-    this.actionInvulnerabilityFresh = true;
     this.emptyHandAttackPreview = false;
     this.clearLocomotionBlend(0.08);
     action.reset();
@@ -894,6 +954,8 @@ export class Player {
     // Action invulnerability applies uniformly to ordinary and boss damage.
     // It is independent from the shorter post-hit anti-stunlock window below.
     if (this.actionInvulnerability > 0) return;
+    // Dash (Shift): imune do primeiro ao último instante do deslize.
+    if (this.isDashing) return;
     // Invulnerabilidade breve após cada hit: evita stunlock com vários monstros
     if (!forceHitReaction && this.hitInvulnerability > 0) return;
     this.animationPreview.clear();
@@ -1509,6 +1571,11 @@ export class Player {
       this.holdMageSkillCastPosition();
       return;
     }
+    // Warrior skill: planted on the ground until the clip is almost over.
+    if (this.isWarriorSkillMovementLocked()) {
+      this.currentMoveSpeed = 0;
+      return;
+    }
     if (!dir.lengthSq()) return;
     const currentTargetInRange = this.attackTargetEnemy
       ? this.isTargetInRange(this.attackTargetEnemy)
@@ -1636,6 +1703,7 @@ export class Player {
       this.inputLocked ||
       this.isDashing ||
       this.isMageSkillLocked() ||
+      this.isWarriorSkillMovementLocked() ||
       this.dashCooldown > 0
     ) {
       return false;
@@ -1658,11 +1726,6 @@ export class Player {
     this.dashDistanceRemaining = DASH_DISTANCE;
     this.dashCooldown = DASH_COOLDOWN_SECONDS;
     this.currentMoveSpeed = DASH_SPEED;
-    this.actionInvulnerability = Math.max(
-      this.actionInvulnerability,
-      DASH_INVULNERABILITY_SECONDS
-    );
-    this.actionInvulnerabilityFresh = true;
     this.faceTargetInstantly(this.root.position.clone().add(this.dashDirection));
     this.playState('running', 0.04);
     return true;
@@ -1780,6 +1843,16 @@ export class Player {
     if (!this.isMageSkillLocked() || !this.skillCastAnchor) return;
     this.skillCastAnchor = null;
     this.playState(this.keyboardMoving || this.moveTarget ? 'running' : 'idle', 0.15);
+  }
+
+  /**
+   * The Warrior cannot walk, click-move or dash while a skill clip plays. The
+   * lock only opens shortly before the skill ends so recovery feels responsive.
+   */
+  public isWarriorSkillMovementLocked(): boolean {
+    return this.characterId !== 'mage'
+      && this.skillAttackController.active
+      && this.skillAttackController.remainingSeconds > WARRIOR_SKILL_MOVE_RELEASE_SECONDS;
   }
 
   /** Movement stays pinned only until the spell launches. */

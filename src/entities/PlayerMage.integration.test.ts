@@ -156,21 +156,13 @@ describe('Mage gameplay player', () => {
     expect(directHits).toBe(1);
   });
 
-  it('keeps Mage skill protection active for the animation plus one extra second', async () => {
+  it('gives Mage skills no damage immunity', async () => {
     const player = new Player('mage', createMageAssets());
     await player.load();
 
     expect(player.tryStartSkillAttack('ataque_giratorio')).toBe(true);
+    expect(player.actionInvulnerabilityRemaining).toBe(0);
     player.takeDamage(40);
-    expect(player.hp).toBe(100);
-
-    player.update(0.1);
-    player.update(1.84);
-    player.takeBossSkillDamage(40);
-    expect(player.hp).toBe(100);
-
-    player.update(0.08);
-    player.takeBossSkillDamage(40);
     expect(player.hp).toBe(60);
   });
 
@@ -230,9 +222,7 @@ describe('Mage gameplay player', () => {
     for (const skill of WARRIOR_SKILLS) {
       expect(player.tryStartSkillAttack(skill.id)).toBe(true);
       expect(player.activeWarriorAttackId).toBe(skill.id);
-      if (skill.id === 'ataque_giratorio') {
-        expect(player.actionInvulnerabilityRemaining).toBeGreaterThan(1.8);
-      }
+      expect(player.actionInvulnerabilityRemaining).toBe(0);
       const latestCast = casts[casts.length - 1];
       expect(latestCast?.spellId).toBe(expectedSpellBySkill[skill.id]);
       expect(latestCast?.onImpact).toBeNull();

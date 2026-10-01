@@ -49,29 +49,76 @@ describe('BossSkillEffects', () => {
     }
   );
 
-  it('keeps the circle fire visible for 2.2 seconds and covers more than its center', () => {
+  it('draws the circle impact as a rich explosion that lingers, then disappears', () => {
     const scene = new THREE.Scene();
     const effects = new BossSkillEffects(scene);
+    const impacts: string[] = [];
+    effects.onImpact = (e) => impacts.push(e.skill);
     effects.handle(event('telegraph'));
 
     effects.handle(event('impact'));
+    expect(impacts).toEqual(['circle']);
     expect(effects.activeObjectCount).toBeGreaterThan(0);
+    for (const name of [
+      'mini-boss-skill-impact',
+      'mini-boss-skill-scorch',
+      'mini-boss-skill-dome',
+      'mini-boss-skill-fire-column',
+    ]) {
+      expect(scene.getObjectByName(name)).toBeTruthy();
+    }
+    expect(scene.getObjectsByProperty('type', 'Points').length).toBeGreaterThanOrEqual(3);
+    effects.update(0.016); // creation frame never ages an effect
     effects.update(1.2);
     expect(effects.activeObjectCount).toBeGreaterThan(0);
-    expect(scene.getObjectsByProperty('name', 'boss-fire-blast').length).toBeGreaterThan(1);
-    effects.update(1.1);
+    effects.update(1.4);
 
     expect(effects.activeObjectCount).toBe(0);
   });
 
-  it('removes the rectangle impact after its shorter lifetime', () => {
+  it('draws the rectangle impact with blast walls and removes it after its lifetime', () => {
     const scene = new THREE.Scene();
     const effects = new BossSkillEffects(scene);
 
     effects.handle(event('impact', 'rectangle'));
+    expect(scene.getObjectsByProperty('name', 'mini-boss-skill-blast-wall')).toHaveLength(2);
+    effects.update(0.016);
+    effects.update(1.2);
+    expect(effects.activeObjectCount).toBeGreaterThan(0);
     effects.update(1.2);
 
     expect(effects.activeObjectCount).toBe(0);
+  });
+
+  it('lands every meteor with its own blast, scorch and fire column', () => {
+    const scene = new THREE.Scene();
+    const effects = new BossSkillEffects(scene);
+
+    effects.handle(event('telegraph', 'meteors'));
+    effects.handle(event('impact', 'meteors'));
+
+    expect(scene.getObjectsByProperty('name', 'boss-fire-blast')).toHaveLength(30);
+    expect(scene.getObjectsByProperty('name', 'boss-meteor-fire-column')).toHaveLength(30);
+    expect(scene.getObjectsByProperty('name', 'boss-meteor-core')).toHaveLength(0);
+    for (let i = 0; i < 30; i += 1) effects.update(0.06);
+    scene.traverse((object) => {
+      const points = object as THREE.Points;
+      if (!points.isPoints) return;
+      for (const value of points.geometry.getAttribute('position').array as Float32Array) {
+        expect(Number.isFinite(value)).toBe(true);
+      }
+    });
+    effects.update(0.1);
+    expect(effects.activeObjectCount).toBe(0);
+  });
+
+  it('gives the falling meteors a flaming tail', () => {
+    const scene = new THREE.Scene();
+    const effects = new BossSkillEffects(scene);
+    effects.handle(event('telegraph', 'meteors'));
+
+    expect(scene.getObjectsByProperty('name', 'boss-meteor-trail')).toHaveLength(30);
+    expect(scene.getObjectsByProperty('name', 'boss-meteor-warning')).toHaveLength(30);
   });
 
   it('keeps a single inactive impact light in the scene between skills', () => {
@@ -86,7 +133,8 @@ describe('BossSkillEffects', () => {
     expect(lights()).toHaveLength(1);
     expect((lights()[0] as THREE.PointLight).intensity).toBeGreaterThan(0);
 
-    effects.update(2.3);
+    effects.update(0.016);
+    effects.update(2.9);
     expect(effects.activeObjectCount).toBe(0);
     expect(lights()).toHaveLength(1);
     expect((lights()[0] as THREE.PointLight).intensity).toBe(0);

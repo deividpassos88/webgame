@@ -11,9 +11,9 @@ function animation(name: string, duration = 0.2) {
 
 async function loadedPlayer(attackDuration = 0.2, withHand = false) {
   const clips = [
-    animation('Idle', 1),
-    animation('running', 1),
-    animation('ataque', attackDuration),
+    animation('idle_sword', 1),
+    animation('correndo', 1),
+    animation('ataque_basico', attackDuration),
     animation('hit'),
     animation('morte'),
   ];

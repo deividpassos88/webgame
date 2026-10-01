@@ -29,6 +29,20 @@ export class WarriorAttackController {
     return this.attackId;
   }
 
+  /** Seconds left until the active attack ends (0 when idle). */
+  public get remainingSeconds(): number {
+    return this.attackId === null ? 0 : Math.max(0, this.duration - this.elapsed);
+  }
+
+  /** True while a damaging `hit` or `impact` is still scheduled for this attack. */
+  public get hasPendingHits(): boolean {
+    for (let index = this.nextEventIndex; index < this.schedule.length; index += 1) {
+      const { type } = this.schedule[index].event;
+      if (type === 'hit' || type === 'impact') return true;
+    }
+    return false;
+  }
+
   public start(
     attackId: WarriorAttackId,
     animationDurationSeconds: number,

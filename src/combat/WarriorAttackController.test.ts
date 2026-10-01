@@ -50,3 +50,17 @@ describe('WarriorAttackController', () => {
     expect(attacks.active).toBe(false);
   });
 });
+
+describe('pending hits', () => {
+  it('reports damage still to come until the last hit has fired', () => {
+    const controller = new WarriorAttackController();
+    expect(controller.hasPendingHits).toBe(false);
+
+    controller.start('triplo_ataque', 1.5);
+    expect(controller.hasPendingHits).toBe(true);
+
+    controller.update(1.4);
+    expect(controller.hasPendingHits).toBe(false);
+    expect(controller.active).toBe(true);
+  });
+});

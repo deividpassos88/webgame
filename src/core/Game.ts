@@ -71,7 +71,7 @@ import {
   FramePerformanceMonitor,
   type FramePerformanceContext,
 } from './FramePerformanceMonitor';
-import { BossSkillController } from '../entities/BossSkillController';
+import { BossSkillController, type BossSkillEvent } from '../entities/BossSkillController';
 import { BossSkillEffects } from '../effects/BossSkillEffects';
 import { BossAssetStore } from '../entities/BossAssetStore';
 import {
@@ -116,6 +116,11 @@ import {
   settleFinalBossLoot,
 } from '../rewards/FinalBossLoot';
 import { WarriorSkillController, type WarriorSkillsSnapshot } from '../combat/WarriorSkillController';
+import { displayPlayerHotkey } from '../profile/PlayerHotkeys';
+import { COMBO_COOLDOWN_MULTIPLIER, SkillComboController } from '../combat/SkillComboController';
+import { ComboGauge } from '../ui/ComboGauge';
+import { HitCounter } from '../combat/HitCounter';
+import { HitCounterView } from '../ui/HitCounterView';
 import { FatigueMeter, MAX_FATIGUE, DASH_FATIGUE_COST } from '../combat/FatigueMeter';
 import { mageBasicAttackManaCost, mageSkillFatiguePercent } from '../combat/MageSkillCost';
 import { firstColumnHit, mageSkillAttackId } from '../combat/MageSpellFlight';
@@ -163,8 +168,9 @@ import {
   type DistanceFalloffProfile,
 } from '../combat/DistanceDamage';
 import { applyArcherDamageVsPlayerClass, getTypedAttackBaseDamage, quantizeCombatDamage } from '../combat/CombatDamage';
-import { MiniBossSkillController } from '../combat/MiniBossSkillController';
+import { MiniBossSkillController, type MiniBossSkillEvent } from '../combat/MiniBossSkillController';
 import { MiniBossSkillEffects } from '../effects/MiniBossSkillEffects';
+import { CameraShake } from '../vfx/CameraShake';
 import { deriveCharacterStats, type DerivedCharacterStats } from '../profile/CharacterAttributes';
 import { attributesWithEquipment, equippedWeaponDamage } from '../equipment/EquipmentStatBonuses';
 import { resolveCameraRelativeMovement } from '../entities/PlayerMovement';
@@ -208,6 +214,10 @@ export function persistVictoryReset(
   return persist(profile);
 }
 
+const BOSS_POST_CAST_LOCK_SECONDS = 0.6;
+/** How long a combo skill pressed a moment early stays queued. */
+const COMBO_QUEUE_SECONDS = 1.2;
+
 export class Game {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -221,6 +231,9 @@ export class Game {
   /** Id do mini-boss dono da barra de vida visivel no HUD. */
   private miniBossBarId: string | null = null;
   private readonly miniBossEffects = new MiniBossSkillEffects(this.scene);
+  private readonly miniBossShake = new CameraShake();
+  /** Seconds the boss stays planted after a skill blast before it chases again. */
+  private bossPostCastLock = 0;
   private readonly vfxLightPool = new VFXLightPool(this.scene, MAGE_VFX_LIMITS.maxTemporaryLights);
   private readonly mageVFX = new MageVFX(this.scene, { lightPool: this.vfxLightPool });
   private readonly warriorSlashVFX = new WarriorSlashVFX(this.scene, this.vfxLightPool);
@@ -254,6 +267,12 @@ export class Game {
   private profile!: PlayerProfile;
   private inventory!: InventoryStore;
   private readonly warriorSkills = new WarriorSkillController();
+  private readonly skillCombo = new SkillComboController();
+  private comboGauge: ComboGauge | null = null;
+  private readonly hitCounter = new HitCounter();
+  private hitCounterView: HitCounterView | null = null;
+  /** Combo skill requested while the previous one still has damage to deliver. */
+  private queuedComboSkill: { ids: WarriorSkillId[]; until: number } | null = null;
   private inventoryOverlay!: InventoryOverlay;
   private rpgOverlayOpen = false;
   private finalBossRewards: FinalBossRewardCoordinator | null = null;
@@ -986,29 +1005,38 @@ export class Game {
     return this.flow.acceptsGameplayInput && !this.rpgOverlayOpen;
   }
 
-  private tryActivateWarriorSkill(id: WarriorSkillId): void {
-    if (!this.canAcceptGameplayInput()) return;
+  private tryActivateWarriorSkill(id: WarriorSkillId): boolean {
+    if (!this.canAcceptGameplayInput()) return false;
     const mage = this.profile.selectedClass === 'mage';
     const adminPreview = this.hasAdminFreeSkills();
     if (!adminPreview) {
-      if (!isWarriorSkillUnlocked(id, this.profile.progression.level)) return;
+      if (!isWarriorSkillUnlocked(id, this.profile.progression.level)) return false;
     }
-    if (!adminPreview && !this.fatigue.canUseSkills) return;
-    if (mage && this.player.blocksSkillsWhileMoving) return;
-    if (!adminPreview && mage && !this.fatigue.canAffordPercent(mageSkillFatiguePercent(id))) return;
+    if (!adminPreview && !this.fatigue.canUseSkills) return false;
+    if (mage && this.player.blocksSkillsWhileMoving) return false;
+    if (!adminPreview && mage && !this.fatigue.canAffordPercent(mageSkillFatiguePercent(id))) return false;
+    // Combo link: after a green hit the next skill may start before the
+    // previous clip ends, but only once the previous skill delivered its damage.
+    const comboLink = this.skillCombo.canChain(id);
+    if (comboLink && this.player.isCastingSkill && !this.player.canChainSkill) {
+      this.queuedComboSkill = { ids: [id], until: this.elapsedTime + COMBO_QUEUE_SECONDS };
+      return false;
+    }
+    const chaining = comboLink && this.player.canChainSkill;
     const activation = this.warriorSkills.tryActivate(id, {
       paused: false,
       dead: this.player.isDead,
-      busy: this.player.isAttackInSwing(),
+      busy: this.player.isAttackInSwing() && !chaining,
       // Admin training is a true preview: no energy, fatigue, or cooldown cost.
       free: adminPreview,
       cooldownOverrideSeconds: warriorSkillCooldown(id, mage ? 'mage' : 'paladin'),
     });
-    if (activation.kind !== 'activated') return;
-    if (!this.player.tryStartSkillAttack(id)) {
+    if (activation.kind !== 'activated') return false;
+    if (!this.player.tryStartSkillAttack(id, { chain: chaining })) {
       this.warriorSkills.refund(id);
-      return;
+      return false;
     }
+    this.registerSkillCombo(id, adminPreview);
     // Efeito giratório começa na costa quase círculo completo com círculo de ar 7m
     if (id === 'ataque_giratorio' || id === 'ataque_giratorio_2') {
       const forward = this.player.planarForward(new THREE.Vector3());
@@ -1036,6 +1064,102 @@ export class Game {
       });
     }
     if (mage && !adminPreview) this.fatigue.consumePercent(mageSkillFatiguePercent(id));
+    return true;
+  }
+
+  /** Skills that could still follow `used` in the combo right now, in input order. */
+  private comboCandidates(used: readonly WarriorSkillId[], adminPreview: boolean): WarriorSkillId[] {
+    const state = this.warriorSkills.snapshot().skills;
+    const mage = this.profile.selectedClass === 'mage';
+    return WARRIOR_SKILLS
+      .filter((skill) =>
+        !used.includes(skill.id)
+        && (adminPreview || (
+          isWarriorSkillUnlocked(skill.id, this.profile.progression.level)
+          && state[skill.id].available
+          && (!mage || this.fatigue.canAffordPercent(mageSkillFatiguePercent(skill.id)))
+        ))
+      )
+      .map((skill) => skill.id);
+  }
+
+  /** Opens the combo gauge (or continues the combo) for an accepted skill cast. */
+  private registerSkillCombo(id: WarriorSkillId, adminPreview: boolean): void {
+    this.queuedComboSkill = null;
+    const used = this.skillCombo.canChain(id) ? [...this.skillCombo.chainedSkills, id] : [id];
+    const remaining = this.comboCandidates(used, adminPreview).length;
+    const timing = this.player.getWarriorSkillComboTiming(id) ?? undefined;
+    this.skillCombo.registerCast(id, remaining, timing);
+    this.applyComboCooldownDoubles();
+  }
+
+  /**
+   * A green hit casts the next skill by itself: the next one in key order, or
+   * the first free one when the chain already reached the last key. If the
+   * current skill still owes damage, the cast waits only for that last hit.
+   */
+  private startNextComboSkill(): void {
+    const chain = this.skillCombo.chainedSkills;
+    const current = chain[chain.length - 1];
+    if (!current) return;
+    const candidates = this.comboCandidates(chain, this.hasAdminFreeSkills());
+    if (candidates.length === 0) return;
+    const order = WARRIOR_SKILLS.map((skill) => skill.id);
+    const currentIndex = order.indexOf(current);
+    candidates.sort((left, right) => {
+      const leftAfter = order.indexOf(left) > currentIndex ? 0 : 1;
+      const rightAfter = order.indexOf(right) > currentIndex ? 0 : 1;
+      return leftAfter - rightAfter || order.indexOf(left) - order.indexOf(right);
+    });
+    this.queuedComboSkill = { ids: candidates, until: this.elapsedTime + COMBO_QUEUE_SECONDS };
+    this.flushQueuedComboSkill();
+  }
+
+  private flushQueuedComboSkill(): void {
+    const queued = this.queuedComboSkill;
+    if (!queued) return;
+    if (this.elapsedTime > queued.until) {
+      this.queuedComboSkill = null;
+      return;
+    }
+    if (this.player.isCastingSkill && !this.player.canChainSkill) return;
+    this.queuedComboSkill = null;
+    for (const id of queued.ids) {
+      if (this.skillCombo.canChain(id) && this.tryActivateWarriorSkill(id)) return;
+    }
+  }
+
+  /** Skills that took part in a green hit recharge twice as slowly. */
+  private applyComboCooldownDoubles(): void {
+    for (const id of this.skillCombo.consumeCooldownDoubles()) {
+      this.warriorSkills.multiplyCooldown(id, COMBO_COOLDOWN_MULTIPLIER);
+    }
+  }
+
+  private updateSkillCombo(delta: number): void {
+    if (this.player.isDead || !this.canAcceptGameplayInput()) {
+      this.skillCombo.reset();
+      this.queuedComboSkill = null;
+    }
+    this.flushQueuedComboSkill();
+    this.skillCombo.update(delta);
+    this.applyComboCooldownDoubles();
+    if (this.player.isDead) this.hitCounter.reset();
+    this.hitCounter.update(delta);
+    this.hitCounterView ??= new HitCounterView();
+    this.hitCounterView.render(this.hitCounter.snapshot());
+
+    this.comboGauge ??= new ComboGauge();
+    const unlocked = new Set<WarriorSkillId>(
+      WARRIOR_SKILLS
+        .filter((skill) =>
+          this.hasAdminFreeSkills()
+          || isWarriorSkillUnlocked(skill.id, this.profile.progression.level))
+        .map((skill) => skill.id)
+    );
+    const keyLabels: Partial<Record<WarriorSkillId, string>> = {};
+    for (const skill of WARRIOR_SKILLS) keyLabels[skill.id] = displayPlayerHotkey(this.profile.hotkeys[skill.id]);
+    this.comboGauge.render(this.skillCombo.snapshot(), { unlocked, keyLabels }, this.elapsedTime);
   }
 
   private mageSkillSnapshot(snapshot: WarriorSkillsSnapshot): WarriorSkillsSnapshot {
@@ -1046,7 +1170,10 @@ export class Game {
       const state = skills[skill.id];
       skills[skill.id] = {
         ...state,
-        cooldown: warriorSkillCooldown(skill.id, 'mage'),
+        // A combo-doubled recharge keeps its longer duration so the HUD ring stays valid.
+        cooldown: state.cooldownRemaining > warriorSkillCooldown(skill.id, 'mage')
+          ? state.cooldown
+          : warriorSkillCooldown(skill.id, 'mage'),
         fatigueCostPercent: percent,
         fatigueAffordable: this.fatigue.canAffordPercent(percent),
       };
@@ -1405,6 +1532,9 @@ export class Game {
       this.player.speedMultiplier = 1;
       this.player.setImmortal(false);
       this.warriorSkills.reset();
+      this.skillCombo.reset();
+      this.hitCounter.reset();
+      this.queuedComboSkill = null;
       this.fatigue.reset();
       this.cameraController.setAdminMode(false);
       this.adminPanel?.resetToggles();
@@ -1461,6 +1591,14 @@ export class Game {
 
   private handleMouseInput() {
     if (!this.canAcceptGameplayInput()) return;
+    // While the combo gauge sweeps, the click judges the green zone instead of
+    // moving or attacking.
+    if (this.input.leftClicked && !this.player.isDead && this.skillCombo.gaugeActive) {
+      const outcome = this.skillCombo.click();
+      this.applyComboCooldownDoubles();
+      if (outcome === 'hit') this.startNextComboSkill();
+      return;
+    }
     if (this.input.leftClicked && !this.player.isDead) {
       this.raycaster.setFromCamera(this.input.clickedMouse, this.cameraController.camera);
 
@@ -2612,6 +2750,8 @@ export class Game {
     amount: number,
     variant: FloatingDamageVariant = 'damage'
   ) {
+    // Every damaging hit a monster receives feeds the right-corner hit counter.
+    if (variant === 'damage') this.hitCounter.registerHit();
     const pos = worldPos.clone();
     pos.y += 1.6;
     const screenPos = pos.project(this.cameraController.camera);
@@ -2866,8 +3006,10 @@ export class Game {
     }
 
     const distance = boss.root.position.distanceTo(this.player.root.position);
-    const activeCast = this.bossSkills.phase === 'telegraph'
-      || this.bossEffects.activeObjectCount > 0;
+    // The boss only stands still while it winds up and for a short beat after
+    // the blast, never while the explosion visuals are still fading.
+    this.bossPostCastLock = Math.max(0, this.bossPostCastLock - Math.max(0, delta));
+    const activeCast = this.bossSkills.phase === 'telegraph' || this.bossPostCastLock > 0;
     const mode = decideBossCombatMode(
       distance,
       this.player.attackRange,
@@ -2881,7 +3023,6 @@ export class Game {
     if (!shouldUpdateBossSkills(mode)) {
       if (shouldClearBossTelegraph(mode, activeCast)) {
         this.bossSkills.reset();
-        this.bossEffects.clear();
       }
       return;
     }
@@ -2901,6 +3042,10 @@ export class Game {
         boss.playSkillAnimation(event.skill, event.secondsUntilImpact);
       }
       this.bossEffects.handle(event);
+      if (event.type === 'impact') {
+        this.shakeCameraForBossImpact(event);
+        this.bossPostCastLock = BOSS_POST_CAST_LOCK_SECONDS;
+      }
       Logger.info(
         'Boss:Skill',
         `${event.skill}: ${event.type === 'telegraph' ? 'aviso iniciado' : 'impacto'}.`
@@ -2929,7 +3074,10 @@ export class Game {
         this.player.root.position,
         record.enemy.damage
       );
-      for (const event of frame.events) this.miniBossEffects.handle(event);
+      for (const event of frame.events) {
+        this.miniBossEffects.handle(event);
+        if (event.type === 'impact') this.shakeCameraForMiniBossImpact(event);
+      }
       if (frame.damage > 0) {
         this.onMiniBossSkillHitPlayer(frame.damage);
       }
@@ -2942,12 +3090,38 @@ export class Game {
     this.miniBossEffects.update(delta);
   }
 
+  /** Heavy thud for mini-boss skills; weaker the farther the player stands. */
+  private shakeCameraForMiniBossImpact(event: MiniBossSkillEvent): void {
+    const anchor = event.skill === 'circle' ? event.target : event.origin;
+    const distance = anchor.distanceTo(this.player.root.position);
+    const falloff = THREE.MathUtils.clamp(1 - distance / 40, 0.25, 1);
+    this.miniBossShake.add(
+      (event.skill === 'circle' ? 0.9 : 0.7) * falloff,
+      event.skill === 'circle' ? 0.55 : 0.45
+    );
+  }
+
+  /** The boss skills hit harder than the mini-boss ones. */
+  private shakeCameraForBossImpact(event: BossSkillEvent): void {
+    const anchor = event.skill === 'rectangle' ? event.origin : event.target;
+    const distance = anchor.distanceTo(this.player.root.position);
+    const falloff = THREE.MathUtils.clamp(1 - distance / 70, 0.3, 1);
+    const shake = {
+      circle: [1.5, 0.8],
+      rectangle: [1.2, 0.7],
+      meteors: [0.9, 0.9],
+    }[event.skill];
+    this.miniBossShake.add(shake[0] * falloff, shake[1]);
+  }
+
   private stopMiniBossSkills(): void {
     this.miniBossSkillControllers.clear();
     this.miniBossEffects.clear();
+    this.miniBossShake.clear();
   }
 
   private stopBossSkills(): void {
+    this.bossPostCastLock = 0;
     this.bossSkills.reset();
     this.bossEffects.clear();
     this.bossEncounterActive = false;
@@ -2987,6 +3161,7 @@ export class Game {
       );
       this.updateHealthPlasma(delta);
       this.warriorSkills.update(delta, false, this.player.currentMoveSpeed > 0.05);
+      this.updateSkillCombo(delta);
       this.hud.setActiveAnimationTest(this.player.activeAnimationPreview);
       this.clampPlayerToArena();
       this.player.enforceSkillCastAnchor();
@@ -3026,6 +3201,7 @@ export class Game {
       this.cameraController.update(this.player.root.position, delta);
       this.mageVFX.applyCameraShake(this.cameraController.camera, delta);
       this.warriorSlashVFX.applyCameraShake(this.cameraController.camera, delta);
+      this.miniBossShake.apply(this.cameraController.camera, delta);
       this.hud.updatePlayerHealth(this.player.hp, this.player.maxHP);
       this.hud.updatePlayerFatigue(fatigue, this.fatigue.currentMaxFatigue);
       const skills = this.displayWarriorSkillsSnapshot(this.warriorSkills.snapshot());
@@ -3037,7 +3213,7 @@ export class Game {
           ? 'unavailable'
           : !this.hasAdminFreeSkills() && !this.fatigue.canUseSkills
             ? 'fatigue-exhausted'
-            : this.player.isAttackInSwing()
+            : this.player.isAttackInSwing() && this.skillCombo.snapshot().phase !== 'linked'
               ? 'busy'
               : this.profile.selectedClass === 'mage' && this.player.blocksSkillsWhileMoving
                 ? 'moving'

@@ -3,331 +3,147 @@ import {
   BOSS_SKILL_GEOMETRY,
   type BossSkillEvent,
 } from '../entities/BossSkillController';
+import type { MiniBossSkillEvent } from '../combat/MiniBossSkillController';
+import { MiniBossSkillEffects } from './MiniBossSkillEffects';
+import {
+  createCircleImpactMaterial,
+  createCircleScorchMaterial,
+  createCircleTelegraphMaterial,
+  createFireColumnMaterial,
+  createMeteorTrailMaterial,
+} from './MiniBossSkillShaders';
+import {
+  createParticleBurst,
+  getSoftParticleTexture,
+  smooth,
+} from './SkillParticles';
 
-interface ActiveEffect {
+/** Meteors are the only skill drawn here; circle and rectangle share the mini-boss renderer. */
+interface MeteorEffect {
   kind: 'warning' | 'impact';
   group: THREE.Group;
   age: number;
   duration: number;
   geometries: Set<THREE.BufferGeometry>;
   materials: Set<THREE.Material>;
-  impactLightIntensity?: number;
+  tick: ((age: number) => void) | null;
 }
 
-const WARNING_COLOR = 0xff1f16;
+/** Seconds each impact stays on screen. */
 const IMPACT_DURATIONS: Readonly<Record<BossSkillEvent['skill'], number>> = {
-  circle: 2.2,
-  rectangle: 1.1,
-  meteors: 1.3,
+  circle: 2.4,
+  rectangle: 2.1,
+  meteors: 1.6,
+};
+
+const METEOR_START_HEIGHT = 11;
+const METEOR_BLAST_RADIUS = 4.4;
+/** Point light each skill flashes on impact: [peak intensity, reach in meters]. */
+const IMPACT_LIGHT: Readonly<Record<BossSkillEvent['skill'], readonly [number, number]>> = {
+  circle: [9, 55],
+  rectangle: [6, 40],
+  meteors: [5, 22],
 };
 
 export class BossSkillEffects {
-  private readonly active: ActiveEffect[] = [];
+  private readonly meteors: MeteorEffect[] = [];
+  /**
+   * The boss circle and rectangle are the mini-boss skills drawn at twice the
+   * size, with heavier particles and a longer burn.
+   */
+  private readonly ground: MiniBossSkillEffects;
   // A luz permanece na cena, com intensidade zero quando não há impacto. Assim o
   // renderer não alterna a quantidade de PointLights e não recompila shaders na
   // primeira explosão de cada skill.
   private readonly impactLight = new THREE.PointLight(0xff4a10, 0, 40, 2);
+  private lightPeak = 0;
+  private lightAge = 0;
+  private lightDuration = 1;
+
+  /** Fired once per impact so the game can shake the camera, play audio, etc. */
+  public onImpact: ((event: BossSkillEvent) => void) | null = null;
 
   public constructor(private readonly scene: THREE.Scene) {
     this.impactLight.castShadow = false;
     this.scene.add(this.impactLight);
+    this.ground = new MiniBossSkillEffects(scene, {
+      geometry: BOSS_SKILL_GEOMETRY,
+      durationScale: 1.25,
+    });
   }
 
   public get activeObjectCount(): number {
-    return this.active.length;
+    return this.ground.activeObjectCount + this.meteors.length;
   }
 
   public handle(event: BossSkillEvent): void {
     this.clear();
-    if (event.type === 'telegraph') this.createTelegraph(event);
-    else this.createImpact(event);
+    if (event.skill === 'meteors') {
+      if (event.type === 'telegraph') this.createMeteorTelegraph(event);
+      else this.createMeteorImpact(event);
+    } else {
+      this.ground.handle(this.toGroundEvent(event));
+    }
+    if (event.type === 'impact') {
+      const [peak, reach] = IMPACT_LIGHT[event.skill];
+      this.lightPeak = peak;
+      this.lightAge = 0;
+      this.lightDuration = IMPACT_DURATIONS[event.skill];
+      this.impactLight.distance = reach;
+      this.impactLight.position.copy(event.target).add(new THREE.Vector3(0, 1.4, 0));
+      this.impactLight.intensity = peak;
+      this.onImpact?.(event);
+    }
   }
 
   public update(delta: number): void {
-    const elapsed = Math.max(0, delta);
-    for (let index = this.active.length - 1; index >= 0; index--) {
-      const effect = this.active[index];
+    const elapsed = Number.isFinite(delta) && delta > 0 ? delta : 0;
+    this.ground.update(elapsed);
+
+    for (let index = this.meteors.length - 1; index >= 0; index -= 1) {
+      const effect = this.meteors[index];
       effect.age += elapsed;
-      if (effect.kind === 'warning') {
-        this.updateWarning(effect);
-        continue;
-      }
-      const progress = THREE.MathUtils.clamp(effect.age / effect.duration, 0, 1);
-      effect.group.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        if (mesh.isMesh && mesh.userData.fireBlast) {
-          mesh.scale.setScalar(1 + progress * 3);
-        }
-        if (mesh.isMesh && mesh.userData.fireParticle) {
-          mesh.position.y += elapsed * (0.8 + mesh.userData.riseSpeed);
-        }
-      });
-      effect.materials.forEach((material) => {
-        if ('opacity' in material) {
-          (material as THREE.Material & { opacity: number }).opacity = 1 - progress;
-        }
-      });
-      this.impactLight.intensity =
-        (1 - progress) * (effect.impactLightIntensity ?? 0);
-      if (effect.age >= effect.duration) this.disposeAt(index);
+      effect.tick?.(effect.age);
+      if (effect.kind === 'impact' && effect.age >= effect.duration) this.disposeMeteor(index);
+      // A warning disposes when the controller emits the impact event.
+    }
+
+    if (this.lightPeak > 0) {
+      this.lightAge += elapsed;
+      const progress = THREE.MathUtils.clamp(this.lightAge / this.lightDuration, 0, 1);
+      // Hard flash that decays quickly, then a faint ember glow.
+      const flicker = 1 + Math.sin(this.lightAge * 38) * 0.08;
+      this.impactLight.intensity = this.lightPeak * Math.pow(1 - progress, 2.4) * flicker;
+      if (progress >= 1) this.stopLight();
     }
   }
 
   public clear(): void {
-    for (let index = this.active.length - 1; index >= 0; index--) {
-      this.disposeAt(index);
-    }
+    this.ground.clear();
+    for (let index = this.meteors.length - 1; index >= 0; index -= 1) this.disposeMeteor(index);
+    this.stopLight();
   }
 
-  private createTelegraph(event: BossSkillEvent): void {
-    const effect = this.createEffect('warning', event.secondsUntilImpact);
-    const material = new THREE.MeshBasicMaterial({
-      color: WARNING_COLOR,
-      transparent: true,
-      opacity: 0.24,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    });
-    effect.materials.add(material);
-
-    if (event.skill === 'circle') {
-      this.addGroundCircle(effect, event.target, BOSS_SKILL_GEOMETRY.circleRadius, material);
-    } else if (event.skill === 'meteors') {
-      const coreGeometry = new THREE.SphereGeometry(0.38, 10, 8);
-      const glowGeometry = new THREE.SphereGeometry(0.62, 10, 8);
-      const coreMaterial = material.clone();
-      coreMaterial.color.setHex(0xffc21a);
-      coreMaterial.opacity = 1;
-      const glowMaterial = material.clone();
-      glowMaterial.color.setHex(0xff4b0a);
-      glowMaterial.opacity = 0.52;
-      effect.geometries.add(coreGeometry);
-      effect.geometries.add(glowGeometry);
-      effect.materials.add(coreMaterial);
-      effect.materials.add(glowMaterial);
-      event.meteorPoints.forEach((point) => {
-        this.addGroundCircle(effect, point, BOSS_SKILL_GEOMETRY.meteorRadius, material);
-        const core = new THREE.Mesh(coreGeometry, coreMaterial);
-        core.name = 'boss-meteor-core';
-        core.position.set(point.x, 11, point.z);
-        core.userData.groundY = point.y + 0.25;
-        core.castShadow = false;
-        const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-        glow.name = 'boss-meteor-fireball';
-        glow.castShadow = false;
-        core.add(glow);
-        effect.group.add(core);
-      });
-      const smokeGeometry = new THREE.BufferGeometry();
-      smokeGeometry.setAttribute(
-        'position',
-        new THREE.Float32BufferAttribute(new Float32Array(event.meteorPoints.length * 2 * 3), 3)
-      );
-      const smokeMaterial = new THREE.PointsMaterial({
-        color: 0x5c4b48,
-        size: 0.72,
-        transparent: true,
-        opacity: 0.58,
-        depthWrite: false,
-        sizeAttenuation: true,
-      });
-      const smoke = new THREE.Points(smokeGeometry, smokeMaterial);
-      smoke.name = 'boss-meteor-smoke';
-      smoke.userData.meteorPoints = event.meteorPoints.map((point) => point.clone());
-      effect.geometries.add(smokeGeometry);
-      effect.materials.add(smokeMaterial);
-      effect.group.add(smoke);
-    } else {
-      this.addGroundRectangle(
-        effect,
-        event.origin,
-        event.target,
-        BOSS_SKILL_GEOMETRY.rectangleWidth,
-        BOSS_SKILL_GEOMETRY.rectangleLength,
-        material
-      );
-    }
-
-    this.scene.add(effect.group);
-    this.active.push(effect);
+  private stopLight(): void {
+    this.lightPeak = 0;
+    this.impactLight.intensity = 0;
   }
 
-  private createImpact(event: BossSkillEvent): void {
-    const effect = this.createEffect('impact', IMPACT_DURATIONS[event.skill]);
-    const points = this.impactPoints(event);
-    const coreGeometry = new THREE.SphereGeometry(0.2, 8, 6);
-    const blastGeometry = new THREE.CircleGeometry(0.55, 20);
-    const fireMaterial = new THREE.MeshBasicMaterial({
-      color: 0xff7a0a,
-      transparent: true,
-      opacity: 1,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    const blastMaterial = new THREE.MeshBasicMaterial({
-      color: 0xff2512,
-      transparent: true,
-      opacity: 0.8,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    });
-    effect.geometries.add(coreGeometry);
-    effect.geometries.add(blastGeometry);
-    effect.materials.add(fireMaterial);
-    effect.materials.add(blastMaterial);
-
-    points.forEach((point, pointIndex) => {
-      const blast = new THREE.Mesh(blastGeometry, blastMaterial);
-      blast.name = 'boss-fire-blast';
-      blast.rotation.x = -Math.PI / 2;
-      blast.position.set(point.x, point.y + 0.08, point.z);
-      blast.castShadow = false;
-      blast.userData.fireBlast = true;
-      effect.group.add(blast);
-      const particleCount = event.skill === 'circle' ? 2 : 3;
-      for (let particleIndex = 0; particleIndex < particleCount; particleIndex++) {
-        const angle = (particleIndex / particleCount) * Math.PI * 2 + pointIndex * 0.37;
-        const particle = new THREE.Mesh(coreGeometry, fireMaterial);
-        particle.position.set(
-          point.x + Math.cos(angle) * 0.35,
-          point.y + 0.2 + particleIndex * 0.08,
-          point.z + Math.sin(angle) * 0.35
-        );
-        particle.scale.setScalar(1 + (particleIndex % 2) * 0.45);
-        particle.userData.fireParticle = true;
-        particle.userData.riseSpeed = (particleIndex % 3) * 0.35;
-        particle.castShadow = false;
-        effect.group.add(particle);
-      }
-    });
-    effect.impactLightIntensity = event.skill === 'circle' ? 7 : 4;
-    this.impactLight.distance = event.skill === 'circle' ? 40 : 14;
-    this.impactLight.position.copy(event.target).add(new THREE.Vector3(0, 1.2, 0));
-    this.impactLight.intensity = effect.impactLightIntensity;
-
-    this.scene.add(effect.group);
-    this.active.push(effect);
+  private toGroundEvent(event: BossSkillEvent): MiniBossSkillEvent {
+    return {
+      type: event.type,
+      skill: event.skill === 'rectangle' ? 'rectangle' : 'circle',
+      secondsUntilImpact: event.secondsUntilImpact,
+      origin: event.origin,
+      target: event.target,
+    };
   }
 
-  private updateWarning(effect: ActiveEffect): void {
-    const pulse = 0.2 + (Math.sin(effect.age * 7) + 1) * 0.08;
-    effect.materials.forEach((material) => {
-      if (
-        material instanceof THREE.MeshBasicMaterial &&
-        material.color.getHex() === WARNING_COLOR
-      ) {
-        (material as THREE.Material & { opacity: number }).opacity = pulse;
-      }
-    });
-    const meteorProgress = THREE.MathUtils.clamp(
-      effect.age / Math.max(effect.duration, 1e-9),
-      0,
-      1
-    );
-    effect.group.traverse((object) => {
-      if (object.name !== 'boss-meteor-core') return;
-      object.position.y = THREE.MathUtils.lerp(11, object.userData.groundY, meteorProgress);
-      object.rotation.x += 0.08;
-      object.rotation.z += 0.12;
-    });
-    const smoke = effect.group.getObjectByName('boss-meteor-smoke') as THREE.Points | undefined;
-    if (smoke) {
-      const positions = smoke.geometry.getAttribute('position') as THREE.BufferAttribute;
-      const points = smoke.userData.meteorPoints as THREE.Vector3[];
-      points.forEach((point, index) => {
-        const coreY = THREE.MathUtils.lerp(11, point.y + 0.25, meteorProgress);
-        for (let trail = 0; trail < 2; trail++) {
-          const offset = index * 2 + trail;
-          const sway = Math.sin(effect.age * 6 + index * 0.73 + trail) * 0.18;
-          positions.setXYZ(
-            offset,
-            point.x + sway,
-            coreY + 0.75 + trail * 0.72,
-            point.z - sway * 0.6
-          );
-        }
-      });
-      positions.needsUpdate = true;
-    }
-  }
+  /* ---------------------------------------------------------------- */
+  /* Meteors                                                           */
+  /* ---------------------------------------------------------------- */
 
-  private addGroundCircle(
-    effect: ActiveEffect,
-    point: THREE.Vector3,
-    radius: number,
-    material: THREE.Material
-  ): void {
-    const geometry = new THREE.CircleGeometry(radius, 40);
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(point.x, point.y + 0.05, point.z);
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    effect.geometries.add(geometry);
-    effect.group.add(mesh);
-  }
-
-  private addGroundRectangle(
-    effect: ActiveEffect,
-    origin: THREE.Vector3,
-    target: THREE.Vector3,
-    width: number,
-    length: number,
-    material: THREE.Material
-  ): void {
-    const direction = new THREE.Vector3().subVectors(target, origin);
-    direction.y = 0;
-    if (direction.lengthSq() < 1e-9) direction.set(0, 0, 1);
-    direction.normalize();
-    const geometry = new THREE.PlaneGeometry(width, length);
-    const group = new THREE.Group();
-    group.position.copy(origin).addScaledVector(direction, length * 0.5);
-    group.position.y += 0.05;
-    group.rotation.y = Math.atan2(direction.x, direction.z);
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    group.add(mesh);
-    effect.geometries.add(geometry);
-    effect.group.add(group);
-  }
-
-  private impactPoints(event: BossSkillEvent): THREE.Vector3[] {
-    if (event.skill === 'meteors') return event.meteorPoints.map((point) => point.clone());
-    if (event.skill === 'circle') {
-      const points = [event.target.clone()];
-      for (const [count, radiusScale] of [[8, 0.42], [12, 0.82]] as const) {
-        for (let index = 0; index < count; index++) {
-          const angle = (index / count) * Math.PI * 2;
-          points.push(event.target.clone().add(new THREE.Vector3(
-            Math.cos(angle) * BOSS_SKILL_GEOMETRY.circleRadius * radiusScale,
-            0,
-            Math.sin(angle) * BOSS_SKILL_GEOMETRY.circleRadius * radiusScale
-          )));
-        }
-      }
-      return points;
-    }
-    const direction = new THREE.Vector3().subVectors(event.target, event.origin);
-    direction.y = 0;
-    if (direction.lengthSq() < 1e-9) direction.set(0, 0, 1);
-    direction.normalize();
-    const lateral = new THREE.Vector3(-direction.z, 0, direction.x);
-    const points: THREE.Vector3[] = [];
-    for (let row = 0; row < 8; row++) {
-      for (const side of [-0.38, 0, 0.38]) {
-        points.push(event.origin.clone()
-          .addScaledVector(direction, (row / 7) * BOSS_SKILL_GEOMETRY.rectangleLength)
-          .addScaledVector(lateral, side * BOSS_SKILL_GEOMETRY.rectangleWidth));
-      }
-    }
-    return points;
-  }
-
-  private createEffect(kind: ActiveEffect['kind'], duration: number): ActiveEffect {
+  private createMeteorEffect(kind: MeteorEffect['kind'], duration: number): MeteorEffect {
     return {
       kind,
       group: new THREE.Group(),
@@ -335,15 +151,269 @@ export class BossSkillEffects {
       duration,
       geometries: new Set(),
       materials: new Set(),
+      tick: null,
     };
   }
 
-  private disposeAt(index: number): void {
-    const [effect] = this.active.splice(index, 1);
-    if (effect.kind === 'impact') this.impactLight.intensity = 0;
+  /**
+   * Warning: a glowing target ring under every meteor plus a fireball with a
+   * flaming tail falling in sync with the countdown.
+   */
+  private createMeteorTelegraph(event: BossSkillEvent): void {
+    const effect = this.createMeteorEffect('warning', event.secondsUntilImpact);
+    const radius = BOSS_SKILL_GEOMETRY.meteorRadius;
+
+    const ringMaterial = createCircleTelegraphMaterial();
+    const ringGeometry = new THREE.CircleGeometry(radius, 40);
+    const ringUniforms = ringMaterial.uniforms;
+    effect.materials.add(ringMaterial);
+    effect.geometries.add(ringGeometry);
+
+    const coreGeometry = new THREE.SphereGeometry(0.34, 14, 10);
+    const glowGeometry = new THREE.SphereGeometry(0.82, 14, 10);
+    const coreMaterial = new THREE.MeshBasicMaterial({
+      color: 0xfff2c0,
+      transparent: true,
+      opacity: 1,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff5a0c,
+      transparent: true,
+      opacity: 0.6,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    const trailMaterial = createMeteorTrailMaterial();
+    const tailLength = 5.5;
+    const trailGeometry = new THREE.ConeGeometry(0.82, tailLength, 18, 1, true);
+    trailGeometry.translate(0, tailLength / 2, 0);
+    effect.geometries.add(coreGeometry);
+    effect.geometries.add(glowGeometry);
+    effect.geometries.add(trailGeometry);
+    effect.materials.add(coreMaterial);
+    effect.materials.add(glowMaterial);
+    effect.materials.add(trailMaterial);
+
+    event.meteorPoints.forEach((point) => {
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring.name = 'boss-meteor-warning';
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(point.x, point.y + 0.05, point.z);
+      ring.castShadow = false;
+      ring.receiveShadow = false;
+      ring.renderOrder = 3;
+      effect.group.add(ring);
+
+      const core = new THREE.Mesh(coreGeometry, coreMaterial);
+      core.name = 'boss-meteor-core';
+      core.position.set(point.x, METEOR_START_HEIGHT, point.z);
+      core.userData.groundY = point.y + 0.25;
+      core.castShadow = false;
+      const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+      glow.name = 'boss-meteor-fireball';
+      glow.castShadow = false;
+      const trail = new THREE.Mesh(trailGeometry, trailMaterial);
+      trail.name = 'boss-meteor-trail';
+      trail.castShadow = false;
+      trail.frustumCulled = false;
+      core.add(glow, trail);
+      effect.group.add(core);
+    });
+
+    const smokeGeometry = new THREE.BufferGeometry();
+    smokeGeometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(new Float32Array(event.meteorPoints.length * 3 * 3), 3)
+    );
+    const smokeMaterial = new THREE.PointsMaterial({
+      map: getSoftParticleTexture(),
+      color: 0x5c4b48,
+      size: 1.7,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+      sizeAttenuation: true,
+    });
+    const smoke = new THREE.Points(smokeGeometry, smokeMaterial);
+    smoke.name = 'boss-meteor-smoke';
+    smoke.frustumCulled = false;
+    smoke.userData.meteorPoints = event.meteorPoints.map((point) => point.clone());
+    effect.geometries.add(smokeGeometry);
+    effect.materials.add(smokeMaterial);
+    effect.group.add(smoke);
+
+    const phase = Math.random() * 10;
+    effect.tick = (age) => {
+      const progress = THREE.MathUtils.clamp(age / Math.max(effect.duration, 1e-9), 0, 1);
+      ringUniforms.uTime.value = age + phase;
+      ringUniforms.uProgress.value = progress;
+      ringUniforms.uIntro.value = smooth(0, 0.18, age);
+      trailMaterial.uniforms.uTime.value = age;
+
+      // Fireballs accelerate towards the ground and flare brighter as they land.
+      const fall = progress * progress * 0.35 + progress * 0.65;
+      coreMaterial.opacity = 0.7 + progress * 0.3;
+      glowMaterial.opacity = 0.45 + progress * 0.4;
+      effect.group.traverse((object) => {
+        if (object.name !== 'boss-meteor-core') return;
+        object.position.y = THREE.MathUtils.lerp(METEOR_START_HEIGHT, object.userData.groundY, fall);
+        object.scale.setScalar(0.85 + progress * 0.35);
+      });
+
+      const positions = smokeGeometry.getAttribute('position') as THREE.BufferAttribute;
+      const points = smoke.userData.meteorPoints as THREE.Vector3[];
+      points.forEach((point, index) => {
+        const coreY = THREE.MathUtils.lerp(METEOR_START_HEIGHT, point.y + 0.25, fall);
+        for (let trail = 0; trail < 3; trail += 1) {
+          const offset = index * 3 + trail;
+          const sway = Math.sin(age * 6 + index * 0.73 + trail) * 0.22;
+          positions.setXYZ(
+            offset,
+            point.x + sway,
+            coreY + 1.6 + trail * 1.5,
+            point.z - sway * 0.6
+          );
+        }
+      });
+      positions.needsUpdate = true;
+    };
+    effect.tick(0);
+
+    this.scene.add(effect.group);
+    this.meteors.push(effect);
+  }
+
+  /**
+   * Impact: every meteor lands with its own flash, shockwave, lava cracks, fire
+   * column and scorch mark, while shared bursts of sparks / embers / smoke fly
+   * from all impact points.
+   */
+  private createMeteorImpact(event: BossSkillEvent): void {
+    const effect = this.createMeteorEffect('impact', IMPACT_DURATIONS.meteors);
+    const duration = effect.duration;
+    const seed = Math.random() * 40;
+    const flashRadius = METEOR_BLAST_RADIUS;
+    const k = flashRadius / 8.75;
+
+    const scorchMaterial = createCircleScorchMaterial(duration, seed);
+    const scorchGeometry = new THREE.CircleGeometry(flashRadius * 0.95, 32);
+    const flashMaterial = createCircleImpactMaterial(flashRadius / k, seed);
+    const flashGeometry = new THREE.CircleGeometry(flashRadius, 48);
+    const columnMaterial = createFireColumnMaterial(seed);
+    const columnGeometry = new THREE.CylinderGeometry(1, 1.5, 1, 24, 1, true);
+    columnGeometry.translate(0, 0.5, 0);
+    effect.geometries.add(scorchGeometry);
+    effect.geometries.add(flashGeometry);
+    effect.geometries.add(columnGeometry);
+    effect.materials.add(scorchMaterial);
+    effect.materials.add(flashMaterial);
+    effect.materials.add(columnMaterial);
+
+    const columns: THREE.Mesh[] = [];
+    event.meteorPoints.forEach((point) => {
+      const scorch = new THREE.Mesh(scorchGeometry, scorchMaterial);
+      scorch.name = 'boss-meteor-scorch';
+      scorch.rotation.x = -Math.PI / 2;
+      scorch.position.set(point.x, point.y + 0.06, point.z);
+      scorch.renderOrder = 1;
+      const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+      flash.name = 'boss-fire-blast';
+      flash.rotation.x = -Math.PI / 2;
+      flash.position.set(point.x, point.y + 0.08, point.z);
+      flash.renderOrder = 4;
+      const column = new THREE.Mesh(columnGeometry, columnMaterial);
+      column.name = 'boss-meteor-fire-column';
+      column.position.set(point.x, point.y, point.z);
+      column.renderOrder = 5;
+      columns.push(column);
+      effect.group.add(scorch, flash, column);
+    });
+
+    const root = new THREE.Group();
+    effect.group.add(root);
+    const pickPoint = (out: THREE.Vector3): THREE.Vector3 => {
+      const point = event.meteorPoints[Math.floor(Math.random() * event.meteorPoints.length)];
+      return out.copy(point);
+    };
+    const scratch = new THREE.Vector3();
+    const pointCount = Math.max(1, event.meteorPoints.length);
+    const bursts = [
+      createParticleBurst(effect, root, {
+        count: pointCount * 8,
+        size: 0.42,
+        color: 0xffa23a,
+        additive: true,
+        opacity: 1,
+        life: [0.6, 1.3],
+        gravity: 20,
+        drag: 0.9,
+        spawn: (_i, out) => {
+          pickPoint(scratch);
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 3 + Math.random() * 9;
+          out.position.set(scratch.x, scratch.y + 0.2, scratch.z);
+          out.velocity.set(Math.cos(angle) * speed, 5 + Math.random() * 11, Math.sin(angle) * speed);
+          out.delay = Math.random() * 0.1;
+        },
+      }),
+      createParticleBurst(effect, root, {
+        count: pointCount * 4,
+        size: 0.3,
+        color: 0xffd47a,
+        additive: true,
+        opacity: 1,
+        life: [1.0, 1.7],
+        gravity: -1.5,
+        drag: 0.5,
+        spawn: (_i, out) => {
+          pickPoint(scratch);
+          out.position.set(scratch.x + (Math.random() - 0.5) * 3, scratch.y + 0.1, scratch.z + (Math.random() - 0.5) * 3);
+          out.velocity.set((Math.random() - 0.5) * 2, 2 + Math.random() * 4, (Math.random() - 0.5) * 2);
+          out.delay = 0.05 + Math.random() * 0.35;
+        },
+      }),
+      createParticleBurst(effect, root, {
+        count: Math.max(8, Math.round(pointCount * 1.2)),
+        size: 3.4,
+        growth: 0.7,
+        color: 0x3a312e,
+        additive: false,
+        opacity: 0.5,
+        life: [1.1, 1.5],
+        gravity: -0.35,
+        drag: 1.4,
+        spawn: (_i, out) => {
+          pickPoint(scratch);
+          out.position.set(scratch.x, scratch.y + 0.4, scratch.z);
+          out.velocity.set((Math.random() - 0.5) * 3, 1.4 + Math.random() * 2, (Math.random() - 0.5) * 3);
+          out.delay = 0.05 + Math.random() * 0.2;
+        },
+      }),
+    ];
+
+    effect.tick = (age) => {
+      flashMaterial.uniforms.uAge.value = age;
+      scorchMaterial.uniforms.uAge.value = age;
+      columnMaterial.uniforms.uAge.value = age;
+      const width = 1.7 * (1 + age * 0.7);
+      const height = 7 * (0.5 + 0.5 * smooth(0, 0.12, age));
+      for (const column of columns) column.scale.set(width, height, width);
+      for (const update of bursts) update(age);
+    };
+    effect.tick(0);
+
+    this.scene.add(effect.group);
+    this.meteors.push(effect);
+  }
+
+  private disposeMeteor(index: number): void {
+    const [effect] = this.meteors.splice(index, 1);
     effect.group.removeFromParent();
     effect.geometries.forEach((geometry) => geometry.dispose());
     effect.materials.forEach((material) => material.dispose());
   }
-
 }

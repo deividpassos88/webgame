@@ -331,14 +331,43 @@ describe('Player sword combo integration', () => {
     expect(player.root.position.z).toBeLessThan(0);
   });
 
-  it('keeps a skill attack active while moving in its input direction', async () => {
+  it('plants the warrior while a skill plays and ignores walking input', async () => {
     const player = await loadedPlayerWithSword();
 
     expect(player.tryStartSkillAttack('triplo_ataque')).toBe(true);
+    const start = player.root.position.clone();
+    expect(player.isWarriorSkillMovementLocked()).toBe(true);
+
+    player.setKeyboardMoving(true);
     player.moveByDirection(new THREE.Vector3(-1, 0, 1), 0.1);
+    player.moveTo(new THREE.Vector3(5, 0, 5));
+    expect(player.tryDash(new THREE.Vector3(1, 0, 0))).toBe(false);
+    player.update(0.1);
 
     expect(player.isAttackInSwing()).toBe(true);
     expect(player.activeWarriorAttackId).toBe('triplo_ataque');
+    expect(player.root.position.distanceTo(start)).toBeLessThan(1e-6);
+    expect(player.moveTarget).toBeNull();
+  });
+
+  it('releases walking shortly before the skill ends', async () => {
+    const player = await loadedPlayerWithSword();
+
+    expect(player.tryStartSkillAttack('triplo_ataque')).toBe(true);
+    const start = player.root.position.clone();
+    player.setKeyboardMoving(true);
+
+    // Run the skill until only the release window is left.
+    let guard = 0;
+    while (player.isWarriorSkillMovementLocked() && guard++ < 400) {
+      player.moveByDirection(new THREE.Vector3(-1, 0, 1), 0.01);
+      player.update(0.01);
+    }
+    expect(guard).toBeLessThan(400);
+    expect(player.isCastingSkill).toBe(true);
+    expect(player.root.position.distanceTo(start)).toBeLessThan(1e-6);
+
+    player.moveByDirection(new THREE.Vector3(-1, 0, 1), 0.1);
     expect(player.root.position.x).toBeLessThan(0);
     expect(player.root.position.z).toBeGreaterThan(0);
   });
@@ -601,31 +630,53 @@ describe('Player sword combo integration', () => {
     expect(player.hp).toBe(90);
   });
 
-  it('grants 1.5 seconds of action invulnerability to an accepted skill', async () => {
+  it('gives skills no damage immunity at all', async () => {
     const player = await loadedPlayerWithSword();
 
     expect(player.tryStartSkillAttack('triplo_ataque')).toBe(true);
-    player.takeDamage(23);
+    expect(player.actionInvulnerabilityRemaining).toBe(0);
     player.takeBossSkillDamage(19);
+    expect(player.hp).toBe(81);
+
+    player.update(0.5);
+    player.takeBossSkillDamage(19);
+    expect(player.hp).toBe(62);
+  });
+
+  it('is immune to damage only while the Shift dash is happening, start to end', async () => {
+    const player = await loadedPlayerWithSword();
+
+    expect(player.tryDash(new THREE.Vector3(1, 0, 0))).toBe(true);
+    expect(player.isDashing).toBe(true);
+    player.takeDamage(30);
+    player.takeBossSkillDamage(30);
     expect(player.hp).toBe(100);
 
-    player.update(0.1);
-    player.update(1.49);
-    player.takeBossSkillDamage(19);
+    // 5.4 m at 30 m/s: the dash lasts exactly 0.18 s.
+    player.update(0.17);
+    expect(player.isDashing).toBe(true);
+    player.takeBossSkillDamage(30);
     expect(player.hp).toBe(100);
 
     player.update(0.02);
-    player.takeBossSkillDamage(19);
-    expect(player.hp).toBe(81);
+    expect(player.isDashing).toBe(false);
+    player.takeBossSkillDamage(30);
+    expect(player.hp).toBe(70);
   });
 
-  it('does not spend skill invulnerability on the frame that accepted the input', async () => {
+  it('chains a skill after the previous one delivered its damage, cutting the recovery', async () => {
     const player = await loadedPlayerWithSword();
 
     expect(player.tryStartSkillAttack('triplo_ataque')).toBe(true);
-    player.update(0.1);
+    expect(player.canChainSkill).toBe(false);
+    expect(player.tryStartSkillAttack('ataque_giratorio', { chain: true })).toBe(false);
 
-    expect(player.actionInvulnerabilityRemaining).toBe(1.5);
+    for (let step = 0; step < 40 && !player.canChainSkill; step += 1) player.update(0.05);
+    expect(player.canChainSkill).toBe(true);
+    expect(player.isAttackInSwing()).toBe(true);
+
+    expect(player.tryStartSkillAttack('ataque_giratorio', { chain: true })).toBe(true);
+    expect(player.activeWarriorAttackId).toBe('ataque_giratorio');
   });
 
   it('blocks repeated ordinary damage for 0.4 second after a successful hit', async () => {
@@ -750,5 +801,20 @@ describe('Player sword combo integration', () => {
     player.setKeyboardMoving(false);
     player.update(0.05);
     expect(player.isLocomotionBlendActive).toBe(false);
+  });
+
+  it('runs the original correndo clip at 1x and caps the speed buff at 1.5x', async () => {
+    const player = await loadedPlayerWithSword();
+    player.setKeyboardMoving(true);
+
+    player.moveByDirection(new THREE.Vector3(1, 0, 0), 0.016, true);
+    const run = (player as unknown as { actions: Record<string, THREE.AnimationAction> }).actions.running;
+    // Starting to move (speed still ramping up) never slows the clip into a walk.
+    expect(run.getEffectiveTimeScale()).toBeCloseTo(1);
+
+    player.speedMultiplier = 3;
+    expect(player.speedMultiplier).toBe(1.5);
+    player.moveByDirection(new THREE.Vector3(1, 0, 0), 0.016, true);
+    expect(run.getEffectiveTimeScale()).toBeCloseTo(1.5);
   });
 });

@@ -7,6 +7,10 @@ function standardMaterials(root: THREE.Object3D): THREE.MeshStandardMaterial[] {
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh) return;
+    // The ice cocoon has its own materials; this helper inspects the body only.
+    for (let node: THREE.Object3D | null = mesh; node; node = node.parent) {
+      if (node.name === 'EnemyIceCrystals') return;
+    }
     const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const material of list) {
       if (material instanceof THREE.MeshStandardMaterial) materials.push(material);
@@ -30,7 +34,7 @@ describe('Mage skill impact on enemies', () => {
     expect(enemy.root.position.x).toBeGreaterThan(0.2);
   });
 
-  it('tints the frozen body blue and wraps it in white mist and smoke', () => {
+  it('tints the frozen body blue and wraps it in frost fog and glitter', () => {
     const enemy = new Enemy({ position: new THREE.Vector3(), hp: 100, speed: 4, detectionRange: 20 });
     enemy.applyMageFreeze(1);
     enemy.update(0.4, new THREE.Vector3(6, 0, 0), () => undefined);
@@ -42,6 +46,12 @@ describe('Mage skill impact on enemies', () => {
     }
     expect(enemy.root.getObjectByName('EnemyIceMist')?.visible).toBe(true);
     expect(enemy.root.getObjectByName('EnemyIceSmoke')?.visible).toBe(true);
+    // Ground spikes (no cocoon over the body), orbiting shards and a frosted ground patch.
+    expect(enemy.root.getObjectByName('EnemyIceCrystals')?.visible).toBe(true);
+    expect(enemy.root.getObjectByName('EnemyIceShell')).toBeUndefined();
+    expect(enemy.root.getObjectByName('EnemyIceSpikes')?.children.length).toBeGreaterThan(5);
+    expect(enemy.root.getObjectByName('EnemyIceOrbit')).toBeDefined();
+    expect(enemy.root.getObjectByName('EnemyIceFrostGround')).toBeDefined();
 
     enemy.update(0.7, new THREE.Vector3(6, 0, 0), () => undefined);
     for (const material of standardMaterials(enemy.root)) {
@@ -49,6 +59,7 @@ describe('Mage skill impact on enemies', () => {
     }
     expect(enemy.root.getObjectByName('EnemyIceMist')?.visible).toBe(false);
     expect(enemy.root.getObjectByName('EnemyIceSmoke')?.visible).toBe(false);
+    expect(enemy.root.getObjectByName('EnemyIceCrystals')?.visible).toBe(false);
   });
 
   it('slows running to half speed for 3s without blocking an attack in range', () => {

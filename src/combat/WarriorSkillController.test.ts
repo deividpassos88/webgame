@@ -178,3 +178,27 @@ describe('WarriorSkillController', () => {
     ).toBe(true);
   });
 });
+
+describe('combo cooldown multiplier', () => {
+  it('makes a skill recharge twice as slowly, once per activation', () => {
+    const controller = new WarriorSkillController();
+    controller.tryActivate('ataque_giratorio');
+    controller.update(1, false);
+
+    expect(controller.multiplyCooldown('ataque_giratorio')).toBe(true);
+    expect(controller.multiplyCooldown('ataque_giratorio')).toBe(false);
+    const state = controller.snapshot().skills.ataque_giratorio;
+    expect(state.cooldown).toBe(12);
+    expect(state.cooldownRemaining).toBeCloseTo(11, 5);
+
+    controller.update(11, false);
+    controller.update(0.1, false);
+    expect(controller.snapshot().skills.ataque_giratorio.cooldownRemaining).toBe(0);
+    expect(controller.tryActivate('ataque_giratorio').kind).toBe('activated');
+    expect(controller.snapshot().skills.ataque_giratorio.cooldown).toBe(6);
+  });
+
+  it('ignores skills that are not on cooldown', () => {
+    expect(new WarriorSkillController().multiplyCooldown('ataque_giratorio')).toBe(false);
+  });
+});
