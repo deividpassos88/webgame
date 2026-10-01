@@ -34,6 +34,19 @@ describe('resolveWarriorAreaTargets', () => {
     expect(resolveWarriorAreaTargets(records, { ...event, attackId: 'triplo_ataque' }, getWarriorSkillArea('triplo_ataque')).map(({ id }) => id)).toEqual(['front']);
   });
 
+  it('centers each Flame Strike damage arc on the animated sword-sweep heading', () => {
+    const records = [record('sword-sweep', 3, 0), record('old-facing', 0, 3), record('behind-sweep', -3, 0)];
+    const flameHit = {
+      ...event,
+      attackId: 'triplo_ataque' as const,
+      forward: new THREE.Vector3(1, 0, 0),
+    };
+    expect(
+      resolveWarriorAreaTargets(records, flameHit, getWarriorSkillArea('triplo_ataque'))
+        .map(({ id }) => id)
+    ).toEqual(['sword-sweep']);
+  });
+
   it('uses the full circle around the warrior for the jump skill', () => {
     // O impacto da espada no chão alcança 4 metros em volta do herói.
     const records = [record('forward', 0, 4), record('outside', 0, 4.01), record('far-behind', 0, -6)];

@@ -28,10 +28,15 @@ import {
 import {
   WARRIOR_SKILLS,
   getWarriorSkill,
+  warriorSkillCooldown,
+  warriorSkillDamageMultiplier,
+  warriorSkillElement,
   type WarriorSkillId,
 } from '../combat/WarriorSkillCatalog';
 import { mageSkillFatiguePercent } from '../combat/MageSkillCost';
+import { MAGE_MAX_RANGE_METERS } from '../combat/DistanceDamage';
 import { classSkillAsset, renderSkillStars } from './WarriorSkillAssets';
+import { formatSkillCooldown } from './SkillCooldownText';
 import {
   itemTooltipDataAttributes,
   renderEquipmentSlotContent,
@@ -220,7 +225,7 @@ const SKILL_TIP_DESCRIPTIONS: Readonly<Record<WarriorSkillId, string>> = {
   ataque_giratorio_2: 'Giro glacial: fere e congela os inimigos próximos (gelo).',
   pulo_atacando: 'Salto com impacto: a espada rasga o chão e levanta inimigos em chamas num raio de 4 m.',
   triplo_ataque: 'Golpes em chamas que queimam os inimigos na frente (fogo).',
-  corte_duplo: 'Dois cortes rápidos e largos à frente do herói.',
+  corte_duplo: 'Três cortes de fogo sombrio, cada um guiado pela lâmina, lançam um leque duas vezes maior até 10 m.',
 };
 
 /** One tooltip card with everything a player needs to understand the skill. */
@@ -229,25 +234,41 @@ function buildLobbySkillTip(
   playerClass: PlayableCharacterId
 ): string {
   const skill = getWarriorSkill(skillId);
-  const elementLabel = skill.element === 'ice'
-    ? 'Gelo'
-    : skill.element === 'fire'
-      ? 'Fogo'
-      : 'Físico';
+  const skillElement = warriorSkillElement(skillId, playerClass);
+  const elementLabel = playerClass === 'paladin' && skillId === 'corte_duplo'
+    ? 'Fogo + Trevas'
+    : playerClass === 'mage' && skillId === 'corte_duplo'
+      ? 'Lava'
+      : skillElement === 'ice'
+        ? 'Gelo'
+        : skillElement === 'fire'
+          ? 'Fogo'
+          : 'Físico';
+  const damageLabel = playerClass === 'paladin' && skillId === 'corte_duplo'
+    ? '×2 do dano anterior'
+    : `×${warriorSkillDamageMultiplier(skillId, playerClass).toFixed(2)} do ataque`;
+  const areaLabel = playerClass === 'mage' && skillId === 'corte_duplo'
+    ? `projétil até ${MAGE_MAX_RANGE_METERS} m`
+    : playerClass === 'paladin' && skillId === 'corte_duplo'
+      ? 'leque frontal · 125° · raio 10 m'
+      : `raio ${skill.area.radius.toFixed(1)}m`;
+  const description = playerClass === 'mage' && skillId === 'corte_duplo'
+    ? 'Magia de lava da Maga: um corte arcano lançado contra o alvo.'
+    : SKILL_TIP_DESCRIPTIONS[skillId];
   const cost = playerClass === 'mage'
     ? `${skill.energyCost} MP · ${mageSkillFatiguePercent(skill.id)}% fadiga`
     : `${skill.energyCost} energia`;
   const rows: readonly (readonly [string, string])[] = [
-    ['Dano', `×${skill.damageMultiplier.toFixed(2)} do ataque`],
+    ['Dano', damageLabel],
     ['Custo', cost],
-    ['Recarga', `${skill.cooldown.toFixed(1)}s`],
-    ['Área', `raio ${skill.area.radius.toFixed(1)}m`],
+    ['Recarga', formatSkillCooldown(warriorSkillCooldown(skillId, playerClass))],
+    ['Área', areaLabel],
     ['Elemento', elementLabel],
     ['Desbloqueio', `Nível ${skill.unlockLevel}`],
   ];
   return `
     <h4 class="lobby-skill-tip__title">${skill.label}</h4>
-    <p class="lobby-skill-tip__description">${SKILL_TIP_DESCRIPTIONS[skillId]}</p>
+    <p class="lobby-skill-tip__description">${description}</p>
     <dl class="lobby-skill-tip__stats">
       ${rows.map(([term, value]) => `<div><dt>${term}</dt><dd>${value}</dd></div>`).join('')}
     </dl>`;
@@ -1175,7 +1196,7 @@ export class LobbyScreen {
     document.getElementById('lobby-skills')!.innerHTML = view.skills.map((skill) => `
       <article class="lobby-skill-row" data-skill-tip="${skill.id}" tabindex="0" aria-label="${skill.label}. Passe o mouse para ver os detalhes.">
         <img class="skill-art" src="${classSkillAsset(skill.id, this.profile.selectedClass)}" alt="">
-        <span class="lobby-skill-copy"><strong>${skill.label}</strong><small>${skill.energyCost} energia · ${skill.cooldown.toFixed(1)}s</small></span>
+        <span class="lobby-skill-copy"><strong>${skill.label}</strong><small>${skill.energyCost} energia · ${formatSkillCooldown(warriorSkillCooldown(skill.id, this.profile.selectedClass))}</small></span>
         ${renderSkillStars(skill.stars.filter(Boolean).length)}
       </article>`).join('');
     document.getElementById('lobby-hotkeys')!.innerHTML = renderLobbyHotkeys(

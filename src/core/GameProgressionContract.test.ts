@@ -13,9 +13,21 @@ describe('Game campaign progression contract', () => {
     expect(game).not.toContain('this.profile = awardPlayerExperience(this.profile, death.role);');
   });
 
-  it('rejects locked skills and applies the catalog damage multiplier before distance falloff', () => {
+  it('rejects locked skills and applies class-specific catalog damage before distance falloff', () => {
     expect(game).toContain('if (!isWarriorSkillUnlocked(id, this.profile.progression.level)) return;');
-    expect(game).toContain('getWarriorSkillDamage(this.player.attackDamage) * warriorSkillDamageMultiplier(event.attackId)');
+    expect(game).toContain("warriorSkillDamageMultiplier(attackId, 'mage')");
+    expect(game).toContain("warriorSkillDamageMultiplier(event.attackId, 'paladin')");
+  });
+
+  it('removes the close red ribbon and keeps every Double Cut fan facing forward', () => {
+    const start = game.indexOf('private playDarkFlameFanAttackWindow(event: WarriorAttackWindowEvent): void {');
+    const end = game.indexOf('private applyWarriorBasicWaveDamage', start);
+    const cutWindow = game.slice(start, end);
+
+    expect(cutWindow).toContain('this.player.planarForward(new THREE.Vector3()).setY(0)');
+    expect(cutWindow).toContain('forward: fanForward');
+    expect(cutWindow).toContain('this.warriorSlashVFX.playTravelingSlash({');
+    expect(cutWindow).not.toContain('this.warriorSlashVFX.play({');
   });
 
   it('derives base damage from the equipped catalog weapon instead of a fallback sword', () => {

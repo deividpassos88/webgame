@@ -14,6 +14,11 @@ describe('DistanceDamage', () => {
       maxDistance: 5,
       minimumMultiplier: 0.3,
     });
+    expect(getDistanceFalloffProfile('warrior-extended')).toEqual({
+      fullDamageDistance: 2,
+      maxDistance: 10,
+      minimumMultiplier: 0.24,
+    });
     expect(getDistanceFalloffProfile('mage')).toEqual({
       fullDamageDistance: 3,
       maxDistance: 7,
@@ -38,6 +43,9 @@ describe('DistanceDamage', () => {
     ['warrior-wave', 2, 1],
     ['warrior-wave', 4.5, 0.65],
     ['warrior-wave', 7, 0.3],
+    ['warrior-extended', 2, 1],
+    ['warrior-extended', 6, 0.62],
+    ['warrior-extended', 10, 0.24],
     ['mage', 3, 1],
     ['mage', 5, 0.675],
     ['mage', 7, 0.35],
@@ -52,7 +60,9 @@ describe('DistanceDamage', () => {
   });
 
   it('returns no damage beyond the profile range and full damage up to the inner range', () => {
-    const profiles: readonly DistanceFalloffProfile[] = ['warrior', 'mage', 'regular', 'mini-boss'];
+    const profiles: readonly DistanceFalloffProfile[] = [
+      'warrior', 'warrior-extended', 'mage', 'regular', 'mini-boss',
+    ];
     for (const profile of profiles) {
       const definition = getDistanceFalloffProfile(profile);
       expect(getDistanceDamageMultiplier(-10, profile)).toBe(1);
@@ -68,6 +78,8 @@ describe('DistanceDamage', () => {
     expect(applyDistanceFalloff(Number.NaN, 1, 'warrior')).toBe(0);
     expect(applyDistanceFalloff(20, 9, 'warrior')).toBe(0);
     expect(applyDistanceFalloff(20, 7.5, 'warrior-wave')).toBe(0);
+    expect(applyDistanceFalloff(20, 10, 'warrior-extended')).toBeCloseTo(4.8);
+    expect(applyDistanceFalloff(20, 10.01, 'warrior-extended')).toBe(0);
   });
 
   it('uses the same target-surface distance for range checks and falloff', () => {

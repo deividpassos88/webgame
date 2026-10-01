@@ -129,9 +129,10 @@ import type { MageSpellId } from '../vfx/VFXTypes';
 import { MAGE_VFX_LIMITS } from '../vfx/VFXConfig';
 import { VFXLightPool } from '../vfx/VFXLightPool';
 import {
-  getWarriorSkill,
   isWarriorSkillUnlocked,
+  warriorSkillCooldown,
   warriorSkillDamageMultiplier,
+  warriorSkillElement,
   WARRIOR_SKILLS,
   type WarriorSkillId,
 } from '../combat/WarriorSkillCatalog';
@@ -225,7 +226,7 @@ export class Game {
   private readonly warriorSlashVFX = new WarriorSlashVFX(this.scene, this.vfxLightPool);
   /** Agenda os arcos de lâmina em vertical do Corte Duplo. */
   private readonly warriorBladeStorm = new WarriorBladeStorm(
-    () => this.releaseWarriorBladeStormArc()
+    (index) => this.releaseWarriorBladeStormArc(index)
   );
   private pendingBladeStorm: {
     origin: THREE.Vector3;
@@ -1001,6 +1002,7 @@ export class Game {
       busy: this.player.isAttackInSwing(),
       // Admin training is a true preview: no energy, fatigue, or cooldown cost.
       free: adminPreview,
+      cooldownOverrideSeconds: warriorSkillCooldown(id, mage ? 'mage' : 'paladin'),
     });
     if (activation.kind !== 'activated') return;
     if (!this.player.tryStartSkillAttack(id)) {
@@ -1044,6 +1046,7 @@ export class Game {
       const state = skills[skill.id];
       skills[skill.id] = {
         ...state,
+        cooldown: warriorSkillCooldown(skill.id, 'mage'),
         fatigueCostPercent: percent,
         fatigueAffordable: this.fatigue.canAffordPercent(percent),
       };
@@ -1912,10 +1915,10 @@ export class Game {
     }
     if (!this.hasAdminFreeSkills() && !isWarriorSkillUnlocked(attackId, this.profile.progression.level)) return;
 
-    const skill = getWarriorSkill(attackId);
-    const elemental = skill.element !== null;
+    const skillElement = warriorSkillElement(attackId, 'mage');
+    const elemental = skillElement !== null;
     const baseDamage = getTypedAttackBaseDamage(
-      getWarriorSkillDamage(this.player.attackDamage) * warriorSkillDamageMultiplier(attackId),
+      getWarriorSkillDamage(this.player.attackDamage) * warriorSkillDamageMultiplier(attackId, 'mage'),
       this.getCharacterStats().physicalDamageMultiplier,
       elemental
     );
@@ -1948,8 +1951,8 @@ export class Game {
     const record = this.combatRegistry.findByRoot(body);
     if (!record || record.enemy.isDead) return;
     record.enemy.receivePlayerHit(damage, this.player.root.position);
-    if (skill.element === 'fire' && !record.enemy.isDead) {
-      record.enemy.applyElementalHit(skill.element, Math.max(1, damage * 0.12));
+    if (skillElement === 'fire' && !record.enemy.isDead) {
+      record.enemy.applyElementalHit(skillElement, Math.max(1, damage * 0.12));
     }
     this.applyMageSkillControl(spellId, record.enemy, center);
     this.healFromLifeSteal(damage);
@@ -2061,6 +2064,7 @@ export class Game {
   private warriorSkillDistanceFalloffProfile(
     attackId: WarriorSkillId
   ): DistanceFalloffProfile {
+    if (attackId === 'corte_duplo') return 'warrior-extended';
     return attackId === 'ataque_giratorio' || attackId === 'ataque_giratorio_2'
       ? 'warrior-spin'
       : 'warrior';
@@ -2082,7 +2086,68 @@ export class Game {
     if (this.profile.selectedClass !== 'paladin' || this.player.equippedWeaponId !== 'sword') return;
     if (event.attackId === 'ataque_basico') {
       this.applyWarriorBasicWaveDamage(event);
+    } else if (event.attackId === 'triplo_ataque') {
+      this.playFlameFanAttackWindow(event);
+    } else if (event.attackId === 'corte_duplo') {
+      this.playDarkFlameFanAttackWindow(event);
     }
+  }
+
+  /**
+   * Each authored hit of Golpe Flamejante gets its own basic-style blade arc
+   * and traveling fan. The direction is already sampled from that swing's
+   * sword-tip trajectory, so it must not be retargeted toward the player or a
+   * marked enemy.
+   */
+  private playFlameFanAttackWindow(event: WarriorAttackWindowEvent): void {
+    const forward = event.forward.clone().setY(0);
+    if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
+    forward.normalize();
+
+    const origin = event.origin.clone();
+    const end = origin.clone().addScaledVector(forward, WARRIOR_WAVE_RANGE_METERS);
+    end.y = origin.y;
+
+    this.warriorSlashVFX.play({
+      position: origin,
+      forward,
+      type: 'flame',
+      scale: 1,
+      hasImpact: false,
+    });
+    this.warriorSlashVFX.playTravelingSlash({
+      start: origin,
+      forward,
+      target: end,
+      type: 'flame',
+      scale: 1,
+      speed: 12.5,
+    });
+  }
+
+  /**
+   * The authored sword animation supplies the close-range cut. Skip the extra
+   * red blade-ribbon here (it can appear behind the hero as the sword turns),
+   * and send only the enlarged fire-and-void fan along the Paladin's facing.
+   */
+  private playDarkFlameFanAttackWindow(event: WarriorAttackWindowEvent): void {
+    const fanForward = this.player.planarForward(new THREE.Vector3()).setY(0);
+    if (fanForward.lengthSq() <= 1e-8) fanForward.set(0, 0, 1);
+    fanForward.normalize();
+
+    const origin = event.origin.clone();
+    const range = getWarriorSkillArea('corte_duplo').radius;
+    const end = origin.clone().addScaledVector(fanForward, range);
+    end.y = origin.y;
+
+    this.warriorSlashVFX.playTravelingSlash({
+      start: origin,
+      forward: fanForward,
+      target: end,
+      type: 'dark_flame',
+      scale: 2,
+      speed: 14.5,
+    });
   }
 
   /**
@@ -2245,12 +2310,12 @@ export class Game {
     const records = this.combatRegistry.activeRoots()
       .map((root) => this.combatRegistry.findByRoot(root))
       .filter((record): record is CombatRecord => record !== null);
-    const skill = getWarriorSkill(event.attackId);
     const effect = getWarriorSkillEffect(event.attackId);
     const area = this.resolvePlayerSkillArea(event.attackId);
-    const elemental = skill.element !== null;
+    const skillElement = warriorSkillElement(event.attackId, 'paladin');
+    const elemental = skillElement !== null;
     const baseDamage = getTypedAttackBaseDamage(
-      getWarriorSkillDamage(this.player.attackDamage) * warriorSkillDamageMultiplier(event.attackId),
+      getWarriorSkillDamage(this.player.attackDamage) * warriorSkillDamageMultiplier(event.attackId, 'paladin'),
       this.getCharacterStats().physicalDamageMultiplier,
       elemental
     );
@@ -2273,6 +2338,11 @@ export class Game {
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
+      if (event.attackId === 'triplo_ataque') {
+        this.warriorSlashVFX.playImpact(record.enemy.root.position, 1.1, 'fire');
+      } else if (event.attackId === 'corte_duplo') {
+        this.warriorSlashVFX.playImpact(record.enemy.root.position, 1.55, 'dark_flame');
+      }
       // Giratório também dá um empurrão curto e o flash de impacto.
       if (event.attackId === 'ataque_giratorio' || event.attackId === 'ataque_giratorio_2') {
         const spinForward = new THREE.Vector3().subVectors(record.enemy.root.position, event.origin).setY(0).normalize();
@@ -2281,8 +2351,8 @@ export class Game {
         }
         this.warriorSlashVFX.playImpact(record.enemy.root.position, 1.15);
       }
-      if (skill.element && !record.enemy.isDead) {
-        record.enemy.applyElementalHit(skill.element, Math.max(1, damage * 0.12));
+      if (skillElement && !record.enemy.isDead) {
+        record.enemy.applyElementalHit(skillElement, Math.max(1, damage * 0.12));
       }
       // Cada skill deixa seu próprio efeito de controle no monstro.
       if (!record.enemy.isDead) this.applyWarriorSkillEffectToEnemy(record.enemy, event.attackId);
@@ -2293,7 +2363,11 @@ export class Game {
 
     // Corte Duplo: a tempestade de arcos de lâmina em vertical, cada um com
     // seu próprio acerto na área.
-    if (warriorSkillEffectIsBladeStorm(effect.kind) && this.player.equippedWeaponId === 'sword') {
+    if (
+      warriorSkillEffectIsBladeStorm(effect.kind)
+      && this.player.equippedWeaponId === 'sword'
+      && event.hitIndex === 0
+    ) {
       this.startWarriorBladeStorm({
         origin: event.origin.clone(),
         forward: event.forward.clone().setY(0).normalize(),
@@ -2352,7 +2426,7 @@ export class Game {
   }
 
   /** Cada arco da tempestade abre e rasga o que estiver na área. */
-  private releaseWarriorBladeStormArc(): void {
+  private releaseWarriorBladeStormArc(index: number): void {
     const context = this.pendingBladeStorm;
     if (!context) return;
     const lateral = (Math.random() - 0.5) * BLADE_STORM_RADIUS_METERS * 1.4;
@@ -2366,9 +2440,9 @@ export class Game {
     this.warriorSlashVFX.playVerticalArc({
       position: center,
       forward: new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)),
-      type: 'combo3',
+      type: 'dark_flame',
       scale: 0.9 + Math.random() * 0.25,
-      tint: Math.random() > 0.5 ? 0xffa53a : 0xffd76a,
+      tint: index % 2 === 0 ? 0x9b45ff : 0xff5a1f,
     });
 
     let lifeStealDamage = 0;

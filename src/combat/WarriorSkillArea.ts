@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { WarriorSkillId } from './WarriorSkillCatalog';
-import { WARRIOR_MAX_RANGE_METERS } from './DistanceDamage';
+import { WARRIOR_CUT_FAN_RANGE_METERS, WARRIOR_MAX_RANGE_METERS } from './DistanceDamage';
 
 /** The two full spins throw a cutting ring well beyond normal sword reach. */
 export const WARRIOR_SPIN_RANGE_METERS = 10;
@@ -24,7 +24,9 @@ const AREAS: Readonly<Record<WarriorSkillId, WarriorSkillAreaDefinition>> = Obje
     radius: 4,
   }),
   triplo_ataque: Object.freeze({ shape: 'arc', radius: WARRIOR_MAX_RANGE_METERS, angleDegrees: 140 }),
-  corte_duplo: Object.freeze({ shape: 'arc', radius: WARRIOR_MAX_RANGE_METERS, angleDegrees: 125 }),
+  // O leque tem duas vezes a distância de Corte Duplo original; a abertura
+  // angular se mantém, então sua largura efetiva também dobra no limite.
+  corte_duplo: Object.freeze({ shape: 'arc', radius: WARRIOR_CUT_FAN_RANGE_METERS, angleDegrees: 125 }),
 });
 
 const flatDelta = new THREE.Vector3();
