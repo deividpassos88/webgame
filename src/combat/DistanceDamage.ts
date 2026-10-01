@@ -6,7 +6,7 @@
  * animation, a skill area, or an enemy controller.
  */
 
-export type DistanceFalloffProfile = 'warrior' | 'warrior-wave' | 'warrior-spin' | 'mage' | 'regular' | 'mini-boss';
+export type DistanceFalloffProfile = 'warrior' | 'warrior-wave' | 'warrior-spin' | 'warrior-extended' | 'mage' | 'regular' | 'mini-boss';
 
 export interface DistanceFalloffDefinition {
   readonly fullDamageDistance: number;
@@ -15,6 +15,8 @@ export interface DistanceFalloffDefinition {
 }
 
 export const WARRIOR_MAX_RANGE_METERS = 5;
+/** Alcance máximo do leque flamejante de Corte Duplo (em metros). */
+export const WARRIOR_CUT_FAN_RANGE_METERS = 10;
 /** Alcance do leque de vento que sai do rastro da espada. */
 export const WARRIOR_WAVE_RANGE_METERS = 7;
 export const MAGE_MAX_RANGE_METERS = 7;
@@ -33,6 +35,11 @@ const PROFILES: Readonly<Record<DistanceFalloffProfile, DistanceFalloffDefinitio
   'warrior-spin': Object.freeze({
     fullDamageDistance: 2,
     maxDistance: 10,
+    minimumMultiplier: 0.24,
+  }),
+  'warrior-extended': Object.freeze({
+    fullDamageDistance: 2,
+    maxDistance: WARRIOR_CUT_FAN_RANGE_METERS,
     minimumMultiplier: 0.24,
   }),
   mage: Object.freeze({

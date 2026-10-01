@@ -16,7 +16,7 @@ describe('WarriorSkillArea', () => {
       radius: 4,
     });
     expect(getWarriorSkillArea('triplo_ataque')).toMatchObject({ shape: 'arc', radius: 5, angleDegrees: 140 });
-    expect(getWarriorSkillArea('corte_duplo')).toMatchObject({ shape: 'arc', radius: 5, angleDegrees: 125 });
+    expect(getWarriorSkillArea('corte_duplo')).toMatchObject({ shape: 'arc', radius: 10, angleDegrees: 125 });
   });
 
   it('adds exactly one damage and clamps invalid base damage', () => {
@@ -41,6 +41,22 @@ describe('WarriorSkillArea', () => {
     expect(isPointInWarriorSkillArea(origin, forward, new THREE.Vector3(0, 0, -2), area)).toBe(false);
     const edge = THREE.MathUtils.degToRad(70);
     expect(isPointInWarriorSkillArea(origin, forward, new THREE.Vector3(Math.sin(edge) * 5, 0, Math.cos(edge) * 5), area)).toBe(true);
+  });
+
+  it('opens Double Cut to its full ten-meter arc', () => {
+    const area = getWarriorSkillArea('corte_duplo');
+    const origin = new THREE.Vector3();
+    const forward = new THREE.Vector3(0, 0, 1);
+    const edgeAngle = THREE.MathUtils.degToRad(62.5);
+
+    expect(isPointInWarriorSkillArea(origin, forward, new THREE.Vector3(0, 0, 10), area)).toBe(true);
+    expect(isPointInWarriorSkillArea(origin, forward, new THREE.Vector3(0, 0, 10.01), area)).toBe(false);
+    expect(isPointInWarriorSkillArea(
+      origin,
+      forward,
+      new THREE.Vector3(Math.sin(edgeAngle) * 10, 0, Math.cos(edgeAngle) * 10),
+      area
+    )).toBe(true);
   });
 
   it('centers jump impact around the warrior', () => {

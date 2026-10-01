@@ -62,11 +62,13 @@ const TIMELINES: Readonly<Record<WarriorAttackId, WarriorAttackTimeline>> = {
     fadeSeconds: 1.4,
   },
   corte_duplo: {
-    trailStart: 0.2,
-    trailEnd: 0.8,
-    damageStart: 0.34,
+    // The authored 2.375s GLB has three strong sword-tip sweeps at roughly
+    // 0.50s, 1.05s, and 1.67s (normalized to this clip's timeline below).
+    trailStart: 0.12,
+    trailEnd: 0.86,
+    damageStart: 0.18,
     damageEnd: 0.76,
-    hitTimes: [0.4, 0.7],
+    hitTimes: [0.21, 0.44, 0.705],
     recoveryEnd: 1,
     fadeSeconds: 1.15,
   },

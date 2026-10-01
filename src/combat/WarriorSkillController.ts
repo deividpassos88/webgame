@@ -23,6 +23,8 @@ export interface SkillActivationContext {
   readonly free?: boolean;
   /** Skip the cooldown gate without waiving the energy cost. */
   readonly waiveCooldown?: boolean;
+  /** Class-specific cooldown duration for shared Mage/Warrior skill slots. */
+  readonly cooldownOverrideSeconds?: number;
 }
 
 export interface SkillStateSnapshot {
@@ -56,6 +58,9 @@ export class WarriorSkillController {
   private readonly cooldowns = Object.fromEntries(
     WARRIOR_SKILLS.map(({ id }) => [id, 0])
   ) as Record<WarriorSkillId, number>;
+  private readonly cooldownDurations = Object.fromEntries(
+    WARRIOR_SKILLS.map(({ id, cooldown }) => [id, cooldown])
+  ) as Record<WarriorSkillId, number>;
   private refundableActivation: WarriorSkillId | null = null;
 
   public tryActivate(
@@ -67,6 +72,9 @@ export class WarriorSkillController {
     if (context.busy) return { kind: 'rejected', reason: 'busy' };
 
     const definition = getWarriorSkill(id);
+    const cooldownSeconds = Number.isFinite(context.cooldownOverrideSeconds)
+      ? Math.max(0, context.cooldownOverrideSeconds!)
+      : definition.cooldown;
     const waiveCooldown = context.free || context.waiveCooldown === true;
     if (!waiveCooldown && this.cooldowns[id] > 0) return { kind: 'rejected', reason: 'cooldown' };
     if (!context.free && this.energy < definition.energyCost) {
@@ -75,10 +83,12 @@ export class WarriorSkillController {
 
     if (!context.free) {
       this.energy -= definition.energyCost;
-      this.cooldowns[id] = waiveCooldown ? 0 : definition.cooldown;
+      this.cooldownDurations[id] = cooldownSeconds;
+      this.cooldowns[id] = waiveCooldown ? 0 : cooldownSeconds;
       this.regenerationDelayRemaining = REGENERATION_DELAY;
       this.refundableActivation = id;
     } else {
+      this.cooldownDurations[id] = cooldownSeconds;
       this.cooldowns[id] = 0;
       this.regenerationDelayRemaining = 0;
       this.refundableActivation = null;
@@ -129,7 +139,10 @@ export class WarriorSkillController {
     this.energy = MAX_ENERGY;
     this.regenerationDelayRemaining = 0;
     this.refundableActivation = null;
-    for (const skill of WARRIOR_SKILLS) this.cooldowns[skill.id] = 0;
+    for (const skill of WARRIOR_SKILLS) {
+      this.cooldowns[skill.id] = 0;
+      this.cooldownDurations[skill.id] = skill.cooldown;
+    }
   }
 
   public snapshot(): WarriorSkillsSnapshot {
@@ -139,7 +152,7 @@ export class WarriorSkillController {
         return [
           definition.id,
           {
-            cooldown: definition.cooldown,
+            cooldown: this.cooldownDurations[definition.id],
             cooldownRemaining,
             energyCost: definition.energyCost,
             available: cooldownRemaining <= 0 && this.energy >= definition.energyCost,

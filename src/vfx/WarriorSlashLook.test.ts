@@ -29,6 +29,93 @@ describe('Visual do corte do guerreiro', () => {
     return found as THREE.Mesh;
   };
 
+  it('o Golpe Flamejante reaproveita o rastro básico em fogo e lança o leque no heading mundial recebido', () => {
+    const { scene, vfx } = create();
+    const origin = new THREE.Vector3(11, 0, -7);
+    const forward = new THREE.Vector3(1, 0, 0);
+    const end = origin.clone().addScaledVector(forward, 7);
+
+    vfx.play({ position: origin, forward, type: 'flame', hasImpact: false });
+    const slash = scene.getObjectByName('WarriorSlashVFX') as THREE.Group;
+    const blade = scene.getObjectByName('WarriorSlashMain') as THREE.Mesh;
+    const bladeMaterial = blade.material as WarriorSlashMaterial;
+    expect(slash.position.x).toBeCloseTo(origin.x);
+    expect(slash.position.z).toBeCloseTo(origin.z);
+    expect(slash.rotation.y).toBeCloseTo(Math.PI / 2);
+    expect(bladeMaterial.uniforms.uColorB.value.getHex()).toBe(0xff641f);
+
+    vfx.playTravelingSlash({ start: origin, forward, target: end, type: 'flame' });
+    vfx.update(0.06);
+    const fan = scene.getObjectByName('WarriorTravelingSlash') as THREE.Group;
+    expect(fan.rotation.y).toBeCloseTo(Math.PI / 2);
+    const fanMaterial = (fan.getObjectByName('WindWaveStroke0') as THREE.Mesh)
+      .material as WarriorSlashMaterial;
+    expect(fanMaterial.uniforms.uColorB.value.getHex()).toBe(0xff641f);
+    expect(fan.position.x).toBeGreaterThan(origin.x + 1.4);
+    expect(fan.position.z).toBeCloseTo(origin.z);
+    vfx.dispose();
+  });
+
+  it('Corte Duplo combina fogo e trevas, duplica a escala e alcança dez metros', () => {
+    const { scene, vfx } = create();
+    const origin = new THREE.Vector3();
+    const forward = new THREE.Vector3(0, 0, 1);
+
+    vfx.play({ position: origin, forward, type: 'dark_flame', scale: 1.3, hasImpact: false });
+    const slash = findMesh(scene, 'WarriorSlashMain');
+    const slashMaterial = slash.material as WarriorSlashMaterial;
+    expect(slashMaterial.uniforms.uColorB.value.getHex()).toBe(0xff4a1f);
+    expect(slashMaterial.uniforms.uColorC.value.getHex()).toBe(0x250638);
+    expect(scene.getObjectByName('WarriorDarkFlameEmbers')).toBeTruthy();
+
+    vfx.playImpact(new THREE.Vector3(0, 0, 2), 1.4, 'dark_flame');
+    const impactRing = findMesh(scene, 'WarriorImpactRing');
+    const impactMaterial = impactRing.material as WarriorSlashMaterial;
+    expect(impactMaterial.uniforms.uColorA.value.getHex()).toBe(0x9b45ff);
+    expect(impactMaterial.uniforms.uColorB.value.getHex()).toBe(0xff5a1f);
+
+    vfx.playTravelingSlash({
+      start: origin,
+      forward,
+      target: new THREE.Vector3(0, 0, 25),
+      type: 'dark_flame',
+      scale: 2,
+      speed: 14.5,
+    });
+    vfx.update(0.06);
+
+    const fan = scene.getObjectByName('WarriorTravelingSlash') as THREE.Group;
+    const shadow = fan.getObjectByName('DarkFlameShadowWave') as THREE.Mesh;
+    const voidSparks = fan.getObjectByName('DarkFlameVoidSparks') as THREE.Points;
+    const fanMaterial = (fan.getObjectByName('WindWaveStroke0') as THREE.Mesh)
+      .material as WarriorSlashMaterial;
+    const shadowMaterial = shadow.material as WarriorSlashMaterial;
+    expect(fan.scale.x).toBe(2);
+    expect(fanMaterial.uniforms.uColorB.value.getHex()).toBe(0xff4a1f);
+    expect(shadow.visible).toBe(true);
+    expect(shadowMaterial.uniforms.uColorB.value.getHex()).toBe(0x7730d8);
+    expect(voidSparks.visible).toBe(true);
+
+    for (let frame = 0; frame < 40 && vfx.activeCount > 0; frame += 1) vfx.update(0.05);
+    expect(fan.position.z).toBeCloseTo(10, 1);
+    expect(vfx.activeCount).toBe(0);
+    expect(shadow.visible).toBe(false);
+    expect(voidSparks.visible).toBe(false);
+
+    // Reusing the pooled fan for an ordinary strike must not leak the shadow.
+    vfx.playTravelingSlash({
+      start: origin,
+      forward,
+      target: new THREE.Vector3(0, 0, 5),
+      type: 'basic',
+    });
+    expect(scene.getObjectByName('WarriorTravelingSlash')).toBe(fan);
+    expect(shadow.visible).toBe(false);
+    expect(shadowMaterial.uniforms.uOpacity.value).toBe(0);
+    expect(voidSparks.visible).toBe(false);
+    vfx.dispose();
+  });
+
   it('o rastro da lâmina sai com cor saturada e falhas, e muda a cada golpe', () => {
     const { scene, vfx } = create();
     const forward = new THREE.Vector3(0, 0, 1);
@@ -266,7 +353,7 @@ describe('Visual do corte do guerreiro', () => {
   it('o arco de lâmina vertical do Corte Duplo nasce em pé, no lugar, e some', () => {
     const { scene, vfx } = create();
     const position = new THREE.Vector3(2, 0, 1);
-    vfx.playVerticalArc({ position, forward: new THREE.Vector3(0, 0, 1), type: 'combo3' });
+    vfx.playVerticalArc({ position, forward: new THREE.Vector3(0, 0, 1), type: 'dark_flame' });
 
     const arc = scene.getObjectByName('WarriorVerticalArc') as THREE.Group;
     expect(arc).toBeTruthy();

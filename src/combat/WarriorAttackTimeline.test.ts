@@ -18,13 +18,13 @@ describe('WarriorAttackTimeline', () => {
     expect(timeline.fadeSeconds).toBeLessThanOrEqual(id === 'ataque_basico' ? 0.8 : 1.4);
   });
 
-  it('defines three real hits for triple attack and two for double cut', () => {
+  it('defines three real hits for triple attack and the three authored Double Cut sweeps', () => {
     expect(getWarriorAttackTimeline('triplo_ataque').hitTimes).toEqual([
       0.32,
       0.55,
       0.78,
     ]);
-    expect(getWarriorAttackTimeline('corte_duplo').hitTimes).toEqual([0.4, 0.7]);
+    expect(getWarriorAttackTimeline('corte_duplo').hitTimes).toEqual([0.21, 0.44, 0.705]);
   });
 
   it('defines the jump impact at its only damage hit', () => {

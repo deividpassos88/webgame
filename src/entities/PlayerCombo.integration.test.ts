@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { CharacterAssetStore } from '../characters/CharacterAssetStore';
+import { WARRIOR_ATTACK_IDS, type WarriorAttackId } from '../characters/CharacterCatalog';
 import { createRuntimeWarriorSword } from '../characters/RuntimeWarriorWeapon';
 import { getWeaponDefinition } from '../equipment/EquipmentCatalog';
 import { Player } from './Player';
@@ -72,6 +73,88 @@ async function loadedPlayerWithSword() {
   return loadedPlayerWithWeapon('sword');
 }
 
+async function loadedPlayerWithAuthoredFlameMotion() {
+  const model = createModelWithHand();
+  const sword = new THREE.Mesh(
+    new THREE.BoxGeometry(0.08, 1.4, 0.03),
+    new THREE.MeshBasicMaterial()
+  );
+  sword.name = 'sword';
+  model.children[0].add(sword);
+  const hitWindowKeys = [0, 0.305, 0.335, 0.535, 0.565, 0.765, 0.795, 1];
+  const handPositions = [
+    [0, 0, 0], [0, 0, 0], [0.2, 0, 0], [0.2, 0, 0],
+    [0.2, 0, 0.2], [0.2, 0, 0.2], [0, 0, 0.2], [0, 0, 0.2],
+  ].flat();
+  const flameClip = new THREE.AnimationClip('triplo_ataque', 1, [
+    new THREE.VectorKeyframeTrack(
+      'mixamorigRightHand.position',
+      hitWindowKeys,
+      handPositions
+    ),
+  ]);
+  const clips = [
+    animation('idle_sword'), animation('caminhando'), animation('correndo'),
+    animation('ataque_basico'), animation('ataque_giratorio'),
+    animation('ataque_giratorio_2'), animation('pulo_atacando'), flameClip,
+    animation('corte_duplo'), animation('recebe_dano'), animation('morte'), animation('caiu'),
+  ];
+  const assets = {
+    createModel: () => model,
+    getAnimations: () => clips,
+    getBoneNames: () => new Set<string>(['mixamorigRightHand']),
+  } as unknown as CharacterAssetStore;
+  const player = new Player('paladin', assets);
+  await player.load();
+  const definition = getWeaponDefinition('sword');
+  if (!definition) throw new Error('sword definition missing');
+  expect(player.equipWeapon(definition, createRuntimeWarriorSword())).toBe(true);
+  return player;
+}
+
+async function loadedPlayerWithAuthoredDoubleCutMotion() {
+  const model = createModelWithHand();
+  const sword = new THREE.Mesh(
+    new THREE.BoxGeometry(0.08, 1.4, 0.03),
+    new THREE.MeshBasicMaterial()
+  );
+  sword.name = 'sword';
+  model.children[0].add(sword);
+
+  // The sampler reads both sides of each authored hit time. These three
+  // direction changes stand in for the measured sword-tip sweeps in the GLB.
+  const hitWindowKeys = [0, 0.1975, 0.2225, 0.4275, 0.4525, 0.6925, 0.7175, 1];
+  const handPositions = [
+    [0, 0, 0], [0, 0, 0], [0.2, 0, 0], [0.2, 0, 0],
+    [0.2, 0, 0.2], [0.2, 0, 0.2], [0, 0, 0.2], [0, 0, 0.2],
+  ].flat();
+  const doubleCutClip = new THREE.AnimationClip('corte_duplo', 1, [
+    new THREE.VectorKeyframeTrack(
+      'mixamorigRightHand.position',
+      hitWindowKeys,
+      handPositions
+    ),
+  ]);
+  const clips = [
+    animation('idle_sword'), animation('caminhando'), animation('correndo'),
+    animation('ataque_basico'), animation('ataque_giratorio'),
+    animation('ataque_giratorio_2'), animation('pulo_atacando'),
+    animation('triplo_ataque'), doubleCutClip,
+    animation('recebe_dano'), animation('morte'), animation('caiu'),
+  ];
+  const assets = {
+    createModel: () => model,
+    getAnimations: () => clips,
+    getBoneNames: () => new Set<string>(['mixamorigRightHand']),
+  } as unknown as CharacterAssetStore;
+  const player = new Player('paladin', assets);
+  await player.load();
+  const definition = getWeaponDefinition('sword');
+  if (!definition) throw new Error('sword definition missing');
+  expect(player.equipWeapon(definition, createRuntimeWarriorSword())).toBe(true);
+  return player;
+}
+
 async function loadedPlayerWithoutWeapon() {
   const clips = [
     animation('idle_sword'),
@@ -105,6 +188,38 @@ function expectNoRuntimeWarriorVfx(root: THREE.Object3D) {
 }
 
 describe('Player sword combo integration', () => {
+  it('configures every warrior attack clip as a clamped, single-play action', async () => {
+    const player = await loadedPlayerWithSword();
+    const configured = player as unknown as {
+      warriorAttackActions: Partial<Record<WarriorAttackId, THREE.AnimationAction>>;
+      comboActions: THREE.AnimationAction[];
+      actions: Partial<Record<'attacking', THREE.AnimationAction>>;
+    };
+
+    // setupComboActions maps each authored skill clip to its own stopped,
+    // LoopOnce action, while the ordinary attack action remains the basic cut.
+    expect(Object.keys(configured.warriorAttackActions).sort()).toEqual(
+      [...WARRIOR_ATTACK_IDS].sort()
+    );
+    for (const attackId of WARRIOR_ATTACK_IDS) {
+      const action = configured.warriorAttackActions[attackId];
+      expect(action).toBeDefined();
+      expect(action!.getClip().name).toBe(`paladin:attack:${attackId}`);
+      expect(action!.loop).toBe(THREE.LoopOnce);
+      expect(action!.repetitions).toBe(1);
+      expect(action!.clampWhenFinished).toBe(true);
+      expect(action!.timeScale).toBeCloseTo(1.45);
+      expect(action!.isRunning()).toBe(false);
+    }
+    expect(configured.comboActions).toHaveLength(3);
+    expect(configured.comboActions.map((action) => action.getClip().name)).toEqual([
+      'paladin:attacking:combo:0',
+      'paladin:attacking:combo:1',
+      'paladin:attacking:combo:2',
+    ]);
+    expect(configured.actions.attacking).toBe(configured.warriorAttackActions.ataque_basico);
+  });
+
   it('keeps the authored attack pose active when the same clip restarts for stage two', async () => {
     const model = createModelWithHand();
     const arm = new THREE.Bone();
@@ -243,6 +358,66 @@ describe('Player sword combo integration', () => {
       { attackId: 'triplo_ataque', hitIndex: 2 },
     ]);
     expectNoRuntimeWarriorVfx(player.root);
+  });
+
+  it('aims the three flame fans along the animated sword-tip sweeps in world space', async () => {
+    const player = await loadedPlayerWithAuthoredFlameMotion();
+    player.root.position.set(13, 0, -8);
+    player.root.rotation.y = Math.PI / 2;
+    const windows: Array<{ hitIndex: number; origin: THREE.Vector3; forward: THREE.Vector3 }> = [];
+    const skillHits: Array<{ hitIndex: number; forward: THREE.Vector3 }> = [];
+    player.onWarriorAttackWindow(({ hitIndex, origin, forward }) => {
+      windows.push({ hitIndex, origin: origin.clone(), forward: forward.clone() });
+    });
+    player.onWarriorSkillHit(({ hitIndex, forward }) => {
+      skillHits.push({ hitIndex, forward: forward.clone() });
+    });
+
+    expect(player.tryStartSkillAttack('triplo_ataque')).toBe(true);
+    player.update(0.72);
+
+    expect(windows.map(({ hitIndex }) => hitIndex)).toEqual([0, 1, 2]);
+    expect(windows[0].forward.x).toBeCloseTo(0);
+    expect(windows[0].forward.z).toBeCloseTo(-1);
+    expect(windows[1].forward.x).toBeCloseTo(1);
+    expect(windows[1].forward.z).toBeCloseTo(0);
+    expect(windows[2].forward.x).toBeCloseTo(0);
+    expect(windows[2].forward.z).toBeCloseTo(1);
+    expect(windows.every(({ origin }) => origin.distanceTo(new THREE.Vector3(13, 0, -8)) < 1e-6)).toBe(true);
+    expect(skillHits.map(({ hitIndex }) => hitIndex)).toEqual([0, 1, 2]);
+    for (let index = 0; index < windows.length; index += 1) {
+      expect(skillHits[index].forward.distanceTo(windows[index].forward)).toBeLessThan(1e-6);
+    }
+  });
+
+  it('drives all three Double Cut effects from separate animated sword sweeps', async () => {
+    const player = await loadedPlayerWithAuthoredDoubleCutMotion();
+    player.root.position.set(-6, 0, 11);
+    player.root.rotation.y = Math.PI / 2;
+    const windows: Array<{ hitIndex: number; origin: THREE.Vector3; forward: THREE.Vector3 }> = [];
+    const skillHits: Array<{ hitIndex: number; forward: THREE.Vector3 }> = [];
+    player.onWarriorAttackWindow(({ hitIndex, origin, forward }) => {
+      windows.push({ hitIndex, origin: origin.clone(), forward: forward.clone() });
+    });
+    player.onWarriorSkillHit(({ hitIndex, forward }) => {
+      skillHits.push({ hitIndex, forward: forward.clone() });
+    });
+
+    expect(player.tryStartSkillAttack('corte_duplo')).toBe(true);
+    player.update(0.72);
+
+    expect(windows.map(({ hitIndex }) => hitIndex)).toEqual([0, 1, 2]);
+    expect(windows[0].forward.x).toBeCloseTo(0);
+    expect(windows[0].forward.z).toBeCloseTo(-1);
+    expect(windows[1].forward.x).toBeCloseTo(1);
+    expect(windows[1].forward.z).toBeCloseTo(0);
+    expect(windows[2].forward.x).toBeCloseTo(0);
+    expect(windows[2].forward.z).toBeCloseTo(1);
+    expect(windows.every(({ origin }) => origin.distanceTo(new THREE.Vector3(-6, 0, 11)) < 1e-6)).toBe(true);
+    expect(skillHits.map(({ hitIndex }) => hitIndex)).toEqual([0, 1, 2]);
+    for (let index = 0; index < windows.length; index += 1) {
+      expect(skillHits[index].forward.distanceTo(windows[index].forward)).toBeLessThan(1e-6);
+    }
   });
 
   it('keeps the Warrior VFX clear during the complete physical visual swing', async () => {

@@ -3,6 +3,7 @@ import { VFXPool, type PoolableVFX } from './VFXPool';
 import { VFXLightPool, type VFXLightHandle } from './VFXLightPool';
 import { PooledParticleCloud } from './ParticleManager';
 import { CameraShake } from './CameraShake';
+import { WARRIOR_CUT_FAN_RANGE_METERS } from '../combat/DistanceDamage';
 import {
   createMagicCircleMaterial,
   createWarriorSlashMaterial,
@@ -17,7 +18,7 @@ import {
 export interface WarriorSlashPlayOptions {
   readonly position: THREE.Vector3;
   readonly forward: THREE.Vector3;
-  readonly type?: 'basic' | 'combo2' | 'combo3' | 'auto' | 'spin' | 'spin_frost';
+  readonly type?: 'basic' | 'combo2' | 'combo3' | 'flame' | 'dark_flame' | 'auto' | 'spin' | 'spin_frost';
   readonly scale?: number;
   readonly isAuto?: boolean;
   /** Só há clarão de impacto no fim do rastro quando o golpe realmente acerta alguém. */
@@ -30,7 +31,7 @@ export interface WarriorTravelingSlashOptions {
   readonly target: THREE.Vector3;
   readonly speed?: number; // m/s
   readonly scale?: number;
-  readonly type?: 'basic' | 'combo2' | 'combo3' | 'auto';
+  readonly type?: 'basic' | 'combo2' | 'combo3' | 'flame' | 'dark_flame' | 'auto';
   readonly onHit?: (position: THREE.Vector3) => void;
 }
 
@@ -278,6 +279,32 @@ const COMBO3_CONFIG = {
   colors: { core: 0xfff2d4, glow: 0xffa53a, dark: 0x3a1c05 },
 };
 
+/** Basic-attack crescent proportions, recolored for the three-hit fire skill. */
+const FLAME_CONFIG = {
+  inner: BASIC_CONFIG.inner,
+  outer: BASIC_CONFIG.outer,
+  theta: BASIC_CONFIG.theta,
+  duration: BASIC_CONFIG.duration,
+  intensity: 1.68,
+  thickness: BASIC_CONFIG.thickness,
+  breakup: BASIC_CONFIG.breakup,
+  saturation: 1.42,
+  colors: { core: 0xfff0c2, glow: 0xff641f, dark: 0x421004 },
+};
+
+/** Fire-lit blade with a violet void edge for Corte Duplo's ultimate cuts. */
+const DARK_FLAME_CONFIG = {
+  inner: BASIC_CONFIG.inner,
+  outer: BASIC_CONFIG.outer,
+  theta: BASIC_CONFIG.theta,
+  duration: 0.56,
+  intensity: 2.0,
+  thickness: 1.55,
+  breakup: 0.52,
+  saturation: 1.58,
+  colors: { core: 0xfff0d4, glow: 0xff4a1f, dark: 0x250638 },
+};
+
 const AUTO_CONFIG = {
   inner: 0.32,
   outer: 3.4,
@@ -324,6 +351,10 @@ function configForType(type: WarriorSlashPlayOptions['type']) {
       return COMBO2_CONFIG;
     case 'combo3':
       return COMBO3_CONFIG;
+    case 'flame':
+      return FLAME_CONFIG;
+    case 'dark_flame':
+      return DARK_FLAME_CONFIG;
     case 'auto':
       return AUTO_CONFIG;
     case 'spin':
@@ -351,6 +382,7 @@ class WarriorSlashEffect implements PoolableVFX {
   private readonly edgeGlow2: THREE.Sprite;
   private readonly particles: PooledParticleCloud;
   private readonly embers: PooledParticleCloud;
+  private readonly voidEmbers: PooledParticleCloud;
   private readonly arcGeometry: THREE.BufferGeometry;
   private readonly coreGeometry: THREE.BufferGeometry;
   private lightHandle: VFXLightHandle | null = null;
@@ -459,6 +491,8 @@ class WarriorSlashEffect implements PoolableVFX {
 
     this.particles = new PooledParticleCloud(72, resources.softGlow);
     this.embers = new PooledParticleCloud(48, resources.softGlow);
+    this.voidEmbers = new PooledParticleCloud(32, resources.softGlow);
+    this.voidEmbers.points.name = 'WarriorDarkFlameEmbers';
 
     this.group.add(
       this.slashMesh,
@@ -469,7 +503,8 @@ class WarriorSlashEffect implements PoolableVFX {
       this.edgeGlow1,
       this.edgeGlow2,
       this.particles.points,
-      this.embers.points
+      this.embers.points,
+      this.voidEmbers.points
     );
   }
 
@@ -604,6 +639,18 @@ class WarriorSlashEffect implements PoolableVFX {
       lifetime: this.duration * 1.25,
       upwardBias: 0.28,
     });
+
+    this.voidEmbers.reset();
+    if (options.type === 'dark_flame') {
+      this.voidEmbers.emit(new THREE.Vector3(0, 0.22, 0.48), {
+        color: 0x9b45ff,
+        count: 24,
+        speed: 3.1 * this.baseScale,
+        spread: 1.25,
+        lifetime: this.duration * 1.15,
+        upwardBias: 0.3,
+      });
+    }
   }
 
   public update(delta: number): boolean {
@@ -654,6 +701,7 @@ class WarriorSlashEffect implements PoolableVFX {
 
     this.particles.update(elapsed);
     this.embers.update(elapsed);
+    this.voidEmbers.update(elapsed);
 
     return this.age < this.duration;
   }
@@ -666,6 +714,7 @@ class WarriorSlashEffect implements PoolableVFX {
     this.lightHandle = null;
     this.particles.reset();
     this.embers.reset();
+    this.voidEmbers.reset();
     this.slashMaterial.uniforms.uOpacity.value = 0;
     this.slashCoreMaterial.uniforms.uOpacity.value = 0;
     this.shockwaveMaterial.uniforms.uOpacity.value = 0;
@@ -687,6 +736,7 @@ class WarriorSlashEffect implements PoolableVFX {
     (this.edgeGlow2.material as THREE.Material).dispose();
     this.particles.dispose();
     this.embers.dispose();
+    this.voidEmbers.dispose();
   }
 
   private rebuildGeometries(inner: number, outer: number, theta: number, thetaStart?: number): void {
@@ -701,6 +751,8 @@ class WarriorSlashEffect implements PoolableVFX {
     (this as any).coreGeometry = newCore;
   }
 }
+
+type WarriorHitImpactStyle = 'fire' | 'dark_flame';
 
 class WarriorHitImpactEffect implements PoolableVFX {
   public active = false;
@@ -748,6 +800,7 @@ class WarriorHitImpactEffect implements PoolableVFX {
       distortion: 1.1,
     });
     this.ring = new THREE.Mesh(resources.ring, this.ringMat);
+    this.ring.name = 'WarriorImpactRing';
     this.ring.rotation.x = -Math.PI / 2;
     this.ring.position.y = 0.02;
 
@@ -756,7 +809,12 @@ class WarriorHitImpactEffect implements PoolableVFX {
     this.group.add(this.ring, this.glow, this.flare, this.particles.points);
   }
 
-  public play(position: THREE.Vector3, scale = 1): void {
+  public play(position: THREE.Vector3, scale = 1, style?: WarriorHitImpactStyle): void {
+    const isDarkFlame = style === 'dark_flame';
+    const isFire = style === 'fire' || isDarkFlame;
+    const coreColor = isFire ? 0xfff1d2 : 0xffffff;
+    const glowColor = isFire ? 0xff5a1f : 0x5efff6;
+    const ringColor = isDarkFlame ? 0x9b45ff : glowColor;
     this.age = 0;
     this.duration = 0.32;
     this.group.visible = true;
@@ -766,21 +824,21 @@ class WarriorHitImpactEffect implements PoolableVFX {
 
     (this.flare.material as THREE.SpriteMaterial).opacity = 1;
     this.flare.scale.setScalar(1.2 * scale);
-    (this.flare.material as THREE.SpriteMaterial).color.set(0xffffff);
+    (this.flare.material as THREE.SpriteMaterial).color.set(coreColor);
 
     (this.glow.material as THREE.SpriteMaterial).opacity = 0.85;
     this.glow.scale.setScalar(1.8 * scale);
-    (this.glow.material as THREE.SpriteMaterial).color.set(0x5efff6);
+    (this.glow.material as THREE.SpriteMaterial).color.set(glowColor);
 
-    this.ringMat.uniforms.uColorA.value.set(0xffffff);
-    this.ringMat.uniforms.uColorB.value.set(0x5efff6);
+    this.ringMat.uniforms.uColorA.value.set(isDarkFlame ? ringColor : coreColor);
+    this.ringMat.uniforms.uColorB.value.set(glowColor);
     this.ringMat.uniforms.uOpacity.value = 0.75;
     this.ringMat.uniforms.uTime.value = 0;
     this.ring.scale.setScalar(0.3 * scale);
 
     this.lightHandle = this.lightPool.acquire();
     if (this.lightHandle) {
-      this.lightHandle.light.color.set(0x5efff6);
+      this.lightHandle.light.color.set(glowColor);
       this.lightHandle.light.intensity = 1.8 * scale;
       this.lightHandle.light.distance = 5.5 * scale;
       this.lightHandle.light.position.copy(this.group.position);
@@ -788,8 +846,8 @@ class WarriorHitImpactEffect implements PoolableVFX {
 
     this.particles.setTexture(this.resources.softGlow);
     this.particles.emit(new THREE.Vector3(), {
-      color: 0xbfffff,
-      count: 18,
+      color: isDarkFlame ? ringColor : isFire ? glowColor : 0xbfffff,
+      count: isDarkFlame ? 26 : 18,
       speed: 3.2 * scale,
       spread: 1.2,
       lifetime: 0.32,
@@ -861,7 +919,10 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
   private readonly strokes: THREE.Mesh[] = [];
   private readonly strokeGeometry: THREE.BufferGeometry;
   private readonly strokeMaterial: WarriorSlashMaterial;
+  private readonly shadowStroke: THREE.Mesh;
+  private readonly shadowMaterial: WarriorSlashMaterial;
   private readonly particles: PooledParticleCloud;
+  private readonly voidEmbers: PooledParticleCloud;
   private actualLightHandle: VFXLightHandle | null = null;
 
   private age = 0;
@@ -876,6 +937,7 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
   private baseScale = 1;
   /** Espera a lâmina terminar o rastro antes de disparar a onda. */
   private spawnDelay = 0;
+  private shadowActive = false;
 
   constructor(
     private readonly resources: WarriorSlashResources,
@@ -897,6 +959,23 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
       breakup: 0.5,
       saturation: 1.35,
     });
+    this.shadowMaterial = createWarriorSlashMaterial({
+      colorA: 0xd6adff,
+      colorB: 0x7730d8,
+      colorC: 0x160626,
+      opacity: 0,
+      intensity: 1.4,
+      thickness: 1.75,
+      distortion: 1.25,
+      breakup: 0.42,
+      saturation: 1.3,
+    });
+    this.shadowStroke = new THREE.Mesh(this.strokeGeometry, this.shadowMaterial);
+    this.shadowStroke.name = 'DarkFlameShadowWave';
+    this.shadowStroke.frustumCulled = false;
+    this.shadowStroke.renderOrder = 6;
+    this.shadowStroke.visible = false;
+    this.group.add(this.shadowStroke);
 
     for (let index = 0; index < WAVE_STROKES; index += 1) {
       const stroke = new THREE.Mesh(this.strokeGeometry, this.strokeMaterial);
@@ -908,7 +987,9 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     }
 
     this.particles = new PooledParticleCloud(32, resources.softGlow);
-    this.group.add(this.particles.points);
+    this.voidEmbers = new PooledParticleCloud(28, resources.softGlow);
+    this.voidEmbers.points.name = 'DarkFlameVoidSparks';
+    this.group.add(this.particles.points, this.voidEmbers.points);
   }
 
   public play(options: WarriorTravelingSlashOptions): void {
@@ -920,10 +1001,11 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.speed = options.speed ?? (options.type === 'auto' ? 13.5 : 11.5);
     this.onHit = options.onHit ?? null;
     this.hasHit = false;
+    this.shadowActive = options.type === 'dark_flame';
+    this.shadowStroke.visible = this.shadowActive;
 
-    // A onda sai da borda do rastro da lâmina e voa para a frente até bater no
-    // monstro, sem nunca passar de 7 m do jogador. `frontDistance` é a
-    // distância do arco da frente até o jogador.
+    // O fan normal termina em 7 m; Corte Duplo ganha o alcance especial de
+    // 10 m. `frontDistance` é a distância da frente da onda até a origem.
     const delta = this.targetPos.clone().sub(this.startPos);
     delta.y = 0;
     // Mira no monstro, mas sem passar de 30° fora do eixo do golpe, para a
@@ -935,10 +1017,13 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
         this.forward.lerp(aim, Math.min(1, THREE.MathUtils.degToRad(30) / angle)).normalize();
       }
     }
+    const maxDistance = this.shadowActive
+      ? WARRIOR_CUT_FAN_RANGE_METERS
+      : WIND_WAVE_MAX_DISTANCE;
     const frontDistance = THREE.MathUtils.clamp(
       delta.length(),
       WIND_WAVE_START_OFFSET,
-      WIND_WAVE_MAX_DISTANCE
+      maxDistance
     );
     this.distance = Math.max(0, frontDistance - WIND_WAVE_START_OFFSET);
     // O grupo é o arco da frente: ele nasce na borda do rastro e chega no alvo.
@@ -966,9 +1051,21 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.strokeMaterial.uniforms.uIntensity.value = cfg.intensity * 1.35;
     this.strokeMaterial.uniforms.uSaturation.value = cfg.saturation;
     this.strokeMaterial.uniforms.uBreakup.value = cfg.breakup;
-    this.strokeMaterial.uniforms.uSeed.value = Math.random() * 10;
+    const seed = Math.random() * 10;
+    this.strokeMaterial.uniforms.uSeed.value = seed;
     this.strokeMaterial.uniforms.uTime.value = 0;
     this.strokeMaterial.uniforms.uProgress.value = 0;
+
+    this.shadowMaterial.uniforms.uColorA.value.set(0xd6adff);
+    this.shadowMaterial.uniforms.uColorB.value.set(0x7730d8);
+    this.shadowMaterial.uniforms.uColorC.value.set(0x160626);
+    this.shadowMaterial.uniforms.uOpacity.value = this.shadowActive ? 0.58 : 0;
+    this.shadowMaterial.uniforms.uIntensity.value = this.shadowActive ? 1.5 : 0;
+    this.shadowMaterial.uniforms.uSaturation.value = 1.35;
+    this.shadowMaterial.uniforms.uBreakup.value = 0.42;
+    this.shadowMaterial.uniforms.uSeed.value = seed + 4.7;
+    this.shadowMaterial.uniforms.uTime.value = 0;
+    this.shadowMaterial.uniforms.uProgress.value = 0;
 
     this.layoutStrokes(0);
 
@@ -989,11 +1086,22 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
       lifetime: this.duration,
       upwardBias: 0.1,
     });
+    this.voidEmbers.reset();
+    if (this.shadowActive) {
+      this.voidEmbers.emit(new THREE.Vector3(-0.35, 0.24, 0), {
+        color: 0x9b45ff,
+        count: 22,
+        speed: 2.8,
+        spread: 1.15,
+        lifetime: this.duration * 0.95,
+        upwardBias: 0.22,
+      });
+    }
   }
 
   /**
-   * Um único leque grande de vento, deitado como o rastro da lâmina, com a
-   * barriga para o monstro. Ele abre enquanto avança até o alvo (máx. 7 m).
+   * O fan comum chega a 7 m; o de Corte Duplo cresce com uma borda violeta e
+   * corre até 10 m, mantendo a barriga voltada para o alvo.
    */
   private layoutStrokes(progress: number): void {
     const radius = THREE.MathUtils.lerp(WAVE_RADIUS_START, WAVE_RADIUS_END, progress);
@@ -1001,6 +1109,11 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
       stroke.scale.set(radius, 1, radius);
       stroke.position.set(0, 0, 0);
       stroke.rotation.x = WIND_WAVE_PITCH;
+    }
+    if (this.shadowActive) {
+      this.shadowStroke.scale.set(radius * 1.18, 1.04, radius * 1.18);
+      this.shadowStroke.position.set(0, -0.08, -0.06);
+      this.shadowStroke.rotation.x = WIND_WAVE_PITCH;
     }
   }
 
@@ -1026,7 +1139,9 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
 
     const fade = 1 - progress;
     setWarriorSlashTime(this.strokeMaterial, this.age * 2.4, travelProgress * 0.5);
+    setWarriorSlashTime(this.shadowMaterial, this.age * 2.9, travelProgress * 0.5);
     this.strokeMaterial.uniforms.uOpacity.value = fade;
+    this.shadowMaterial.uniforms.uOpacity.value = this.shadowActive ? fade * 0.58 : 0;
     this.layoutStrokes(travelProgress);
 
     if (this.actualLightHandle) {
@@ -1035,6 +1150,7 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     }
 
     this.particles.update(elapsed);
+    this.voidEmbers.update(elapsed);
 
     if (!this.hasHit && travelProgress >= 0.92) {
       this.hasHit = true;
@@ -1053,13 +1169,19 @@ class WarriorTravelingSlashEffect implements PoolableVFX {
     this.actualLightHandle?.release();
     this.actualLightHandle = null;
     this.particles.reset();
+    this.voidEmbers.reset();
+    this.shadowActive = false;
+    this.shadowStroke.visible = false;
+    this.shadowMaterial.uniforms.uOpacity.value = 0;
     this.strokeMaterial.uniforms.uOpacity.value = 0;
   }
 
   public dispose(): void {
     this.strokeGeometry.dispose();
     this.strokeMaterial.dispose();
+    this.shadowMaterial.dispose();
     this.particles.dispose();
+    this.voidEmbers.dispose();
   }
 }
 
@@ -2049,18 +2171,36 @@ export class WarriorSlashVFX {
     this.active.push(effect);
 
     // Impact shake - subtle but punchy for large blade
-    const intensity = options.type === 'combo3' ? 0.055 : options.type === 'combo2' ? 0.038 : options.type === 'auto' ? 0.042 : options.type === 'spin' || options.type === 'spin_frost' ? 0.06 : 0.03;
-    const duration = options.type === 'combo3' ? 0.20 : options.type === 'auto' ? 0.16 : options.type === 'spin' || options.type === 'spin_frost' ? 0.22 : 0.14;
+    const intensity = options.type === 'dark_flame'
+      ? 0.078
+      : options.type === 'combo3' || options.type === 'flame'
+        ? 0.055
+        : options.type === 'combo2'
+          ? 0.038
+          : options.type === 'auto'
+            ? 0.042
+            : options.type === 'spin' || options.type === 'spin_frost'
+              ? 0.06
+              : 0.03;
+    const duration = options.type === 'dark_flame'
+      ? 0.26
+      : options.type === 'combo3' || options.type === 'flame'
+        ? 0.20
+        : options.type === 'auto'
+          ? 0.16
+          : options.type === 'spin' || options.type === 'spin_frost'
+            ? 0.22
+            : 0.14;
     this.cameraShake.add(intensity, duration);
   }
 
-  public playImpact(position: THREE.Vector3, scale = 1): void {
+  public playImpact(position: THREE.Vector3, scale = 1, style?: WarriorHitImpactStyle): void {
     const impact = this.impactPool.acquire();
     if (!impact) {
       this.cameraShake.add(0.02 * scale, 0.1);
       return;
     }
-    impact.play(position, scale);
+    impact.play(position, scale, style);
     this.scene.add(impact.group);
     this.activeImpacts.push(impact);
     this.cameraShake.add(0.022 * scale, 0.11);
@@ -2073,8 +2213,14 @@ export class WarriorSlashVFX {
     this.scene.add(effect.group);
     this.activeTraveling.push(effect);
     // Extra shake for projectile launch
-    const intensity = options.type === 'auto' ? 0.038 : options.type === 'combo3' ? 0.05 : 0.028;
-    this.cameraShake.add(intensity, 0.13);
+    const intensity = options.type === 'dark_flame'
+      ? 0.066
+      : options.type === 'auto'
+        ? 0.038
+        : options.type === 'combo3'
+          ? 0.05
+          : 0.028;
+    this.cameraShake.add(intensity, options.type === 'dark_flame' ? 0.19 : 0.13);
   }
 
   public playSpin(options: { position: THREE.Vector3; forward: THREE.Vector3; type?: 'spin' | 'spin_frost'; scale?: number; maxRadius?: number }): void {

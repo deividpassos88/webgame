@@ -15,6 +15,7 @@ import type { WaveSnapshot } from '../waves/WaveManager';
 import type { RewardPreviewPort } from './RewardWeaponPreview';
 import {
   isWarriorSkillUnlocked,
+  warriorSkillCooldown,
   WARRIOR_SKILLS,
   type WarriorSkillId,
 } from '../combat/WarriorSkillCatalog';
@@ -41,6 +42,7 @@ import {
 } from '../profile/CharacterProgression';
 import { formatResourcePercent, resourcePercent } from './HudVitals';
 import { mageSkillFatiguePercent } from '../combat/MageSkillCost';
+import { formatSkillCooldown } from './SkillCooldownText';
 
 /**
  * Floating combat text styles: damage dealt, health recovered and damage taken
@@ -70,7 +72,7 @@ export function renderCombatActionMarkup(
       <button class="skill-slot combat-skill-card" type="button" data-warrior-skill="${skill.id}" aria-label="${skill.label}, tecla ${skill.input}, custo ${skill.energyCost} de energia">
         <span class="skill-cooldown" aria-hidden="true"></span>
         <img class="skill-art" data-skill-art="${skill.id}" src="${classSkillAsset(skill.id, playerClass)}" alt="">
-        <span class="skill-card-copy"><strong class="skill-card-name" title="${skill.label}">${skill.label}</strong><small class="skill-card-meta">${skill.energyCost} energia · ${skill.cooldown.toFixed(1)}s recarga</small></span>
+        <span class="skill-card-copy"><strong class="skill-card-name" title="${skill.label}">${skill.label}</strong><small class="skill-card-meta">${skill.energyCost} energia · ${formatSkillCooldown(warriorSkillCooldown(skill.id, playerClass))} recarga</small></span>
         <kbd data-action-hotkey="${skill.id}">${displayPlayerHotkey(hotkeys[skill.id])}</kbd>
       </button>`).join('')}`;
 }
@@ -323,8 +325,8 @@ export class HUD {
           ? 'Treino ADM · livre'
           : unlocked
             ? options.mageCosts
-              ? `${skill.energyCost} MP · ${mageSkillFatiguePercent(skill.id)}% fadiga · ${skill.cooldown.toFixed(1)}s recarga`
-              : `${skill.energyCost} energia · ${skill.cooldown.toFixed(1)}s recarga`
+              ? `${skill.energyCost} MP · ${mageSkillFatiguePercent(skill.id)}% fadiga · ${formatSkillCooldown(warriorSkillCooldown(skill.id, 'mage'))} recarga`
+              : `${skill.energyCost} energia · ${formatSkillCooldown(warriorSkillCooldown(skill.id, 'paladin'))} recarga`
             : `Nv. ${skill.unlockLevel}`;
       }
     }

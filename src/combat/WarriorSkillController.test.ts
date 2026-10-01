@@ -32,6 +32,24 @@ describe('WarriorSkillController', () => {
     expect(skills.snapshot().skills.ataque_giratorio.cooldownRemaining).toBeCloseTo(5);
   });
 
+  it('stores and reports the class-specific Double Cut cooldown duration', () => {
+    const paladinSkills = new WarriorSkillController();
+    expect(paladinSkills.tryActivate('corte_duplo', { cooldownOverrideSeconds: 180 }).kind)
+      .toBe('activated');
+    expect(paladinSkills.snapshot().skills.corte_duplo).toMatchObject({
+      cooldown: 180,
+      cooldownRemaining: 180,
+    });
+
+    const mageSkills = new WarriorSkillController();
+    expect(mageSkills.tryActivate('corte_duplo', { cooldownOverrideSeconds: 14 }).kind)
+      .toBe('activated');
+    expect(mageSkills.snapshot().skills.corte_duplo).toMatchObject({
+      cooldown: 14,
+      cooldownRemaining: 14,
+    });
+  });
+
   it('recovers mana only while standing still, 100% in four seconds', () => {
     const skills = new WarriorSkillController();
 

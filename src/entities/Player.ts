@@ -68,6 +68,8 @@ const DASH_INVULNERABILITY_SECONDS = 0.3;
  * pernas/corpo — o guerreiro anda/corre em todas as direcoes durante o combo
  * em vez de travar na pose de ataque. */
 const ATTACK_WEIGHT_UNDER_MOVEMENT = 0.45;
+/** Half-window, in normalized clip time, used to measure each sword-swing tangent. */
+const WARRIOR_SWING_DIRECTION_SAMPLE_HALF_WINDOW = 0.0125;
 
 const GAMEPLAY_BOUNDS_IGNORED_NODE = /(?:sword|axe|shield|weapon|staff|cajado)/i;
 const GAMEPLAY_GROUND_EPSILON = 1e-4;
@@ -197,6 +199,9 @@ export class Player {
   private inputLocked = false;
   private characterModel: THREE.Group | null = null;
   private embeddedSword: THREE.Object3D | null = null;
+  private embeddedSwordTip: THREE.Object3D | null = null;
+  private embeddedSwordBladeMesh: THREE.Mesh | null = null;
+  private embeddedSwordBladeTipLocal: THREE.Vector3 | null = null;
   private embeddedStaff: THREE.Object3D | null = null;
   private weaponEquipment = new WeaponEquipment();
   private readonly actionBaseTimeScales: Partial<Record<PlayerState, number>> = {};
@@ -220,6 +225,7 @@ export class Player {
     this.characterModel = model;
     model.scale.setScalar(definition.gameScale);
     this.embeddedSword = model.getObjectByName('sword') ?? null;
+    this.resolveEmbeddedSwordTip();
     if (this.embeddedSword) this.embeddedSword.visible = false;
     // A Maga luta com o cajado embutido no próprio modelo: garanta que ele
     // esteja sempre visível e que nenhuma espada residual apareça nela.
@@ -649,6 +655,111 @@ export class Player {
     this.onMageSpellCast((event) => {
       if (event.spellId === 'basic') callback(event);
     });
+  }
+
+  /**
+   * Captures a tip point from the equipped, authored sword. Prefer an explicit
+   * marker when a model provides one; otherwise use the far end of the longest
+   * local mesh axis (the GLB sword blade runs along local +Y).
+   */
+  private resolveEmbeddedSwordTip(): void {
+    this.embeddedSwordTip = this.embeddedSword?.getObjectByName('VFX_SwordTip') ?? null;
+    this.embeddedSwordBladeMesh = null;
+    this.embeddedSwordBladeTipLocal = null;
+    if (!this.embeddedSword || this.embeddedSwordTip) return;
+
+    const meshes: THREE.Mesh[] = [];
+    this.embeddedSword.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (mesh.isMesh && mesh.geometry) meshes.push(mesh);
+    });
+
+    let longestMesh: THREE.Mesh | null = null;
+    let longestExtent = 0;
+    for (const mesh of meshes) {
+      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+      const bounds = mesh.geometry.boundingBox;
+      if (!bounds) continue;
+      const size = bounds.getSize(new THREE.Vector3());
+      const extent = Math.max(size.x, size.y, size.z);
+      if (Number.isFinite(extent) && extent > longestExtent) {
+        longestMesh = mesh;
+        longestExtent = extent;
+      }
+    }
+
+    if (!longestMesh) return;
+    const bounds = longestMesh.geometry.boundingBox;
+    if (!bounds) return;
+    const size = bounds.getSize(new THREE.Vector3());
+    const axis: 'x' | 'y' | 'z' = size.x >= size.y && size.x >= size.z
+      ? 'x'
+      : size.y >= size.z
+        ? 'y'
+        : 'z';
+    const tip = bounds.getCenter(new THREE.Vector3());
+    tip[axis] = bounds.max[axis];
+    this.embeddedSwordBladeMesh = longestMesh;
+    this.embeddedSwordBladeTipLocal = tip;
+  }
+
+  /**
+   * Samples the actual animated sword tip at one normalized clip time without
+   * advancing combat. Restoring the action time immediately keeps the visible
+   * animation on its normal frame.
+   */
+  private sampleSwordTipAtClipTime(
+    action: THREE.AnimationAction,
+    normalizedClipTime: number
+  ): THREE.Vector3 | null {
+    if (!this.embeddedSwordTip && (!this.embeddedSwordBladeMesh || !this.embeddedSwordBladeTipLocal)) {
+      return null;
+    }
+
+    const clipTime = THREE.MathUtils.clamp(normalizedClipTime, 0, 1) * action.getClip().duration;
+    const visibleActionTime = action.time;
+    try {
+      action.time = clipTime;
+      this.mixer.update(0);
+      this.root.updateMatrixWorld(true);
+      if (this.embeddedSwordTip) {
+        return this.embeddedSwordTip.getWorldPosition(new THREE.Vector3());
+      }
+      return this.embeddedSwordBladeMesh!.localToWorld(this.embeddedSwordBladeTipLocal!.clone());
+    } finally {
+      action.time = visibleActionTime;
+      this.mixer.update(0);
+      this.root.updateMatrixWorld(true);
+    }
+  }
+
+  /**
+   * The Flame Strike and Double Cut clips contain distinct authored sword
+   * sweeps. Resolve every hit's heading from that clip's animated sword-tip
+   * tangent in world space rather than reusing one character-facing vector.
+   */
+  private resolveSkillSwingForward(attackId: WarriorSkillId, hitIndex: number): THREE.Vector3 {
+    const facing = this.planarForward(new THREE.Vector3());
+    const followsAnimatedSword = attackId === 'triplo_ataque' || attackId === 'corte_duplo';
+    if (this.characterId !== 'paladin' || !followsAnimatedSword) return facing;
+
+    const action = this.warriorAttackActions[attackId];
+    const hitTime = getWarriorAttackTimeline(attackId).hitTimes[hitIndex];
+    if (!action || hitTime === undefined) return facing;
+
+    const before = this.sampleSwordTipAtClipTime(
+      action,
+      hitTime - WARRIOR_SWING_DIRECTION_SAMPLE_HALF_WINDOW
+    );
+    const after = this.sampleSwordTipAtClipTime(
+      action,
+      hitTime + WARRIOR_SWING_DIRECTION_SAMPLE_HALF_WINDOW
+    );
+    if (!before || !after) return facing;
+
+    const swingDirection = after.sub(before).setY(0);
+    if (swingDirection.lengthSq() <= 1e-8) return facing;
+    return swingDirection.normalize();
   }
 
   private emitWarriorAttackWindow(attackId: WarriorAttackId, hitIndex: number): void {
@@ -1256,11 +1367,12 @@ export class Player {
           break;
         case 'hit': {
           this.comboHitTargets.clear();
+          const attackId = event.attackId as WarriorSkillId;
           const attackEvent = {
-            attackId: event.attackId as WarriorSkillId,
+            attackId,
             hitIndex: event.hitIndex,
             origin: this.root.getWorldPosition(new THREE.Vector3()),
-            forward: this.planarForward(new THREE.Vector3()),
+            forward: this.resolveSkillSwingForward(attackId, event.hitIndex),
           };
           this.onWarriorAttackWindowCallback?.(attackEvent);
           this.onWarriorSkillHitCallback?.(attackEvent);
