@@ -7,7 +7,7 @@ export interface AnimationTestButton {
 }
 
 export const ANIMATION_TEST_BUTTONS: readonly AnimationTestButton[] = [
-  { state: 'idle', label: 'Parado', clipName: 'caminhando (pose)' },
+  { state: 'idle', label: 'Parado', clipName: 'idle_sword' },
   { state: 'running', label: 'Correr', clipName: 'correndo' },
   { state: 'attacking', label: 'Atacar', clipName: 'ataque_basico' },
   { state: 'hit', label: 'Receber golpe', clipName: 'recebe_dano' },

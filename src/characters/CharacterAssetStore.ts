@@ -123,7 +123,11 @@ export class CharacterAssetStore {
   }
 
   public getAnimations(id: CharacterId, variant: CharacterAssetVariant = 'gameplay'): THREE.AnimationClip[] {
-    return this.get(id, variant).animations;
+    const clips = this.get(id, variant).animations;
+    const excluded = CHARACTERS.find((definition) => definition.id === id)?.excludedClipNames;
+    if (!excluded || excluded.length === 0) return clips;
+    const blocked = new Set(excluded.map((name) => name.toLowerCase()));
+    return clips.filter((clip) => !blocked.has(clip.name.toLowerCase()));
   }
 
   public getBoneNames(id: CharacterId, variant: CharacterAssetVariant = 'gameplay'): ReadonlySet<string> {

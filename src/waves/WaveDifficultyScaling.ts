@@ -64,7 +64,7 @@ export const FINAL_BOSS_HP_BARS = 5;
 
 /** Atributos base do Dragonic Overlord. */
 export const BASE_BOSS_DAMAGE = 11;
-export const BASE_BOSS_SPEED = 0.8;
+export const BASE_BOSS_SPEED = 1.6;
 export const BASE_BOSS_SCALE = 3.2;
 
 export interface BossEnrageStats {

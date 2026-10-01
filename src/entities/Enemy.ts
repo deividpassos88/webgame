@@ -65,6 +65,72 @@ function getFreezePuffTexture(): THREE.Texture {
   return texture;
 }
 
+const FREEZE_BODY_COLOR = new THREE.Color(0xa9dcff);
+
+/** Four-point sparkle used by the frost glitter that twinkles around frozen monsters. */
+let frostSparkleTexture: THREE.Texture | null = null;
+
+function getFrostSparkleTexture(): THREE.Texture {
+  if (frostSparkleTexture) return frostSparkleTexture;
+  const size = 64;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const dx = Math.abs((x + 0.5) / size - 0.5);
+      const dy = Math.abs((y + 0.5) / size - 0.5);
+      const rayX = Math.exp(-dy * 46) * Math.max(0, 1 - dx * 2);
+      const rayY = Math.exp(-dx * 46) * Math.max(0, 1 - dy * 2);
+      const core = Math.exp(-Math.sqrt(dx * dx + dy * dy) * 15);
+      const alpha = THREE.MathUtils.clamp(Math.max(rayX, rayY) + core * 0.7, 0, 1);
+      const offset = (y * size + x) * 4;
+      data[offset] = 235;
+      data[offset + 1] = 252;
+      data[offset + 2] = 255;
+      data[offset + 3] = Math.round(alpha * 255);
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.needsUpdate = true;
+  frostSparkleTexture = texture;
+  return texture;
+}
+
+/** Icy ground patch: soft centre, brighter crystalline rim and radial frost cracks. */
+let frostGroundTexture: THREE.Texture | null = null;
+
+function getFrostGroundTexture(): THREE.Texture {
+  if (frostGroundTexture) return frostGroundTexture;
+  const size = 128;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const dx = (x + 0.5) / size - 0.5;
+      const dy = (y + 0.5) / size - 0.5;
+      const r = Math.sqrt(dx * dx + dy * dy) * 2;
+      const angle = Math.atan2(dy, dx);
+      const cracks = 0.78 + 0.22 * Math.pow(Math.abs(Math.sin(angle * 6.5 + r * 3)), 6);
+      const body = r < 0.8 ? 0.3 + 0.35 * (r / 0.8) : Math.max(0, (1 - r) / 0.2) * 0.65;
+      const rim = Math.exp(-Math.pow((r - 0.8) * 14, 2)) * 0.35;
+      const alpha = THREE.MathUtils.clamp((body + rim) * cracks, 0, 1);
+      const offset = (y * size + x) * 4;
+      data[offset] = 190 + Math.round(rim * 160);
+      data[offset + 1] = 238;
+      data[offset + 2] = 255;
+      data[offset + 3] = Math.round(alpha * 255);
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.needsUpdate = true;
+  frostGroundTexture = texture;
+  return texture;
+}
+
+/** Gap (meters beyond the leash) at which the boss reaches full catch-up speed. */
+const BOSS_CATCH_UP_DISTANCE = 8;
+const BOSS_CATCH_UP_MAX_FACTOR = 3.5;
+/** Chase speed ceiling in m/s (the player walks at 4.5 m/s). */
+const BOSS_MAX_CHASE_SPEED = 6;
+
 export type EnemyDeathEffectStage = 'animation' | 'burn' | 'ash' | 'complete';
 
 export interface EnemyOptions {
@@ -207,9 +273,15 @@ export class Enemy {
   private freezeMist: THREE.Points | null = null;
   private freezeSmoke: THREE.Points | null = null;
   private freezeSmokeSpeeds: Float32Array | null = null;
+  private freezeCrystals: THREE.Group | null = null;
+  private freezeShards: THREE.Group | null = null;
+  private freezeOrbit: THREE.Group | null = null;
+  private freezeGround: THREE.Mesh | null = null;
+  private readonly freezeShardMaterials: THREE.Material[] = [];
+  private freezeAge = 0;
   private readonly freezeTintOriginals = new Map<
     THREE.MeshStandardMaterial,
-    { emissive: number; emissiveIntensity: number }
+    { emissive: number; emissiveIntensity: number; color: number }
   >();
   private hitStaggerRemaining = 0;
   private hitReactionElapsed = 0;
@@ -646,9 +718,14 @@ export class Enemy {
         );
         if (remaining > 0) {
           direction.normalize();
+          // The farther the player runs, the faster the boss chases (catch-up),
+          // capped so it never outruns the player in a straight line.
+          const catchUp = 1 + THREE.MathUtils.clamp(remaining / BOSS_CATCH_UP_DISTANCE, 0, 1)
+            * (BOSS_CATCH_UP_MAX_FACTOR - 1);
+          const chaseSpeed = Math.min(this.speed * catchUp, BOSS_MAX_CHASE_SPEED);
           this.root.position.addScaledVector(
             direction,
-            Math.min(remaining, this.speed * this.elementalSpeedMultiplier * Math.max(0, delta))
+            Math.min(remaining, chaseSpeed * this.elementalSpeedMultiplier * Math.max(0, delta))
           );
           this.animator?.play('walking');
           this.meshGroup.rotation.y = Math.atan2(direction.x, direction.z);
@@ -1389,13 +1466,105 @@ export class Enemy {
   private ensureFreezeVisuals(): void {
     if (this.freezeMist || this.freezeSmoke) return;
     const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
-    this.freezeMist = this.buildFreezePuffs('EnemyIceMist', 0xffffff, 0.5 * bodyScale, 34, 0.45, 1.05);
-    this.freezeSmoke = this.buildFreezePuffs('EnemyIceSmoke', 0xcdd6e0, 0.72 * bodyScale, 20, 0.85, 2);
+    // Low frost fog hugging the ground + twinkling frost glitter around the body.
+    this.freezeMist = this.buildFreezePuffs('EnemyIceMist', 0xc4ecff, 1.05 * bodyScale, 26, 0.72, 0.3);
+    this.freezeSmoke = this.buildFreezePuffs('EnemyIceSmoke', 0xffffff, 0.2 * bodyScale, 30, 0.62, 1.7);
+    this.buildFreezeCrystals(bodyScale);
   }
 
   /**
-   * White mist / pale smoke cloud for the frozen body. Mist puffs orbit with
-   * the points object; smoke puffs rise and loop (speeds kept for update).
+   * Ice spikes bursting from the ground around the body, a frosted ground
+   * patch and a few orbiting shards (no cocoon: the body stays fully visible).
+   */
+  private buildFreezeCrystals(bodyScale: number): void {
+    const group = new THREE.Group();
+    group.name = 'EnemyIceCrystals';
+    group.visible = false;
+
+    const shardMaterial = new THREE.MeshStandardMaterial({
+      color: 0xb4ecff,
+      emissive: 0x3aa8ff,
+      emissiveIntensity: 0.9,
+      roughness: 0.12,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.88,
+      flatShading: true,
+    });
+    this.freezeShardMaterials.push(shardMaterial);
+
+    // Ground spikes: tall ones in a ring, tilted outwards like a burst of ice.
+    const spikes = new THREE.Group();
+    spikes.name = 'EnemyIceSpikes';
+    const spikeCount = 10;
+    for (let index = 0; index < spikeCount; index += 1) {
+      const angle = (index / spikeCount) * Math.PI * 2 + (index % 2) * 0.18;
+      const tall = index % 3 === 0;
+      const height = (tall ? 1.15 : 0.62 + (index % 4) * 0.1) * bodyScale;
+      const radius = (tall ? 0.15 : 0.1) * bodyScale;
+      const geometry = this.ownGeometry(new THREE.ConeGeometry(radius, height, 5));
+      geometry.translate(0, height / 2, 0);
+      const spike = new THREE.Mesh(geometry, shardMaterial);
+      const ringRadius = (tall ? 0.46 : 0.58) * bodyScale;
+      spike.position.set(Math.cos(angle) * ringRadius, 0, Math.sin(angle) * ringRadius);
+      spike.rotation.set(
+        Math.sin(angle) * (tall ? 0.22 : 0.4),
+        angle,
+        -Math.cos(angle) * (tall ? 0.22 : 0.4)
+      );
+      spike.frustumCulled = false;
+      spikes.add(spike);
+    }
+    group.add(spikes);
+
+    // Floating shards that slowly orbit the frozen body.
+    const orbit = new THREE.Group();
+    orbit.name = 'EnemyIceOrbit';
+    const orbitCount = 5;
+    for (let index = 0; index < orbitCount; index += 1) {
+      const angle = (index / orbitCount) * Math.PI * 2;
+      const geometry = this.ownGeometry(new THREE.OctahedronGeometry(0.1 * bodyScale));
+      geometry.scale(0.7, 1.7, 0.7);
+      const shard = new THREE.Mesh(geometry, shardMaterial);
+      shard.position.set(
+        Math.cos(angle) * 0.78 * bodyScale,
+        (0.5 + (index % 3) * 0.5) * bodyScale,
+        Math.sin(angle) * 0.78 * bodyScale
+      );
+      shard.rotation.set(index, angle, index * 0.7);
+      shard.frustumCulled = false;
+      orbit.add(shard);
+    }
+    group.add(orbit);
+
+    // Frosted ground patch.
+    const groundGeometry = this.ownGeometry(new THREE.PlaneGeometry(2.7 * bodyScale, 2.7 * bodyScale));
+    groundGeometry.rotateX(-Math.PI / 2);
+    const groundMaterial = new THREE.MeshBasicMaterial({
+      map: getFrostGroundTexture(),
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.freezeShardMaterials.push(groundMaterial);
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.name = 'EnemyIceFrostGround';
+    ground.position.y = 0.035;
+    ground.frustumCulled = false;
+    group.add(ground);
+
+    this.root.add(group);
+    this.freezeCrystals = group;
+    this.freezeShards = spikes;
+    this.freezeOrbit = orbit;
+    this.freezeGround = ground;
+  }
+
+  /**
+   * Puff cloud for the frozen body. The low frost fog drifts around the feet;
+   * the glitter points rise slowly and twinkle (speeds kept for update).
    */
   private buildFreezePuffs(
     name: string,
@@ -1411,17 +1580,19 @@ export class Enemy {
       const angle = Math.random() * Math.PI * 2;
       const spread = (0.35 + Math.random() * 0.65) * radius * bodyScale;
       positions[index * 3] = Math.cos(angle) * spread;
-      positions[index * 3 + 1] = (0.1 + Math.random() * 0.9) * height * bodyScale;
+      positions[index * 3 + 1] = (0.05 + Math.random() * 0.95) * height * bodyScale;
       positions[index * 3 + 2] = Math.sin(angle) * spread;
     }
+    const isGlitter = name === 'EnemyIceSmoke';
     const geometry = this.ownGeometry(new THREE.BufferGeometry());
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     const material = new THREE.PointsMaterial({
-      map: getFreezePuffTexture(),
+      map: isGlitter ? getFrostSparkleTexture() : getFreezePuffTexture(),
       color,
       size,
       transparent: true,
-      opacity: 0.42,
+      opacity: isGlitter ? 0.95 : 0.26,
+      blending: isGlitter ? THREE.AdditiveBlending : THREE.NormalBlending,
       depthWrite: false,
       toneMapped: false,
     });
@@ -1431,10 +1602,10 @@ export class Enemy {
     points.visible = false;
     this.root.add(points);
     this.fadeMaterials.push(material);
-    if (name === 'EnemyIceSmoke') {
+    if (isGlitter) {
       const speeds = new Float32Array(count);
       for (let index = 0; index < count; index += 1) {
-        speeds[index] = (0.45 + Math.random() * 0.6) * bodyScale;
+        speeds[index] = (0.12 + Math.random() * 0.28) * bodyScale;
       }
       this.freezeSmokeSpeeds = speeds;
     }
@@ -1446,18 +1617,47 @@ export class Enemy {
     const active = this.isFrozenByIce && !this.isDead;
     this.freezeMist.visible = active;
     this.freezeSmoke.visible = active;
+    if (this.freezeCrystals) this.freezeCrystals.visible = active;
     if (!active) {
+      this.freezeAge = 0;
       this.restoreFreezeTint();
       return;
     }
     this.applyFreezeTint();
     const step = Math.max(0, delta);
+    this.freezeAge += step;
+    const time = performance.now() * 0.001;
     if (this.freezeMist) {
-      this.freezeMist.rotation.y -= step * 0.9;
+      this.freezeMist.rotation.y -= step * 0.35;
       const mistMaterial = this.freezeMist.material as THREE.PointsMaterial;
-      mistMaterial.opacity = 0.38 + Math.sin(performance.now() * 0.009) * 0.08;
+      mistMaterial.opacity = 0.24 + Math.sin(time * 2.6) * 0.05;
+    }
+    if (this.freezeSmoke) {
+      const glitter = this.freezeSmoke.material as THREE.PointsMaterial;
+      glitter.opacity = 0.75 + Math.sin(time * 11) * 0.22;
+      this.freezeSmoke.rotation.y += step * 0.5;
     }
     this.updateFreezeSmoke(step);
+    this.updateFreezeCrystals(step, time);
+  }
+
+  /** Ice grows in with a quick overshoot, then shimmers while frozen. */
+  private updateFreezeCrystals(step: number, time: number): void {
+    if (!this.freezeCrystals) return;
+    const t = THREE.MathUtils.clamp(this.freezeAge / 0.3, 0, 1);
+    // easeOutBack
+    const c1 = 1.9;
+    const c3 = c1 + 1;
+    const grow = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    if (this.freezeShards) this.freezeShards.scale.set(Math.max(0.001, 0.55 + 0.45 * grow), Math.max(0.001, grow), Math.max(0.001, 0.55 + 0.45 * grow));
+    if (this.freezeOrbit) {
+      this.freezeOrbit.rotation.y += step * 1.3;
+      this.freezeOrbit.position.y = Math.sin(time * 2.2) * 0.06;
+      this.freezeOrbit.scale.setScalar(Math.max(0.001, grow));
+    }
+    if (this.freezeGround) {
+      this.freezeGround.scale.setScalar(Math.max(0.001, t * (1 + (1 - t) * 0.2)));
+    }
   }
 
   private updateFreezeSmoke(delta: number): void {
@@ -1465,11 +1665,11 @@ export class Enemy {
     const bodyScale = Number(this.root.userData.enemyBodyScale) || 1;
     const attribute = this.freezeSmoke.geometry.getAttribute('position') as THREE.BufferAttribute;
     const positions = attribute.array as Float32Array;
-    const top = 2 * bodyScale;
+    const top = 1.9 * bodyScale;
     for (let index = 0; index < this.freezeSmokeSpeeds.length; index += 1) {
       const offset = index * 3 + 1;
       positions[offset] += this.freezeSmokeSpeeds[index] * delta;
-      if (positions[offset] > top) positions[offset] = 0.1 * bodyScale;
+      if (positions[offset] > top) positions[offset] = 0.05 * bodyScale;
     }
     attribute.needsUpdate = true;
   }
@@ -1482,7 +1682,9 @@ export class Enemy {
         this.freezeTintOriginals.set(material, {
           emissive: material.emissive.getHex(),
           emissiveIntensity: this.hitFlashBaseIntensities.get(material) ?? material.emissiveIntensity,
+          color: material.color.getHex(),
         });
+        material.color.lerp(FREEZE_BODY_COLOR, 0.5);
       }
       material.emissive.setHex(0x2a7fff);
       if (material.emissiveIntensity < 0.55) material.emissiveIntensity = 0.55;
@@ -1494,6 +1696,7 @@ export class Enemy {
     this.freezeTintOriginals.forEach((original, material) => {
       material.emissive.setHex(original.emissive);
       material.emissiveIntensity = original.emissiveIntensity;
+      material.color.setHex(original.color);
     });
     this.freezeTintOriginals.clear();
   }
@@ -1501,6 +1704,8 @@ export class Enemy {
   private hideFreezeVisuals(): void {
     if (this.freezeMist) this.freezeMist.visible = false;
     if (this.freezeSmoke) this.freezeSmoke.visible = false;
+    if (this.freezeCrystals) this.freezeCrystals.visible = false;
+    this.freezeAge = 0;
     this.restoreFreezeTint();
   }
 
@@ -1575,6 +1780,7 @@ export class Enemy {
     ownedSkeletons.forEach((skeleton) => skeleton.dispose());
     this.ownedGeometries.forEach((geometry) => geometry.dispose());
     this.fadeMaterials.forEach((material) => material.dispose());
+    this.freezeShardMaterials.forEach((material) => material.dispose());
     this.deathParticleMaterial?.dispose();
     this.deathParticleMaterial = null;
     this.deathParticles = null;

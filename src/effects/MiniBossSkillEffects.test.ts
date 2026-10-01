@@ -4,7 +4,7 @@ import type {
   MiniBossSkillEvent,
   MiniBossSkillKind,
 } from '../combat/MiniBossSkillController';
-import { MiniBossSkillEffects } from './MiniBossSkillEffects';
+import { IMPACT_DURATIONS, MiniBossSkillEffects } from './MiniBossSkillEffects';
 
 function event(
   type: MiniBossSkillEvent['type'],
@@ -36,7 +36,7 @@ function sceneMaterials(scene: THREE.Scene): THREE.Material[] {
 }
 
 describe('MiniBossSkillEffects', () => {
-  it('creates a lightweight red transparent circle warning with the approved radius', () => {
+  it('creates a shader-driven red transparent circle warning with the approved radius', () => {
     const scene = new THREE.Scene();
     const effects = new MiniBossSkillEffects(scene);
 
@@ -45,9 +45,9 @@ describe('MiniBossSkillEffects', () => {
     const warning = scene.getObjectByName('mini-boss-skill-warning-circle') as THREE.Mesh;
     expect(warning).toBeTruthy();
     expect((warning.geometry as THREE.CircleGeometry).parameters.radius).toBe(8.75);
-    expect((warning.material as THREE.MeshBasicMaterial).color.getHex()).toBe(0xff1f16);
-    expect((warning.material as THREE.MeshBasicMaterial).transparent).toBe(true);
-    expect((warning.material as THREE.MeshBasicMaterial).depthWrite).toBe(false);
+    expect(warning.material).toBeInstanceOf(THREE.ShaderMaterial);
+    expect((warning.material as THREE.ShaderMaterial).transparent).toBe(true);
+    expect((warning.material as THREE.ShaderMaterial).depthWrite).toBe(false);
     expect(warning.castShadow).toBe(false);
     expect(effects.activeObjectCount).toBe(1);
   });
@@ -160,7 +160,7 @@ describe('MiniBossSkillEffects', () => {
     expect(scene.getObjectByName('mini-boss-skill-impact')).toBeTruthy();
 
     effects.update(0.1);
-    effects.update(0.49);
+    effects.update(IMPACT_DURATIONS.circle);
     expect(effects.activeObjectCount).toBe(1);
     expect(scene.getObjectByName('mini-boss-skill-warning-circle')).toBeTruthy();
 
@@ -204,7 +204,64 @@ describe('MiniBossSkillEffects', () => {
     expect(effects.activeObjectCount).toBe(1);
     effects.update(Number.NaN);
     expect(effects.activeObjectCount).toBe(1);
-    effects.update(0.5);
+    effects.update(IMPACT_DURATIONS.circle + 0.01);
+    expect(effects.activeObjectCount).toBe(0);
+  });
+
+  it('charges the telegraph over time: the progress uniform follows the countdown', () => {
+    const scene = new THREE.Scene();
+    const effects = new MiniBossSkillEffects(scene);
+    effects.handle(event('telegraph', 'rectangle'));
+    const warning = scene.getObjectByName('mini-boss-skill-warning-rectangle') as THREE.Mesh;
+    const uniforms = (warning.material as THREE.ShaderMaterial).uniforms;
+
+    effects.update(0.016); // creation frame is skipped
+    effects.update(1.4);
+    expect(uniforms.uProgress.value).toBeCloseTo(1.4 / 3.5, 3);
+    expect(uniforms.uIntro.value).toBe(1);
+  });
+
+  it('builds a rich circle impact: flash, scorch, dome, fire column and particles', () => {
+    const scene = new THREE.Scene();
+    const effects = new MiniBossSkillEffects(scene);
+    const impacts: string[] = [];
+    effects.onImpact = (e) => impacts.push(e.skill);
+
+    effects.handle(event('impact', 'circle'));
+
+    expect(impacts).toEqual(['circle']);
+    for (const name of [
+      'mini-boss-skill-impact',
+      'mini-boss-skill-scorch',
+      'mini-boss-skill-dome',
+      'mini-boss-skill-fire-column',
+    ]) {
+      expect(scene.getObjectByName(name)).toBeTruthy();
+    }
+    expect(scene.getObjectsByProperty('type', 'Points').length).toBeGreaterThanOrEqual(3);
+
+    // Advancing time must keep every uniform and particle finite.
+    for (let i = 0; i < 20; i += 1) effects.update(0.05);
+    scene.traverse((object) => {
+      const points = object as THREE.Points;
+      if (!points.isPoints) return;
+      const array = points.geometry.getAttribute('position').array as Float32Array;
+      for (const value of array) expect(Number.isFinite(value)).toBe(true);
+    });
+  });
+
+  it('builds a rectangle impact with blast walls on both edges and a sweeping front', () => {
+    const scene = new THREE.Scene();
+    const effects = new MiniBossSkillEffects(scene);
+
+    effects.handle(event('impact', 'rectangle'));
+
+    expect(scene.getObjectByName('mini-boss-skill-impact')).toBeTruthy();
+    expect(scene.getObjectByName('mini-boss-skill-scorch')).toBeTruthy();
+    expect(scene.getObjectsByProperty('name', 'mini-boss-skill-blast-wall')).toHaveLength(2);
+
+    effects.update(0.016);
+    effects.update(IMPACT_DURATIONS.rectangle + 0.01);
     expect(effects.activeObjectCount).toBe(0);
   });
 });

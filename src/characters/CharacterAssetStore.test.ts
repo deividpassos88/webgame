@@ -163,3 +163,25 @@ describe('CharacterAssetStore', () => {
     expect(progress).toEqual([[1, 1, 'paladin']]);
   });
 });
+
+describe('Guerreiro animation set', () => {
+  it('drops the caminhando clip so the warrior only uses idle_sword/correndo/ataque_basico', async () => {
+    const { CharacterAssetStore } = await import('./CharacterAssetStore');
+    const { AnimationClip, Group } = await import('three');
+    const gltf = {
+      scene: new Group(),
+      animations: ['idle_sword', 'caminhando', 'correndo', 'ataque_basico'].map(
+        (name) => new AnimationClip(name, 1, [])
+      ),
+    };
+    const store = new CharacterAssetStore({ loadAsync: async () => gltf as never });
+    await store.loadAll(undefined, [
+      { id: 'paladin', modelPath: '/x.glb', excludedClipNames: ['caminhando'] } as never,
+    ]);
+    expect(store.getAnimations('paladin').map((clip) => clip.name)).toEqual([
+      'idle_sword',
+      'correndo',
+      'ataque_basico',
+    ]);
+  });
+});

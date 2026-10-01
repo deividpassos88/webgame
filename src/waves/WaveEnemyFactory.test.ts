@@ -214,7 +214,7 @@ describe('createBoss compatibility', () => {
       damage: 11,
       detectionRange: 45,
       attackRange: 2.2,
-      speed: 0.8,
+      speed: 1.6,
       isBoss: true,
     });
     expect(boss.root.userData.enemyBodyScale).toBe(3.2);

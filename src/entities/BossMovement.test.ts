@@ -13,22 +13,44 @@ function stationaryBoss(): Enemy {
 }
 
 describe('Boss movement leash', () => {
-  it('walks slowly toward a distant player and stops exactly fifteen meters away', () => {
+  it('chases a distant player faster and stops exactly fifteen meters away', () => {
     const boss = stationaryBoss();
     const player = new THREE.Vector3(0, 0, 40);
     boss.setBossMovementLocked(false);
 
-    for (let second = 0; second < 20; second++) {
-      boss.update(1, player, () => undefined);
-    }
+    // 25 m away: 10 m beyond the leash, so the full catch-up speed applies.
+    boss.update(1, player, () => undefined);
+    expect(boss.root.position.z).toBeCloseTo(2.8, 5);
 
-    expect(boss.root.position.z).toBeCloseTo(16, 5);
-    expect(boss.root.position.distanceTo(player)).toBeCloseTo(24, 5);
     for (let second = 0; second < 20; second++) {
       boss.update(1, player, () => undefined);
     }
     expect(boss.root.position.z).toBeCloseTo(25, 5);
     expect(boss.root.position.distanceTo(player)).toBeCloseTo(15, 5);
+  });
+
+  it('never chases faster than the six meter per second ceiling', () => {
+    const boss = new Enemy({
+      position: new THREE.Vector3(),
+      isBoss: true,
+      speed: 3,
+      attackRange: 1,
+      detectionRange: 90,
+    });
+    boss.setBossMovementLocked(false);
+
+    boss.update(1, new THREE.Vector3(0, 0, 80), () => undefined);
+
+    expect(boss.root.position.z).toBeCloseTo(6, 5);
+  });
+
+  it('slows to the base speed when the player is just past the leash', () => {
+    const boss = stationaryBoss();
+    boss.setBossMovementLocked(false);
+
+    boss.update(1, new THREE.Vector3(0, 0, 15.4), () => undefined);
+
+    expect(boss.root.position.z).toBeCloseTo(0.4, 5);
   });
 
   it('does not move while a ground skill is being cast', () => {

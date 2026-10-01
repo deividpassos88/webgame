@@ -7,7 +7,7 @@ import {
 describe('AnimationTestPanel', () => {
   it('provides one control for every player animation state', () => {
     expect(ANIMATION_TEST_BUTTONS).toEqual([
-      { state: 'idle', label: 'Parado', clipName: 'caminhando (pose)' },
+      { state: 'idle', label: 'Parado', clipName: 'idle_sword' },
       { state: 'running', label: 'Correr', clipName: 'correndo' },
       { state: 'attacking', label: 'Atacar', clipName: 'ataque_basico' },
       { state: 'hit', label: 'Receber golpe', clipName: 'recebe_dano' },

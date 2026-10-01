@@ -91,3 +91,26 @@ describe('WarriorSlashVFX', () => {
     healVFX.dispose();
   });
 });
+
+describe('MiniBossHealVFX details', () => {
+  beforeEach(() => {
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('spawns many floating plus symbols plus shockwave rings inside one container', () => {
+    const healVFX = new MiniBossHealVFX();
+    const dummy = new THREE.Object3D();
+    healVFX.triggerHeal(dummy);
+    healVFX.update(0.6);
+    const container = healVFX.group.children[0];
+    const sprites = container.children.filter((child) => (child as THREE.Sprite).isSprite && child.visible);
+    expect(sprites.length).toBeGreaterThan(8);
+    healVFX.update(0.2);
+    healVFX.reset();
+    expect(healVFX.group.children.length).toBe(0);
+    healVFX.dispose();
+  });
+});

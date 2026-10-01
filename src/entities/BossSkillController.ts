@@ -34,7 +34,7 @@ const SKILLS: readonly BossSkillKind[] = [
 const REST_DURATION = 5;
 const TELEGRAPH_DURATIONS: Readonly<Record<BossSkillKind, number>> = {
   circle: 4.2,
-  rectangle: 3.5,
+  rectangle: 2.8,
   meteors: 1,
 };
 

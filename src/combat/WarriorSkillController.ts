@@ -62,6 +62,7 @@ export class WarriorSkillController {
     WARRIOR_SKILLS.map(({ id, cooldown }) => [id, cooldown])
   ) as Record<WarriorSkillId, number>;
   private refundableActivation: WarriorSkillId | null = null;
+  private readonly cooldownMultiplied = new Set<WarriorSkillId>();
 
   public tryActivate(
     id: WarriorSkillId,
@@ -81,6 +82,7 @@ export class WarriorSkillController {
       return { kind: 'rejected', reason: 'insufficient-energy' };
     }
 
+    this.cooldownMultiplied.delete(id);
     if (!context.free) {
       this.energy -= definition.energyCost;
       this.cooldownDurations[id] = cooldownSeconds;
@@ -94,6 +96,19 @@ export class WarriorSkillController {
       this.refundableActivation = null;
     }
     return { kind: 'activated', attackId: id };
+  }
+
+  /**
+   * Combo reward cost: the skill recharges `factor` times slower. Applies once
+   * per activation and only while the skill is actually on cooldown.
+   */
+  public multiplyCooldown(id: WarriorSkillId, factor = 2): boolean {
+    if (this.cooldownMultiplied.has(id) || this.cooldowns[id] <= 0 || factor <= 1) return false;
+    const base = this.cooldownDurations[id];
+    this.cooldowns[id] += base * (factor - 1);
+    this.cooldownDurations[id] = base * factor;
+    this.cooldownMultiplied.add(id);
+    return true;
   }
 
   public canSpend(amount: number): boolean {
@@ -139,6 +154,7 @@ export class WarriorSkillController {
     this.energy = MAX_ENERGY;
     this.regenerationDelayRemaining = 0;
     this.refundableActivation = null;
+    this.cooldownMultiplied.clear();
     for (const skill of WARRIOR_SKILLS) {
       this.cooldowns[skill.id] = 0;
       this.cooldownDurations[skill.id] = skill.cooldown;

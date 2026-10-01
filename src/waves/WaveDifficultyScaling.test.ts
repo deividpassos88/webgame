@@ -111,7 +111,7 @@ describe('finalBossTotalHp', () => {
     expect(finalBossTotalHp()).toBe(BOSS_BASE_HP * 5);
     expect(finalBossTotalHp()).toBe(7000);
     expect(BASE_BOSS_DAMAGE).toBe(11);
-    expect(BASE_BOSS_SPEED).toBe(0.8);
+    expect(BASE_BOSS_SPEED).toBe(1.6);
     expect(BASE_BOSS_SCALE).toBe(3.2);
   });
 });
