@@ -113,3 +113,32 @@ altura e o cometa chega a 441 px; o flash do impacto, a 304 px.
   incluindo o boneco de treino.
 - Laboratório: sliders **22** (poeira girando) e **23** (faíscas) da carga,
   para ligar de volta e comparar; selo subiu para **FX v4**.
+
+## Quarta rodada (03/10, noite) — a conjuração que ficava na mão
+
+O usuário mandou um print com dois círculos: o borrão na mão da Maga e o
+brilho redondo em volta do projétil. Reclamação: "ao atacar e mover esse efeito
+continua parado por alguns segundos; essa conjuração precisa ser milésimos de
+segundos e sumir, não pode ficar ao andar".
+
+Três causas encontradas:
+
+1. **Carga presa na mão.** O clip `ataque basico` da Maga tem **1,8 s**. Com
+   `chargeStart 0.12` o brilho acendia em 0,22 s e só saía em `launch 0.36`
+   (0,65 s) — quase meio segundo de borrão na mão a cada tiro. Pior: quando o
+   ataque é reiniciado no meio (andar + atacar de novo), a timeline do cast
+   antigo zera o `fired` e **recria a carga**, mas o `launch` dele já tinha
+   acontecido (`cast.launched = true`) — a carga ficava pendurada para sempre.
+   Correções: `startCharge` ignora cast já lançado, o `update` libera a carga de
+   qualquer cast lançado, e a janela virou `chargeStart 0.30 -> launch 0.36`
+   (~0,1 s de brilho na mão, com rampa arcana de 9/s para acender de imediato).
+2. **Clarão de saída parado no ar.** O "muzzle flash" era um `ImpactVFX`
+   completo no ponto do disparo, com a duração do impacto (0,78 s) + fumaça:
+   a Maga andava e o clarão continuava brilhando no chão. Na bala ele foi
+   removido — o brilho da conjuração já anuncia o tiro.
+3. **Bola branca no projétil.** O sprite de aura (`haloScale 2.3` = 0,87 m,
+   opacidade 0.7, `depthTest: false`) cobria o cometa. Ficou em `haloScale 1.2`
+   (0,46 m) e opacidade 0.42 — o dardo é do próprio sprite do cometa.
+
+Laboratório: sliders **24** (quando a conjuração acende) e **25** (quando o tiro
+sai), com o tempo de brilho na mão em ms no painel; selo **FX v5**.

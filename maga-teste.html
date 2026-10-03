@@ -137,7 +137,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { MageVFX } from '/src/vfx/MageVFX';
 import { MAGE_SPELL_PRESETS } from '/src/vfx/VFXConfig';
 
-const FX_REV = 'v4'; // sobe junto com cada mudança grande de efeito
+const FX_REV = 'v5'; // sobe junto com cada mudança grande de efeito
 const PRESET = MAGE_SPELL_PRESETS.basic;
 const PRISTINE = JSON.parse(JSON.stringify(PRESET));
 const revBadge = document.getElementById('fx-rev');
@@ -288,6 +288,10 @@ const FIELDS = [
   // 0 = conjuração só com o brilho (o que o jogo usa agora).
   { path: 'charge.particleCount', label: '22. Carga (poeira girando)', min: 0, max: 24, step: 1, digits: 0 },
   { path: 'charge.sparkCount', label: '23. Carga (faíscas)', min: 0, max: 12, step: 1, digits: 0 },
+  // Fração do clip "ataque basico" (1,8 s no jogo). A janela entre os dois é o
+  // tempo que o brilho fica na mão — quanto menor, mais perto de "milésimos".
+  { path: 'timeline.chargeStart', label: '24. Conjuração (acende em)', min: 0.02, max: 0.6, step: 0.01, digits: 2 },
+  { path: 'timeline.launch', label: '25. Disparo (sai em)', min: 0.06, max: 0.8, step: 0.01, digits: 2 },
 ];
 
 function readPath(path) {
@@ -329,8 +333,8 @@ function updateReadout() {
     `Impacto: flash <b>${PRESET.impact.radius.toFixed(2)} m</b> (explosão ${(PRESET.impact.radius * 3.4).toFixed(2)} m) · ondas no chão <b>${PRESET.impact.shockwaveRadius.toFixed(2)} m</b> e ${(PRESET.impact.shockwaveRadius * 1.62).toFixed(2)} m · <b>${PRESET.impact.duration.toFixed(2)} s</b>`,
     `Impacto: <b>${PRESET.impact.particleCount}</b> partículas · <b>${PRESET.impact.debrisCount}</b> estilhaços de gelo · luz <b>${PRESET.impact.lightIntensity.toFixed(2)}</b> · tremor <b>${PRESET.impact.cameraShakeIntensity.toFixed(3)}</b> · Carga na mão: <b>${PRESET.charge.scale.toFixed(2)}</b>`,
     `Fumaça de gelo (mundo): <b>${frost ? frost.count : 0}</b> partículas a cada <b>${frost ? frost.interval.toFixed(3) : 0}s</b> → cerca de <b>${Math.round(tail)}</b> na cauda, puff de <b>${(puffMeters * 100).toFixed(0)} cm</b>`,
-    `Conjuração: <b>${PRESET.charge.particleCount}</b> partículas girando · <b>${PRESET.charge.sparkCount}</b> faíscas (0 = só o brilho na mão)`,
-    'Sem alvo o tiro não explode: ele perde o brilho em 0,4 s e some (impacto só quando acerta inimigo).',
+    `Conjuração: <b>${PRESET.charge.particleCount}</b> partículas girando · <b>${PRESET.charge.sparkCount}</b> faíscas (0 = só o brilho na mão) · brilho na mão por <b>${Math.round(Math.max(0, PRESET.timeline.launch - PRESET.timeline.chargeStart) * 1800)} ms</b>`,
+    'Sem alvo o tiro não explode: ele perde o brilho em 0,4 s e some (impacto só quando acerta inimigo). Não fica clarão parado onde a Maga atirou.',
     PRESET.impact.radius < cometWidth * 0.9
       ? '<span class="warn">O impacto está pequeno para esta bala — sobe o raio do impacto.</span>'
       : '',

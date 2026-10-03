@@ -94,17 +94,21 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       smoke: 0xbfe4f7,
     },
     timeline: {
-      chargeStart: 0.12,
+      // Clip do "ataque basico" da Maga = 1,8 s. A conjuração tem que ser um
+      // piscar: o brilho nasce 0,1 s antes do tiro sair (0.30 -> 0.36) e some
+      // junto com o disparo. Antes ele acendia em 0.12 (0,22 s) e ficava na mão
+      // até 0,83 s — era o borrão que continuava brilhando enquanto ela andava.
+      chargeStart: 0.3,
       // No hand magic circle: the basic attack fires every ~0.6 s and a seal on
       // the palm turned the spam attack into visual noise.
       launch: 0.36,
-      chargeEnd: 0.46,
+      chargeEnd: 0.4,
       recover: 0.72,
       end: 1,
     },
     // Conjuração reduzida a um brilho na mão: sem poeira girando e sem faísca
     // (0 desliga as duas nuvens). O que importa é a luz que anuncia o tiro.
-    charge: { scale: 0.58, particleCount: 0, sparkCount: 0, lightIntensity: 0.62, twoHanded: false },
+    charge: { scale: 0.5, particleCount: 0, sparkCount: 0, lightIntensity: 0.55, twoHanded: false },
     projectile: {
       speed: 25,
       lifetime: 1.1,
@@ -112,8 +116,10 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       trailLength: 0.85,
       trailWidth: 0.05,
       shape: 'bullet',
-      haloScale: 2.3,
-      haloOpacity: 0.7,
+      // Aura pequena e fraca: o sprite redondo de 0,87 m por cima do cometa
+      // virava uma bola branca sem forma. O brilho do dardo é do próprio sprite.
+      haloScale: 1.2,
+      haloOpacity: 0.42,
       comet: {
         // Cometa ~2,74 m × 0,91 m (mesma arte, só maior): quase 1,5× a altura
         // da Maga, para ler grande na câmera de jogo.

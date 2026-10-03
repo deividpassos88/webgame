@@ -53,6 +53,22 @@ function findTargetImpact(scene: THREE.Scene): THREE.Object3D | undefined {
   );
 }
 
+/** Avança a simulação até a carga na mão aparecer (a janela dela é curta). */
+function advanceUntilCharge(
+  vfx: MageVFX,
+  mixer: THREE.AnimationMixer,
+  scene: THREE.Scene,
+  maxSteps = 40
+): THREE.Object3D | undefined {
+  for (let step = 0; step < maxSteps; step += 1) {
+    mixer.update(0.05);
+    vfx.update(0.05);
+    const charge = scene.getObjectByName('MageChargeOrbVFX');
+    if (charge) return charge;
+  }
+  return scene.getObjectByName('MageChargeOrbVFX');
+}
+
 /** Avança a simulação até o projétil bater, com um teto de passos. */
 function advanceUntilTargetImpact(
   vfx: MageVFX,
@@ -119,13 +135,76 @@ describe('Mage basic attack bullet', () => {
   it('keeps the palm charge of the basic attack under a metre', () => {
     const scene = new THREE.Scene();
     const vfx = new MageVFX(scene, { quality: 'high' });
-    castBasic(vfx, 8);
+    const { mixer } = castBasic(vfx);
 
-    const charge = scene.getObjectByName('MageChargeOrbVFX');
+    const charge = advanceUntilCharge(vfx, mixer, scene);
     const glow = charge?.getObjectByName('MageChargeOrbGlow') as THREE.Sprite | undefined;
     expect(glow).toBeDefined();
     const worldDiameter = (glow?.scale.x ?? 0) * (charge?.scale.x ?? 1);
     expect(worldDiameter).toBeLessThan(1.3);
+    vfx.dispose();
+  });
+
+  it('acende a conjuração só por um piscar antes do disparo', () => {
+    const scene = new THREE.Scene();
+    const vfx = new MageVFX(scene, { quality: 'high' });
+    // Clip de teste = 1 s; no jogo o "ataque basico" tem 1,8 s, então a janela
+    // de 0.30 -> 0.36 do timeline vale ~0,1 s na mão da Maga.
+    const preset = MAGE_SPELL_PRESETS.basic;
+    expect(preset.timeline.chargeStart).toBeGreaterThanOrEqual(0.25);
+    expect(preset.timeline.launch - preset.timeline.chargeStart).toBeLessThan(0.12);
+
+    const { mixer } = castBasic(vfx);
+    const charge = advanceUntilCharge(vfx, mixer, scene);
+    expect(charge).toBeDefined();
+
+    // O disparo libera a carga: no quadro seguinte ela tem que sair da cena.
+    for (let step = 0; step < 6; step += 1) {
+      mixer.update(0.05);
+      vfx.update(0.05);
+    }
+    expect(scene.getObjectByName('MageChargeOrbVFX')).toBeUndefined();
+    vfx.dispose();
+  });
+
+  it('não prende a carga na mão quando o ataque recomeça no meio', () => {
+    const scene = new THREE.Scene();
+    const vfx = new MageVFX(scene, { quality: 'high' });
+    const { root, mixer, action } = createAction(2, 1);
+    const rightHand = new THREE.Object3D();
+    rightHand.name = 'mixamorig:RightHand';
+    root.add(rightHand);
+    const target = new THREE.Group();
+    target.position.set(0, 0, 10);
+    target.userData.enemyBodyScale = 1;
+    vfx.cast('basic', {
+      caster: root,
+      rightHand,
+      leftHand: null,
+      action,
+      target,
+      fallbackDirection: new THREE.Vector3(0, 0, 1),
+      isTargetAlive: () => true,
+    });
+
+    // avança até o disparo (0.36 do clip de 2 s do teste = 0,72 s)
+    let bolt: THREE.Object3D | undefined;
+    for (let step = 0; step < 40 && !bolt; step += 1) {
+      mixer.update(0.05);
+      vfx.update(0.05);
+      bolt = scene.getObjectByName('MageProjectileVFX');
+    }
+    expect(bolt).toBeDefined();
+    expect(scene.getObjectByName('MageChargeOrbVFX')).toBeUndefined();
+
+    // Atacar de novo reinicia a ação no meio e refaz os eventos da timeline.
+    action.reset();
+    action.play();
+    for (let step = 0; step < 30; step += 1) {
+      mixer.update(0.05);
+      vfx.update(0.05);
+    }
+    expect(scene.getObjectByName('MageChargeOrbVFX')).toBeUndefined();
     vfx.dispose();
   });
 
@@ -268,9 +347,9 @@ describe('Mage basic attack bullet', () => {
   it('conjura só com o brilho na mão: sem poeira girando nem faísca', () => {
     const scene = new THREE.Scene();
     const vfx = new MageVFX(scene, { quality: 'high' });
-    castBasic(vfx, 8);
+    const { mixer } = castBasic(vfx);
 
-    const charge = scene.getObjectByName('MageChargeOrbVFX');
+    const charge = advanceUntilCharge(vfx, mixer, scene);
     const glow = charge?.getObjectByName('MageChargeOrbGlow') as THREE.Sprite | undefined;
     expect(glow?.visible).toBe(true);
 

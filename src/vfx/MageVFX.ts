@@ -156,7 +156,10 @@ class ChargeOrbEffect implements PoolableVFX {
     if (!this.active || !this.preset) return;
     const elapsed = Math.max(0, delta);
     this.age += elapsed;
-    this.intensity = THREE.MathUtils.clamp(this.intensity + elapsed * (this.preset.style === 'laser' ? 1.8 : 2.8), 0, 1);
+    // O arcano (ataque básico) acende quase instantâneo: a conjuração dele dura
+    // décimos de segundo, então a rampa tem que acompanhar.
+    const ramp = this.preset.style === 'laser' ? 1.8 : this.preset.style === 'arcane' ? 9 : 2.8;
+    this.intensity = THREE.MathUtils.clamp(this.intensity + elapsed * ramp, 0, 1);
     const pulseRate = this.preset.style === 'lightning' ? 34 : this.preset.style === 'water' ? 12 : 18;
     const pulse = 1 + Math.sin(this.age * pulseRate) * (this.preset.style === 'lightning' ? 0.14 : 0.08);
     const scale = (0.45 + this.intensity * (this.preset.style === 'laser' ? 1.05 : 0.75)) * this.preset.charge.scale * pulse;
@@ -172,7 +175,7 @@ class ChargeOrbEffect implements PoolableVFX {
     // in the palm instead of the 3.8 m ball of light the other spells use.
     const arcane = this.preset.style === 'arcane';
     this.glow.scale.setScalar(
-      (arcane ? 1.35 : 2.2) + this.intensity * (this.preset.style === 'laser' ? 2.8 : arcane ? 0.55 : 1.6)
+      (arcane ? 1 : 2.2) + this.intensity * (this.preset.style === 'laser' ? 2.8 : arcane ? 0.4 : 1.6)
     );
     if (this.lightHandle) {
       this.lightHandle.light.intensity = this.preset.charge.lightIntensity * this.intensity;
@@ -609,6 +612,9 @@ export class MageVFX {
         cast.charge.update(elapsed);
       }
       const alive = cast.timeline.update((name) => this.handleTimelineEvent(cast, name));
+      // Depois do disparo a carga não tem mais razão de existir: se algum evento
+      // repetido a recriar, ela cai aqui no mesmo quadro.
+      if (cast.launched && cast.charge) this.releaseCharge(cast);
       const actionStoppedBeforeLaunch = !cast.context.action.isRunning()
         && !cast.launched
         && cast.context.action.time <= 0.02;
@@ -857,6 +863,10 @@ export class MageVFX {
 
   private startCharge(cast: ActiveMageCast): void {
     if (cast.charge) return;
+    // Cast que já lançou não volta a carregar: quando o ataque é reiniciado no
+    // meio (andar e atacar de novo), a timeline refaz os eventos deste cast e a
+    // carga ficava pendurada na mão — sem isso o brilho nunca saía de lá.
+    if (cast.launched) return;
     const charge = this.charges.acquire();
     if (!charge) return;
     charge.play(cast.preset);
@@ -904,14 +914,19 @@ export class MageVFX {
     this.releaseCharge(cast);
 
     const direction = this.resolveLaunchDirection(cast, origin, TMP_DIRECTION).clone();
-    // Muzzle flash: the bolt leaves the palm with a small puff, not an explosion.
     const bullet = cast.preset.projectile.shape === 'bullet';
-    this.impacts.play({
-      position: origin,
-      preset: cast.preset,
-      scale: bullet ? 0.3 : cast.preset.style === 'laser' ? 0.5 : 0.35,
-      lightIntensity: cast.preset.impact.lightIntensity * (bullet ? 0.38 : 0.45),
-    });
+    // O rastro de saída do tiro (um impacto em miniatura) ficava parado no ar
+    // onde a Maga atirou: ela andava e o clarão continuava lá, brilhando por
+    // quase um segundo. Na bala ele sai de cena — o brilho da conjuração na mão
+    // já anuncia o disparo, e o efeito de impacto fica só para o acerto.
+    if (!bullet) {
+      this.impacts.play({
+        position: origin,
+        preset: cast.preset,
+        scale: cast.preset.style === 'laser' ? 0.5 : 0.35,
+        lightIntensity: cast.preset.impact.lightIntensity * 0.45,
+      });
+    }
     this.emitAudio(cast.context, cast.preset, 'cast', origin);
 
     if (cast.preset.delivery === 'instant-lightning') {
