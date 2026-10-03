@@ -658,6 +658,117 @@ describe('lobby character preparation', () => {
     expect(markup).toContain('<kbd>1</kbd>');
   });
 
+  it('offers the Combo opt-in with its benefits listed, before the hotkey rows', () => {
+    const markup = renderLobbyHotkeys(createDefaultPlayerProfile().hotkeys, null, '', true, true);
+
+    // O card do Combo é o primeiro controle de combate: fácil de achar.
+    expect(markup.indexOf('data-combo-option')).toBeGreaterThan(-1);
+    expect(markup.indexOf('data-combo-option')).toBeLessThan(markup.indexOf('lobby-hotkey-list'));
+    expect(markup).toContain('data-toggle-combo');
+    expect(markup).toContain('aria-pressed="true"');
+    expect(markup).toContain('Combo ligado');
+    // Benefícios visíveis no tooltip (hover/foco) e abríveis pelo botão "?".
+    expect(markup).toContain('data-combo-benefits');
+    expect(markup).toContain('data-combo-info');
+    expect(markup).toContain('Dano x2 nas skills encadeadas');
+    expect(markup).toContain('Imunidade durante o combo');
+    expect(markup).toContain('recarregam 2x mais devagar');
+  });
+
+  it('renders the Combo turned off with the matching label', () => {
+    const markup = renderLobbyHotkeys(createDefaultPlayerProfile().hotkeys, null, '', true, false);
+
+    expect(markup).toContain('aria-pressed="false"');
+    expect(markup).toContain('Combo desligado');
+    expect(markup).not.toContain('lobby-combo-option is-on');
+  });
+
+  it('persists the Combo choice when the lobby toggle is pressed', () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      InventoryStore.fromProfile(profile)
+    );
+    let persisted = 0;
+    void lobby.show({
+      firstRun: false,
+      onClassConfirmed: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+      onHotkeysChanged: () => undefined,
+      onAutoBasicAttackChanged: () => undefined,
+      onComboEnabledChanged: () => { persisted += 1; },
+      onBlacksmithLicensePurchase: () => ({ message: '' }),
+      onBlacksmithCraft: () => ({ message: '' }),
+    });
+
+    const toggle = document.querySelector<HTMLButtonElement>('[data-toggle-combo]')!;
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+
+    toggle.click();
+
+    expect(profile.comboEnabled).toBe(false);
+    expect(persisted).toBe(1);
+    expect(document.querySelector('[data-toggle-combo]')?.getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelector('[data-combo-state]')?.textContent).toBe('Desligado');
+    expect(document.querySelector('.lobby-hotkey-message')?.textContent)
+      .toContain('skills saem uma por vez');
+
+    document.querySelector<HTMLButtonElement>('[data-toggle-combo]')?.click();
+
+    expect(profile.comboEnabled).toBe(true);
+    expect(persisted).toBe(2);
+    lobby.dispose();
+  });
+
+  it('opens the benefits panel from the info button and closes it with Escape', () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      InventoryStore.fromProfile(profile)
+    );
+    void lobby.show({
+      firstRun: false,
+      onClassConfirmed: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+      onHotkeysChanged: () => undefined,
+      onAutoBasicAttackChanged: () => undefined,
+      onBlacksmithLicensePurchase: () => ({ message: '' }),
+      onBlacksmithCraft: () => ({ message: '' }),
+    });
+
+    const option = document.querySelector<HTMLElement>('[data-combo-option]')!;
+    const info = document.querySelector<HTMLButtonElement>('[data-combo-info]')!;
+    expect(option.classList.contains('is-benefits-open')).toBe(false);
+    expect(info.getAttribute('aria-expanded')).toBe('false');
+
+    info.click();
+
+    expect(option.classList.contains('is-benefits-open')).toBe(true);
+    expect(info.getAttribute('aria-expanded')).toBe('true');
+
+    document.getElementById('lobby-screen')?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    );
+
+    expect(option.classList.contains('is-benefits-open')).toBe(false);
+    expect(info.getAttribute('aria-expanded')).toBe('false');
+    lobby.dispose();
+  });
+
   it('restores lobby focus to capacity when an expansion leaves no enabled purchase action', () => {
     document.body.innerHTML = `
       <section id="lobby-screen">

@@ -26,6 +26,8 @@ export interface AdminGamePorts {
   setAdminCamera(enabled: boolean): void;
   spawnTestEnemy(role: AdminSpawnRole): boolean;
   clearTestEnemies(): void;
+  /** Adds or removes the practice dummy used to test hits, range and VFX. */
+  toggleTrainingDummy(): boolean;
   inventory: InventoryStore;
   profile: PlayerProfile;
   persistProfileState(): boolean;
@@ -73,6 +75,10 @@ export class AdminGameActions {
       case 'clear-test-enemies':
         this.ports.clearTestEnemies();
         return { ok: true };
+      case 'toggle-training-dummy':
+        return this.ports.toggleTrainingDummy()
+          ? { ok: true }
+          : { ok: false, reason: 'unavailable' };
       case 'add-inventory-item':
         return this.addInventoryItem(command.itemId, command.quantity);
     }

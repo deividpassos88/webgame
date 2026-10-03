@@ -15,6 +15,7 @@ function createPorts(): AdminGamePorts {
     setAdminCamera: vi.fn(),
     spawnTestEnemy: vi.fn(() => true),
     clearTestEnemies: vi.fn(),
+    toggleTrainingDummy: () => true,
     profile,
     inventory: InventoryStore.fromProfile(profile),
     persistProfileState: vi.fn(() => true),

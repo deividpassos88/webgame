@@ -16,7 +16,8 @@ describe('ADM panel definition', () => {
     expect(definition?.spawnButtons).toEqual(['regular', 'mini-boss', 'boss']);
     expect(definition?.actions).toEqual([
       'jump-boss', 'hitkill-boss', 'immortality', 'admin-camera',
-      'spawn-test-enemy', 'clear-test-enemies', 'add-inventory-item',
+      'spawn-test-enemy', 'clear-test-enemies', 'toggle-training-dummy',
+      'add-inventory-item',
     ]);
   });
 
@@ -37,6 +38,38 @@ describe('ADM panel definition', () => {
 
     expect(onCommand).toHaveBeenCalledWith({ type: 'spawn-test-enemy', role: 'regular' });
     expect(onCommand).toHaveBeenCalledWith({ type: 'clear-test-enemies' });
+  });
+
+  it('toggles the practice dummy only after the game accepts the command', () => {
+    const host = document.createElement('div');
+    const onCommand = vi.fn<(command: AdminCommand) => AdminCommandResult>(() => ({ ok: true }));
+    const panel = AdminPanel.mount(host, true, onCommand)!;
+    const button = host.querySelector<HTMLButtonElement>('[data-admin-command="toggle-training-dummy"]')!;
+
+    expect(button.disabled).toBe(true);
+    panel.setGameplayAvailable(true);
+    expect(button.disabled).toBe(false);
+
+    button.click();
+    expect(onCommand).toHaveBeenCalledWith({ type: 'toggle-training-dummy' });
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+
+    button.click();
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('keeps the dummy toggle off when the command is refused', () => {
+    const host = document.createElement('div');
+    const onCommand = vi.fn<(command: AdminCommand) => AdminCommandResult>(
+      () => ({ ok: false, reason: 'unavailable' })
+    );
+    const panel = AdminPanel.mount(host, true, onCommand)!;
+    panel.setGameplayAvailable(true);
+    const button = host.querySelector<HTMLButtonElement>('[data-admin-command="toggle-training-dummy"]')!;
+
+    button.click();
+
+    expect(button.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('renders the inventory injection controls only for an authorized panel and dispatches a valid quantity', () => {

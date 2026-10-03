@@ -9,6 +9,7 @@ export type AdminCommand =
   | { readonly type: 'admin-camera'; readonly enabled: boolean }
   | { readonly type: 'spawn-test-enemy'; readonly role: AdminSpawnRole }
   | { readonly type: 'clear-test-enemies' }
+  | { readonly type: 'toggle-training-dummy' }
   | { readonly type: 'add-inventory-item'; readonly itemId: string; readonly quantity: number };
 
 export class AdminCommandGate {

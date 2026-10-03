@@ -18,6 +18,7 @@ function createPorts(
     setAdminCamera: () => undefined,
     spawnTestEnemy: () => true,
     clearTestEnemies: () => undefined,
+    toggleTrainingDummy: () => true,
     inventory,
     profile,
     persistProfileState,

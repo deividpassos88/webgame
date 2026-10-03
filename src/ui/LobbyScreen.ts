@@ -34,6 +34,13 @@ import {
   type WarriorSkillId,
 } from '../combat/WarriorSkillCatalog';
 import { mageSkillFatiguePercent } from '../combat/MageSkillCost';
+import {
+  COMBO_BENEFITS,
+  COMBO_HELP_LABEL,
+  COMBO_SUMMARY,
+  COMBO_TRADE_OFF,
+  comboToggleState,
+} from '../combat/ComboBenefits';
 import { MAGE_MAX_RANGE_METERS } from '../combat/DistanceDamage';
 import { classSkillAsset, renderSkillStars } from './WarriorSkillAssets';
 import { formatSkillCooldown } from './SkillCooldownText';
@@ -69,6 +76,8 @@ export interface LobbyScreenOptions {
   readonly onGuildTokenBackpackExpansion: () => string;
   readonly onHotkeysChanged: () => void;
   readonly onAutoBasicAttackChanged: () => void;
+  /** Persisted Combo toggle. */
+  readonly onComboEnabledChanged?: () => void;
   readonly onLobbyInventoryChanged?: () => void;
   readonly onBlacksmithLicensePurchase: () => BlacksmithLobbyActionResult;
   readonly onBlacksmithCraft: (recipeId: BlacksmithRecipeId) => BlacksmithLobbyActionResult;
@@ -274,11 +283,51 @@ function buildLobbySkillTip(
     </dl>`;
 }
 
+/**
+ * Card do Combo de skills.
+ *
+ * Fica no topo da lista de atalhos de combate — o lugar onde o jogador já olha
+ * para configurar skills — e é o único controle de combate com destaque dourado
+ * completo, para que "usar ou não o Combo" seja uma escolha fácil de achar e de
+ * entender. Os benefícios abrem no hover, no foco (teclado) e no clique/toque.
+ */
+export function renderComboOption(comboEnabled: boolean): string {
+  const state = comboToggleState(comboEnabled);
+  return `
+    <div class="lobby-combo-option${comboEnabled ? ' is-on' : ''}" data-combo-option aria-label="Combo de skills">
+      <div class="lobby-combo-option__head">
+        <span class="lobby-combo-option__mark" aria-hidden="true">⚔</span>
+        <span class="lobby-combo-option__copy">
+          <strong>Combo de Skills</strong>
+          <small>${state.hint}</small>
+        </span>
+        <span class="lobby-combo-option__state" data-combo-state>${state.label}</span>
+        <button
+          type="button"
+          class="lobby-combo-option__info"
+          data-combo-info
+          aria-expanded="false"
+          aria-controls="lobby-combo-benefits"
+          title="${COMBO_HELP_LABEL}"
+        ><span aria-hidden="true">?</span><span class="sr-only">${COMBO_HELP_LABEL}</span></button>
+        <button type="button" class="lobby-combo-option__toggle" data-toggle-combo aria-pressed="${comboEnabled}">${comboEnabled ? 'Combo ligado' : 'Combo desligado'}</button>
+      </div>
+      <div class="lobby-combo-benefits" id="lobby-combo-benefits" data-combo-benefits role="tooltip">
+        <p class="lobby-combo-benefits__summary">${COMBO_SUMMARY}</p>
+        <ul>
+          ${COMBO_BENEFITS.map((benefit) => `<li><strong>${benefit.title}</strong><span>${benefit.detail}</span></li>`).join('')}
+        </ul>
+        <p class="lobby-combo-benefits__trade">${COMBO_TRADE_OFF}</p>
+      </div>
+    </div>`;
+}
+
 export function renderLobbyHotkeys(
   hotkeys: PlayerHotkeys,
   pendingAction: PlayerHotkeyAction | null,
   message: string,
-  autoBasicAttack = false
+  autoBasicAttack = false,
+  comboEnabled = true
 ): string {
   const actions: readonly { action: PlayerHotkeyAction; label: string }[] = [
     ...WARRIOR_SKILLS.map((skill) => ({ action: skill.id, label: skill.label })),
@@ -289,6 +338,7 @@ export function renderLobbyHotkeys(
   return `
     <section class="lobby-hotkeys" aria-labelledby="lobby-hotkeys-title">
       <div class="lobby-hotkeys-heading"><div><p class="section-label">Combate</p><h3 id="lobby-hotkeys-title">Atalhos de combate</h3></div><small>Teclado</small></div>
+      ${renderComboOption(comboEnabled)}
       <div class="lobby-basic-auto"><span><strong>Ataque básico automático</strong><small>Ataca apenas o alvo marcado e ao alcance.</small></span><button type="button" data-toggle-basic-auto aria-pressed="${autoBasicAttack}">${autoBasicAttack ? 'Auto ligado' : 'Auto desligado'}</button></div>
       <div class="lobby-hotkey-list">
         ${actions.map(({ action, label }) => `
@@ -527,6 +577,7 @@ export class LobbyScreen {
   private guildTokenBackpackExpansion: (() => string) | null = null;
   private hotkeysChanged: (() => void) | null = null;
   private autoBasicAttackChanged: (() => void) | null = null;
+  private comboEnabledChanged: (() => void) | null = null;
   private blacksmithLicensePurchase: (() => BlacksmithLobbyActionResult) | null = null;
   private blacksmithCraft: ((recipeId: BlacksmithRecipeId) => BlacksmithLobbyActionResult) | null = null;
   private readonly blacksmithScreen: BlacksmithScreen;
@@ -634,6 +685,7 @@ export class LobbyScreen {
     this.guildTokenBackpackExpansion = options.onGuildTokenBackpackExpansion;
     this.hotkeysChanged = options.onHotkeysChanged;
     this.autoBasicAttackChanged = options.onAutoBasicAttackChanged;
+    this.comboEnabledChanged = options.onComboEnabledChanged ?? null;
     this.lobbyInventoryChanged = options.onLobbyInventoryChanged ?? null;
     this.blacksmithLicensePurchase = options.onBlacksmithLicensePurchase;
     this.blacksmithCraft = options.onBlacksmithCraft;
@@ -1203,7 +1255,8 @@ export class LobbyScreen {
       this.profile.hotkeys,
       this.pendingHotkeyAction,
       this.hotkeyMessage,
-      this.profile.autoBasicAttack
+      this.profile.autoBasicAttack,
+      this.profile.comboEnabled
     );
     this.syncStartButtonWeaponState();
   }
@@ -1258,6 +1311,9 @@ export class LobbyScreen {
     this.lobbyScreen.addEventListener('click', this.backpackExpansionClick);
     this.lobbyScreen.addEventListener('click', this.hotkeyRegistrationClick);
     this.lobbyScreen.addEventListener('click', this.autoBasicAttackClick);
+    this.lobbyScreen.addEventListener('click', this.comboToggleClick);
+    this.lobbyScreen.addEventListener('click', this.comboInfoClick);
+    this.lobbyScreen.addEventListener('keydown', this.comboInfoKeyDown);
     this.lobbyScreen.addEventListener('click', this.lobbyInventoryClick);
     this.lobbyScreen.addEventListener('click', this.lobbyEquipmentClick);
     this.lobbyScreen.addEventListener('input', this.inventorySearchInput);
@@ -1287,6 +1343,9 @@ export class LobbyScreen {
     this.lobbyScreen.removeEventListener('click', this.backpackExpansionClick);
     this.lobbyScreen.removeEventListener('click', this.hotkeyRegistrationClick);
     this.lobbyScreen.removeEventListener('click', this.autoBasicAttackClick);
+    this.lobbyScreen.removeEventListener('click', this.comboToggleClick);
+    this.lobbyScreen.removeEventListener('click', this.comboInfoClick);
+    this.lobbyScreen.removeEventListener('keydown', this.comboInfoKeyDown);
     this.lobbyScreen.removeEventListener('click', this.lobbyInventoryClick);
     this.skillTipHost?.removeEventListener('pointerover', this.skillTipOver);
     this.skillTipHost?.removeEventListener('pointerout', this.skillTipOut);
@@ -1379,6 +1438,43 @@ export class LobbyScreen {
       : 'Ataque básico automático desativado.';
     this.autoBasicAttackChanged?.();
     this.renderData();
+  };
+
+  /**
+   * Liga/desliga o Combo de skills. A escolha é do jogador e fica salva no
+   * perfil; o jogo consulta a flag antes de abrir o medidor.
+   */
+  private comboToggleClick = (event: Event): void => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-toggle-combo]');
+    if (!button) return;
+    this.profile.comboEnabled = !this.profile.comboEnabled;
+    this.hotkeyMessage = this.profile.comboEnabled
+      ? 'Combo de skills ativado: encadeie skills na zona verde.'
+      : 'Combo de skills desativado: as skills saem uma por vez.';
+    this.comboEnabledChanged?.();
+    this.renderData();
+    this.lobbyScreen.querySelector<HTMLButtonElement>('[data-toggle-combo]')?.focus();
+  };
+
+  /**
+   * O botão "?" abre/fecha a lista de benefícios. O hover e o foco já mostram o
+   * tooltip por CSS; o clique existe para toque e para leitor de tela.
+   */
+  private comboInfoClick = (event: Event): void => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-combo-info]');
+    if (!button) return;
+    const option = button.closest<HTMLElement>('[data-combo-option]');
+    if (!option) return;
+    const open = option.classList.toggle('is-benefits-open');
+    button.setAttribute('aria-expanded', String(open));
+  };
+
+  private comboInfoKeyDown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Escape') return;
+    const option = this.lobbyScreen.querySelector<HTMLElement>('[data-combo-option].is-benefits-open');
+    if (!option) return;
+    option.classList.remove('is-benefits-open');
+    option.querySelector<HTMLButtonElement>('[data-combo-info]')?.setAttribute('aria-expanded', 'false');
   };
 
   private hotkeyCapture = (event: KeyboardEvent): void => {

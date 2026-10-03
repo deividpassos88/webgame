@@ -47,6 +47,7 @@ export interface AdminPanelDefinition {
     'admin-camera',
     'spawn-test-enemy',
     'clear-test-enemies',
+    'toggle-training-dummy',
     'add-inventory-item',
   ];
 }
@@ -56,7 +57,8 @@ const DEFINITION: AdminPanelDefinition = Object.freeze({
   spawnButtons: Object.freeze(['regular', 'mini-boss', 'boss'] as AdminSpawnRole[]),
   actions: Object.freeze([
     'jump-boss', 'hitkill-boss', 'immortality', 'admin-camera',
-    'spawn-test-enemy', 'clear-test-enemies', 'add-inventory-item',
+    'spawn-test-enemy', 'clear-test-enemies', 'toggle-training-dummy',
+    'add-inventory-item',
   ] as const),
 });
 
@@ -73,6 +75,7 @@ export class AdminPanel {
   private readonly hitkillButton: HTMLButtonElement;
   private readonly immortalityButton: HTMLButtonElement;
   private readonly cameraButton: HTMLButtonElement;
+  private readonly dummyButton: HTMLButtonElement;
   private drag: { pointerId: number; startX: number; startY: number; left: number; top: number; moved: boolean } | null = null;
   private ignoreToggleClick = false;
 
@@ -84,6 +87,7 @@ export class AdminPanel {
     this.hitkillButton = root.querySelector<HTMLButtonElement>('[data-admin-command="hitkill-boss"]')!;
     this.immortalityButton = root.querySelector<HTMLButtonElement>('[data-admin-command="immortality"]')!;
     this.cameraButton = root.querySelector<HTMLButtonElement>('[data-admin-command="admin-camera"]')!;
+    this.dummyButton = root.querySelector<HTMLButtonElement>('[data-admin-command="toggle-training-dummy"]')!;
     this.bindEvents();
   }
 
@@ -116,6 +120,7 @@ export class AdminPanel {
             ${definition.spawnButtons.map(role => `<button type="button" class="admin-control" data-admin-spawn-role="${role}" disabled>${role === 'regular' ? 'Adicionar monstro' : role === 'mini-boss' ? 'Adicionar mini-boss' : 'Adicionar boss'}</button>`).join('')}
           </div>
           <button type="button" class="admin-control" data-admin-command="clear-test-enemies" disabled>Limpar monstros</button>
+          <button type="button" class="admin-control admin-toggle" data-admin-command="toggle-training-dummy" aria-pressed="false" disabled>Boneco de treino</button>
         </section>
         <section class="admin-inventory" aria-label="Adicionar item ao inventário">
           <label>Item
@@ -162,6 +167,7 @@ export class AdminPanel {
       '[data-admin-command="admin-camera"]',
       '[data-admin-spawn-role]',
       '[data-admin-command="clear-test-enemies"]',
+      '[data-admin-command="toggle-training-dummy"]',
     ].join(', ');
     this.root.querySelectorAll<HTMLButtonElement>(selector).forEach((button) => {
       button.disabled = !available;
@@ -172,6 +178,7 @@ export class AdminPanel {
   public resetToggles(): void {
     this.setToggle(this.immortalityButton, false);
     this.setToggle(this.cameraButton, false);
+    this.setToggle(this.dummyButton, false);
   }
 
   private bindEvents(): void {
@@ -216,6 +223,10 @@ export class AdminPanel {
         this.addInventoryItem();
       } else if (command === 'jump-boss' || command === 'hitkill-boss' || command === 'clear-test-enemies') {
         this.onCommand({ type: command });
+      } else if (command === 'toggle-training-dummy') {
+        const enabled = button.getAttribute('aria-pressed') !== 'true';
+        const result = this.onCommand({ type: 'toggle-training-dummy' });
+        if (result.ok) this.setToggle(button, enabled);
       } else if (command === 'immortality' || command === 'admin-camera') {
         const enabled = button.getAttribute('aria-pressed') !== 'true';
         this.setToggle(button, enabled);

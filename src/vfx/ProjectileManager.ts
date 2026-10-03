@@ -7,6 +7,7 @@ import { VFXPool, type PoolableVFX } from './VFXPool';
 import {
   configureEnergyMaterial,
   createEnergyTrailMaterial,
+  createMagicCircleMaterial,
   setEnergyTime,
   type EnergyShaderMaterial,
 } from './VFXMaterials';
@@ -77,6 +78,10 @@ class MageProjectile implements PoolableVFX {
   private readonly core: THREE.Mesh;
   private readonly iceShard: THREE.Mesh;
   private readonly lavaInner: THREE.Mesh;
+  /** "Flecha mágica" do ataque básico: dardo alongado + duas aletas rúnicas. */
+  private readonly arrowSpearhead: THREE.Mesh;
+  private readonly runeFins: THREE.Mesh[] = [];
+  private readonly runeFinMaterials: EnergyShaderMaterial[] = [];
   private readonly glow: THREE.Sprite;
   private readonly trail: THREE.Mesh;
   private readonly trailGeometry = new THREE.BufferGeometry();
@@ -137,6 +142,37 @@ class MageProjectile implements PoolableVFX {
     this.lavaInner.name = 'MageLavaWhiteHotCoreProjectile';
     this.lavaInner.visible = false;
 
+    this.arrowSpearhead = new THREE.Mesh(resources.arrowSpearhead, new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    }));
+    this.arrowSpearhead.name = 'MageBasicArrowSpearhead';
+    this.arrowSpearhead.visible = false;
+    // O cone do Three.js aponta para +Y; girar em X o alinha com o "para frente"
+    // do grupo (mesmo truque já usado pelo shard de gelo).
+    this.arrowSpearhead.rotation.x = Math.PI / 2;
+
+    for (let fin = 0; fin < 2; fin += 1) {
+      const material = createMagicCircleMaterial({
+        opacity: 0,
+        intensity: 1.9,
+        thickness: 0.5,
+        distortion: 1.35,
+        depthTest: true,
+      });
+      const mesh = new THREE.Mesh(resources.runeBand, material);
+      mesh.name = fin === 0 ? 'MageBasicArrowRuneFinInner' : 'MageBasicArrowRuneFinOuter';
+      mesh.visible = false;
+      mesh.renderOrder = 5;
+      this.runeFins.push(mesh);
+      this.runeFinMaterials.push(material);
+      this.group.add(mesh);
+    }
+
     this.glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: resources.softGlow,
       color: 0xffffff,
@@ -167,7 +203,15 @@ class MageProjectile implements PoolableVFX {
     this.trail.renderOrder = 4;
 
     this.secondaryParticles = new PooledParticleCloud(38, resources.softGlow);
-    this.group.add(this.trail, this.core, this.iceShard, this.lavaInner, this.glow, this.secondaryParticles.points);
+    this.group.add(
+      this.trail,
+      this.arrowSpearhead,
+      this.core,
+      this.iceShard,
+      this.lavaInner,
+      this.glow,
+      this.secondaryParticles.points
+    );
   }
 
   public fire(options: ProjectileFireOptions): void {
@@ -201,6 +245,42 @@ class MageProjectile implements PoolableVFX {
     (this.lavaInner.material as THREE.MeshBasicMaterial).opacity = options.preset.style === 'lava' ? 1 : 0;
     (this.lavaInner.material as THREE.MeshBasicMaterial).color.set(options.preset.colors.core);
     this.lavaInner.scale.setScalar(options.preset.projectile.radius * 2.2);
+
+    const arrow = options.preset.projectile.arrow;
+    this.arrowSpearhead.visible = arrow !== undefined;
+    if (arrow) {
+      const spearMaterial = this.arrowSpearhead.material as THREE.MeshBasicMaterial;
+      spearMaterial.color.set(options.preset.colors.core);
+      spearMaterial.opacity = 0.9;
+      // O cone tem raio 0.5 e altura 1: escalar em Y estica o dardo no sentido
+      // do voo e o raio do preset define a espessura.
+      this.arrowSpearhead.scale.set(
+        options.preset.projectile.radius * 1.5,
+        options.preset.projectile.radius * arrow.length,
+        options.preset.projectile.radius * 1.5
+      );
+    }
+    for (let fin = 0; fin < this.runeFins.length; fin += 1) {
+      const mesh = this.runeFins[fin];
+      mesh.visible = arrow !== undefined;
+      if (!arrow) continue;
+      const material = this.runeFinMaterials[fin];
+      configureEnergyMaterial(material, {
+        colorA: options.preset.colors.glow,
+        colorB: options.preset.colors.secondary,
+        opacity: fin === 0 ? 0.72 : 0.5,
+        intensity: 1.9,
+        scrollSpeed: fin === 0 ? 1.6 : -1.25,
+        thickness: 0.5,
+        distortion: 1.35,
+      });
+      // Duas coroas rúnicas em volta do dardo. Ficam quase de frente para o alvo
+      // (a câmera do jogo fica atrás do conjurador, então é assim que o giro
+      // aparece) e a externa leva uma leve inclinação para dar profundidade.
+      const finScale = options.preset.projectile.radius * (fin === 0 ? 1.5 : 1.95);
+      mesh.scale.setScalar(finScale);
+      mesh.rotation.set(fin === 0 ? 0 : 0.34, 0, 0);
+    }
 
     const glowMaterial = this.glow.material as THREE.SpriteMaterial;
     glowMaterial.map = this.resources.mageTexture(options.preset.style, 'charge');
@@ -297,6 +377,25 @@ class MageProjectile implements PoolableVFX {
     this.core.rotation.y += elapsed * (this.preset.style === 'water' ? 4 : 2);
     this.iceShard.rotation.z += elapsed * 5;
     this.lavaInner.rotation.x += elapsed * 7;
+    const arrow = this.preset.projectile.arrow;
+    if (arrow) {
+      // O dardo pulsa junto com a aura e as aletas giram em sentidos opostos.
+      const dartPulse = 0.94 + Math.sin(this.age * 34) * 0.06;
+      this.arrowSpearhead.scale.set(
+        this.config.radius * 1.5 * dartPulse,
+        this.config.radius * arrow.length * (0.96 + Math.sin(this.age * 22) * 0.04),
+        this.config.radius * 1.5 * dartPulse
+      );
+      const fade = Math.max(0, 1 - this.age / Math.max(0.001, this.config.lifetime));
+      for (let fin = 0; fin < this.runeFins.length; fin += 1) {
+        const mesh = this.runeFins[fin];
+        const speed = arrow.finSpin * (fin === 0 ? 1 : -0.72);
+        mesh.rotation.z += elapsed * speed;
+        setEnergyTime(this.runeFinMaterials[fin], this.age * (fin === 0 ? 1.5 : -1.1));
+        this.runeFinMaterials[fin].uniforms.uOpacity.value =
+          (fin === 0 ? 0.72 : 0.5) * (0.35 + fade * 0.65);
+      }
+    }
     if (this.lightHandle) {
       this.lightHandle.light.intensity *= 0.985;
       this.syncLightPosition();
@@ -325,6 +424,11 @@ class MageProjectile implements PoolableVFX {
     this.secondaryParticles.reset();
     this.iceShard.visible = false;
     this.lavaInner.visible = false;
+    this.arrowSpearhead.visible = false;
+    for (let fin = 0; fin < this.runeFins.length; fin += 1) {
+      this.runeFins[fin].visible = false;
+      this.runeFinMaterials[fin].uniforms.uOpacity.value = 0;
+    }
     this.lightHandle?.release();
     this.lightHandle = null;
     this.trailMaterial.uniforms.uOpacity.value = 0;
@@ -332,6 +436,8 @@ class MageProjectile implements PoolableVFX {
 
   public dispose(): void {
     (this.core.material as THREE.Material).dispose();
+    (this.arrowSpearhead.material as THREE.Material).dispose();
+    for (const material of this.runeFinMaterials) material.dispose();
     (this.iceShard.material as THREE.Material).dispose();
     (this.lavaInner.material as THREE.Material).dispose();
     (this.glow.material as THREE.Material).dispose();

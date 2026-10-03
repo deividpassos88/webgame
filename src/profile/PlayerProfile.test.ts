@@ -451,3 +451,50 @@ describe('PlayerProfile progression', () => {
     expect(PROFILE_STORAGE_KEY).toBe('dragon-miner.profile.v1');
   });
 });
+
+describe('Combo toggle persistence', () => {
+  it('arrives turned on for new profiles', () => {
+    expect(createDefaultPlayerProfile().comboEnabled).toBe(true);
+    expect(PROFILE_SCHEMA_VERSION).toBe(12);
+  });
+
+  it('round-trips a profile with the Combo turned off', () => {
+    const storage = memoryStorage();
+    const profile = createDefaultPlayerProfile();
+    profile.comboEnabled = false;
+
+    expect(savePlayerProfile(profile, storage)).toBe(true);
+    const loaded = loadPlayerProfile(storage);
+
+    expect(loaded.kind).toBe('loaded');
+    expect(loaded.profile.comboEnabled).toBe(false);
+  });
+
+  it('migrates a schema-eleven save and turns the combo on without losing progress', () => {
+    const current = createDefaultPlayerProfile();
+    const schemaEleven: Record<string, unknown> = {
+      ...current,
+      schemaVersion: 11,
+      backpack: [{ itemId: 'runic-crystal', quantity: 4 }],
+      equipment: { ...current.equipment, weapon: 'starter-staff', primaryWeapon: 'starter-staff' },
+    };
+    delete schemaEleven.comboEnabled;
+
+    const result = loadPlayerProfile(memoryStorage(JSON.stringify(schemaEleven)));
+
+    expect(result.kind).toBe('loaded');
+    expect(result.profile.schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
+    expect(result.profile.comboEnabled).toBe(true);
+    expect(result.profile.backpack).toEqual([{ itemId: 'runic-crystal', quantity: 4 }]);
+    expect(result.profile.equipment.primaryWeapon).toBe('starter-staff');
+  });
+
+  it('rejects a current save whose combo flag is not a boolean', () => {
+    const malformed: Record<string, unknown> = { ...createDefaultPlayerProfile(), comboEnabled: 'sim' };
+
+    const recovered = loadPlayerProfile(memoryStorage(JSON.stringify(malformed)));
+
+    expect(recovered.kind).toBe('recovered');
+    expect(recovered.profile).toEqual(createDefaultPlayerProfile());
+  });
+});

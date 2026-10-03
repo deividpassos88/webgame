@@ -32,6 +32,17 @@ export interface MageProjectileConfig {
   readonly radius: number;
   readonly trailLength: number;
   readonly trailWidth: number;
+  /**
+   * "Flecha mágica": alonga o núcleo do projétil num dardo e faz girar anéis
+   * rúnicos ao redor dele. Usado pelo ataque básico da Maga (referência:
+   * Magic Arrow / Charged Magic Arrow do Black Desert).
+   */
+  readonly arrow?: {
+    /** Comprimento do dardo, em múltiplos do raio do projétil. */
+    readonly length: number;
+    /** Velocidade de giro das aletas rúnicas (rad/s). */
+    readonly finSpin: number;
+  };
 }
 
 export interface MageImpactConfig {
@@ -43,6 +54,18 @@ export interface MageImpactConfig {
   readonly lightIntensity: number;
   readonly particleCount: number;
   readonly debrisCount: number;
+  /**
+   * Sigilo rúnico carimbado no chão sob o impacto. É a assinatura do ataque
+   * básico: dá peso ao golpe sem precisar de uma explosão grande.
+   */
+  readonly runeSigil?: {
+    /** Raio final do sigilo, em metros. */
+    readonly radius: number;
+    /** Giro das duas camadas concêntricas (rad/s). */
+    readonly spin: number;
+    /** Intensidade do brilho do sigilo. */
+    readonly intensity: number;
+  };
 }
 
 export interface MageChargeConfig {

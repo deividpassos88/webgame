@@ -33,7 +33,7 @@ import {
 
 /** The key stays stable so existing browser saves can be upgraded in place. */
 export const PROFILE_STORAGE_KEY = 'dragon-miner.profile.v1';
-export const PROFILE_SCHEMA_VERSION = 11 as const;
+export const PROFILE_SCHEMA_VERSION = 12 as const;
 /**
  * Schema ten used `strength` (health + physical damage) as a player attribute.
  * Schema eleven replaces it with `vitality` and adds `criticalDamage` and
@@ -41,6 +41,8 @@ export const PROFILE_SCHEMA_VERSION = 11 as const;
  * migration below before `readAttributes` accepts them.
  */
 export const PREVIOUS_CURRENT_PROFILE_SCHEMA_VERSION = 9 as const;
+/** Schema eleven predates the persistable Combo toggle. */
+export const COMBO_TOGGLE_PROFILE_SCHEMA_VERSION = 11 as const;
 export const PREVIOUS_PROFILE_SCHEMA_VERSION = 8 as const;
 /** Schema ten is the only one whose attributes still carried `strength`. */
 export const STRENGTH_ATTRIBUTE_SCHEMA_VERSION = 10 as const;
@@ -113,6 +115,8 @@ export interface PlayerProfile {
   hotkeys: PlayerHotkeys;
   /** Opt-in automatic basic attack against the current marked target. */
   autoBasicAttack: boolean;
+  /** Opt-in skill combo gauge. Off means skills are cast one at a time. */
+  comboEnabled: boolean;
   /** Paid workshop access. A null timestamp means no active license. */
   blacksmith: BlacksmithAccess;
   skillStars: Record<PersistedWarriorSkillId, number>;
@@ -189,6 +193,7 @@ export function createDefaultPlayerProfile(): PlayerProfile {
     hotkeys: { ...DEFAULT_PLAYER_HOTKEYS },
     // O ataque básico automático já vem ligado em perfis novos e migrados.
     autoBasicAttack: true,
+    comboEnabled: true,
     blacksmith: { availableUntil: null },
     skillStars: {
       ataque_giratorio: 1,
@@ -221,6 +226,11 @@ export function loadPlayerProfile(storage = browserStorage()): ProfileLoadResult
   try {
     const parsed: unknown = JSON.parse(stored);
     if (isPlayerProfile(parsed)) return { kind: 'loaded', profile: parsed };
+    if (isComboToggleProfile(parsed)) {
+      const migrated = migrateComboToggleProfile(parsed);
+      savePlayerProfile(migrated, storage);
+      return { kind: 'loaded', profile: migrated };
+    }
     if (isStrengthAttributeProfile(parsed)) {
       const migrated = migrateStrengthAttributeProfile(parsed);
       savePlayerProfile(migrated, storage);
@@ -448,6 +458,29 @@ export function syncStarterWeaponToClass(profile: PlayerProfile): PlayerProfile 
 function isPlayerProfile(value: unknown): value is PlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== PROFILE_SCHEMA_VERSION) return false;
+  if (!isPlayableCharacterId(value.selectedClass)) return false;
+  if (!isCanonicalEquipment(value.equipment)) return false;
+  const backpackCapacity = value.backpackCapacity;
+  if (!isBackpackCapacity(backpackCapacity)) return false;
+  if (!isBackpack(value.backpack, backpackCapacity)) return false;
+  if (!isGuildVault(value.guildVault)) return false;
+  if (!isPlayerHotkeys(value.hotkeys)) return false;
+  if (typeof value.autoBasicAttack !== 'boolean') return false;
+  if (typeof value.comboEnabled !== 'boolean') return false;
+  if (!isBlacksmithAccess(value.blacksmith)) return false;
+  if (!isSkillStars(value.skillStars)) return false;
+  const progression = value.progression;
+  return isProgression(progression) && isCurrentAttributeAllocation(value, progression);
+}
+
+/**
+ * Schema eleven carries hotkeys and auto-attack but predates the Combo toggle.
+ * Detected by shape (every other field already matches the current schema) so an
+ * existing dungeon run is not thrown away on the upgrade.
+ */
+function isComboToggleProfile(value: unknown): value is ComboTogglePlayerProfile {
+  if (!isRecord(value)) return false;
+  if (value.schemaVersion !== COMBO_TOGGLE_PROFILE_SCHEMA_VERSION) return false;
   if (!isPlayableCharacterId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   const backpackCapacity = value.backpackCapacity;
@@ -843,6 +876,7 @@ function migrateVersionFourProfile(previous: VersionFourPlayerProfile): PlayerPr
     guildVault: inventory.guildVault,
     hotkeys: { ...DEFAULT_PLAYER_HOTKEYS },
     autoBasicAttack: true,
+    comboEnabled: true,
     blacksmith: { availableUntil: null },
     skillStars: { ...previous.skillStars },
     progression,
@@ -864,6 +898,7 @@ function migrateVersionFiveProfile(previous: VersionFivePlayerProfile): PlayerPr
     guildVault: inventory.guildVault,
     hotkeys: { ...DEFAULT_PLAYER_HOTKEYS },
     autoBasicAttack: true,
+    comboEnabled: true,
     blacksmith: { availableUntil: null },
     skillStars: { ...previous.skillStars },
     progression: { ...previous.progression },
@@ -883,6 +918,7 @@ function migrateVersionSixProfile(previous: VersionSixPlayerProfile): PlayerProf
     guildVault: previous.guildVault.map((stack) => ({ ...stack })),
     hotkeys: { ...DEFAULT_PLAYER_HOTKEYS },
     autoBasicAttack: true,
+    comboEnabled: true,
     blacksmith: { availableUntil: null },
     skillStars: { ...previous.skillStars },
     progression: { ...previous.progression },
@@ -908,6 +944,7 @@ function migrateVersionSevenProfile(previous: VersionSevenPlayerProfile): Player
       corte_duplo: previous.hotkeys.corte_duplo,
     },
     autoBasicAttack: true,
+    comboEnabled: true,
     blacksmith: { availableUntil: null },
     skillStars: { ...previous.skillStars },
     progression: { ...previous.progression },
@@ -921,6 +958,7 @@ function migrateVersionEightProfile(previous: VersionEightPlayerProfile): Player
   return {
     ...previous,
     schemaVersion: PROFILE_SCHEMA_VERSION,
+    comboEnabled: true,
     blacksmith: { availableUntil: null },
   };
 }
@@ -946,8 +984,25 @@ function migrateStrengthAttributeProfile(previous: StrengthAttributePlayerProfil
   return {
     ...previous,
     schemaVersion: PROFILE_SCHEMA_VERSION,
+    comboEnabled: true,
     attributes,
     attributesConfirmed: false,
+    equipment: { ...previous.equipment },
+    backpack: previous.backpack.map((stack) => ({ ...stack })),
+    guildVault: previous.guildVault.map((stack) => ({ ...stack })),
+  };
+}
+
+/**
+ * Schema eleven is the last save without the Combo toggle. The player never had
+ * the option before, so the combo arrives turned on (it is the current combat
+ * feel); from here on the choice is theirs and is persisted.
+ */
+function migrateComboToggleProfile(previous: ComboTogglePlayerProfile): PlayerProfile {
+  return {
+    ...previous,
+    schemaVersion: PROFILE_SCHEMA_VERSION,
+    comboEnabled: true,
     equipment: { ...previous.equipment },
     backpack: previous.backpack.map((stack) => ({ ...stack })),
     guildVault: previous.guildVault.map((stack) => ({ ...stack })),
@@ -958,6 +1013,7 @@ function migrateVersionNineProfile(previous: VersionNinePlayerProfile): PlayerPr
   return {
     ...previous,
     schemaVersion: PROFILE_SCHEMA_VERSION,
+    comboEnabled: true,
     equipment: { ...previous.equipment },
     backpack: previous.backpack.map((stack) => ({ ...stack })),
     guildVault: previous.guildVault.map((stack) => ({ ...stack })),
@@ -997,6 +1053,7 @@ function makeProgressionProfile(source: {
     guildVault: inventory.guildVault,
     hotkeys: { ...DEFAULT_PLAYER_HOTKEYS },
     autoBasicAttack: true,
+    comboEnabled: true,
     blacksmith: { availableUntil: null },
     skillStars: { ...source.skillStars },
     progression: createInitialProgression(),
@@ -1115,6 +1172,10 @@ interface VersionEightPlayerProfile extends Omit<PlayerProfile, 'schemaVersion' 
 
 interface VersionNinePlayerProfile extends Omit<PlayerProfile, 'schemaVersion'> {
   schemaVersion: typeof PREVIOUS_CURRENT_PROFILE_SCHEMA_VERSION;
+}
+
+interface ComboTogglePlayerProfile extends Omit<PlayerProfile, 'schemaVersion' | 'comboEnabled'> {
+  schemaVersion: typeof COMBO_TOGGLE_PROFILE_SCHEMA_VERSION;
 }
 
 interface StrengthAttributePlayerProfile extends Omit<PlayerProfile, 'schemaVersion' | 'attributes'> {

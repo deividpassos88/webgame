@@ -119,6 +119,7 @@ import { WarriorSkillController, type WarriorSkillsSnapshot } from '../combat/Wa
 import { displayPlayerHotkey } from '../profile/PlayerHotkeys';
 import { COMBO_COOLDOWN_MULTIPLIER, SkillComboController } from '../combat/SkillComboController';
 import { comboDamageMultiplier, comboPlaybackMultiplier } from '../combat/ComboEmpowerment';
+import { comboCanOpen } from '../combat/ComboBenefits';
 import { ComboImmunityController } from '../combat/ComboImmunity';
 import { ComboGauge } from '../ui/ComboGauge';
 import { HitCounter } from '../combat/HitCounter';
@@ -448,6 +449,12 @@ export class Game {
             onGuildTokenBackpackExpansion: () => this.purchaseGuildTokenBackpackExpansion(),
             onHotkeysChanged: () => this.persistProfileState(),
             onAutoBasicAttackChanged: () => this.persistProfileState(),
+            onComboEnabledChanged: () => {
+              this.persistProfileState();
+              // O medidor aberto não pode sobreviver ao desligamento: sem isso
+              // um clique na zona verde ainda encadearia a próxima skill.
+              if (!this.profile.comboEnabled) this.skillCombo.reset();
+            },
             onLobbyInventoryChanged: () => this.persistInventory(),
             onBlacksmithLicensePurchase: () => this.purchaseBlacksmithWorkshopLicense(),
             onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
@@ -643,6 +650,7 @@ export class Game {
       },
       spawnTestEnemy: (role) => this.spawnAdminTestEnemy(role),
       clearTestEnemies: () => this.clearAdminTestEnemies(),
+      toggleTrainingDummy: () => this.toggleTrainingDummy(),
       inventory: this.inventory,
       profile: this.profile,
       persistProfileState: () => this.persistProfileState(),
@@ -1169,10 +1177,19 @@ export class Game {
   /** Opens the combo gauge (or continues the combo) for an accepted skill cast. */
   private registerSkillCombo(id: WarriorSkillId, adminPreview: boolean): void {
     this.queuedComboSkill = null;
-    const used = this.skillCombo.canChain(id) ? [...this.skillCombo.chainedSkills, id] : [id];
+    const comboEnabled = this.profile.comboEnabled;
+    const used = comboEnabled && this.skillCombo.canChain(id)
+      ? [...this.skillCombo.chainedSkills, id]
+      : [id];
     const remaining = this.comboCandidates(used, adminPreview).length;
     const timing = this.player.getWarriorSkillComboTiming(id) ?? undefined;
-    this.skillCombo.registerCast(id, remaining, timing);
+    // O Combo é opt-in no lobby: desligado, a skill sai sozinha e nenhum
+    // medidor (nem bônus, nem imunidade) é aberto.
+    this.skillCombo.registerCast(
+      id,
+      comboCanOpen(this.profile.comboEnabled, remaining) ? remaining : 0,
+      timing
+    );
     // A imunidade do combo começa aqui, na primeira skill: cobre a animação
     // inteira enquanto o combo estiver vivo.
     this.comboImmunity.onSkillCast(
@@ -1306,6 +1323,25 @@ export class Game {
 
   private skillDisplayLevel(): number {
     return this.hasAdminFreeSkills() ? Number.MAX_SAFE_INTEGER : this.profile.progression.level;
+  }
+
+  /**
+   * Liga/desliga o boneco de treino pelo painel ADM. É a forma mais direta de
+   * testar alcance, dano e efeitos (por exemplo o novo ataque básico da Maga)
+   * sem monstros atacando de volta.
+   */
+  private toggleTrainingDummy(): boolean {
+    if (this.trainingDummy) {
+      const dummy = this.trainingDummy;
+      this.trainingDummy = null;
+      if (this.targetedEnemyRoot === dummy.root) this.targetedEnemyRoot = null;
+      this.scene.remove(dummy.root);
+      Logger.info('Game:Admin', 'Boneco de treino removido.');
+      return true;
+    }
+    if (!this.scene) return false;
+    this.spawnTrainingDummy();
+    return this.trainingDummy !== null;
   }
 
   private spawnTrainingDummy(): void {
