@@ -20,7 +20,7 @@ describe('Game campaign progression contract', () => {
   });
 
   it('removes the close red ribbon and keeps every Double Cut fan facing forward', () => {
-    const start = game.indexOf('private playDarkFlameFanAttackWindow(event: WarriorAttackWindowEvent): void {');
+    const start = game.indexOf('private playDarkFlameFanAttackWindow(');
     const end = game.indexOf('private applyWarriorBasicWaveDamage', start);
     const cutWindow = game.slice(start, end);
 
@@ -42,6 +42,13 @@ describe('Game campaign progression contract', () => {
 
   it('renders the scaled fatigue reserve against current max fatigue', () => {
     expect(game).toContain('this.hud.updatePlayerFatigue(fatigue, this.fatigue.currentMaxFatigue);');
+  });
+
+  it('no longer plays the green heal pillar when a mini-boss dies', () => {
+    // A cura do abate continua (plasma + número flutuante); só o efeito do
+    // pilar de cura com anel e cruzes médicas saiu do fluxo de combate.
+    expect(game).not.toContain('triggerMiniBossHeal');
+    expect(game).toContain('this.healthPlasma.spawn(plasmaOrigin, reward.healAmount);');
   });
 
   it('schedules the lobby return when the reward coordinator is unavailable', () => {

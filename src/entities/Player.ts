@@ -41,13 +41,19 @@ import {
 } from '../combat/WarriorSkillCatalog';
 import { getEffectiveTargetDistance } from '../combat/DistanceDamage';
 import type { MageSpellId } from '../vfx/VFXTypes';
+import { getSkillMageSpellId } from '../vfx/SkillVisualBindings';
+import { clampSkillPlaybackScale } from '../combat/ComboEmpowerment';
 import { MAGE_TELEPORT_INVULNERABILITY_SECONDS } from './MageTeleport';
 
 /**
- * O ataque normal e as skills não concedem nenhuma janela de invulnerabilidade:
- * o personagem pode tomar dano de monstro enquanto bate ou usa skill. A única
- * imunidade do Guerreiro é o dash (Shift), do primeiro ao último instante dele
- * (`isDashing`); a Maga mantém a imunidade do teleporte.
+ * O ataque normal e uma skill lançada SOZINHA não concedem nenhuma janela de
+ * invulnerabilidade: o personagem pode tomar dano de monstro enquanto bate ou
+ * usa skill. As imunidades existentes são o dash (Shift) do Guerreiro, do
+ * primeiro ao último instante dele (`isDashing`), o teleporte da Maga e o
+ * COMBO DE SKILLS: da primeira skill do combo até o fim dele (0.2 s quando o
+ * combo falha; fim da última skill + 0.8 s quando todos os links são acertados,
+ * ver `ComboImmunity`). Essa imunidade do combo é escrita pelo Game via
+ * `setComboInvulnerability`.
  */
 const BASIC_ACTION_INVULNERABILITY_SECONDS = 0;
 /** A Maga's basic cast grants no action immunity window at all (0 seconds). */
@@ -123,14 +129,17 @@ export interface BasicAttackCost {
   spend(): void;
 }
 
-const MAGE_SPELL_BY_ATTACK_ID: Partial<Record<WarriorAttackId, MageSpellId>> = {
-  ataque_basico: 'basic',
-  ataque_giratorio: 'water',
-  ataque_giratorio_2: 'ice',
-  pulo_atacando: 'lightning',
-  corte_duplo: 'lava',
-  triplo_ataque: 'laser',
-};
+/**
+ * O feitiço de cada skill da Maga vem do vínculo exclusivo em
+ * `SkillVisualBindings` (uma skill = um efeito). O Guerreiro não tem feitiço
+ * nenhum ali, então é impossível um efeito de uma classe vazar para a outra.
+ */
+function mageSpellForSkill(skillId: WarriorSkillId): MageSpellId | null {
+  return getSkillMageSpellId('mage', skillId);
+}
+
+/** Recuperação extra da aterrissagem do Pulo Atacando (segundos). */
+const WARRIOR_SKILL_LANDING_RECOVERY_SECONDS = 0.28;
 
 export class Player {
   public root = new THREE.Group();
@@ -186,6 +195,12 @@ export class Player {
   /** Invulnerabilidade concedida pela ação aceita, independente do anti-stunlock. */
   private actionInvulnerability = 0;
   private actionInvulnerabilityFresh = false;
+  /**
+   * Imunidade do combo de skills: começa na primeira skill do combo e é
+   * recalculada a cada frame pelo Game (ver `ComboImmunity`). Falhou o combo,
+   * sobram 0.2 s; completou, cobre o fim da última skill + 0.8 s.
+   */
+  private comboInvulnerability = 0;
   private isSwinging = false;
   private locomotionBlendActive = false;
   /** Há quanto tempo a pose visível não bate com o estado lógico (segundos). */
@@ -202,6 +217,8 @@ export class Player {
   private dashCooldown = 0;
   /** World position captured when a Mage skill starts. Movement cannot leave it. */
   private skillCastAnchor: THREE.Vector3 | null = null;
+  /** Combo speed-up of the skill currently running (1 when not empowered). */
+  private activeSkillPlaybackScale = 1;
   private onAttackHitCallback: ((target: THREE.Object3D) => void) | null = null;
   private onWarriorSkillHitCallback: ((event: WarriorSkillHitEvent) => void) | null = null;
   private onWarriorAttackWindowCallback: ((event: WarriorAttackWindowEvent) => void) | null = null;
@@ -655,7 +672,7 @@ export class Player {
   } | null {
     const clip = this.warriorAttackActions[id]?.getClip();
     if (!clip || !Number.isFinite(clip.duration) || clip.duration <= 0) return null;
-    const animationDuration = clip.duration / getWarriorSkill(id).playbackRate;
+    const animationDuration = clip.duration / this.skillPlaybackRate(id);
     const timeline = getWarriorAttackTimeline(id);
     return {
       trailStartSeconds: timeline.trailStart * animationDuration,
@@ -665,7 +682,8 @@ export class Player {
 
   /**
    * Length of a skill animation and the moment of its last damage, so the combo
-   * gauge can be fitted inside the cast.
+   * gauge can be fitted inside the cast. A combo-empowered skill plays faster,
+   * so its window shrinks by the same factor.
    */
   public getWarriorSkillComboTiming(id: WarriorSkillId): {
     durationSeconds: number;
@@ -673,14 +691,30 @@ export class Player {
   } | null {
     const clip = this.warriorAttackActions[id]?.getClip();
     if (!clip || !Number.isFinite(clip.duration) || clip.duration <= 0) return null;
-    const animationDuration = clip.duration / getWarriorSkill(id).playbackRate;
-    const landingRecovery = id === 'pulo_atacando' ? 0.28 : 0;
+    const animationDuration = clip.duration / this.skillPlaybackRate(id);
+    const landingRecovery = id === 'pulo_atacando'
+      ? WARRIOR_SKILL_LANDING_RECOVERY_SECONDS / this.skillSpeedScaleFor(id)
+      : 0;
     const timeline = getWarriorAttackTimeline(id);
     const lastDamage = Math.max(0, ...timeline.hitTimes, timeline.impactTime ?? 0);
     return {
       durationSeconds: animationDuration + landingRecovery,
       lastHitSeconds: lastDamage * animationDuration,
     };
+  }
+
+  /**
+   * Combo speed-up of the skill that is running right now (1 for any other
+   * skill, so previews and gauges never borrow another skill's tempo).
+   */
+  private skillSpeedScaleFor(id: WarriorSkillId): number {
+    return this.skillAttackController.activeAttackId === id
+      ? this.activeSkillPlaybackScale
+      : 1;
+  }
+
+  private skillPlaybackRate(id: WarriorSkillId): number {
+    return getWarriorSkill(id).playbackRate * this.skillSpeedScaleFor(id);
   }
 
   /** Called at each authored sword damage window, including a basic swing. */
@@ -850,9 +884,14 @@ export class Player {
     );
   }
 
+  /**
+   * Starts a skill. `chain` cuts the tail of the previous one (combo link) and
+   * `playbackScale` speeds the clip up — the combo uses it so every skill after
+   * the first green hit plays faster (see `ComboEmpowerment`).
+   */
   public tryStartSkillAttack(
     id: WarriorSkillId,
-    options: { readonly chain?: boolean } = {}
+    options: { readonly chain?: boolean; readonly playbackScale?: number } = {}
   ): boolean {
     const chaining = options.chain === true && this.canChainSkill;
     if (
@@ -869,9 +908,12 @@ export class Player {
     const action = this.warriorAttackActions[id];
     if (!action) return false;
 
-    const playbackRate = getWarriorSkill(id).playbackRate;
+    const speedScale = clampSkillPlaybackScale(options.playbackScale ?? 1);
+    const playbackRate = getWarriorSkill(id).playbackRate * speedScale;
     const animationDuration = (action.getClip().duration || 1) / playbackRate;
-    const landingRecovery = id === 'pulo_atacando' ? 0.28 : 0;
+    const landingRecovery = id === 'pulo_atacando'
+      ? WARRIOR_SKILL_LANDING_RECOVERY_SECONDS / speedScale
+      : 0;
     if (chaining) {
       // Combo link: the previous skill already dealt its damage, so only its
       // recovery tail is cut.
@@ -880,6 +922,7 @@ export class Player {
       this.isSwinging = false;
     }
     if (!this.skillAttackController.start(id, animationDuration, landingRecovery)) return false;
+    this.activeSkillPlaybackScale = speedScale;
 
     this.animationPreview.clear();
     this.moveTarget = null;
@@ -910,7 +953,7 @@ export class Player {
       this.faceTargetInstantly(this.attackTargetEnemy.position);
     }
     if (this.characterId === 'mage') {
-      const spellId = MAGE_SPELL_BY_ATTACK_ID[id];
+      const spellId = mageSpellForSkill(id);
       if (spellId) this.emitMageSpellCast(spellId, null);
     }
     return true;
@@ -954,6 +997,9 @@ export class Player {
     // Action invulnerability applies uniformly to ordinary and boss damage.
     // It is independent from the shorter post-hit anti-stunlock window below.
     if (this.actionInvulnerability > 0) return;
+    // Combo de skills: imune da primeira skill até o fim do combo (0.2 s se
+    // falhar; fim da última skill + 0.8 s se acertar todos os combos).
+    if (this.comboInvulnerability > 0) return;
     // Dash (Shift): imune do primeiro ao último instante do deslize.
     if (this.isDashing) return;
     // Invulnerabilidade breve após cada hit: evita stunlock com vários monstros
@@ -1012,6 +1058,7 @@ export class Player {
     this.isHitReacting = false;
     this.actionInvulnerability = 0;
     this.actionInvulnerabilityFresh = false;
+    this.comboInvulnerability = 0;
     this.dashDistanceRemaining = 0;
     this.dashCooldown = 0;
     this.attackTargetEnemy = null;
@@ -1029,6 +1076,9 @@ export class Player {
     this.comboController.minStageInterval = this.attackCooldownTime;
     if (this.dashCooldown > 0) this.dashCooldown = Math.max(0, this.dashCooldown - delta);
     if (this.hitInvulnerability > 0) this.hitInvulnerability -= delta;
+    if (this.comboInvulnerability > 0) {
+      this.comboInvulnerability = Math.max(0, this.comboInvulnerability - delta);
+    }
     if (this.actionInvulnerability > 0) {
       if (this.actionInvulnerabilityFresh) {
         this.actionInvulnerabilityFresh = false;
@@ -1493,6 +1543,7 @@ export class Player {
     this.comboController.cancel();
     this.skillAttackController.cancel();
     this.skillCastAnchor = null;
+    this.activeSkillPlaybackScale = 1;
     this.isSwinging = false;
     this.emptyHandAttackPreview = false;
     this.comboHitTargets.clear();
@@ -1785,6 +1836,11 @@ export class Player {
     return this.skillAttackController.active;
   }
 
+  /** Segundos que faltam para a skill em execução terminar (0 sem skill). */
+  public get activeSkillRemainingSeconds(): number {
+    return this.skillAttackController.remainingSeconds;
+  }
+
   /**
    * Mage skills require a full stop. Holding movement, a click-to-walk, or a
    * dash rejects the cast. The warrior can still open skills while moving.
@@ -1803,6 +1859,19 @@ export class Player {
   /** Seconds of action-granted invulnerability, excluding anti-stunlock time. */
   public get actionInvulnerabilityRemaining(): number {
     return this.actionInvulnerability;
+  }
+
+  /**
+   * Imunidade do combo de skills, escrita pelo Game a cada frame com o valor
+   * calculado em `ComboImmunity`. `0` desliga na hora.
+   */
+  public setComboInvulnerability(seconds: number): void {
+    const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+    this.comboInvulnerability = safe;
+  }
+
+  public get comboInvulnerabilityRemaining(): number {
+    return this.comboInvulnerability;
   }
 
   /** Vira o personagem instantaneamente para um ponto (usado pelo auto-ataque do target) */

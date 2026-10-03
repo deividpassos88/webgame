@@ -28,6 +28,7 @@ export class ComboGauge {
   private readonly zone: HTMLElement;
   private readonly cursor: HTMLElement;
   private readonly count: HTMLElement;
+  private readonly buff: HTMLElement;
   private readonly hint: HTMLElement;
   private readonly timer: HTMLElement;
   private readonly result: HTMLElement;
@@ -45,6 +46,7 @@ export class ComboGauge {
       <div class="combo-gauge__head">
         <span class="combo-gauge__title">COMBO</span>
         <span class="combo-gauge__count" data-combo-count></span>
+        <span class="combo-gauge__buff" data-combo-buff></span>
       </div>
       <div class="combo-gauge__frame">
         <i class="combo-gauge__gem combo-gauge__gem--left"></i>
@@ -65,6 +67,7 @@ export class ComboGauge {
     this.zone = query('[data-combo-zone]');
     this.cursor = query('[data-combo-cursor]');
     this.count = query('[data-combo-count]');
+    this.buff = query('[data-combo-buff]');
     this.hint = query('[data-combo-hint]');
     this.timer = query('[data-combo-timer]');
     this.result = query('[data-combo-result]');
@@ -97,12 +100,17 @@ export class ComboGauge {
     if (!visible) return;
 
     this.count.textContent = snapshot.hits > 0 ? `x${snapshot.hits}` : '';
+    // Do primeiro link em diante as skills saem mais rápidas e com dano dobrado.
+    this.buff.textContent = snapshot.empowered ? 'RÁPIDO · DANO x2' : '';
+    this.element.dataset.empowered = String(snapshot.empowered);
     this.track.dataset.linked = String(snapshot.phase === 'linked');
 
     if (snapshot.phase === 'gauge') {
       this.zone.style.left = `${(snapshot.greenStart * 100).toFixed(2)}%`;
       this.zone.style.width = `${((snapshot.greenEnd - snapshot.greenStart) * 100).toFixed(2)}%`;
       this.cursor.style.left = `${(snapshot.cursor * 100).toFixed(2)}%`;
+      // O cursor vai e volta: a seta aponta para o lado do movimento.
+      this.cursor.dataset.direction = String(snapshot.cursorDirection);
       this.hint.textContent = 'Clique com o mouse na zona verde!';
     } else if (snapshot.phase === 'linked') {
       const ratio = snapshot.linkWindow > 0 ? snapshot.linkRemaining / snapshot.linkWindow : 0;

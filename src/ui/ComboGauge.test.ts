@@ -19,24 +19,38 @@ describe('ComboGauge', () => {
     expect(gauge.element.classList.contains('is-visible')).toBe(false);
 
     combo.registerCast('ataque_giratorio', 1);
-    combo.update(0.85);
+    // Meia passada: o cursor está no meio da barra, indo para a direita.
+    combo.update(combo.snapshot().sweepSeconds / 2);
     gauge.render(combo.snapshot(), context, 1.1);
 
     expect(gauge.element.classList.contains('is-visible')).toBe(true);
     expect(gauge.element.dataset.phase).toBe('gauge');
     const zone = gauge.element.querySelector<HTMLElement>('[data-combo-zone]')!;
     const cursor = gauge.element.querySelector<HTMLElement>('[data-combo-cursor]')!;
-    expect(parseFloat(zone.style.width)).toBeCloseTo(20, 1);
+    expect(parseFloat(zone.style.width)).toBeCloseTo(15, 1);
     expect(parseFloat(cursor.style.left)).toBeCloseTo(50, 1);
+    expect(cursor.dataset.direction).toBe('1');
     expect(gauge.element.querySelectorAll('.combo-gauge__pip')).toHaveLength(WARRIOR_SKILLS.length);
+  });
+
+  it('flips the cursor arrow while it comes back', () => {
+    const gauge = new ComboGauge(document.createElement('div'));
+    const combo = new SkillComboController(() => 0.5);
+    combo.registerCast('ataque_giratorio', 1);
+    combo.update(combo.snapshot().sweepSeconds * 1.5);
+    gauge.render(combo.snapshot(), context, 1.2);
+
+    const cursor = gauge.element.querySelector<HTMLElement>('[data-combo-cursor]')!;
+    expect(cursor.dataset.direction).toBe('-1');
+    expect(parseFloat(cursor.style.left)).toBeCloseTo(50, 1);
   });
 
   it('shows the chain, a result flash and then hides again', () => {
     const gauge = new ComboGauge(document.createElement('div'));
     const combo = new SkillComboController(() => 0.5);
     combo.registerCast('ataque_giratorio', 1);
-    const { greenStart, greenEnd } = combo.snapshot();
-    combo.update(1.7 * ((greenStart + greenEnd) / 2));
+    const { greenStart, greenEnd, sweepSeconds } = combo.snapshot();
+    combo.update(sweepSeconds * ((greenStart + greenEnd) / 2));
     combo.click();
 
     gauge.render(combo.snapshot(), context, 2);
@@ -46,10 +60,23 @@ describe('ComboGauge', () => {
     expect(gauge.element.querySelector('[data-skill="ataque_giratorio_2"]')!.getAttribute('data-state')).toBe('open');
     expect(gauge.element.querySelector('[data-skill="corte_duplo"]')!.getAttribute('data-state')).toBe('locked');
     expect(gauge.element.querySelector('[data-combo-count]')!.textContent).toBe('x1');
+    // Combo empoderado: o selo de skill rápida com dano dobrado aparece.
+    expect(gauge.element.dataset.empowered).toBe('true');
+    expect(gauge.element.querySelector('[data-combo-buff]')!.textContent).toContain('DANO x2');
 
     combo.update(3);
     gauge.render(combo.snapshot(), context, 5);
     gauge.render(combo.snapshot(), context, 6);
     expect(gauge.element.classList.contains('is-visible')).toBe(false);
+  });
+
+  it('keeps the empower badge hidden while no green was hit', () => {
+    const gauge = new ComboGauge(document.createElement('div'));
+    const combo = new SkillComboController(() => 0.5);
+    combo.registerCast('ataque_giratorio', 1);
+    gauge.render(combo.snapshot(), context, 1);
+
+    expect(gauge.element.dataset.empowered).toBe('false');
+    expect(gauge.element.querySelector('[data-combo-buff]')!.textContent).toBe('');
   });
 });

@@ -752,7 +752,13 @@ class WarriorSlashEffect implements PoolableVFX {
   }
 }
 
-type WarriorHitImpactStyle = 'fire' | 'dark_flame';
+/**
+ * Aparência do clarão de impacto no monstro. Cada skill do Guerreiro usa a sua:
+ * `plain` (Giratório), `frost` (Giro Glacial — efeito novo criado a partir do
+ * clarão base, com núcleo/anel de gelo), `fire` (Golpe Flamejante) e
+ * `dark_flame` (Corte Duplo).
+ */
+export type WarriorHitImpactStyle = 'plain' | 'frost' | 'fire' | 'dark_flame';
 
 class WarriorHitImpactEffect implements PoolableVFX {
   public active = false;
@@ -810,11 +816,13 @@ class WarriorHitImpactEffect implements PoolableVFX {
   }
 
   public play(position: THREE.Vector3, scale = 1, style?: WarriorHitImpactStyle): void {
-    const isDarkFlame = style === 'dark_flame';
-    const isFire = style === 'fire' || isDarkFlame;
-    const coreColor = isFire ? 0xfff1d2 : 0xffffff;
-    const glowColor = isFire ? 0xff5a1f : 0x5efff6;
-    const ringColor = isDarkFlame ? 0x9b45ff : glowColor;
+    const resolvedStyle: WarriorHitImpactStyle = style ?? 'plain';
+    const isDarkFlame = resolvedStyle === 'dark_flame';
+    const isFire = resolvedStyle === 'fire' || isDarkFlame;
+    const isFrost = resolvedStyle === 'frost';
+    const coreColor = isFire ? 0xfff1d2 : isFrost ? 0xeaf9ff : 0xffffff;
+    const glowColor = isFire ? 0xff5a1f : isFrost ? 0x54c8ff : 0x5efff6;
+    const ringColor = isDarkFlame ? 0x9b45ff : isFrost ? 0xa8ecff : glowColor;
     this.age = 0;
     this.duration = 0.32;
     this.group.visible = true;
@@ -846,8 +854,8 @@ class WarriorHitImpactEffect implements PoolableVFX {
 
     this.particles.setTexture(this.resources.softGlow);
     this.particles.emit(new THREE.Vector3(), {
-      color: isDarkFlame ? ringColor : isFire ? glowColor : 0xbfffff,
-      count: isDarkFlame ? 26 : 18,
+      color: isDarkFlame ? ringColor : isFire ? glowColor : isFrost ? 0xcdf3ff : 0xbfffff,
+      count: isDarkFlame ? 26 : isFrost ? 22 : 18,
       speed: 3.2 * scale,
       spread: 1.2,
       lifetime: 0.32,
@@ -2255,8 +2263,13 @@ export class WarriorSlashVFX {
   /**
    * O rastro modular novo (fita curva colorida por estilo) foi retirado do
    * fluxo de combate: duplicava o arco clássico em pool. Continua disponível
-   * em `./warrior/` para uso pontual; aqui só o pilar de cura do mini-boss,
-   * que não tem equivalente no sistema antigo, é encaminhado.
+   * em `./warrior/` para uso pontual, junto do pilar de cura do mini-boss.
+   *
+   * O pilar de cura (anel verde + cruzes médicas sobre o herói) NÃO é mais
+   * disparado pelo jogo: saía em todo abate de mini-boss e foi removido a
+   * pedido. A API segue aqui, intacta e testada, para quem quiser religar ou
+   * reaproveitar o efeito em outro momento — a cura do abate continua visível
+   * no plasma (`HealthPlasmaSystem`) e no número flutuante.
    */
   public triggerMiniBossHeal(playerRoot: THREE.Object3D): void {
     this.trails.triggerMiniBossHeal(playerRoot);

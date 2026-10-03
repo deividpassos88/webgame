@@ -118,6 +118,8 @@ import {
 import { WarriorSkillController, type WarriorSkillsSnapshot } from '../combat/WarriorSkillController';
 import { displayPlayerHotkey } from '../profile/PlayerHotkeys';
 import { COMBO_COOLDOWN_MULTIPLIER, SkillComboController } from '../combat/SkillComboController';
+import { comboDamageMultiplier, comboPlaybackMultiplier } from '../combat/ComboEmpowerment';
+import { ComboImmunityController } from '../combat/ComboImmunity';
 import { ComboGauge } from '../ui/ComboGauge';
 import { HitCounter } from '../combat/HitCounter';
 import { HitCounterView } from '../ui/HitCounterView';
@@ -177,6 +179,10 @@ import { resolveCameraRelativeMovement } from '../entities/PlayerMovement';
 import { VictoryLobbyTransition } from './VictoryLobbyTransition';
 import { MageVFX } from '../vfx/MageVFX';
 import { WarriorSlashVFX } from '../vfx/WarriorSlashVFX';
+import {
+  getSkillVisualEffectsForStage,
+  type SkillVisualEffect,
+} from '../vfx/SkillVisualBindings';
 
 /**
  * MODO DE TESTE DE ARMA/ANIMAÇÃO: quando true, desativa o spawn de monstros
@@ -268,6 +274,15 @@ export class Game {
   private inventory!: InventoryStore;
   private readonly warriorSkills = new WarriorSkillController();
   private readonly skillCombo = new SkillComboController();
+  /** Imunidade do combo: primeira skill até o fim (0.2 s se falhar). */
+  private readonly comboImmunity = new ComboImmunityController();
+  /**
+   * Dano de cada skill que está no ar, registrado no instante do cast: 2x
+   * enquanto o combo estiver empoderado (depois do primeiro link verde) e 1x
+   * na primeira skill. Fica por skill porque o projétil da Maga só resolve o
+   * dano no impacto, quando a próxima skill do combo já pode ter sido lançada.
+   */
+  private readonly comboDamageBySkill = new Map<WarriorSkillId, number>();
   private comboGauge: ComboGauge | null = null;
   private readonly hitCounter = new HitCounter();
   private hitCounterView: HitCounterView | null = null;
@@ -1023,6 +1038,10 @@ export class Game {
       return false;
     }
     const chaining = comboLink && this.player.canChainSkill;
+    // Depois do primeiro link verde o combo fica empoderado: a skill sai mais
+    // rápida e o dano dela dobra. O estado é lido ANTES do registerCast, que
+    // pode encerrar o combo.
+    const empowered = this.skillCombo.empowered;
     const activation = this.warriorSkills.tryActivate(id, {
       paused: false,
       dead: this.player.isDead,
@@ -1032,39 +1051,103 @@ export class Game {
       cooldownOverrideSeconds: warriorSkillCooldown(id, mage ? 'mage' : 'paladin'),
     });
     if (activation.kind !== 'activated') return false;
-    if (!this.player.tryStartSkillAttack(id, { chain: chaining })) {
+    if (!this.player.tryStartSkillAttack(id, {
+      chain: chaining,
+      playbackScale: comboPlaybackMultiplier(empowered),
+    })) {
       this.warriorSkills.refund(id);
       return false;
     }
+    this.comboDamageBySkill.set(id, comboDamageMultiplier(empowered));
     this.registerSkillCombo(id, adminPreview);
-    // Efeito giratório começa na costa quase círculo completo com círculo de ar 7m
-    if (id === 'ataque_giratorio' || id === 'ataque_giratorio_2') {
-      const forward = this.player.planarForward(new THREE.Vector3());
-      if (forward.lengthSq() < 1e-6) forward.set(0, 0, 1);
-      this.warriorSlashVFX.playSpin({
-        position: this.player.root.position.clone(),
-        forward,
-        type: id === 'ataque_giratorio_2' ? 'spin_frost' : 'spin',
-        scale: id === 'ataque_giratorio_2' ? 1.2 : 1.15,
-        maxRadius: 7.0,
-      });
-    }
-    // Pulo Atacando: sem rastro de lâmina e sem linha no chão. Todo o efeito
-    // é o IMPACTO no frame exato em que a espada bate no chão: um TORNADO de
-    // chamas gigante (fitas espirais de fogo) + onda de choque enorme. Os
-    // inimigos num raio de 4 m são levantados por 1 s em chamas.
-    if (id === 'pulo_atacando' && this.profile.selectedClass === 'paladin') {
-      const forward = this.player.planarForward(new THREE.Vector3());
-      if (forward.lengthSq() < 1e-6) forward.set(0, 0, 1);
-      const timing = this.player.getWarriorSkillTimingSeconds('pulo_atacando');
-      this.warriorSlashVFX.playJumpDive({
-        position: this.player.root.position.clone(),
-        forward,
-        impactDelay: timing?.impactSeconds,
-      });
-    }
+    this.playSkillCastEffects(id);
     if (mage && !adminPreview) this.fatigue.consumePercent(mageSkillFatiguePercent(id));
     return true;
+  }
+
+  /** Multiplicador de dano do combo gravado no cast desta skill (1 sem combo). */
+  private comboDamageMultiplierFor(id: WarriorSkillId): number {
+    return this.comboDamageBySkill.get(id) ?? 1;
+  }
+
+  /**
+   * Efeitos visuais que nascem junto do cast da skill. Cada efeito vem do
+   * vínculo exclusivo da skill em `SkillVisualBindings`, então nada do
+   * Guerreiro aparece na Maga (nem o contrário).
+   */
+  private playSkillCastEffects(id: WarriorSkillId): void {
+    const playerClass = this.profile.selectedClass;
+    for (const effect of getSkillVisualEffectsForStage(playerClass, id, 'cast')) {
+      this.playSkillVisualEffect(effect, id);
+    }
+  }
+
+  /** Executa UM efeito vinculado à skill (kind próprio, parâmetros próprios). */
+  private playSkillVisualEffect(effect: SkillVisualEffect, skillId: WarriorSkillId): void {
+    const forward = this.player.planarForward(new THREE.Vector3());
+    if (forward.lengthSq() < 1e-6) forward.set(0, 0, 1);
+    const origin = this.player.root.position.clone();
+
+    switch (effect.kind) {
+      // Guerreiro 1 — Ataque Giratório: anel dourado que nasce nas costas +
+      // círculo de ar expandindo até 7 m.
+      case 'warrior-spin-ring':
+        this.warriorSlashVFX.playSpin({
+          position: origin,
+          forward,
+          type: effect.slashType,
+          scale: effect.scale,
+          maxRadius: effect.maxRadius,
+        });
+        break;
+      // Guerreiro 2 — Giro Glacial: mesmo esqueleto do giratório, mas é um
+      // efeito próprio (anel/clarão de gelo), criado a partir dele como base.
+      case 'warrior-frost-spin-ring':
+        this.warriorSlashVFX.playSpin({
+          position: origin,
+          forward,
+          type: effect.slashType,
+          scale: effect.scale,
+          maxRadius: effect.maxRadius,
+        });
+        break;
+      // Guerreiro 3 — Pulo Atacando: sem rastro de lâmina e sem linha no chão.
+      // Todo o efeito é o IMPACTO no frame exato em que a espada bate no chão:
+      // um TORNADO de chamas gigante + onda de choque enorme.
+      case 'warrior-jump-dive': {
+        const timing = this.player.getWarriorSkillTimingSeconds(skillId);
+        this.warriorSlashVFX.playJumpDive({
+          position: origin,
+          forward,
+          impactDelay: timing?.impactSeconds,
+          scale: effect.scale,
+        });
+        break;
+      }
+      // Maga: o feitiço da skill já é disparado pelo Player no mesmo instante
+      // do cast (vínculo skill -> spellId em SkillVisualBindings). Nada do kit
+      // do Guerreiro entra aqui.
+      case 'mage-spell':
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Clarão que a skill acende no corpo atingido. Vem do vínculo da própria
+   * skill: Giratório usa o clarão branco/ciano, Giro Glacial usa o de gelo,
+   * Golpe Flamejante o de fogo e Corte Duplo o de fogo sombrio.
+   */
+  private playSkillImpactFlash(skillId: WarriorSkillId, position: THREE.Vector3): void {
+    for (const effect of getSkillVisualEffectsForStage(
+      this.profile.selectedClass,
+      skillId,
+      'impact'
+    )) {
+      if (effect.kind !== 'warrior-impact-flash') continue;
+      this.warriorSlashVFX.playImpact(position, effect.scale, effect.style);
+    }
   }
 
   /** Skills that could still follow `used` in the combo right now, in input order. */
@@ -1090,6 +1173,12 @@ export class Game {
     const remaining = this.comboCandidates(used, adminPreview).length;
     const timing = this.player.getWarriorSkillComboTiming(id) ?? undefined;
     this.skillCombo.registerCast(id, remaining, timing);
+    // A imunidade do combo começa aqui, na primeira skill: cobre a animação
+    // inteira enquanto o combo estiver vivo.
+    this.comboImmunity.onSkillCast(
+      this.player.activeSkillRemainingSeconds,
+      this.skillCombo.active
+    );
     this.applyComboCooldownDoubles();
   }
 
@@ -1139,11 +1228,22 @@ export class Game {
   private updateSkillCombo(delta: number): void {
     if (this.player.isDead || !this.canAcceptGameplayInput()) {
       this.skillCombo.reset();
+      this.comboImmunity.reset();
+      this.comboDamageBySkill.clear();
       this.queuedComboSkill = null;
     }
     this.flushQueuedComboSkill();
     this.skillCombo.update(delta);
     this.applyComboCooldownDoubles();
+    // Imunidade do combo: vive da primeira skill até o fim; 0.2 s quando falha
+    // e fim da última skill + 0.8 s quando todos os combos são acertados.
+    this.player.setComboInvulnerability(
+      this.comboImmunity.update({
+        delta,
+        snapshot: this.skillCombo.snapshot(),
+        skillRemainingSeconds: this.player.activeSkillRemainingSeconds,
+      })
+    );
     if (this.player.isDead) this.hitCounter.reset();
     this.hitCounter.update(delta);
     this.hitCounterView ??= new HitCounterView();
@@ -1533,6 +1633,9 @@ export class Game {
       this.player.setImmortal(false);
       this.warriorSkills.reset();
       this.skillCombo.reset();
+      this.comboImmunity.reset();
+      this.comboDamageBySkill.clear();
+      this.player.setComboInvulnerability(0);
       this.hitCounter.reset();
       this.queuedComboSkill = null;
       this.fatigue.reset();
@@ -2056,7 +2159,10 @@ export class Game {
     const skillElement = warriorSkillElement(attackId, 'mage');
     const elemental = skillElement !== null;
     const baseDamage = getTypedAttackBaseDamage(
-      getWarriorSkillDamage(this.player.attackDamage) * warriorSkillDamageMultiplier(attackId, 'mage'),
+      getWarriorSkillDamage(this.player.attackDamage)
+        * warriorSkillDamageMultiplier(attackId, 'mage')
+        // Combo empoderado (depois do primeiro link verde): dano dobrado.
+        * this.comboDamageMultiplierFor(attackId),
       this.getCharacterStats().physicalDamageMultiplier,
       elemental
     );
@@ -2220,14 +2326,41 @@ export class Game {
     };
   }
 
+  /**
+   * Janela de dano autoral da animação. O ataque básico tem o seu próprio
+   * fluxo; as skills só executam os efeitos que estão vinculados a elas em
+   * `SkillVisualBindings` — a Maga não tem nenhum efeito de janela do kit do
+   * Guerreiro, então o early return dela é apenas a segunda trava de segurança.
+   */
   private onWarriorAttackWindow(event: WarriorAttackWindowEvent): void {
     if (this.profile.selectedClass !== 'paladin' || this.player.equippedWeaponId !== 'sword') return;
     if (event.attackId === 'ataque_basico') {
       this.applyWarriorBasicWaveDamage(event);
-    } else if (event.attackId === 'triplo_ataque') {
-      this.playFlameFanAttackWindow(event);
-    } else if (event.attackId === 'corte_duplo') {
-      this.playDarkFlameFanAttackWindow(event);
+      return;
+    }
+    for (const effect of getSkillVisualEffectsForStage(
+      this.profile.selectedClass,
+      event.attackId,
+      'hit-window'
+    )) {
+      this.playSkillWindowEffect(effect, event);
+    }
+  }
+
+  /** Executa um efeito de janela de dano vinculado à skill. */
+  private playSkillWindowEffect(
+    effect: SkillVisualEffect,
+    event: WarriorAttackWindowEvent
+  ): void {
+    switch (effect.kind) {
+      case 'warrior-flame-fan':
+        this.playFlameFanAttackWindow(event, effect);
+        break;
+      case 'warrior-dark-flame-fan':
+        this.playDarkFlameFanAttackWindow(event, effect);
+        break;
+      default:
+        break;
     }
   }
 
@@ -2237,7 +2370,10 @@ export class Game {
    * sword-tip trajectory, so it must not be retargeted toward the player or a
    * marked enemy.
    */
-  private playFlameFanAttackWindow(event: WarriorAttackWindowEvent): void {
+  private playFlameFanAttackWindow(
+    event: WarriorAttackWindowEvent,
+    effect: Extract<SkillVisualEffect, { kind: 'warrior-flame-fan' }>
+  ): void {
     const forward = event.forward.clone().setY(0);
     if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
     forward.normalize();
@@ -2249,17 +2385,17 @@ export class Game {
     this.warriorSlashVFX.play({
       position: origin,
       forward,
-      type: 'flame',
-      scale: 1,
+      type: effect.slashType,
+      scale: effect.scale,
       hasImpact: false,
     });
     this.warriorSlashVFX.playTravelingSlash({
       start: origin,
       forward,
       target: end,
-      type: 'flame',
-      scale: 1,
-      speed: 12.5,
+      type: effect.slashType,
+      scale: effect.scale,
+      speed: effect.speed,
     });
   }
 
@@ -2268,7 +2404,10 @@ export class Game {
    * red blade-ribbon here (it can appear behind the hero as the sword turns),
    * and send only the enlarged fire-and-void fan along the Paladin's facing.
    */
-  private playDarkFlameFanAttackWindow(event: WarriorAttackWindowEvent): void {
+  private playDarkFlameFanAttackWindow(
+    event: WarriorAttackWindowEvent,
+    effect: Extract<SkillVisualEffect, { kind: 'warrior-dark-flame-fan' }>
+  ): void {
     const fanForward = this.player.planarForward(new THREE.Vector3()).setY(0);
     if (fanForward.lengthSq() <= 1e-8) fanForward.set(0, 0, 1);
     fanForward.normalize();
@@ -2282,9 +2421,9 @@ export class Game {
       start: origin,
       forward: fanForward,
       target: end,
-      type: 'dark_flame',
-      scale: 2,
-      speed: 14.5,
+      type: effect.slashType,
+      scale: effect.scale,
+      speed: effect.speed,
     });
   }
 
@@ -2453,7 +2592,10 @@ export class Game {
     const skillElement = warriorSkillElement(event.attackId, 'paladin');
     const elemental = skillElement !== null;
     const baseDamage = getTypedAttackBaseDamage(
-      getWarriorSkillDamage(this.player.attackDamage) * warriorSkillDamageMultiplier(event.attackId, 'paladin'),
+      getWarriorSkillDamage(this.player.attackDamage)
+        * warriorSkillDamageMultiplier(event.attackId, 'paladin')
+        // Combo empoderado (depois do primeiro link verde): dano dobrado.
+        * this.comboDamageMultiplierFor(event.attackId),
       this.getCharacterStats().physicalDamageMultiplier,
       elemental
     );
@@ -2476,18 +2618,14 @@ export class Game {
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
-      if (event.attackId === 'triplo_ataque') {
-        this.warriorSlashVFX.playImpact(record.enemy.root.position, 1.1, 'fire');
-      } else if (event.attackId === 'corte_duplo') {
-        this.warriorSlashVFX.playImpact(record.enemy.root.position, 1.55, 'dark_flame');
-      }
-      // Giratório também dá um empurrão curto e o flash de impacto.
+      // Cada skill acende o SEU clarão de impacto (vínculo exclusivo).
+      this.playSkillImpactFlash(event.attackId, record.enemy.root.position);
+      // Giratório também dá um empurrão curto (regra de jogo, não visual).
       if (event.attackId === 'ataque_giratorio' || event.attackId === 'ataque_giratorio_2') {
         const spinForward = new THREE.Vector3().subVectors(record.enemy.root.position, event.origin).setY(0).normalize();
         if (spinForward.lengthSq() > 1e-6) {
           record.enemy.applyImpulse(spinForward, event.attackId === 'ataque_giratorio_2' ? 0.2 : 0.16);
         }
-        this.warriorSlashVFX.playImpact(record.enemy.root.position, 1.15);
       }
       if (skillElement && !record.enemy.isDead) {
         record.enemy.applyElementalHit(skillElement, Math.max(1, damage * 0.12));
@@ -2717,12 +2855,9 @@ export class Game {
       const plasmaOrigin = enemy.root.position.clone();
       plasmaOrigin.y += bodyScale * 1.1;
       this.healthPlasma.spawn(plasmaOrigin, reward.healAmount);
-
-      // Quando mata um mini-boss e recupera uma grande quantidade de vida:
-      // Dispara o pilar de cura verde com anel e cruzes médicas flutuantes (Imagem 1)
-      if (role === 'mini-boss') {
-        this.warriorSlashVFX.triggerMiniBossHeal(this.player.root);
-      }
+      // O pilar de cura verde (anel + cruzes médicas) que disparava no jogador
+      // ao matar um mini-boss foi removido a pedido: a cura segue visível só no
+      // plasma que voa do corpo até o herói e no número flutuante de vida.
     }
 
     Logger.info(
