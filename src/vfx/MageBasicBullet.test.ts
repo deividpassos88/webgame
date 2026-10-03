@@ -274,7 +274,7 @@ describe('Mage basic attack bullet', () => {
     vfx.dispose();
   });
 
-  it('lays the basic-attack impact in layers: double ground ring plus a vertical blast ring', () => {
+  it('layouts the impact like the reference: billboard ring with rays, sono ground rings', () => {
     const scene = new THREE.Scene();
     const vfx = new MageVFX(scene, { quality: 'high' });
     const { root, mixer, action } = createAction(2, 1);
@@ -294,27 +294,27 @@ describe('Mage basic attack bullet', () => {
       fallbackDirection: new THREE.Vector3(0, 0, 1),
       isTargetAlive: () => true,
     });
-    // Para na primeira leitura do impacto: a onda vertical dura só os
-    // primeiros 45% dele.
     const impact = advanceUntilTargetImpact(vfx, mixer, scene);
     expect(impact).toBeDefined();
     const inner = impact?.getObjectByName('MageImpactShaderShockwave') as THREE.Mesh | undefined;
     const outer = impact?.getObjectByName('MageImpactOuterShockwave') as THREE.Mesh | undefined;
-    const vertical = impact?.getObjectByName('MageImpactVerticalBlastRing') as THREE.Mesh | undefined;
+    // O anel da referência é um sprite: encara a câmera de qualquer ângulo.
+    const ring = impact?.getObjectByName('MageImpactReferenceRing') as THREE.Sprite | undefined;
     expect(inner).toBeDefined();
     expect(outer).toBeDefined();
-    expect(vertical).toBeDefined();
-    expect(vertical?.visible).toBe(true);
-    // A onda dupla é maior que a de dentro e a vertical encara a origem do tiro.
-    expect((outer?.scale.x ?? 0)).toBeGreaterThan(inner?.scale.x ?? 0);
-    const ringNormal = new THREE.Vector3(0, 0, 1)
-      .applyQuaternion(vertical!.quaternion)
-      .normalize();
-    expect(ringNormal.dot(new THREE.Vector3(0, 0, 1))).toBeLessThan(-0.9);
+    expect(ring).toBeDefined();
+    expect(ring).toBeInstanceOf(THREE.Sprite);
+    expect(ring?.visible).toBe(true);
+    expect(ring?.material.map).toBeTruthy();
+    expect(ring?.material.opacity).toBeGreaterThan(0.5);
+    // A onda dupla do chão é maior que a de dentro.
+    expect(outer?.scale.x ?? 0).toBeGreaterThan(inner?.scale.x ?? 0);
+    // O anel vertical de neon (o formato que o usuário rejeitou) saiu.
+    expect(impact?.getObjectByName('MageImpactVerticalBlastRing')).toBeUndefined();
     vfx.dispose();
   });
 
-  it('scales the impact far above the old 0,42 m pop and leaves ice shards behind', () => {
+  it('opens the impact far above the old 0,42 m pop and leaves ice shards behind', () => {
     const scene = new THREE.Scene();
     const vfx = new MageVFX(scene, { quality: 'high' });
     const { root, mixer, action } = createAction(2, 1);
@@ -334,10 +334,19 @@ describe('Mage basic attack bullet', () => {
       isTargetAlive: () => true,
     });
     const impact = advanceUntilTargetImpact(vfx, mixer, scene);
-    const core = impact?.getObjectByName('MageImpactCore') as THREE.Mesh | undefined;
+    const ring = impact?.getObjectByName('MageImpactReferenceRing') as THREE.Sprite | undefined;
     const radius = MAGE_SPELL_PRESETS.basic.impact.radius;
-    expect(core?.scale.x).toBeGreaterThan(radius * 0.9);
-    expect(core?.scale.x).toBeGreaterThan(0.8);
+    expect(ring).toBeDefined();
+    // O anel da referência é quem dá o tamanho do impacto: nasce bem acima do
+    // estouro antigo de 0,42 m e continua abrindo.
+    expect(ring?.scale.x ?? 0).toBeGreaterThan(radius * 2);
+    const first = ring?.scale.x ?? 0;
+    expect((ring?.material as THREE.SpriteMaterial).map?.name).toBe('MageImpactRingTexture');
+    for (let step = 0; step < 4; step += 1) {
+      mixer.update(0.03);
+      vfx.update(0.03);
+    }
+    expect(ring?.scale.x ?? 0).toBeGreaterThan(first);
 
     const shards = impact?.children.filter((child) => child.name === 'MageImpactDebris') ?? [];
     expect(shards.filter((shard) => shard.visible).length).toBeGreaterThan(3);

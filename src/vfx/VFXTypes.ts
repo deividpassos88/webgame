@@ -103,6 +103,11 @@ export interface MageImpactConfig {
   readonly duration: number;
   readonly radius: number;
   readonly shockwaveRadius: number;
+  /**
+   * Multiplicador do anel da referência (a billboard branca com raios que
+   * desenha o impacto da bala básica). O tamanho base é `shockwaveRadius`.
+   */
+  readonly ringScale?: number;
   readonly cameraShakeIntensity: number;
   readonly cameraShakeDuration: number;
   readonly lightIntensity: number;

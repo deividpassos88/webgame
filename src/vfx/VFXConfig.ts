@@ -152,11 +152,13 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       },
     },
     impact: {
-      // Impacto em camadas: flash + explosão (~3,6 m) + onda dupla no chão
-      // (2,25 m + eco) + anel vertical de gelo + estilhaços + névoa que fica.
+      // O impacto é o anel da referência (billboard com raios e o miolo vazio),
+      // com um estouro curto no meio, onda dupla no chão e estilhaços. O anel
+      // nasce em `shockwaveRadius × ringScale` e abre até ~2,2× isso.
       duration: 0.78,
       radius: 1.05,
       shockwaveRadius: 2.25,
+      ringScale: 1,
       cameraShakeIntensity: 0.034,
       cameraShakeDuration: 0.18,
       lightIntensity: 1.15,

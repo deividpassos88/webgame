@@ -142,3 +142,44 @@ Três causas encontradas:
 
 Laboratório: sliders **24** (quando a conjuração acende) e **25** (quando o tiro
 sai), com o tempo de brilho na mão em ms no painel; selo **FX v5**.
+
+## Quinta rodada (03/10, madrugada) — o impacto virou o da referência
+
+O usuário reclamou que o impacto estava **feio** e ainda com **"aquele formato
+que disse que não queria"** (o círculo de neon do `createMagicCircleMaterial`)
+e mandou de novo a imagem de referência, agora pedindo para recriá-la **no
+ataque base**.
+
+O que entrou:
+
+- **`src/vfx/ImpactRingTexture.ts`** (novo): a textura do anel da referência em
+  `DataTexture` (sem canvas, funciona nos testes). Anel fino branco-quente com
+  leve irregularidade (senoides de 5 e 11 ciclos), névoa azul irregular,
+  **48 setores** de raios em cunha cruzando para dentro e para fora (uns poucos
+  "heróis" 2,6× mais longos e mais brilhantes), pontas puxando para o azul
+  profundo e **miolo vazio** (`smoothstep(0.17, 0.34, r)`), com a chegada dos
+  raios limitada antes da borda do sprite. Uma textura só, compartilhada por
+  todos os impactos do pool (nunca é descartada).
+- **`ImpactVFX`**: o anel vertical de neon (`MageImpactVerticalBlastRing`) foi
+  **removido**; no lugar entrou o sprite `MageImpactReferenceRing` — uma
+  **billboard**, então o desenho encara a câmera em qualquer ângulo de jogo.
+  Ele nasce em `shockwaveRadius × ringScale` (o anel desenhado ocupa 58% do
+  quad) e abre até ~2,2× isso nos primeiros **40%** do impacto, girando devagar
+  enquanto some.
+- **Miolo curto**: no impacto da bala, núcleo, flash e explosão caem para ~1/2
+  do tamanho e apagam em 30% da vida (`hotFade`) — quem desenha o impacto é o
+  anel, com o buraco escuro no meio, como na referência. As ondas do chão
+  baixaram para 0,42 / 0,30 de opacidade para não competir com o anel.
+- **`impact.ringScale`** (novo, opcional, padrão 1) em `MageImpactConfig`, com
+  slider **26** no laboratório (multiplicador do anel) e o tamanho do anel
+  (diâmetro inicial e final) no painel.
+- **Ferramenta**: `tools/preview-impact-ring.mjs` gera o PNG do anel sem
+  navegador (`node tools/preview-impact-ring.mjs artifacts/impact-ring.png`),
+  com a mesma matemática da textura — mudou numa, muda na outra.
+- **Ferramenta**: `tools/shot-lab.mjs` dirige o laboratório quadro a quadro
+  (relógio e `requestAnimationFrame` falsos, 1/60 s por passo) e grava PNGs do
+  impacto — foi assim que o desenho foi conferido sem depender da tela do
+  usuário. Precisa de `npm i --no-save puppeteer @sparticuz/chromium`.
+- Testes: `src/vfx/ImpactRingTexture.test.ts` (miolo vazio, anel aceso, raios
+  com ponta azulada, determinismo) e as asserções do impacto passaram a medir o
+  anel no lugar do núcleo. Selo do laboratório: **FX v6**.
