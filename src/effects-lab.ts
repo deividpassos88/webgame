@@ -111,8 +111,8 @@ function presetFor(spellId: MageSpellId): MageSpellPreset {
     },
     projectile: {
       ...preset.projectile,
-      arrow: layerState.trail ? preset.projectile.arrow : undefined,
-      trailLength: layerState.trail ? preset.projectile.trailLength : preset.projectile.trailLength * 0.5,
+      // "Caixa de brasa": desliga a cauda/fumaça do cometa para comparar.
+      comet: layerState.trail ? preset.projectile.comet : undefined,
     },
   };
 }

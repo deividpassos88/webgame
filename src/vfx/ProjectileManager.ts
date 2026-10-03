@@ -42,8 +42,6 @@ const TMP_NEXT = new THREE.Vector3();
 /** Where the glow light sat relative to the projectile when it was a child. */
 const LIGHT_LOCAL_OFFSET = new THREE.Vector3(0, 0.1, 0);
 const TRAIL_SEGMENTS = 14;
-/** Raio da geometria do casco de plasma (base do cálculo de escala). */
-const PLASMA_SHELL_RADIUS = 0.24;
 
 function targetPoint(target: THREE.Object3D, output: THREE.Vector3): THREE.Vector3 {
   target.getWorldPosition(output);
@@ -80,21 +78,24 @@ class MageProjectile implements PoolableVFX {
   private readonly core: THREE.Mesh;
   private readonly iceShard: THREE.Mesh;
   private readonly lavaInner: THREE.Mesh;
-  /** "Flecha mágica" do ataque básico: dardo alongado + duas aletas rúnicas. */
-  private readonly arrowSpearhead: THREE.Mesh;
-  /** Casco elétrico do orbe de plasma do ataque básico. */
-  private readonly plasmaShell: THREE.Mesh;
-  private readonly runeFins: THREE.Mesh[] = [];
-  private readonly runeFinMaterials: EnergyShaderMaterial[] = [];
   private readonly glow: THREE.Sprite;
   private readonly trail: THREE.Mesh;
+  /** Faixa larga de fumaça incandescente atrás do cometa. */
+  private readonly smokeTrail: THREE.Mesh;
   private readonly trailGeometry = new THREE.BufferGeometry();
   private readonly trailPositions = new Float32Array(TRAIL_SEGMENTS * 2 * 3);
   private readonly trailUvs = new Float32Array(TRAIL_SEGMENTS * 2 * 2);
   private readonly trailPositionAttribute = new THREE.BufferAttribute(this.trailPositions, 3);
+  private readonly smokeTrailGeometry = new THREE.BufferGeometry();
+  private readonly smokeTrailPositions = new Float32Array(TRAIL_SEGMENTS * 2 * 3);
+  private readonly smokeTrailUvs = new Float32Array(TRAIL_SEGMENTS * 2 * 2);
+  private readonly smokeTrailPositionAttribute = new THREE.BufferAttribute(this.smokeTrailPositions, 3);
   private readonly secondaryParticles: PooledParticleCloud;
   private lightHandle: VFXLightHandle | null = null;
   private readonly trailMaterial: EnergyShaderMaterial;
+  private readonly smokeTrailMaterial: EnergyShaderMaterial;
+  /** Cabeça do cometa: núcleo esticado no sentido do voo. */
+  private headStretch = 1;
   private config: MageProjectileConfig | null = null;
   private preset: MageSpellPreset | null = null;
   private target: THREE.Object3D | null = null;
@@ -146,50 +147,6 @@ class MageProjectile implements PoolableVFX {
     this.lavaInner.name = 'MageLavaWhiteHotCoreProjectile';
     this.lavaInner.visible = false;
 
-    this.arrowSpearhead = new THREE.Mesh(resources.arrowSpearhead, new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      toneMapped: false,
-    }));
-    this.arrowSpearhead.name = 'MageBasicArrowSpearhead';
-    this.arrowSpearhead.visible = false;
-    // O cone do Three.js aponta para +Y; girar em X o alinha com o "para frente"
-    // do grupo (mesmo truque já usado pelo shard de gelo).
-    this.arrowSpearhead.rotation.x = Math.PI / 2;
-
-    this.plasmaShell = new THREE.Mesh(resources.plasmaShell, new THREE.MeshBasicMaterial({
-      color: 0xbfe6ff,
-      transparent: true,
-      opacity: 0,
-      wireframe: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      toneMapped: false,
-    }));
-    this.plasmaShell.name = 'MagePlasmaShell';
-    this.plasmaShell.visible = false;
-    this.plasmaShell.renderOrder = 5;
-
-    for (let fin = 0; fin < 2; fin += 1) {
-      const material = createMagicCircleMaterial({
-        opacity: 0,
-        intensity: 1.9,
-        thickness: 0.5,
-        distortion: 1.35,
-        depthTest: true,
-      });
-      const mesh = new THREE.Mesh(resources.runeBand, material);
-      mesh.name = fin === 0 ? 'MageBasicArrowRuneFinInner' : 'MageBasicArrowRuneFinOuter';
-      mesh.visible = false;
-      mesh.renderOrder = 5;
-      this.runeFins.push(mesh);
-      this.runeFinMaterials.push(material);
-      this.group.add(mesh);
-    }
-
     this.glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: resources.softGlow,
       color: 0xffffff,
@@ -219,11 +176,29 @@ class MageProjectile implements PoolableVFX {
     this.trail.frustumCulled = false;
     this.trail.renderOrder = 4;
 
+    // A fumaça incandescente usa a mesma malha de fita, mais larga e atrás do
+    // rastro quente: é o que dá o volume de "cometa" em vez de um raio fino.
+    for (let segment = 0; segment < TRAIL_SEGMENTS; segment += 1) {
+      const t = segment / (TRAIL_SEGMENTS - 1);
+      const uvOffset = segment * 4;
+      this.smokeTrailUvs[uvOffset] = 0;
+      this.smokeTrailUvs[uvOffset + 1] = t;
+      this.smokeTrailUvs[uvOffset + 2] = 1;
+      this.smokeTrailUvs[uvOffset + 3] = t;
+    }
+    this.smokeTrailGeometry.setAttribute('position', this.smokeTrailPositionAttribute);
+    this.smokeTrailGeometry.setAttribute('uv', new THREE.BufferAttribute(this.smokeTrailUvs, 2));
+    this.smokeTrailGeometry.setIndex(buildTrailIndices());
+    this.smokeTrailMaterial = createEnergyTrailMaterial({ opacity: 0, intensity: 1.1, thickness: 1.5, depthTest: true });
+    this.smokeTrail = new THREE.Mesh(this.smokeTrailGeometry, this.smokeTrailMaterial);
+    this.smokeTrail.name = 'MageProjectileSmokeTrail';
+    this.smokeTrail.frustumCulled = false;
+    this.smokeTrail.renderOrder = 3;
+
     this.secondaryParticles = new PooledParticleCloud(38, resources.softGlow);
     this.group.add(
       this.trail,
-      this.arrowSpearhead,
-      this.plasmaShell,
+      this.smokeTrail,
       this.core,
       this.iceShard,
       this.lavaInner,
@@ -264,66 +239,24 @@ class MageProjectile implements PoolableVFX {
     (this.lavaInner.material as THREE.MeshBasicMaterial).color.set(options.preset.colors.core);
     this.lavaInner.scale.setScalar(options.preset.projectile.radius * 2.2);
 
-    const arrow = options.preset.projectile.arrow;
-    const plasma = options.preset.projectile.plasma;
-    this.arrowSpearhead.visible = arrow !== undefined;
-    this.plasmaShell.visible = plasma !== undefined;
-    if (plasma) {
-      const shellMaterial = this.plasmaShell.material as THREE.MeshBasicMaterial;
-      shellMaterial.color.set(options.preset.colors.glow);
-      shellMaterial.opacity = 0.85;
-      this.plasmaShell.scale.setScalar(
-        (options.preset.projectile.radius * plasma.shellScale) / PLASMA_SHELL_RADIUS
-      );
-    }
-    if (arrow) {
-      const spearMaterial = this.arrowSpearhead.material as THREE.MeshBasicMaterial;
-      spearMaterial.color.set(options.preset.colors.core);
-      spearMaterial.opacity = 0.9;
-      // O cone tem raio 0.5 e altura 1: escalar em Y estica o dardo no sentido
-      // do voo e o raio do preset define a espessura.
-      this.arrowSpearhead.scale.set(
-        options.preset.projectile.radius * 1.5,
-        options.preset.projectile.radius * arrow.length,
-        options.preset.projectile.radius * 1.5
-      );
-    }
-    for (let fin = 0; fin < this.runeFins.length; fin += 1) {
-      const mesh = this.runeFins[fin];
-      mesh.visible = arrow !== undefined || plasma !== undefined;
-      if (!arrow && !plasma) continue;
-      const material = this.runeFinMaterials[fin];
-      configureEnergyMaterial(material, {
-        colorA: options.preset.colors.glow,
-        colorB: options.preset.colors.secondary,
-        opacity: fin === 0 ? 0.72 : 0.5,
-        intensity: 1.9,
-        scrollSpeed: fin === 0 ? 1.6 : -1.25,
-        thickness: 0.5,
-        distortion: 1.35,
-      });
-      // Duas coroas rúnicas em volta do projétil (aletas do dardo ou anéis de
-      // contenção do orbe de plasma). Ficam quase de frente para o alvo — a
-      // câmera do jogo fica atrás do conjurador, é assim que o giro aparece —
-      // e a externa leva uma leve inclinação para dar profundidade.
-      const ringFactor = arrow
-        ? (fin === 0 ? 1.5 : 1.95)
-        : (fin === 0 ? plasma!.ringScale : plasma!.ringScale * 1.15);
-      const finScale = options.preset.projectile.radius * ringFactor;
-      mesh.scale.setScalar(finScale);
-      mesh.rotation.set(fin === 0 ? 0 : 0.34, 0, 0);
-    }
+    // Cometa: a cabeça é o próprio núcleo esticado no sentido do voo (o grupo
+    // já está orientado com +Z na direção do disparo) e a cauda de brasa vem do
+    // rastro quente + da faixa de fumaça incandescente.
+    const comet = options.preset.projectile.comet;
+    this.headStretch = comet?.headStretch ?? 1;
+    const headRadius = options.preset.projectile.radius * (options.preset.style === 'water' ? 1.25 : 1.15);
+    this.core.scale.set(headRadius, headRadius, headRadius * this.headStretch);
 
     const glowMaterial = this.glow.material as THREE.SpriteMaterial;
     glowMaterial.map = this.resources.mageTexture(options.preset.style, 'charge');
     glowMaterial.color.set(options.preset.colors.glow);
     glowMaterial.opacity = options.preset.style === 'lava' ? 0.98 : 0.9;
     this.secondaryParticles.setTexture(this.resources.mageTexture(options.preset.style, 'charge'));
-    // O halo do dardo nasce na mão do conjurador no disparo; no básico ele é
-    // menor para o começo do efeito não virar um clarão gigante.
+    // Halo da cabeça: no cometa ele é GRANDE (é o brilho que domina a leitura
+    // do golpe). Nos outros feitiços mantém o tamanho de sempre.
     this.glow.scale.setScalar(
       options.preset.projectile.radius
-        * (options.preset.style === 'water' ? 4.0 : options.preset.id === 'basic' ? 2.6 : 3.4)
+        * (options.preset.style === 'water' ? 4.0 : comet ? 4.2 : 3.4)
     );
 
     const profile = mageQualityProfile(this.quality);
@@ -339,7 +272,20 @@ class MageProjectile implements PoolableVFX {
       thickness: options.preset.id === 'basic' ? 1.25 : 1.08,
       distortion: styleDistortion(options.preset) * profile.distortionMultiplier,
     });
-    this.updateTrailGeometry(options.preset.projectile.trailLength, options.preset.projectile.trailWidth);
+    configureEnergyMaterial(this.smokeTrailMaterial, {
+      colorA: options.preset.colors.glow,
+      colorB: options.preset.colors.smoke ?? options.preset.colors.secondary,
+      opacity: comet ? 0.5 : 0,
+      intensity: 1.15,
+      noiseScale: 1.05,
+      scrollSpeed: 0.85,
+      thickness: 1.55,
+      distortion: 1.8,
+    });
+    this.updateTrailGeometry(
+      options.preset.projectile.trailLength * (comet?.tailLength ?? 1),
+      options.preset.projectile.trailWidth
+    );
 
     // Borrowed from the shared pool: no scene add/remove, so no recompiles.
     // (The glow map swap above needs no needsUpdate: the sprite is constructed
@@ -416,46 +362,21 @@ class MageProjectile implements PoolableVFX {
     this.core.rotation.y += elapsed * (this.preset.style === 'water' ? 4 : 2);
     this.iceShard.rotation.z += elapsed * 5;
     this.lavaInner.rotation.x += elapsed * 7;
-    const arrow = this.preset.projectile.arrow;
-    const plasma = this.preset.projectile.plasma;
-    const fade = Math.max(0, 1 - this.age / Math.max(0.001, this.config.lifetime));
-    if (plasma) {
-      // Orbe de plasma: o casco crepita (pulsa e gira em dois eixos) enquanto
-      // as coroas de contenção giram em sentidos opostos.
-      const shellPulse = 1 + Math.sin(this.age * 30) * 0.07;
-      this.plasmaShell.scale.setScalar(
-        ((this.config.radius * plasma.shellScale) / PLASMA_SHELL_RADIUS) * shellPulse
-      );
-      this.plasmaShell.rotation.y += elapsed * plasma.spin * 0.55;
-      this.plasmaShell.rotation.x -= elapsed * plasma.spin * 0.32;
-      (this.plasmaShell.material as THREE.MeshBasicMaterial).opacity = 0.85 * (0.45 + fade * 0.55);
+    const cometFade = Math.max(0, 1 - this.age / Math.max(0.001, this.config.lifetime));
+    // A fumaça incandescente se dissipa mais rápido que o rastro quente.
+    if (this.preset.projectile.comet) {
+      this.smokeTrailMaterial.uniforms.uOpacity.value =
+        0.5 * cometFade * (0.75 + Math.sin(this.age * 12) * 0.25);
+      this.smokeTrailMaterial.uniforms.uThickness.value = 1.55 + Math.sin(this.age * 9) * 0.35;
     }
-    if (arrow) {
-      // O dardo pulsa junto com a aura.
-      const dartPulse = 0.94 + Math.sin(this.age * 34) * 0.06;
-      this.arrowSpearhead.scale.set(
-        this.config.radius * 1.5 * dartPulse,
-        this.config.radius * arrow.length * (0.96 + Math.sin(this.age * 22) * 0.04),
-        this.config.radius * 1.5 * dartPulse
-      );
-    }
-    const ringSpin = arrow?.finSpin ?? plasma?.spin ?? 0;
-    if (arrow || plasma) {
-      for (let fin = 0; fin < this.runeFins.length; fin += 1) {
-        const mesh = this.runeFins[fin];
-        const speed = ringSpin * (fin === 0 ? 1 : -0.72);
-        mesh.rotation.z += elapsed * speed;
-        setEnergyTime(this.runeFinMaterials[fin], this.age * (fin === 0 ? 1.5 : -1.1));
-        this.runeFinMaterials[fin].uniforms.uOpacity.value =
-          (fin === 0 ? 0.72 : 0.5) * (0.35 + fade * 0.65);
-      }
-    }
+
     if (this.lightHandle) {
       this.lightHandle.light.intensity *= 0.985;
       this.syncLightPosition();
     }
 
-    if (this.age % 0.075 < elapsed) this.emitSecondaryWake();
+    // O cometa solta brasas sem parar; os outros feitiços mantêm o ritmo antigo.
+    if (this.age % (this.preset.projectile.comet ? 0.045 : 0.075) < elapsed) this.emitSecondaryWake();
 
     if (this.age >= this.config.lifetime) {
       this.impact();
@@ -478,13 +399,8 @@ class MageProjectile implements PoolableVFX {
     this.secondaryParticles.reset();
     this.iceShard.visible = false;
     this.lavaInner.visible = false;
-    this.arrowSpearhead.visible = false;
-    this.plasmaShell.visible = false;
-    (this.plasmaShell.material as THREE.MeshBasicMaterial).opacity = 0;
-    for (let fin = 0; fin < this.runeFins.length; fin += 1) {
-      this.runeFins[fin].visible = false;
-      this.runeFinMaterials[fin].uniforms.uOpacity.value = 0;
-    }
+    this.smokeTrailMaterial.uniforms.uOpacity.value = 0;
+    this.headStretch = 1;
     this.lightHandle?.release();
     this.lightHandle = null;
     this.trailMaterial.uniforms.uOpacity.value = 0;
@@ -492,14 +408,14 @@ class MageProjectile implements PoolableVFX {
 
   public dispose(): void {
     (this.core.material as THREE.Material).dispose();
-    (this.arrowSpearhead.material as THREE.Material).dispose();
-    (this.plasmaShell.material as THREE.Material).dispose();
-    for (const material of this.runeFinMaterials) material.dispose();
+
     (this.iceShard.material as THREE.Material).dispose();
     (this.lavaInner.material as THREE.Material).dispose();
     (this.glow.material as THREE.Material).dispose();
     this.trailMaterial.dispose();
     this.trailGeometry.dispose();
+    this.smokeTrailMaterial.dispose();
+    this.smokeTrailGeometry.dispose();
     this.secondaryParticles.dispose();
   }
 
@@ -515,33 +431,94 @@ class MageProjectile implements PoolableVFX {
       .add(this.group.position);
   }
 
-  private updateTrailGeometry(length: number, width: number): void {
+  /**
+   * Escreve uma fita de rastro (a quente e a de fumaça) no buffer informado.
+   * Ambas saem da cabeça para trás, com ondulação e irregularidade que crescem
+   * com a distância — é o que dá o aspecto de rastro de cometa, não de raio.
+   */
+  private writeTrailGeometry(
+    positions: Float32Array,
+    attribute: THREE.BufferAttribute,
+    geometry: THREE.BufferGeometry,
+    length: number,
+    width: number,
+    turbulence: number,
+    rise: number,
+    wobble: number
+  ): void {
     if (!this.preset) return;
     for (let segment = 0; segment < TRAIL_SEGMENTS; segment += 1) {
       const t = segment / (TRAIL_SEGMENTS - 1);
       const fade = Math.pow(1 - t, 0.72);
-      const wave = Math.sin(t * Math.PI * (this.preset.style === 'water' ? 4.5 : 2.6) + this.age * (this.preset.style === 'lightning' ? 32 : 10));
-      const irregular = Math.sin(t * 17.3 + this.age * 7.1) * width * (this.preset.style === 'lava' ? 0.42 : 0.22);
+      const wave = Math.sin(t * Math.PI * wobble + this.age * (this.preset.style === 'lightning' ? 32 : 10));
+      const irregular = Math.sin(t * 17.3 + this.age * 7.1) * width * turbulence;
       const centerX = (wave * width * 0.42 + irregular) * t;
-      const y = Math.sin(t * Math.PI) * width * (this.preset.style === 'water' ? 0.9 : 0.45);
-      const half = Math.max(0.006, width * fade * (this.preset.style === 'lava' ? 1.25 : 1));
+      const y = Math.sin(t * Math.PI) * width * rise;
+      const half = Math.max(0.006, width * fade);
       const z = -length * t;
       const left = segment * 6;
       const right = left + 3;
-      this.trailPositions[left] = centerX - half;
-      this.trailPositions[left + 1] = y;
-      this.trailPositions[left + 2] = z;
-      this.trailPositions[right] = centerX + half;
-      this.trailPositions[right + 1] = -y * 0.4;
-      this.trailPositions[right + 2] = z;
+      positions[left] = centerX - half;
+      positions[left + 1] = y;
+      positions[left + 2] = z;
+      positions[right] = centerX + half;
+      positions[right + 1] = -y * 0.4;
+      positions[right + 2] = z;
     }
-    this.trailPositionAttribute.needsUpdate = true;
-    this.trailGeometry.computeBoundingSphere();
+    attribute.needsUpdate = true;
+    geometry.computeBoundingSphere();
+  }
+
+  private updateTrailGeometry(length: number, width: number): void {
+    if (!this.preset) return;
+    const style = this.preset.style;
+    const turbulence = style === 'lava' ? 0.42 : 0.22;
+    const rise = style === 'water' ? 0.9 : 0.45;
+    const wobble = style === 'water' ? 4.5 : 2.6;
+    this.writeTrailGeometry(
+      this.trailPositions,
+      this.trailPositionAttribute,
+      this.trailGeometry,
+      length,
+      width * (style === 'lava' ? 1.25 : 1),
+      turbulence,
+      rise,
+      wobble
+    );
+
+    const comet = this.preset.projectile.comet;
+    if (!comet) return;
+    // A fumaça é mais larga, mais ondulada e sobe atrás da cabeça.
+    this.writeTrailGeometry(
+      this.smokeTrailPositions,
+      this.smokeTrailPositionAttribute,
+      this.smokeTrailGeometry,
+      length * 1.35,
+      comet.smokeWidth,
+      0.55,
+      0.85,
+      3.2
+    );
   }
 
   private emitSecondaryWake(): void {
     if (!this.preset) return;
     const profile = mageQualityProfile(this.quality);
+    const comet = this.preset.projectile.comet;
+    if (comet) {
+      // Brasas do cometa: nascem atrás da cabeça e ficam para trás, formando o
+      // pontilhado de fagulhas que segue o rastro na imagem de referência.
+      this.secondaryParticles.emit(new THREE.Vector3(0, 0, -this.config!.trailLength * 0.22), {
+        color: this.preset.colors.spark,
+        count: Math.max(1, Math.round(comet.emberCount * profile.particleMultiplier)),
+        speed: 0.55,
+        spread: 1.1,
+        lifetime: 0.7,
+        upwardBias: -0.04,
+        sizeScale: comet.emberSize,
+      });
+      return;
+    }
     const base = this.preset.style === 'lava' ? 16 : this.preset.style === 'water' ? 16 : this.preset.style === 'ice' ? 12 : 10;
     this.secondaryParticles.emit(new THREE.Vector3(), {
       color: this.preset.style === 'lava' ? (this.preset.colors.smoke ?? this.preset.colors.secondary) : this.preset.colors.spark,

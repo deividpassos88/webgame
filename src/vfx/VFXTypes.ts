@@ -33,29 +33,22 @@ export interface MageProjectileConfig {
   readonly trailLength: number;
   readonly trailWidth: number;
   /**
-   * "Flecha mágica": alonga o núcleo do projétil num dardo e faz girar anéis
-   * rúnicos ao redor dele. Usado pelo ataque básico da Maga (referência:
-   * Magic Arrow / Charged Magic Arrow do Black Desert).
+   * Cometa incandescente: cabeça esticada no sentido do voo, cauda de brasa
+   * comprida e uma faixa de fumaça incandescente atrás. É o projétil do ataque
+   * básico da Maga (referência: o cometa/meteoro de fogo da imagem enviada —
+   * núcleo branco-quente, corpo laranja-avermelhado, brasas soltas no rastro).
    */
-  readonly arrow?: {
-    /** Comprimento do dardo, em múltiplos do raio do projétil. */
-    readonly length: number;
-    /** Velocidade de giro das aletas rúnicas (rad/s). */
-    readonly finSpin: number;
-  };
-  /**
-   * Orbe de plasma: um casco elétrico quadriculado em volta do núcleo e duas
-   * coroas de contenção girando em sentidos opostos. É o projétil do ataque
-   * básico da Maga (referência: o ataque normal de catalisador do Genshin
-   * Impact — bola de energia rápida, azul e muito brilhante).
-   */
-  readonly plasma?: {
-    /** Casco de plasma, em múltiplos do raio do projétil. */
-    readonly shellScale: number;
-    /** Escala das duas coroas de contenção. */
-    readonly ringScale: number;
-    /** Giro das coroas em rad/s (a segunda gira no sentido oposto). */
-    readonly spin: number;
+  readonly comet?: {
+    /** Alongamento da cabeça no sentido do voo (múltiplos do raio). */
+    readonly headStretch: number;
+    /** Multiplicador do comprimento da cauda em relação ao rastro base. */
+    readonly tailLength: number;
+    /** Largura da faixa de fumaça incandescente. */
+    readonly smokeWidth: number;
+    /** Brasas soltas que ficam para trás no rastro. */
+    readonly emberCount: number;
+    /** Escala das brasas (menores = pontos mais finos). */
+    readonly emberSize: number;
   };
 }
 

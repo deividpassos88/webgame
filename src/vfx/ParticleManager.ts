@@ -15,6 +15,8 @@ export interface ParticleBurstOptions {
   readonly spread: number;
   readonly lifetime: number;
   readonly upwardBias?: number;
+  /** Multiplicador do tamanho das partículas (brasas pequenas, fumaça grande). */
+  readonly sizeScale?: number;
   /**
    * Faz as partículas NASCEREM numa casca e viajarem para dentro. É o que dá a
    * leitura de "energia sendo sugada para o cajado" na carga do feitiço.
@@ -179,7 +181,7 @@ export class PooledParticleCloud {
       this.maxLives[index] = this.lifetime * (0.6 + Math.random() * 0.4);
       this.lives[index] = this.maxLives[index];
       this.lifeRatios[index] = 0;
-      this.sizes[index] = 10 + Math.random() * 26;
+      this.sizes[index] = (10 + Math.random() * 26) * (options.sizeScale ?? 1);
       this.seeds[index] = Math.random() * 1000;
     }
     this.positionAttribute.needsUpdate = true;

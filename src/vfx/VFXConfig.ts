@@ -78,20 +78,21 @@ function multipliers(low = 0.45, medium = 0.75, high = 1, ultra = high * 1.15): 
 export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> = {
   basic: {
     id: 'basic',
-    style: 'arcane',
+    // Fogo: o básico é um COMETA incandescente (referência: imagem do cometa
+    // laranja enviada pelo usuário). O estilo 'lava' também troca as texturas
+    // de partícula para as de fogo — nada de plasma azul.
+    style: 'lava',
     delivery: 'projectile',
-    // Plasma azul brilhante: núcleo quase branco, miolo azul saturado e
-    // contorno azul-violeta. Referência de leitura: o ataque normal de
-    // catalisador do Genshin Impact (bolha de energia rápida e luminosa).
     colors: {
-      core: 0xf2f9ff,
-      glow: 0x3d9bff,
-      secondary: 0x5a6bff,
-      spark: 0xc9e9ff,
-      smoke: 0x2b3e7a,
+      // Núcleo branco-quente, corpo laranja, ponta vermelha, brasas douradas.
+      core: 0xfff6e2,
+      glow: 0xff7a1e,
+      secondary: 0xe2301a,
+      spark: 0xffb648,
+      smoke: 0x5c3a2c,
     },
-    // Conjuração RÁPIDA: é o ataque básico, o raio sai praticamente junto com
-    // o movimento do cajado. Tudo acontece no primeiro terço do clip.
+    // Conjuração RÁPIDA: é o ataque básico. O cometa sai no primeiro terço do
+    // clip, então o golpe encaixa no ritmo de um ataque automático.
     timeline: {
       chargeStart: 0.02,
       magicCircle: 0.05,
@@ -100,35 +101,36 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       recover: 0.3,
       end: 1,
     },
-    // Carga curta: só um acúmulo de energia na mão, sem orbe gigante.
-    charge: { scale: 0.7, particleCount: 16, sparkCount: 6, lightIntensity: 0.9, twoHanded: false },
-    // Clarão de disparo enxuto: quem carrega a leitura é o orbe voando.
-    muzzle: { scale: 0.2, particleCount: 18, lightIntensity: 0.6 },
-    // Orbe de plasma: rápido (26 m/s), com casco elétrico crepitando e duas
-    // coroas de contenção girando em sentidos opostos.
+    // Carga curta: a mão acende, não cria um sol.
+    charge: { scale: 0.72, particleCount: 20, sparkCount: 10, lightIntensity: 1.2, twoHanded: false },
+    // Clarão de disparo enxuto: é o "acender" do cometa na mão.
+    muzzle: { scale: 0.22, particleCount: 20, lightIntensity: 0.7 },
+    // Cometa: rápido, cabeça alongada no sentido do voo, cauda de brasa longa
+    // e uma faixa de fumaça incandescente atrás.
     projectile: {
-      speed: 26,
-      lifetime: 1.1,
-      radius: 0.45,
-      trailLength: 2.4,
-      trailWidth: 0.24,
-      plasma: { shellScale: 1.35, ringScale: 1.65, spin: 7.5 },
+      speed: 24,
+      lifetime: 1.15,
+      radius: 0.5,
+      trailLength: 2.6,
+      trailWidth: 0.34,
+      comet: { headStretch: 2.4, tailLength: 1.35, smokeWidth: 0.42, emberCount: 9, emberSize: 0.62 },
     },
     impact: {
-      duration: 0.56,
-      radius: 1.1,
-      shockwaveRadius: 2.3,
-      cameraShakeIntensity: 0.055,
-      cameraShakeDuration: 0.18,
-      lightIntensity: 1.9,
-      particleCount: 72,
-      debrisCount: 0,
-      // Assinatura do básico: selo no chão + coluna de luz + estilhaços em
-      // estrela + jatos de plasma. É o que faz o golpe "pesar" de longe.
-      runeSigil: { radius: 2.6, spin: 3.6, intensity: 2.6, groundStamp: true },
-      pillar: { height: 3.6, radius: 0.6 },
+      duration: 0.6,
+      radius: 1.15,
+      shockwaveRadius: 2.4,
+      cameraShakeIntensity: 0.06,
+      cameraShakeDuration: 0.2,
+      lightIntensity: 2,
+      particleCount: 76,
+      // Estilhaços de brasa voando: poucos e visíveis.
+      debrisCount: 6,
+      // Assinatura do impacto: selo de brasa no chão, coluna de fogo,
+      // estilhaços em estrela e jatos incandescentes.
+      runeSigil: { radius: 2.6, spin: 3.6, intensity: 2.4, groundStamp: true },
+      pillar: { height: 3.8, radius: 0.62 },
       spikes: { count: 8, length: 1.3 },
-      jets: { count: 8, length: 1.7 },
+      jets: { count: 8, length: 1.8 },
     },
     hand: 'right',
     qualityParticleMultiplier: multipliers(0.45, 0.75, 1),
