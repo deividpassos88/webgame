@@ -26,14 +26,15 @@ Maga, disparado a cada ~0,7 s).
    referências de qualquer ângulo. O orbe, o shard de gelo e o núcleo de lava
    ficam escondidos nesse formato — os outros feitiços seguem com o visual antigo.
 2. **Tamanhos** (pedido do usuário: "o projétil está pequeno demais"):
-   - cometa **2,16 m × 0,72 m** (raio `0.3`, `lengthScale 7.2`, `widthScale 2.4`);
-   - halo `raio × 2.2` = `0,66 m`; flash de saída `0.3`; carga na mão `0.58`.
+   - cometa **2,74 m × 0,91 m** (raio `0.38`, `lengthScale 7.2`, `widthScale 2.4`
+     — mesma arte da referência, só maior: ~1,5× a altura da Maga);
+   - halo `raio × 2.3` = `0,87 m`; flash de saída `0.3`; carga na mão `0.58`.
    Antes o efeito era um orb de 0,42 m com halo de 1,43 m — redondo e curto demais.
 3. **Impacto em camadas** (pedido: "o impacto precisa melhorar muito"):
-   raio `0,95 m` (flash da explosão ≈ 3,2 m), **duas ondas no chão**
-   (`2,0 m` + eco de `2,43 m`), **onda vertical de gelo** encarando a origem do
-   tiro, `46` partículas, `14` estilhaços de gelo, névoa de gelo que fica,
-   luz `1.0` e tremor `0,028`. Duração `0,72 s` (era `0,45 s`).
+   raio `1,05 m` (flash da explosão ≈ 3,6 m), **duas ondas no chão**
+   (`2,25 m` + eco de `3,65 m`), **onda vertical de gelo** encarando a origem do
+   tiro, `54` partículas, `18` estilhaços de gelo, névoa de gelo que fica,
+   luz `1.15` e tremor `0,034`. Duração `0,78 s` (era `0,45 s`).
 4. **Efeito azul ao redor**: azul claro `0x6fd6ff` na aura/seda, azul profundo
    `0x1f6bff` na cauda e branco `0xf6fcff` no miolo do dardo e no gelo solto.
 4. **Fumaça de gelo**: `PooledParticleCloud` ganhou `add()` (cauda contínua, em
@@ -78,3 +79,20 @@ a altura da Maga (1,8 m), para decidir tamanho sem adivinhar.
   billboard (face na câmera + eixo no voo) inclusive voando para dentro da
   câmera, halo < 0,5 m, cauda de gelo no espaço de mundo, descarte no `clear()`
   e o comportamento de `add()`/`emit()` das partículas.
+
+## Nota de diagnóstico (03/10, mais tarde)
+
+O usuário respondeu "não mudou nada" depois do commit `18dd627`. O servidor
+estava servindo o código novo (conferido por `curl` em `/src/vfx/VFXConfig.ts`),
+mas o proxy do preview segurava a página antiga no navegador. Medidas tomadas:
+
+- `vite.config.ts`: o dev server agora manda `Cache-Control: no-store` em tudo
+  (antes só o bloco de `preview` mandava);
+- `maga-teste.html`: selo `FX v3` no cabeçalho mostrando os números **vivos** do
+  preset + vigia que recarrega a página sozinho quando `/src/vfx/VFXConfig.ts`
+  muda (o HMR do Vite não sobrevive ao proxy do preview);
+- `Game.ts`: log no console com o tamanho real do cometa ao escolher a Maga;
+- o preset `basic` subiu de novo (raio `0.3` → `0.38`, impacto `0.95` → `1.05`).
+
+Medição na câmera de jogo (1600×900, FOV 60): a Maga de 1,8 m ocupa 224 px de
+altura e o cometa chega a 441 px; o flash do impacto, a 304 px.

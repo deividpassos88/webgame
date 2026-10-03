@@ -133,7 +133,7 @@ import {
   resolveMageTeleportDestination,
 } from '../entities/MageTeleport';
 import type { MageSpellId } from '../vfx/VFXTypes';
-import { MAGE_VFX_LIMITS } from '../vfx/VFXConfig';
+import { MAGE_SPELL_PRESETS, MAGE_VFX_LIMITS } from '../vfx/VFXConfig';
 import { VFXLightPool } from '../vfx/VFXLightPool';
 import {
   isWarriorSkillUnlocked,
@@ -532,6 +532,13 @@ export class Game {
       if (characterId === 'mage') {
         this.hud.setLoadingProgress(96, 'Preparando efeitos da Maga...');
         this.mageVFX.warmUp(this.renderer, this.cameraController.camera);
+        // Diagnóstico: quantas vezes já vi "aumentei o efeito e nada mudou" por
+        // causa de página velha no navegador. Isto deixa o número real no console.
+        const basicBullet = MAGE_SPELL_PRESETS.basic;
+        Logger.info(
+          'MageVFX',
+          `Básico da Maga: cometa ${(basicBullet.projectile.radius * (basicBullet.projectile.comet?.lengthScale ?? 0)).toFixed(2)} x ${(basicBullet.projectile.radius * (basicBullet.projectile.comet?.widthScale ?? 0)).toFixed(2)} m · impacto ${basicBullet.impact.radius.toFixed(2)} m em ${basicBullet.impact.duration.toFixed(2)} s`
+        );
       }
       this.setupFinalBossRewardFlow();
       Logger.info('Game', 'Player adicionado à cena e câmera posicionada.');

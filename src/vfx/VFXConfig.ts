@@ -77,10 +77,10 @@ function multipliers(low = 0.45, medium = 0.75, high = 1, ultra = high * 1.15): 
 
 export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> = {
   /**
-   * Basic attack: a small blue bullet with a frost wake. It has to stay cheap
-   * because it is the Mage's spam attack — every number here is the *small*
-   * end of the catalogue on purpose (the old preset fired a 0.42 m orb with a
-   * 1.4 m halo, which read as a huge ball of light instead of a projectile).
+   * Basic attack: the ice comet from the reference sheet — a bright dart head
+   * with a silk tail. It is the Mage's spam attack, so the particle counts stay
+   * modest, but the projectile itself has to read from the gameplay camera:
+   * ~2,7 m x 0,9 m of sprite (~3:1), i.e. bigger than the 1,8 m mage.
    */
   basic: {
     id: 'basic',
@@ -106,15 +106,15 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
     projectile: {
       speed: 25,
       lifetime: 1.1,
-      radius: 0.3,
+      radius: 0.38,
       trailLength: 0.85,
       trailWidth: 0.05,
       shape: 'bullet',
-      haloScale: 2.2,
-      haloOpacity: 0.62,
+      haloScale: 2.3,
+      haloOpacity: 0.7,
       comet: {
-        // Cometa ~2,2 m × 0,72 m: grande o suficiente para ler de longe, mas
-        // ainda um projétil (e não a bola de luz antiga).
+        // Cometa ~2,74 m × 0,91 m (mesma arte, só maior): quase 1,5× a altura
+        // da Maga, para ler grande na câmera de jogo.
         widthScale: 2.4,
         lengthScale: 7.2,
         headLength: 0.3,
@@ -144,16 +144,16 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       },
     },
     impact: {
-      // Impacto em camadas: flash + explosão + onda dupla no ar + estilhaços de
-      // gelo + névoa que fica. Antes eram 0,42 m e 20 partículas.
-      duration: 0.72,
-      radius: 0.95,
-      shockwaveRadius: 2,
-      cameraShakeIntensity: 0.028,
-      cameraShakeDuration: 0.16,
-      lightIntensity: 1,
-      particleCount: 46,
-      debrisCount: 14,
+      // Impacto em camadas: flash + explosão (~3,6 m) + onda dupla no chão
+      // (2,25 m + eco) + anel vertical de gelo + estilhaços + névoa que fica.
+      duration: 0.78,
+      radius: 1.05,
+      shockwaveRadius: 2.25,
+      cameraShakeIntensity: 0.034,
+      cameraShakeDuration: 0.18,
+      lightIntensity: 1.15,
+      particleCount: 54,
+      debrisCount: 18,
     },
     hand: 'right',
     qualityParticleMultiplier: multipliers(0.45, 0.75, 1),

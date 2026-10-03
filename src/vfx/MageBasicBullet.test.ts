@@ -82,23 +82,23 @@ describe('Mage basic attack bullet', () => {
     const preset = MAGE_SPELL_PRESETS.basic;
     expect(preset.projectile.shape).toBe('bullet');
     // Referência: orb de 0,42 m com halo de 1,43 m (grande e redondo demais).
-    // Agora é um cometa alongado e grande o bastante para ler de longe, mas
-    // ainda um projétil: ~2,16 m × 0,72 m, proporção de ~3:1.
+    // Agora é o cometa da referência, só maior: ~2,74 m × 0,91 m (~3:1), quase
+    // 1,5× a altura da Maga — é para ler grande na câmera de jogo.
     const cometLength = preset.projectile.radius * (preset.projectile.comet?.lengthScale ?? 0);
     const cometWidth = preset.projectile.radius * (preset.projectile.comet?.widthScale ?? 0);
-    expect(preset.projectile.radius).toBeGreaterThanOrEqual(0.24);
-    expect(preset.projectile.radius).toBeLessThanOrEqual(0.36);
-    expect(cometLength).toBeGreaterThan(1.6);
-    expect(cometLength).toBeLessThan(2.6);
+    expect(preset.projectile.radius).toBeGreaterThanOrEqual(0.3);
+    expect(preset.projectile.radius).toBeLessThanOrEqual(0.42);
+    expect(cometLength).toBeGreaterThan(2.3);
+    expect(cometLength).toBeLessThan(3.2);
     expect(cometLength / cometWidth).toBeGreaterThan(2.2);
     expect(cometLength / cometWidth).toBeLessThan(4);
     expect(preset.projectile.trailWidth).toBeLessThanOrEqual(0.06);
     expect(preset.charge.scale).toBeLessThanOrEqual(0.7);
     // Impacto em camadas: bem maior que a bala, mas sem virar tela inteira.
-    expect(preset.impact.radius).toBeGreaterThan(0.8);
+    expect(preset.impact.radius).toBeGreaterThan(0.9);
     expect(preset.impact.radius).toBeLessThanOrEqual(1.2);
     expect(preset.impact.shockwaveRadius).toBeGreaterThan(1.5);
-    expect(preset.impact.shockwaveRadius).toBeLessThanOrEqual(2.3);
+    expect(preset.impact.shockwaveRadius).toBeLessThanOrEqual(2.6);
     expect(preset.impact.duration).toBeGreaterThanOrEqual(0.65);
     expect(preset.impact.particleCount).toBeGreaterThanOrEqual(40);
     expect(preset.impact.debrisCount).toBeGreaterThan(0);
@@ -154,7 +154,7 @@ describe('Mage basic attack bullet', () => {
 
     // A aura azul é o brilho em volta da bala: acompanha o raio, sem estourar.
     const halo = bolt?.getObjectByName('MageProjectileAuraGlow') as THREE.Sprite;
-    expect(halo.scale.x).toBeLessThan(0.8);
+    expect(halo.scale.x).toBeLessThan(1);
     expect(halo.scale.x).toBeCloseTo(radius * (haloScale ?? 3.4), 1);
     vfx.dispose();
   });
