@@ -12,6 +12,13 @@ export default defineConfig(({ mode }) => ({
     strictPort: true,
     open: false,
     allowedHosts: true,
+    // Sem cache no servidor de desenvolvimento: o preview passa por um proxy e
+    // um `no-cache` no HTML deixava a página antiga presa no navegador.
+    headers: {
+      'Cache-Control': 'no-store, must-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    },
   },
   preview: {
     host: '0.0.0.0',

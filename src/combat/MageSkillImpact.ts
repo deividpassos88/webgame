@@ -9,6 +9,13 @@ export const MAGE_WATER_SLOW_MULTIPLIER = 0.5;
 export const MAGE_SHOCK_LEVITATE_SECONDS = 2.1;
 export const MAGE_SHOCK_RADIUS_METERS = 2;
 export const MAGE_SHOCK_LIFT_METERS = 3.2;
+/**
+ * O ataque básico da Maga também estoura em área: o clarão do impacto queima
+ * quem estiver a até 2 m do ponto atingido. O alvo do tiro leva o dano cheio;
+ * os vizinhos levam esta fração dele.
+ */
+export const MAGE_BASIC_SPLASH_RADIUS_METERS = 2;
+export const MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER = 0.6;
 /** Mage fire burns every living monster inside this radius of the impact. */
 export const MAGE_FIRE_BURN_SECONDS = 4;
 export const MAGE_FIRE_BURN_DAMAGE_PER_SECOND = 2;

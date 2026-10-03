@@ -126,14 +126,19 @@ import { HitCounterView } from '../ui/HitCounterView';
 import { FatigueMeter, MAX_FATIGUE, DASH_FATIGUE_COST } from '../combat/FatigueMeter';
 import { mageBasicAttackManaCost, mageSkillFatiguePercent } from '../combat/MageSkillCost';
 import { firstColumnHit, mageSkillAttackId } from '../combat/MageSpellFlight';
-import { isInsideMageSkillRadius, mageSkillImpactEffect } from '../combat/MageSkillImpact';
+import {
+  isInsideMageSkillRadius,
+  mageSkillImpactEffect,
+  MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER,
+  MAGE_BASIC_SPLASH_RADIUS_METERS,
+} from '../combat/MageSkillImpact';
 import {
   MAGE_TELEPORT_FATIGUE_PERCENT,
   mageTeleportManaCost,
   resolveMageTeleportDestination,
 } from '../entities/MageTeleport';
 import type { MageSpellId } from '../vfx/VFXTypes';
-import { MAGE_VFX_LIMITS } from '../vfx/VFXConfig';
+import { MAGE_SPELL_PRESETS, MAGE_VFX_LIMITS } from '../vfx/VFXConfig';
 import { VFXLightPool } from '../vfx/VFXLightPool';
 import {
   isWarriorSkillUnlocked,
@@ -241,7 +246,12 @@ export class Game {
   /** Seconds the boss stays planted after a skill blast before it chases again. */
   private bossPostCastLock = 0;
   private readonly vfxLightPool = new VFXLightPool(this.scene, MAGE_VFX_LIMITS.maxTemporaryLights);
-  private readonly mageVFX = new MageVFX(this.scene, { lightPool: this.vfxLightPool });
+  private readonly mageVFX = new MageVFX(this.scene, {
+    lightPool: this.vfxLightPool,
+    // O sprite do cometa do ataque básico precisa da câmera viva para virar
+    // billboard e apontar no sentido do voo.
+    getCamera: () => this.cameraController.camera,
+  });
   private readonly warriorSlashVFX = new WarriorSlashVFX(this.scene, this.vfxLightPool);
   /** Agenda os arcos de lâmina em vertical do Corte Duplo. */
   private readonly warriorBladeStorm = new WarriorBladeStorm(
@@ -527,6 +537,13 @@ export class Game {
       if (characterId === 'mage') {
         this.hud.setLoadingProgress(96, 'Preparando efeitos da Maga...');
         this.mageVFX.warmUp(this.renderer, this.cameraController.camera);
+        // Diagnóstico: quantas vezes já vi "aumentei o efeito e nada mudou" por
+        // causa de página velha no navegador. Isto deixa o número real no console.
+        const basicBullet = MAGE_SPELL_PRESETS.basic;
+        Logger.info(
+          'MageVFX',
+          `Básico da Maga: cometa ${(basicBullet.projectile.radius * (basicBullet.projectile.comet?.lengthScale ?? 0)).toFixed(2)} x ${(basicBullet.projectile.radius * (basicBullet.projectile.comet?.widthScale ?? 0)).toFixed(2)} m · impacto ${basicBullet.impact.radius.toFixed(2)} m em ${basicBullet.impact.duration.toFixed(2)} s · respingo de ${MAGE_BASIC_SPLASH_RADIUS_METERS} m`
+        );
       }
       this.setupFinalBossRewardFlow();
       Logger.info('Game', 'Player adicionado à cena e câmera posicionada.');
@@ -2143,9 +2160,70 @@ export class Game {
   ): void {
     if (spellId === 'basic') {
       basicImpact?.(hit);
+      // O clarão do impacto também queima quem estava por perto.
+      this.applyMageBasicSplashDamage(hit);
       return;
     }
     this.applyMageSkillBodyDamage(spellId, hit);
+  }
+
+  /**
+   * Dano em área do ataque básico: quem estiver a até 2 m do ponto de impacto
+   * leva uma parte do dano do tiro. O alvo atingido já recebeu o dano cheio em
+   * `basicImpact`, então ele fica fora da conta; o boneco de treino entra para
+   * dar para medir o respingo.
+   */
+  private applyMageBasicSplashDamage(hit: THREE.Object3D): void {
+    const primary = this.resolveLivingEnemyRoot(hit) ?? hit;
+    const impact = primary.getWorldPosition(new THREE.Vector3());
+    const baseDamage = getTypedAttackBaseDamage(
+      this.player.attackDamage,
+      this.getCharacterStats().physicalDamageMultiplier,
+      false
+    );
+    const splashBase = baseDamage * MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER;
+
+    for (const root of this.combatRegistry.activeRoots()) {
+      if (root === primary) continue;
+      const record = this.combatRegistry.findByRoot(root);
+      if (!record || record.enemy.isDead) continue;
+      const position = record.enemy.root.position;
+      if (!isInsideMageSkillRadius(
+        impact.x,
+        impact.z,
+        position.x,
+        position.z,
+        MAGE_BASIC_SPLASH_RADIUS_METERS
+      )) {
+        continue;
+      }
+      const damage = this.resolveOutgoingDamage(splashBase, false);
+      if (damage <= 0) continue;
+      record.enemy.receivePlayerHit(damage, this.player.root.position);
+      this.healFromLifeSteal(damage);
+      this.showFloatingDamage(record.enemy.root.position, damage);
+      this.syncCombatHealthBars(record);
+      if (record.enemy.isDead) this.handleEnemyDeath(record);
+    }
+
+    // Boneco de treino: fora do registro de combate, mas precisa contar o respingo.
+    const dummy = this.trainingDummy;
+    if (dummy && dummy.root !== primary) {
+      const position = dummy.root.position;
+      if (isInsideMageSkillRadius(
+        impact.x,
+        impact.z,
+        position.x,
+        position.z,
+        MAGE_BASIC_SPLASH_RADIUS_METERS
+      )) {
+        const damage = this.resolveOutgoingDamage(splashBase, false);
+        if (damage > 0) {
+          dummy.takeDamage(damage);
+          this.showFloatingDamage(position, damage);
+        }
+      }
+    }
   }
 
   private applyMageSkillBodyDamage(spellId: MageSpellId, target: THREE.Object3D): void {

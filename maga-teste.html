@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Maga · Ataque básico (laboratório)</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --panel: rgba(9, 14, 26, 0.88);
+    --line: rgba(126, 178, 255, 0.24);
+    --text: #e8f1ff;
+    --muted: #8ea6c8;
+    --accent: #4fb0ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #05070d; color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; overflow: hidden; }
+  #lab { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  header {
+    position: fixed; top: 0; left: 0; right: 0; padding: 10px 16px;
+    display: flex; align-items: baseline; gap: 14px; pointer-events: none;
+    background: linear-gradient(180deg, rgba(3, 6, 12, 0.85), rgba(3, 6, 12, 0));
+  }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: 0.06em; text-transform: uppercase; }
+  header p { margin: 0; font-size: 12px; color: var(--muted); }
+  header span { color: var(--accent); }
+  header .rev {
+    margin-left: auto; font-size: 11.5px; letter-spacing: 0.04em; color: #d5ebff;
+    background: rgba(79, 176, 255, 0.16); border: 1px solid var(--line);
+    border-radius: 999px; padding: 4px 10px; white-space: nowrap;
+  }
+  header .rev.stale { background: rgba(255, 207, 112, 0.22); border-color: rgba(255, 207, 112, 0.6); }
+
+  #panel {
+    position: fixed; top: 12px; right: 12px; width: 340px; max-height: calc(100% - 24px);
+    display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; backdrop-filter: blur(10px); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  }
+  #panel.collapsed .panel-body, #panel.collapsed .panel-actions, #panel.collapsed .readout,
+  #panel.collapsed .json-box { display: none; }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 12px; border-bottom: 1px solid var(--line);
+  }
+  .panel-head strong { font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .panel-head button {
+    background: rgba(79, 176, 255, 0.12); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 4px 9px; font-size: 11px; cursor: pointer;
+  }
+  .panel-body { overflow-y: auto; padding: 10px 12px 4px; }
+  .readout {
+    margin: 6px 12px 0; padding: 8px 10px; border-radius: 8px; font-size: 11.5px; line-height: 1.5;
+    background: rgba(79, 176, 255, 0.08); border: 1px solid var(--line); color: #d7e7ff;
+  }
+  .readout b { color: #fff; }
+  .readout .warn { color: #ffcf70; }
+  .panel-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; }
+  .panel-actions button {
+    flex: 1 1 46%; padding: 8px 6px; font-size: 11.5px; border-radius: 8px; cursor: pointer;
+    background: rgba(79, 176, 255, 0.14); color: var(--text); border: 1px solid var(--line);
+  }
+  .panel-actions button.primary { background: rgba(79, 176, 255, 0.32); border-color: rgba(140, 205, 255, 0.6); }
+  .panel-actions button.on { background: rgba(74, 222, 128, 0.28); border-color: rgba(120, 255, 170, 0.55); }
+  .field { margin: 0 0 9px; }
+  .field label { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); margin-bottom: 3px; }
+  .field label b { color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .json-box { padding: 0 12px 12px; }
+  .json-box textarea {
+    width: 100%; height: 92px; resize: vertical; font-family: ui-monospace, Consolas, monospace;
+    font-size: 10.5px; color: #cfe4ff; background: rgba(2, 6, 14, 0.85);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px;
+  }
+  .json-box .row { display: flex; gap: 6px; margin-top: 6px; }
+  .json-box .row button {
+    flex: 1; padding: 7px 6px; font-size: 11.5px; border-radius: 8px; cursor: pointer;
+    background: rgba(79, 176, 255, 0.14); color: var(--text); border: 1px solid var(--line);
+  }
+  .hint { font-size: 10.5px; color: var(--muted); padding: 0 12px 12px; line-height: 1.5; }
+  #hud {
+    position: fixed; left: 14px; bottom: 12px; font-size: 11.5px; color: var(--muted);
+    line-height: 1.6; pointer-events: none; text-shadow: 0 1px 2px #000;
+  }
+  #hud b { color: #fff; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div id="lab"><canvas id="lab-canvas"></canvas></div>
+
+<header>
+  <h1>Maga · <span>ataque básico</span></h1>
+  <p>Laboratório de VFX — cometa de gelo: dardo azul, seda e fumaça de gelo (mesmos presets do jogo)</p>
+  <span class="rev" id="fx-rev">FX …</span>
+</header>
+
+<aside id="panel">
+  <div class="panel-head">
+    <strong>Ajustes da bala</strong>
+    <button type="button" id="toggle-panel">recolher</button>
+  </div>
+  <div class="panel-body" id="fields"></div>
+  <div class="readout" id="readout"></div>
+  <div class="panel-actions">
+    <button type="button" class="primary" id="fire">Disparar agora</button>
+    <button type="button" id="auto">Auto: ON</button>
+    <button type="button" id="slow">Câmera lenta: OFF</button>
+    <button type="button" id="view">Ver de lado</button>
+    <button type="button" id="reset">Padrão do jogo</button>
+  </div>
+  <div class="json-box">
+    <textarea id="json" spellcheck="false"></textarea>
+    <div class="row">
+      <button type="button" id="copy">Copiar ajustes</button>
+      <button type="button" id="apply">Aplicar JSON colado</button>
+    </div>
+  </div>
+  <div class="hint">
+    Arraste com o mouse para orbitar a câmera e role a roda para aproximar. A grade do chão tem
+    quadrados de <b>1 m</b>, e o boneco de treino fica a <b>7 m</b> (alcance máximo do jogo).
+    O tamanho da fumaça usa a unidade do shader do jogo (1 u ≈ 21 cm).
+    <br><br><b>Ver de lado</b> coloca a câmera na altura do voo, do jeito que está na referência;
+    <b>Ver do jogo</b> volta para a câmera atrás da Maga (como o jogo mostra).
+  </div>
+</aside>
+
+<div id="hud">
+  <div>Quadros: <b id="hud-fps">–</b> · Impactos: <b id="hud-hits">0</b> · Projéteis ativos: <b id="hud-particles">0</b></div>
+  <div>Aura azul, corpo branco-azulado à frente e fumaça de gelo deixada para trás.</div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { MageVFX } from '/src/vfx/MageVFX';
+import { MAGE_SPELL_PRESETS } from '/src/vfx/VFXConfig';
+
+const FX_REV = 'v6'; // sobe junto com cada mudança grande de efeito
+const PRESET = MAGE_SPELL_PRESETS.basic;
+const PRISTINE = JSON.parse(JSON.stringify(PRESET));
+const revBadge = document.getElementById('fx-rev');
+
+// ---------------------------------------------------------------- cena
+const canvas = document.getElementById('lab-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05070d);
+scene.fog = new THREE.Fog(0x05070d, 16, 44);
+
+const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 200);
+camera.position.set(-3.1, 2.2, -2.2);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.1, 3.2);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+scene.add(new THREE.HemisphereLight(0x93b7ff, 0x0a0f1c, 1.15));
+const keyLight = new THREE.DirectionalLight(0xdcecff, 1.2);
+keyLight.position.set(-4, 7, -3);
+scene.add(keyLight);
+
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(80, 80),
+  new THREE.MeshStandardMaterial({ color: 0x121a29, roughness: 0.95, metalness: 0.05 })
+);
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+const grid = new THREE.GridHelper(40, 40, 0x2c4a7a, 0x1b2b44);
+grid.position.y = 0.01;
+scene.add(grid);
+
+// Marcas de distância no chão (a cada 2 m).
+for (let z = 2; z <= 10; z += 2) {
+  const mark = new THREE.Mesh(
+    new THREE.BoxGeometry(3.2, 0.02, 0.06),
+    new THREE.MeshBasicMaterial({ color: z === 6 ? 0x4fb0ff : 0x24405f })
+  );
+  mark.position.set(0, 0.02, z);
+  scene.add(mark);
+}
+
+// Maga (substituto de escala: 1,8 m de altura) + mão direita que ancora o VFX.
+const caster = new THREE.Group();
+caster.name = 'MagaProvisorio';
+const body = new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.28, 1.05, 6, 12),
+  new THREE.MeshStandardMaterial({ color: 0x3c5a8f, roughness: 0.6 })
+);
+body.position.y = 0.95;
+caster.add(body);
+const head = new THREE.Mesh(
+  new THREE.SphereGeometry(0.17, 16, 12),
+  new THREE.MeshStandardMaterial({ color: 0xdcc7a8, roughness: 0.7 })
+);
+head.position.y = 1.7;
+caster.add(head);
+const hand = new THREE.Object3D();
+hand.name = 'mixamorig:RightHand';
+hand.position.set(0.34, 1.22, 0.28);
+caster.add(hand);
+scene.add(caster);
+
+// Boneco de treino a 7 m (alcance máximo do ataque básico no jogo).
+const dummy = new THREE.Group();
+dummy.name = 'BonecoDeTreino';
+dummy.position.set(0, 0, 7);
+dummy.userData.isEnemyRoot = true;
+dummy.userData.enemyBodyScale = 1;
+const dummyMat = new THREE.MeshStandardMaterial({ color: 0x8a5a3c, roughness: 0.85 });
+const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 1.5, 12), dummyMat);
+post.position.y = 0.75;
+dummy.add(post);
+const dummyHead = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), dummyMat);
+dummyHead.position.y = 1.72;
+dummy.add(dummyHead);
+scene.add(dummy);
+
+// ---------------------------------------------------------------- VFX do jogo
+let vfx = null;
+function buildVfx() {
+  vfx?.dispose();
+  // A câmera viva entra no MageVFX: o sprite do cometa é um stretched billboard
+  // e precisa dela para virar de frente e seguir a direção do voo.
+  vfx = new MageVFX(scene, { quality: qualitySelect.value, getCamera: () => camera });
+}
+
+const casts = [];
+let hits = 0;
+
+function fireOnce() {
+  const mixer = new THREE.AnimationMixer(caster);
+  const clip = new THREE.AnimationClip('mage:attack:ataque_basico', 1.05, [
+    new THREE.NumberKeyframeTrack('.visible', [0, 1.05], [1, 1]),
+  ]);
+  const action = mixer.clipAction(clip);
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = true;
+  action.play();
+  vfx.cast('basic', {
+    caster,
+    action,
+    rightHand: hand,
+    leftHand: null,
+    target: dummy,
+    fallbackDirection: new THREE.Vector3(0, 0, 1),
+    isTargetAlive: () => true,
+    onImpact: () => { hits += 1; hudHits.textContent = String(hits); },
+  });
+  casts.push({ mixer, action, age: 0 });
+}
+
+// ---------------------------------------------------------------- controles
+const FIELDS = [
+  { path: 'projectile.radius', label: '1. Tamanho da bala (raio)', min: 0.06, max: 0.5, step: 0.01, unit: 'm', digits: 2 },
+  { path: 'projectile.speed', label: '2. Velocidade', min: 8, max: 40, step: 0.5, unit: 'm/s', digits: 1 },
+  { path: 'projectile.trailLength', label: '3. Rastro (comprimento)', min: 0, max: 2, step: 0.05, unit: 'm', digits: 2 },
+  { path: 'projectile.trailWidth', label: '4. Rastro (espessura)', min: 0.01, max: 0.2, step: 0.005, unit: 'm', digits: 3 },
+  { path: 'projectile.haloScale', label: '5. Aura azul (diâmetro × raio)', min: 0, max: 6, step: 0.1, unit: '×', digits: 1 },
+  { path: 'projectile.haloOpacity', label: '6. Aura azul (intensidade)', min: 0, max: 1, step: 0.05, digits: 2 },
+  { path: 'projectile.comet.widthScale', label: '6a. Cometa (largura × raio)', min: 0.4, max: 6, step: 0.1, unit: '×', digits: 1 },
+  { path: 'projectile.comet.lengthScale', label: '6b. Cometa (comprimento × raio)', min: 2, max: 16, step: 0.2, unit: '×', digits: 1 },
+  { path: 'projectile.comet.headLength', label: '6c. Dardo (fração do sprite)', min: 0.12, max: 0.5, step: 0.01, digits: 2 },
+  { path: 'projectile.comet.intensity', label: '6d. Cometa (brilho)', min: 0.4, max: 3, step: 0.05, digits: 2 },
+  { path: 'projectile.comet.wisp', label: '6e. Seda (ondulação)', min: 0, max: 2, step: 0.05, digits: 2 },
+  { path: 'projectile.comet.filaments', label: '6f. Seda (filamentos)', min: 0, max: 2, step: 0.05, digits: 2 },
+  { path: 'projectile.comet.sparkles', label: '6g. Gelo solto (pontos)', min: 0, max: 6, step: 1, digits: 0 },
+  { path: 'projectile.comet.haze', label: '6h. Aura do dardo', min: 0, max: 1.5, step: 0.05, digits: 2 },
+  { path: 'projectile.comet.trailOpacity', label: '6i. Fita antiga (0 = off)', min: 0, max: 0.8, step: 0.05, digits: 2 },
+  { path: 'projectile.frost.count', label: '7. Fumaça de gelo (por puff)', min: 0, max: 8, step: 1, digits: 0 },
+  { path: 'projectile.frost.interval', label: '8. Fumaça (a cada)', min: 0.01, max: 0.2, step: 0.005, unit: 's', digits: 3 },
+  { path: 'projectile.frost.size.1', label: '9. Fumaça (tamanho do puff)', min: 0.4, max: 12, step: 0.1, unit: 'u', digits: 1 },
+  { path: 'projectile.frost.opacity', label: '10. Fumaça (intensidade)', min: 0, max: 1, step: 0.02, digits: 2 },
+  { path: 'projectile.frost.lifetime', label: '11. Fumaça (vida)', min: 0.1, max: 2, step: 0.05, unit: 's', digits: 2 },
+  { path: 'projectile.frost.speed', label: '12. Fumaça (expansão)', min: 0, max: 3, step: 0.05, digits: 2 },
+  { path: 'impact.radius', label: '13. Impacto (flash/explosão)', min: 0.2, max: 2.5, step: 0.05, unit: 'm', digits: 2 },
+  { path: 'impact.shockwaveRadius', label: '14. Impacto (ondas no chão)', min: 0.4, max: 4, step: 0.05, unit: 'm', digits: 2 },
+  { path: 'impact.duration', label: '15. Impacto (duração)', min: 0.2, max: 1.6, step: 0.02, unit: 's', digits: 2 },
+  { path: 'impact.particleCount', label: '16. Impacto (partículas)', min: 4, max: 80, step: 2, digits: 0 },
+  { path: 'impact.debrisCount', label: '17. Impacto (estilhaços de gelo)', min: 0, max: 14, step: 1, digits: 0 },
+  { path: 'impact.lightIntensity', label: '18. Impacto (luz)', min: 0, max: 2.5, step: 0.05, digits: 2 },
+  { path: 'impact.cameraShakeIntensity', label: '19. Impacto (tremor)', min: 0, max: 0.1, step: 0.002, digits: 3 },
+  { path: 'charge.scale', label: '20. Carga na mão', min: 0.1, max: 2, step: 0.05, digits: 2 },
+  { path: 'charge.lightIntensity', label: '21. Carga (luz)', min: 0, max: 2, step: 0.05, digits: 2 },
+  // 0 = conjuração só com o brilho (o que o jogo usa agora).
+  { path: 'charge.particleCount', label: '22. Carga (poeira girando)', min: 0, max: 24, step: 1, digits: 0 },
+  { path: 'charge.sparkCount', label: '23. Carga (faíscas)', min: 0, max: 12, step: 1, digits: 0 },
+  // Fração do clip "ataque basico" (1,8 s no jogo). A janela entre os dois é o
+  // tempo que o brilho fica na mão — quanto menor, mais perto de "milésimos".
+  { path: 'timeline.chargeStart', label: '24. Conjuração (acende em)', min: 0.02, max: 0.6, step: 0.01, digits: 2 },
+  { path: 'timeline.launch', label: '25. Disparo (sai em)', min: 0.06, max: 0.8, step: 0.01, digits: 2 },
+  // Anel da referência: a billboard branca com raios que desenha o impacto.
+  // O diâmetro do anel é 58% do sprite (o resto são os raios e a névoa).
+  { path: 'impact.ringScale', label: '26. Anel do impacto (tamanho)', min: 0, max: 3, step: 0.05, unit: '×', digits: 2 },
+];
+
+function readPath(path) {
+  return path.split('.').reduce((node, key) => (node == null ? node : node[key]), PRESET);
+}
+
+function writePath(path, value) {
+  const keys = path.split('.');
+  const last = keys.pop();
+  const target = keys.reduce((node, key) => (node == null ? node : node[key]), PRESET);
+  if (target == null || target[last] === undefined) return;
+  target[last] = value;
+}
+
+const readout = document.getElementById('readout');
+const fieldsHost = document.getElementById('fields');
+const hudFps = document.getElementById('hud-fps');
+const hudHits = document.getElementById('hud-hits');
+const hudParticles = document.getElementById('hud-particles');
+
+function updateReadout() {
+  const radius = PRESET.projectile.radius;
+  const comet = PRESET.projectile.comet;
+  const halo = radius * PRESET.projectile.haloScale;
+  const mageHeight = 1.8;
+  const frost = PRESET.projectile.frost;
+  const tail = frost ? (frost.lifetime / frost.interval) * frost.count : 0;
+  // Uma unidade de partícula ≈ 21 cm na tela (escala do shader do jogo).
+  const puffMeters = frost ? frost.size[1] * 0.214 : 0;
+  const cometLength = radius * (comet?.lengthScale ?? 0);
+  const cometWidth = radius * (comet?.widthScale ?? 0);
+  if (revBadge) {
+    revBadge.textContent = `FX ${FX_REV} · cometa ${cometLength.toFixed(2)} × ${cometWidth.toFixed(2)} m`;
+    revBadge.classList.remove('stale');
+  }
+  readout.innerHTML = [
+    `Cometa: <b>${cometLength.toFixed(2)} m</b> de comprimento · <b>${cometWidth.toFixed(2)} m</b> de largura (${(cometLength / mageHeight).toFixed(2)}× a altura da Maga)`,
+    `Colisão: raio <b>${radius.toFixed(2)} m</b> · Aura azul: <b>${halo.toFixed(2)} m</b> de diâmetro`,
+    `Impacto: anel <b>${(PRESET.impact.shockwaveRadius * (PRESET.impact.ringScale ?? 1) * 0.58).toFixed(2)} m</b> de diâmetro (abre até <b>${(PRESET.impact.shockwaveRadius * (PRESET.impact.ringScale ?? 1) * 2.2 * 0.58).toFixed(2)} m</b>) · estouro curto de <b>${PRESET.impact.radius.toFixed(2)} m</b> · ondas no chão <b>${PRESET.impact.shockwaveRadius.toFixed(2)} m</b> e ${(PRESET.impact.shockwaveRadius * 1.62).toFixed(2)} m · <b>${PRESET.impact.duration.toFixed(2)} s</b>`,
+    `Impacto: <b>${PRESET.impact.particleCount}</b> partículas · <b>${PRESET.impact.debrisCount}</b> estilhaços de gelo · luz <b>${PRESET.impact.lightIntensity.toFixed(2)}</b> · tremor <b>${PRESET.impact.cameraShakeIntensity.toFixed(3)}</b> · Carga na mão: <b>${PRESET.charge.scale.toFixed(2)}</b>`,
+    `Fumaça de gelo (mundo): <b>${frost ? frost.count : 0}</b> partículas a cada <b>${frost ? frost.interval.toFixed(3) : 0}s</b> → cerca de <b>${Math.round(tail)}</b> na cauda, puff de <b>${(puffMeters * 100).toFixed(0)} cm</b>`,
+    `Conjuração: <b>${PRESET.charge.particleCount}</b> partículas girando · <b>${PRESET.charge.sparkCount}</b> faíscas (0 = só o brilho na mão) · brilho na mão por <b>${Math.round(Math.max(0, PRESET.timeline.launch - PRESET.timeline.chargeStart) * 1800)} ms</b>`,
+    'Anel da referência: billboard (encara a câmera) com anel fino branco, 48 setores de raios cruzando para dentro e para fora, névoa azul e miolo vazio. O anel vertical de neon saiu.',
+    'Sem alvo o tiro não explode: ele perde o brilho em 0,4 s e some (impacto só quando acerta inimigo). Não fica clarão parado onde a Maga atirou.',
+    PRESET.impact.radius < cometWidth * 0.9
+      ? '<span class="warn">O impacto está pequeno para esta bala — sobe o raio do impacto.</span>'
+      : '',
+    cometLength / Math.max(0.001, cometWidth * 3) > 1.4
+      ? '<span class="warn">O cometa está bem mais comprido que a referência (proporção ~3:1).</span>'
+      : '',
+  ].filter(Boolean).join('<br>');
+}
+
+let qualitySelect = null;
+function buildFields() {
+  const qualityRow = document.createElement('div');
+  qualityRow.className = 'field';
+  qualityRow.innerHTML = '<label>0. Qualidade dos efeitos</label>';
+  qualitySelect = document.createElement('select');
+  qualitySelect.style.cssText = 'width:100%;padding:6px;border-radius:8px;background:rgba(2,6,14,.85);color:#cfe4ff;border:1px solid var(--line)';
+  for (const value of ['low', 'medium', 'high', 'ultra']) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    qualitySelect.append(option);
+  }
+  qualitySelect.value = 'high';
+  qualitySelect.addEventListener('change', () => { buildVfx(); });
+  qualityRow.append(qualitySelect);
+  fieldsHost.append(qualityRow);
+
+  for (const field of FIELDS) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'field';
+    const label = document.createElement('label');
+    const name = document.createElement('span');
+    name.textContent = field.label;
+    const valueOut = document.createElement('b');
+    label.append(name, valueOut);
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = String(field.min);
+    input.max = String(field.max);
+    input.step = String(field.step);
+    const current = readPath(field.path);
+    input.value = String(current ?? field.min);
+    valueOut.textContent = `${Number(input.value).toFixed(field.digits)}${field.unit ? ` ${field.unit}` : ''}`;
+    input.addEventListener('input', () => {
+      const value = Number(input.value);
+      writePath(field.path, value);
+      valueOut.textContent = `${value.toFixed(field.digits)}${field.unit ? ` ${field.unit}` : ''}`;
+      updateReadout();
+    });
+    wrapper.append(label, input);
+    fieldsHost.append(wrapper);
+    field.input = input;
+    field.valueOut = valueOut;
+  }
+  updateReadout();
+}
+
+function syncFieldsFromPreset() {
+  for (const field of FIELDS) {
+    const value = Number(readPath(field.path));
+    if (!Number.isFinite(value)) continue;
+    field.input.value = String(value);
+    field.valueOut.textContent = `${value.toFixed(field.digits)}${field.unit ? ` ${field.unit}` : ''}`;
+  }
+  updateReadout();
+}
+
+// ---------------------------------------------------------------- ações
+let auto = true;
+let slow = false;
+const fireButton = document.getElementById('fire');
+const autoButton = document.getElementById('auto');
+const slowButton = document.getElementById('slow');
+const resetButton = document.getElementById('reset');
+const jsonArea = document.getElementById('json');
+
+fireButton.addEventListener('click', () => fireOnce());
+autoButton.addEventListener('click', () => {
+  auto = !auto;
+  autoButton.classList.toggle('on', auto);
+  autoButton.textContent = auto ? 'Auto: ON' : 'Auto: OFF';
+});
+slowButton.addEventListener('click', () => {
+  slow = !slow;
+  slowButton.classList.toggle('on', slow);
+  slowButton.textContent = slow ? 'Câmera lenta: ON (0,25×)' : 'Câmera lenta: OFF';
+});
+resetButton.addEventListener('click', () => {
+  Object.keys(PRISTINE).forEach((key) => { PRESET[key] = JSON.parse(JSON.stringify(PRISTINE[key])); });
+  syncFieldsFromPreset();
+  buildVfx();
+  fireOnce();
+});
+const viewButton = document.getElementById('view');
+let sideView = false;
+const SIDE_CAMERA = { position: new THREE.Vector3(-0.6, 1.5, 3.4), target: new THREE.Vector3(0, 1.1, 3.6) };
+const GAME_CAMERA = { position: new THREE.Vector3(0, 2.6, -6.4), target: new THREE.Vector3(0, 1.1, 4.2) };
+function applyCamera(next) {
+  camera.position.copy(next.position);
+  controls.target.copy(next.target);
+  controls.update();
+}
+viewButton.addEventListener('click', () => {
+  sideView = !sideView;
+  viewButton.textContent = sideView ? 'Ver do jogo' : 'Ver de lado';
+  applyCamera(sideView ? SIDE_CAMERA : GAME_CAMERA);
+});
+applyCamera(GAME_CAMERA);
+
+document.getElementById('copy').addEventListener('click', async () => {
+  jsonArea.value = JSON.stringify(PRESET, null, 2);
+  try {
+    await navigator.clipboard.writeText(jsonArea.value);
+    fireButton.textContent = 'Ajustes copiados!';
+    setTimeout(() => { fireButton.textContent = 'Disparar agora'; }, 1400);
+  } catch (error) {
+    fireButton.textContent = 'Copie o texto abaixo';
+    setTimeout(() => { fireButton.textContent = 'Disparar agora'; }, 1600);
+  }
+});
+document.getElementById('apply').addEventListener('click', () => {
+  try {
+    const parsed = JSON.parse(jsonArea.value);
+    ORIGINAL_KEYS.forEach((key) => {
+      if (parsed[key] !== undefined) PRESET[key] = parsed[key];
+    });
+    syncFieldsFromPreset();
+    buildVfx();
+    fireOnce();
+  } catch (error) {
+    jsonArea.value = `JSON inválido: ${error.message}`;
+  }
+});
+const ORIGINAL_KEYS = Object.keys(PRISTINE);
+const togglePanel = document.getElementById('toggle-panel');
+togglePanel.addEventListener('click', () => {
+  const panel = document.getElementById('panel');
+  panel.classList.toggle('collapsed');
+  togglePanel.textContent = panel.classList.contains('collapsed') ? 'abrir' : 'recolher';
+});
+jsonArea.value = JSON.stringify(PRESET, null, 2);
+
+// ---------------------------------------------------------------- loop
+function resize() {
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  renderer.setSize(width, height, false);
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+}
+// ------------------------------------------------- atualização automática
+// O HMR do Vite não sobrevive a alguns proxies de preview: sem isto a página
+// fica presa numa versão antiga do efeito até alguém recarregar na mão.
+const WATCH_URL = '/src/vfx/VFXConfig.ts';
+let lastStamp = null;
+async function checkForUpdates() {
+  try {
+    const res = await fetch(`${WATCH_URL}?watch=${Date.now()}`, {
+      method: 'HEAD',
+      cache: 'no-store',
+    });
+    const stamp = res.headers.get('last-modified') || res.headers.get('etag');
+    if (lastStamp && stamp && stamp !== lastStamp) {
+      if (revBadge) {
+        revBadge.textContent = 'código novo — recarregando…';
+        revBadge.classList.add('stale');
+      }
+      setTimeout(() => location.reload(), 900);
+      return;
+    }
+    if (stamp) lastStamp = stamp;
+  } catch {
+    // dev server fora do ar: tenta de novo no próximo tick
+  }
+}
+setInterval(checkForUpdates, 4000);
+checkForUpdates();
+
+window.addEventListener('resize', resize);
+
+buildFields();
+buildVfx();
+
+const clock = new THREE.Clock();
+let autoTimer = 0;
+let fpsAccum = 0;
+let fpsFrames = 0;
+
+function frame() {
+  const raw = Math.min(0.05, clock.getDelta());
+  const delta = slow ? raw * 0.25 : raw;
+
+  autoTimer += raw;
+  if (auto && autoTimer >= 0.7) {
+    autoTimer = 0;
+    fireOnce();
+  }
+
+  for (let index = casts.length - 1; index >= 0; index -= 1) {
+    const entry = casts[index];
+    entry.age += delta;
+    entry.mixer.update(delta);
+    if (entry.age >= entry.action.getClip().duration + 0.05) {
+      // Lab roda por muito tempo: solta o mixer da raiz para não acumular clipes.
+      entry.mixer.stopAllAction();
+      entry.mixer.uncacheRoot(caster);
+      casts.splice(index, 1);
+    }
+  }
+  vfx.update(delta);
+
+  const diagnostics = vfx.diagnostics();
+  controls.update();
+  renderer.render(scene, camera);
+
+  fpsAccum += raw;
+  fpsFrames += 1;
+  if (fpsAccum >= 0.4) {
+    hudFps.textContent = String(Math.round(fpsFrames / fpsAccum));
+    hudParticles.textContent = String(diagnostics.activeProjectiles);
+    fpsAccum = 0;
+    fpsFrames = 0;
+  }
+  requestAnimationFrame(frame);
+}
+
+resize();
+fireOnce();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -76,36 +76,94 @@ function multipliers(low = 0.45, medium = 0.75, high = 1, ultra = high * 1.15): 
 }
 
 export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> = {
+  /**
+   * Basic attack: the ice comet from the reference sheet — a bright dart head
+   * with a silk tail. It is the Mage's spam attack, so the particle counts stay
+   * modest, but the projectile itself has to read from the gameplay camera:
+   * ~2,7 m x 0,9 m of sprite (~3:1), i.e. bigger than the 1,8 m mage.
+   */
   basic: {
     id: 'basic',
     style: 'arcane',
     delivery: 'projectile',
     colors: {
-      core: 0xf4fbff,
-      glow: 0x5eb7ff,
-      secondary: 0x8d55ff,
-      spark: 0xc7e9ff,
-      smoke: 0x725bc8,
+      core: 0xf6fcff,
+      glow: 0x6fd6ff,
+      secondary: 0x1f6bff,
+      spark: 0xd8f4ff,
+      smoke: 0xbfe4f7,
     },
     timeline: {
-      chargeStart: 0.1,
-      magicCircle: 0.22,
-      launch: 0.42,
-      chargeEnd: 0.52,
-      recover: 0.78,
+      // Clip do "ataque basico" da Maga = 1,8 s. A conjuração tem que ser um
+      // piscar: o brilho nasce 0,1 s antes do tiro sair (0.30 -> 0.36) e some
+      // junto com o disparo. Antes ele acendia em 0.12 (0,22 s) e ficava na mão
+      // até 0,83 s — era o borrão que continuava brilhando enquanto ela andava.
+      chargeStart: 0.3,
+      // No hand magic circle: the basic attack fires every ~0.6 s and a seal on
+      // the palm turned the spam attack into visual noise.
+      launch: 0.36,
+      chargeEnd: 0.4,
+      recover: 0.72,
       end: 1,
     },
-    charge: { scale: 1, particleCount: 18, sparkCount: 5, lightIntensity: 0.75, twoHanded: false },
-    projectile: { speed: 18, lifetime: 1.2, radius: 0.42, trailLength: 1.3, trailWidth: 0.08 },
+    // Conjuração reduzida a um brilho na mão: sem poeira girando e sem faísca
+    // (0 desliga as duas nuvens). O que importa é a luz que anuncia o tiro.
+    charge: { scale: 0.5, particleCount: 0, sparkCount: 0, lightIntensity: 0.55, twoHanded: false },
+    projectile: {
+      speed: 25,
+      lifetime: 1.1,
+      radius: 0.38,
+      trailLength: 0.85,
+      trailWidth: 0.05,
+      shape: 'bullet',
+      // Aura pequena e fraca: o sprite redondo de 0,87 m por cima do cometa
+      // virava uma bola branca sem forma. O brilho do dardo é do próprio sprite.
+      haloScale: 1.2,
+      haloOpacity: 0.42,
+      comet: {
+        // Cometa ~2,74 m × 0,91 m (mesma arte, só maior): quase 1,5× a altura
+        // da Maga, para ler grande na câmera de jogo.
+        widthScale: 2.4,
+        lengthScale: 7.2,
+        headLength: 0.3,
+        intensity: 1.5,
+        sparkles: 6,
+        haze: 0.38,
+        filaments: 1.05,
+        wisp: 1,
+        // A fita de energia antiga sai de cena: a cauda agora é a seda do
+        // próprio sprite, e as duas juntas viravam um rastro duplo.
+        trailOpacity: 0,
+      },
+      // A cauda principal agora é a seda do sprite; esta fumaça no espaço do
+      // mundo entra só como névoa fina atrás do cometa (0 na contagem = desliga).
+      frost: {
+        color: 0xcfeaff,
+        count: 1,
+        interval: 0.05,
+        size: [1.1, 2.6],
+        speed: 0.42,
+        spread: 0.7,
+        lifetime: 0.5,
+        opacity: 0.3,
+        upwardBias: 0.22,
+        growth: 1.1,
+        blending: 'additive',
+      },
+    },
     impact: {
-      duration: 0.52,
-      radius: 0.75,
-      shockwaveRadius: 1.35,
-      cameraShakeIntensity: 0.02,
-      cameraShakeDuration: 0.12,
-      lightIntensity: 0.85,
-      particleCount: 34,
-      debrisCount: 0,
+      // O impacto é o anel da referência (billboard com raios e o miolo vazio),
+      // com um estouro curto no meio, onda dupla no chão e estilhaços. O anel
+      // nasce em `shockwaveRadius × ringScale` e abre até ~2,2× isso.
+      duration: 0.78,
+      radius: 1.05,
+      shockwaveRadius: 2.25,
+      ringScale: 1,
+      cameraShakeIntensity: 0.034,
+      cameraShakeDuration: 0.18,
+      lightIntensity: 1.15,
+      particleCount: 54,
+      debrisCount: 18,
     },
     hand: 'right',
     qualityParticleMultiplier: multipliers(0.45, 0.75, 1),
