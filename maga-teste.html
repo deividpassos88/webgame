@@ -443,7 +443,12 @@ function frame() {
     const entry = casts[index];
     entry.age += delta;
     entry.mixer.update(delta);
-    if (entry.age >= entry.action.getClip().duration + 0.05) casts.splice(index, 1);
+    if (entry.age >= entry.action.getClip().duration + 0.05) {
+      // Lab roda por muito tempo: solta o mixer da raiz para não acumular clipes.
+      entry.mixer.stopAllAction();
+      entry.mixer.uncacheRoot(caster);
+      casts.splice(index, 1);
+    }
   }
   vfx.update(delta);
 
