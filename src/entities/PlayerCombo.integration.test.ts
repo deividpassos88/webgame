@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { CharacterAssetStore } from '../characters/CharacterAssetStore';
 import { WARRIOR_ATTACK_IDS, type WarriorAttackId } from '../characters/CharacterCatalog';
 import { createRuntimeWarriorSword } from '../characters/RuntimeWarriorWeapon';
+import { COMBO_EMPOWER_MAX_PLAYBACK_MULTIPLIER } from '../combat/ComboEmpowerment';
 import { getWeaponDefinition } from '../equipment/EquipmentCatalog';
 import { Player } from './Player';
 
@@ -677,6 +678,81 @@ describe('Player sword combo integration', () => {
 
     expect(player.tryStartSkillAttack('ataque_giratorio', { chain: true })).toBe(true);
     expect(player.activeWarriorAttackId).toBe('ataque_giratorio');
+  });
+
+  it('plays the skill faster when the combo is empowered and shrinks its gauge window', async () => {
+    const player = await loadedPlayerWithSword();
+
+    expect(player.tryStartSkillAttack('triplo_ataque')).toBe(true);
+    const normal = player.getWarriorSkillComboTiming('triplo_ataque')!;
+    expect(player.activeSkillRemainingSeconds).toBeCloseTo(normal.durationSeconds, 4);
+
+    player.clearAttackTarget();
+    expect(player.isCastingSkill).toBe(false);
+
+    // Combo empoderado: a mesma skill sai acelerada (1.3x) e termina antes.
+    expect(player.tryStartSkillAttack('triplo_ataque', { playbackScale: 1.3 })).toBe(true);
+    const empowered = player.getWarriorSkillComboTiming('triplo_ataque')!;
+    expect(empowered.durationSeconds).toBeCloseTo(normal.durationSeconds / 1.3, 4);
+    expect(empowered.durationSeconds).toBeLessThan(normal.durationSeconds);
+    expect(player.activeSkillRemainingSeconds).toBeCloseTo(empowered.durationSeconds, 4);
+
+    // O impacto do efeito acompanha a animação acelerada.
+    const impact = player.getWarriorSkillTimingSeconds('triplo_ataque')!;
+    expect(impact.impactSeconds).toBeCloseTo(empowered.durationSeconds * 0.8, 4);
+
+    // Outra skill qualquer não herda a aceleração da skill em execução.
+    const other = player.getWarriorSkillComboTiming('ataque_giratorio')!;
+    expect(player.tryStartSkillAttack('ataque_giratorio', { chain: true })).toBe(false);
+    expect(other.durationSeconds).toBeGreaterThan(empowered.durationSeconds);
+  });
+
+  it('never slows a skill down nor exceeds the empowered playback cap', async () => {
+    const player = await loadedPlayerWithSword();
+
+    expect(player.tryStartSkillAttack('ataque_giratorio', { playbackScale: 0.4 })).toBe(true);
+    const notSlowed = player.getWarriorSkillComboTiming('ataque_giratorio')!;
+    player.clearAttackTarget();
+    expect(player.tryStartSkillAttack('ataque_giratorio')).toBe(true);
+    const plain = player.getWarriorSkillComboTiming('ataque_giratorio')!;
+    expect(notSlowed.durationSeconds).toBeCloseTo(plain.durationSeconds, 5);
+
+    player.clearAttackTarget();
+    expect(player.tryStartSkillAttack('ataque_giratorio', { playbackScale: 99 })).toBe(true);
+    const capped = player.getWarriorSkillComboTiming('ataque_giratorio')!;
+    expect(capped.durationSeconds).toBeCloseTo(
+      plain.durationSeconds / COMBO_EMPOWER_MAX_PLAYBACK_MULTIPLIER,
+      4
+    );
+  });
+
+  it('blocks damage while the combo immunity is up and expires with it', async () => {
+    const player = await loadedPlayerWithSword();
+
+    player.setComboInvulnerability(0.5);
+    player.takeDamage(20);
+    expect(player.hp).toBe(100);
+    player.takeBossSkillDamage(20);
+    expect(player.hp).toBe(100);
+
+    player.update(0.3);
+    expect(player.comboInvulnerabilityRemaining).toBeCloseTo(0.2, 5);
+    player.update(0.25);
+    expect(player.comboInvulnerabilityRemaining).toBe(0);
+
+    player.takeDamage(20);
+    expect(player.hp).toBe(80);
+  });
+
+  it('drops the combo immunity on respawn', async () => {
+    const player = await loadedPlayerWithSword();
+
+    player.setComboInvulnerability(2.8);
+    expect(player.comboInvulnerabilityRemaining).toBeCloseTo(2.8, 5);
+    player.respawn(player.root.position.clone());
+    expect(player.comboInvulnerabilityRemaining).toBe(0);
+    player.takeDamage(10);
+    expect(player.hp).toBe(90);
   });
 
   it('blocks repeated ordinary damage for 0.4 second after a successful hit', async () => {

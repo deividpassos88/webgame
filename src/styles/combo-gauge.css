@@ -46,6 +46,24 @@
   color: rgb(var(--combo-green));
   text-shadow: 0 0 10px rgba(var(--combo-green), 0.8), 0 2px 3px rgba(0, 0, 0, 0.7);
 }
+/* Bônus do combo empoderado: skills mais rápidas e dano dobrado. */
+.combo-gauge__buff {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  padding: 1px 6px;
+  border-radius: 8px;
+  color: #2b1608;
+  background: linear-gradient(180deg, #fff3c4, #f0b93c);
+  box-shadow: 0 0 10px rgba(255, 196, 80, 0.85), 0 1px 2px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.12s ease-out, transform 0.12s ease-out;
+}
+.combo-gauge__buff:not(:empty) {
+  opacity: 1;
+  transform: scale(1);
+}
 
 /* Gold ornamental frame with a see-through interior. */
 .combo-gauge__frame {
@@ -138,6 +156,9 @@
 }
 .combo-gauge__cursor::before { top: -5px; border-top: 7px solid #fff1b8; }
 .combo-gauge__cursor::after { bottom: -5px; border-bottom: 7px solid #fff1b8; }
+/* O cursor viaja nos dois sentidos (ida e volta); a trilha mostra o lado. */
+.combo-gauge__cursor[data-direction='1']::before { margin-left: -3px; border-left-width: 9px; }
+.combo-gauge__cursor[data-direction='-1']::before { margin-left: -9px; border-right-width: 9px; }
 
 /* Linked phase: the track turns green and drains while the next skill is awaited. */
 .combo-gauge__timer { display: none; }
