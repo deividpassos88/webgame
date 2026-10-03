@@ -43,6 +43,20 @@ export interface MageProjectileConfig {
     /** Velocidade de giro das aletas rúnicas (rad/s). */
     readonly finSpin: number;
   };
+  /**
+   * Orbe de plasma: um casco elétrico quadriculado em volta do núcleo e duas
+   * coroas de contenção girando em sentidos opostos. É o projétil do ataque
+   * básico da Maga (referência: o ataque normal de catalisador do Genshin
+   * Impact — bola de energia rápida, azul e muito brilhante).
+   */
+  readonly plasma?: {
+    /** Casco de plasma, em múltiplos do raio do projétil. */
+    readonly shellScale: number;
+    /** Escala das duas coroas de contenção. */
+    readonly ringScale: number;
+    /** Giro das coroas em rad/s (a segunda gira no sentido oposto). */
+    readonly spin: number;
+  };
 }
 
 export interface MageImpactConfig {
@@ -80,6 +94,16 @@ export interface MageImpactConfig {
   /** Estilhaços rúnicos em estrela, disparados para fora no impacto. */
   readonly spikes?: {
     readonly count: number;
+    readonly length: number;
+  };
+  /**
+   * Jatos de plasma que rasgam o impacto para fora. São riscos finos e
+   * alongados, não fagulhas redondas: é o que dá a leitura "elétrica" do
+   * plasma em vez de uma explosão genérica.
+   */
+  readonly jets?: {
+    readonly count: number;
+    /** Comprimento do jato em metros. */
     readonly length: number;
   };
 }

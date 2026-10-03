@@ -156,6 +156,43 @@ describe('Mage gameplay player', () => {
     expect(directHits).toBe(1);
   });
 
+  it('runs the very same plasma basic for the automatic and the manual attack', async () => {
+    const player = new Player('mage', createMageAssets());
+    await player.load();
+
+    const target = new THREE.Group();
+    target.position.set(0, 0, 2.4);
+    target.userData.isEnemyRoot = true;
+    target.userData.enemyBodyScale = 1;
+
+    const casts: MageBasicAttackCastEvent[] = [];
+    player.onMageBasicAttackCast((event) => { casts.push(event); });
+
+    // Caminho do ataque automático: o Game chama exatamente `attackEnemy`.
+    player.attackEnemy(target, () => undefined);
+    const automatic = casts[casts.length - 1];
+    expect(automatic?.spellId).toBe('basic');
+
+    // Deixa o golpe terminar e o cooldown zerar antes do próximo ataque.
+    for (let step = 0; step < 20; step += 1) player.update(0.1);
+
+    // Caminho manual (clique no inimigo).
+    player.attackEnemy(target, () => undefined);
+    const manual = casts[casts.length - 1];
+
+    expect(casts).toHaveLength(2);
+    expect(manual?.spellId).toBe('basic');
+    // Mesma ação de animação: nada de uma versão "capada" no automático.
+    expect(manual?.action).toBe(automatic?.action);
+    expect(manual?.action.getClip().name).toBe(automatic?.action.getClip().name);
+    expect(manual?.action.getEffectiveTimeScale())
+      .toBeCloseTo(automatic!.action.getEffectiveTimeScale(), 6);
+    // E o mesmo ponto de partida (mão direita + direção para o alvo).
+    expect(manual?.rightHand?.name).toBe('mixamorig:RightHand');
+    expect(manual?.rightHand).toBe(automatic?.rightHand);
+    expect(player.activeWarriorAttackId).toBe('ataque_basico');
+  });
+
   it('gives Mage skills no damage immunity', async () => {
     const player = new Player('mage', createMageAssets());
     await player.load();

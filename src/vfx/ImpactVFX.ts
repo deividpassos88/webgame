@@ -33,6 +33,8 @@ interface ImpactPlayOptions {
 
 const MAX_DEBRIS = 14;
 const MAX_SPIKES = 9;
+/** Jatos de plasma do impacto (riscos alongados que rasgam para fora). */
+const MAX_JETS = 8;
 /** Fração da duração em que a segunda onda de choque entra. */
 const SECOND_WAVE_DELAY = 0.18;
 const TMP_DIR = new THREE.Vector3();
@@ -59,6 +61,12 @@ class ImpactEffect implements PoolableVFX {
   /** Estilhaços rúnicos em estrela. */
   private readonly spikes: THREE.Mesh[] = [];
   private readonly spikeVelocities: THREE.Vector3[] = [];
+  /** Jatos de plasma: sprites alongados que dão a leitura elétrica. */
+  private readonly jets: THREE.Sprite[] = [];
+  private readonly jetMaterials: THREE.SpriteMaterial[] = [];
+  private readonly jetDirections: THREE.Vector3[] = [];
+  private readonly jetLengths: number[] = [];
+  private jetCount = 0;
   private muzzleFlash = false;
   private readonly particles: PooledParticleCloud;
   private readonly smoke: PooledParticleCloud;
@@ -200,6 +208,30 @@ class ImpactEffect implements PoolableVFX {
     }
     this.group.add(this.shockwaveTwo, this.pillar);
 
+    for (let index = 0; index < MAX_JETS; index += 1) {
+      // Um material por jato: cada risco precisa do próprio ângulo (o sprite é
+      // um retângulo girado na tela, então `material.rotation` é por material).
+      const material = new THREE.SpriteMaterial({
+        map: resources.impactFlare,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.name = 'MageImpactPlasmaJet';
+      sprite.visible = false;
+      sprite.renderOrder = 6;
+      this.jets.push(sprite);
+      this.jetMaterials.push(material);
+      this.jetDirections.push(new THREE.Vector3(1, 0, 0));
+      this.jetLengths.push(1);
+      this.group.add(sprite);
+    }
+
     this.particles = new PooledParticleCloud(64, resources.softGlow);
     this.smoke = new PooledParticleCloud(34, resources.smoke);
     for (let index = 0; index < MAX_DEBRIS; index += 1) {
@@ -301,6 +333,7 @@ class ImpactEffect implements PoolableVFX {
       this.smoke.reset();
     }
     this.muzzleFlash = options.muzzleFlash === true;
+    this.configureJets(preset, this.muzzleFlash);
     const sigil = this.muzzleFlash ? undefined : preset.impact.runeSigil;
     this.sigilOuter.visible = sigil !== undefined;
     this.sigilInner.visible = sigil !== undefined;
@@ -430,6 +463,8 @@ class ImpactEffect implements PoolableVFX {
       if (material.opacity <= 0.03) mesh.visible = false;
     }
 
+    if (this.jetCount > 0) this.updateJets();
+
     const sigil = this.preset.impact.runeSigil;
     if (sigil && !this.muzzleFlash) {
       // O sigilo abre junto com a onda de choque e gira em sentidos opostos.
@@ -481,6 +516,11 @@ class ImpactEffect implements PoolableVFX {
       (mesh.material as THREE.MeshBasicMaterial).opacity = 0;
     }
     this.muzzleFlash = false;
+    this.jetCount = 0;
+    for (let index = 0; index < this.jets.length; index += 1) {
+      this.jets[index].visible = false;
+      this.jetMaterials[index].opacity = 0;
+    }
     for (const mesh of this.debris) {
       mesh.visible = false;
       (mesh.material as THREE.MeshBasicMaterial).opacity = 0;
@@ -492,6 +532,7 @@ class ImpactEffect implements PoolableVFX {
     (this.flash.material as THREE.Material).dispose();
     (this.burst.material as THREE.Material).dispose();
     this.shockwaveMaterial.dispose();
+    for (const material of this.jetMaterials) material.dispose();
     this.sigilOuterMaterial.dispose();
     this.sigilInnerMaterial.dispose();
     this.shockwaveTwoMaterial.dispose();
@@ -523,6 +564,54 @@ class ImpactEffect implements PoolableVFX {
       material.opacity = 0.9;
       TMP_DIR.set(Math.random() - 0.5, 0.35 + Math.random() * 0.75, Math.random() - 0.5).normalize();
       this.debrisVelocities[index].copy(TMP_DIR).multiplyScalar((preset.style === 'lava' ? 2.3 : 2.0) * (0.5 + Math.random() * 0.7));
+    }
+  }
+
+  /**
+   * Distribui os jatos de plasma em estrela. O sprite é um retângulo girado na
+   * tela, então o ângulo do mundo (plano XZ) é convertido para o ângulo de
+   * tela: para a câmera do jogo, +X da tela é +X do mundo e +Y da tela é -Z.
+   */
+  private configureJets(preset: MageSpellPreset, muzzleFlash: boolean): void {
+    const jets = muzzleFlash ? undefined : preset.impact.jets;
+    const count = Math.min(MAX_JETS, jets?.count ?? 0);
+    this.jetCount = count;
+    for (let index = 0; index < MAX_JETS; index += 1) {
+      const sprite = this.jets[index];
+      const material = this.jetMaterials[index];
+      const active = index < count;
+      sprite.visible = active;
+      if (!active) continue;
+      const angle = (index / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+      const length = (jets?.length ?? 1) * this.baseScale * (0.75 + Math.random() * 0.55);
+      this.jetLengths[index] = length;
+      this.jetDirections[index].set(Math.cos(angle), 0.1 + Math.random() * 0.18, Math.sin(angle)).normalize();
+      material.color.set(preset.colors.glow);
+      material.opacity = 0.95;
+      material.rotation = Math.atan2(-Math.sin(angle), Math.cos(angle)) - Math.PI / 2;
+      sprite.position.set(Math.cos(angle) * 0.1 * this.baseScale, 0, Math.sin(angle) * 0.1 * this.baseScale);
+      sprite.scale.set(0.06 * this.baseScale, length * 0.3);
+    }
+  }
+
+  private updateJets(): void {
+    for (let index = 0; index < this.jets.length; index += 1) {
+      const sprite = this.jets[index];
+      if (!sprite.visible) continue;
+      const length = this.jetLengths[index];
+      // Os jatos são a parte mais rápida do impacto: somem em ~60% do tempo.
+      const progress = THREE.MathUtils.clamp(this.age / Math.max(0.001, this.duration * 0.6), 0, 1);
+      const travel = length * (0.1 + progress * 0.95);
+      const direction = this.jetDirections[index];
+      sprite.position.set(
+        direction.x * travel,
+        direction.y * travel * 0.35,
+        direction.z * travel
+      );
+      sprite.scale.set((0.05 + progress * 0.05) * this.baseScale, length * (0.3 + progress * 0.75));
+      const fade = 1 - progress;
+      this.jetMaterials[index].opacity = fade * fade * 0.95;
+      if (fade <= 0.02) sprite.visible = false;
     }
   }
 

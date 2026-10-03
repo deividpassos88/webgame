@@ -80,50 +80,55 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
     id: 'basic',
     style: 'arcane',
     delivery: 'projectile',
+    // Plasma azul brilhante: núcleo quase branco, miolo azul saturado e
+    // contorno azul-violeta. Referência de leitura: o ataque normal de
+    // catalisador do Genshin Impact (bolha de energia rápida e luminosa).
     colors: {
-      core: 0xf7fbff,
-      glow: 0x62c8ff,
-      secondary: 0x9a5bff,
-      spark: 0xd9f3ff,
-      smoke: 0x6f5ac4,
+      core: 0xf2f9ff,
+      glow: 0x3d9bff,
+      secondary: 0x5a6bff,
+      spark: 0xc9e9ff,
+      smoke: 0x2b3e7a,
     },
+    // Conjuração RÁPIDA: é o ataque básico, o raio sai praticamente junto com
+    // o movimento do cajado. Tudo acontece no primeiro terço do clip.
     timeline: {
-      chargeStart: 0.1,
-      magicCircle: 0.22,
-      launch: 0.42,
-      chargeEnd: 0.52,
-      recover: 0.78,
+      chargeStart: 0.02,
+      magicCircle: 0.05,
+      launch: 0.14,
+      chargeEnd: 0.18,
+      recover: 0.3,
       end: 1,
     },
-    // Ataque rápido: a carga é um acúmulo curto na mão, não um orbe gigante.
-    charge: { scale: 0.75, particleCount: 18, sparkCount: 6, lightIntensity: 0.8, twoHanded: false },
-    // O estouro na mão no disparo é enxuto de propósito: quem carrega a
-    // leitura do golpe é o dardo voando e o impacto no alvo.
-    muzzle: { scale: 0.18, particleCount: 16, lightIntensity: 0.5 },
-    // \"Flecha mágica\": dardo alongado com aletas rúnicas, rastro longo e
-    // rápido — o básico da Maga no estilo Magic Arrow (BDO).
+    // Carga curta: só um acúmulo de energia na mão, sem orbe gigante.
+    charge: { scale: 0.7, particleCount: 16, sparkCount: 6, lightIntensity: 0.9, twoHanded: false },
+    // Clarão de disparo enxuto: quem carrega a leitura é o orbe voando.
+    muzzle: { scale: 0.2, particleCount: 18, lightIntensity: 0.6 },
+    // Orbe de plasma: rápido (26 m/s), com casco elétrico crepitando e duas
+    // coroas de contenção girando em sentidos opostos.
     projectile: {
-      speed: 19,
-      lifetime: 1.3,
-      radius: 0.6,
-      trailLength: 2.5,
-      trailWidth: 0.2,
-      arrow: { length: 3.6, finSpin: 9 },
+      speed: 26,
+      lifetime: 1.1,
+      radius: 0.45,
+      trailLength: 2.4,
+      trailWidth: 0.24,
+      plasma: { shellScale: 1.35, ringScale: 1.65, spin: 7.5 },
     },
     impact: {
-      duration: 0.66,
-      radius: 1.15,
-      shockwaveRadius: 2.4,
-      cameraShakeIntensity: 0.06,
-      cameraShakeDuration: 0.2,
-      lightIntensity: 2,
-      particleCount: 76,
+      duration: 0.56,
+      radius: 1.1,
+      shockwaveRadius: 2.3,
+      cameraShakeIntensity: 0.055,
+      cameraShakeDuration: 0.18,
+      lightIntensity: 1.9,
+      particleCount: 72,
       debrisCount: 0,
-      // Assinatura do básico: selo arcano no chão + coluna de luz + estilhaços
-      // em estrela. É o que faz o golpe "pesar" como um ataque de assinatura.
-      runeSigil: { radius: 2.8, spin: 3.4, intensity: 2.6, groundStamp: true },
-      pillar: { height: 4, radius: 0.65 },
-      spikes: { count: 8, length: 1.35 },
+      // Assinatura do básico: selo no chão + coluna de luz + estilhaços em
+      // estrela + jatos de plasma. É o que faz o golpe "pesar" de longe.
+      runeSigil: { radius: 2.6, spin: 3.6, intensity: 2.6, groundStamp: true },
+      pillar: { height: 3.6, radius: 0.6 },
+      spikes: { count: 8, length: 1.3 },
+      jets: { count: 8, length: 1.7 },
     },
     hand: 'right',
     qualityParticleMultiplier: multipliers(0.45, 0.75, 1),

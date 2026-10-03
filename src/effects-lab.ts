@@ -93,6 +93,7 @@ const layerState = {
   runeSigil: true,
   pillar: true,
   spikes: true,
+  jets: true,
   trail: true,
 };
 
@@ -106,6 +107,7 @@ function presetFor(spellId: MageSpellId): MageSpellPreset {
       runeSigil: layerState.runeSigil ? impact.runeSigil : undefined,
       pillar: layerState.pillar ? impact.pillar : undefined,
       spikes: layerState.spikes ? impact.spikes : undefined,
+      jets: layerState.jets ? impact.jets : undefined,
     },
     projectile: {
       ...preset.projectile,

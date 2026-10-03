@@ -44,6 +44,8 @@ export class MageVFXResources {
   public readonly coneShard = new THREE.ConeGeometry(0.06, 0.32, 6);
   /** Dardo alongado do ataque básico (ponta da "flecha mágica"). */
   public readonly arrowSpearhead = new THREE.ConeGeometry(0.5, 1, 14, 1, true);
+  /** Casco do orbe de plasma: malha quadriculada que dá o "crepitar" elétrico. */
+  public readonly plasmaShell = new THREE.IcosahedronGeometry(0.24, 1);
   /** Anel fino usado como aleta rúnica girando em volta do dardo. */
   public readonly runeBand = new THREE.RingGeometry(0.74, 1, 48);
   public readonly shockwave = new THREE.RingGeometry(0.18, 0.24, 36);
