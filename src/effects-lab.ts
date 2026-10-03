@@ -128,7 +128,7 @@ function fireBasic(): void {
       action,
       rightHand: handAnchor,
       leftHand: null,
-      target,
+      target: enemyPresent ? target : null,
       fallbackDirection: new THREE.Vector3(0, 0, -1),
       isTargetAlive: () => true,
       onImpact: () => {
@@ -202,13 +202,21 @@ trailButton.addEventListener('click', () => {
   setLog(`Dardo e aletas: ${layerState.trail ? 'ligados' : 'desligados'}.`);
 });
 
-const turtleButton = document.querySelector<HTMLButtonElement>('[data-toggle-turtle]')!;
-let toughTarget = false;
-turtleButton.addEventListener('click', () => {
-  toughTarget = !toughTarget;
-  targetBody.material.color.set(toughTarget ? 0x35506b : 0x5b3f34);
-  turtleButton.classList.toggle('is-on', toughTarget);
-  setLog(toughTarget ? 'Alvo reforçado (só para leitura visual).' : 'Alvo normal.');
+// Regra do ataque básico: o impacto de fogo só existe quando acerta um
+// inimigo. Desligar o alvo mostra a bola de fogo se dissipando no ar.
+const enemyButton = document.querySelector<HTMLButtonElement>('[data-toggle-enemy]')!;
+let enemyPresent = true;
+enemyButton.classList.add('is-on');
+enemyButton.addEventListener('click', () => {
+  enemyPresent = !enemyPresent;
+  target.visible = enemyPresent;
+  enemyButton.setAttribute('aria-pressed', String(enemyPresent));
+  enemyButton.classList.toggle('is-on', enemyPresent);
+  setLog(
+    enemyPresent
+      ? 'Inimigo na frente: o feitiço voa e explode nele.'
+      : 'Sem inimigo: a bola de fogo se dissipa no ar, sem impacto.'
+  );
 });
 
 document.querySelector<HTMLInputElement>('[data-zoom]')?.addEventListener('input', (event) => {
