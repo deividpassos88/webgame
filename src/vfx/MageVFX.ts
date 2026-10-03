@@ -40,6 +40,8 @@ class ChargeOrbEffect implements PoolableVFX {
   private readonly orbitParticles: PooledParticleCloud;
   private readonly sparks: PooledParticleCloud;
   private readonly accents: THREE.Mesh[] = [];
+  /** Lufadas de chama da conjuração de fogo (sem anéis nem linhas). */
+  private readonly conjureFlames: THREE.Sprite[] = [];
   private lightHandle: VFXLightHandle | null = null;
   private age = 0;
   private intensity = 0;
@@ -96,6 +98,23 @@ class ChargeOrbEffect implements PoolableVFX {
       this.group.add(mesh);
     }
 
+    for (let index = 0; index < 3; index += 1) {
+      const material = new THREE.SpriteMaterial({
+        map: resources.flame,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.name = 'MageConjureFlame';
+      sprite.visible = false;
+      this.conjureFlames.push(sprite);
+      this.group.add(sprite);
+    }
+
     this.orbitParticles = new PooledParticleCloud(42, resources.softGlow);
     this.sparks = new PooledParticleCloud(28, resources.softGlow);
     this.group.add(this.glow, this.core, this.orbitParticles.points, this.sparks.points);
@@ -130,7 +149,8 @@ class ChargeOrbEffect implements PoolableVFX {
     }
 
     this.orbitParticles.emit(new THREE.Vector3(), {
-      color: preset.colors.secondary,
+      // Brasas de fogo em vez de pontos vermelhos na conjuração.
+      color: preset.chargeVisual === 'flame' ? preset.colors.spark : preset.colors.secondary,
       count: qualityCount(preset.charge.particleCount, this.quality, preset.qualityParticleMultiplier),
       speed: preset.style === 'water' ? 0.52 : 0.32,
       spread: preset.style === 'water' ? 0.72 : 0.48,
@@ -141,6 +161,20 @@ class ChargeOrbEffect implements PoolableVFX {
     });
     this.sparks.reset();
     this.configureAccents(preset);
+    const flames = preset.chargeVisual === 'flame';
+    for (let index = 0; index < this.conjureFlames.length; index += 1) {
+      const sprite = this.conjureFlames[index];
+      sprite.visible = flames;
+      if (!flames) continue;
+      const material = sprite.material as THREE.SpriteMaterial;
+      material.color.set(preset.colors.glow);
+      material.opacity = 0;
+      sprite.position.set(
+        (index - 1) * 0.07,
+        0.06 + index * 0.05,
+        (index % 2 === 0 ? 1 : -1) * 0.04
+      );
+    }
   }
 
   public update(delta: number): void {
@@ -167,6 +201,19 @@ class ChargeOrbEffect implements PoolableVFX {
 
     this.updateOrbitParticles();
     this.updateAccents(elapsed);
+    for (let index = 0; index < this.conjureFlames.length; index += 1) {
+      const sprite = this.conjureFlames[index];
+      if (!sprite.visible) continue;
+      // Cada lufada sobe um pouco mais e tremula em ritmo próprio.
+      const flutter = 0.82 + Math.sin(this.age * (14 + index * 3) + index * 2.1) * 0.18;
+      const grow = (0.5 + this.intensity * 1.15) * flutter;
+      sprite.scale.set(grow * 0.62, grow, 1);
+      sprite.position.y = 0.05 + index * 0.055 + this.intensity * (0.1 + index * 0.035);
+      const material = sprite.material as THREE.SpriteMaterial;
+      material.opacity = this.intensity * (0.62 - index * 0.14);
+      material.color.set(this.preset.colors.glow)
+        .lerp(TMP_COLOR.set(this.preset.colors.core), Math.max(0, 0.35 - index * 0.15) + this.intensity * 0.25);
+    }
     const sparkInterval = this.preset.style === 'lightning' ? 0.05 : this.preset.style === 'lava' ? 0.09 : 0.12;
     if (this.age % sparkInterval < elapsed) {
       this.sparks.emit(new THREE.Vector3(), {
@@ -206,19 +253,26 @@ class ChargeOrbEffect implements PoolableVFX {
       mesh.visible = false;
       (mesh.material as THREE.MeshBasicMaterial).opacity = 0;
     }
+    for (const sprite of this.conjureFlames) {
+      sprite.visible = false;
+      (sprite.material as THREE.SpriteMaterial).opacity = 0;
+    }
   }
 
   public dispose(): void {
     (this.core.material as THREE.Material).dispose();
     (this.glow.material as THREE.Material).dispose();
     for (const mesh of this.accents) (mesh.material as THREE.Material).dispose();
+    for (const sprite of this.conjureFlames) (sprite.material as THREE.Material).dispose();
     this.orbitParticles.dispose();
     this.sparks.dispose();
   }
 
   private configureAccents(preset: MageSpellPreset): void {
     const profile = mageQualityProfile(this.quality);
-    const visibleCount = preset.style === 'ice'
+    // Conjuração em chama: nenhum acento geométrico (os "formatos" de gelo,
+    // gota e brasa) — quem aparece são as lufadas de fogo.
+    const visibleCount = preset.chargeVisual === 'flame' ? 0 : preset.style === 'ice'
       ? Math.round(8 * profile.iceShardMultiplier)
       : preset.style === 'water'
         ? Math.round(10 * profile.particleMultiplier)
@@ -843,6 +897,7 @@ export class MageVFX {
   }
 
   private spawnSecondaryCharge(cast: ActiveMageCast): void {
+    if (cast.preset.chargeVisual === 'flame') return;
     const hand = cast.preset.hand === 'both' ? this.resolveOtherHand(cast) : this.resolveHand(cast);
     if (!mageQualityProfile(this.quality).enableDecorativeCircles && cast.preset.style !== 'laser') return;
     this.magicCircles.play({
@@ -857,6 +912,8 @@ export class MageVFX {
   }
 
   private spawnMagicCircle(cast: ActiveMageCast): void {
+    // Feitiços de fogo não desenham anel: a conjuração é a chama na mão.
+    if (cast.preset.chargeVisual === 'flame') return;
     const hand = this.resolveHand(cast);
     this.magicCircles.play({
       parent: this.scene,

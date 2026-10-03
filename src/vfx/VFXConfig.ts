@@ -94,14 +94,16 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
     },
     // Ritmo de ataque normal, no compasso do golpe do Guerreiro: nada de
     // conjuração instantânea. O fogo acende, o braço avança e a bola sai.
+    // Sem `magicCircle`: a conjuração do fogo não desenha anel nenhum na mão.
     timeline: {
       chargeStart: 0.04,
-      magicCircle: 0.08,
       launch: 0.2,
       chargeEnd: 0.26,
       recover: 0.4,
       end: 1,
     },
+    // Conjuração em CHAMA: a mão acende fogo de verdade (nenhum anel/linha).
+    chargeVisual: 'flame',
     charge: { scale: 0.75, particleCount: 22, sparkCount: 12, lightIntensity: 1.3, twoHanded: false },
     // Clarão de disparo: o fogo acendendo na mão, curto e quente.
     muzzle: { scale: 0.24, particleCount: 22, lightIntensity: 0.8 },
@@ -111,9 +113,11 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       speed: 14,
       lifetime: 1.5,
       radius: 0.5,
-      trailLength: 3,
-      trailWidth: 0.26,
-      comet: { headStretch: 2.6, tailLength: 1.4, smokeWidth: 0.55, emberCount: 12, emberSize: 0.55 },
+      // Núcleo quente CURTO atrás da cabeça: a cauda longa é feita de lufadas
+      // de chama (não de uma fita, que virava "linhas").
+      trailLength: 1.2,
+      trailWidth: 0.3,
+      comet: { headStretch: 2.6, tailLength: 1, smokeWidth: 0.5, emberCount: 12, emberSize: 0.55 },
     },
     impact: {
       duration: 0.62,

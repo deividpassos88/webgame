@@ -130,6 +130,12 @@ export interface MageSpellPreset {
   };
   readonly lightning?: MageLightningConfig;
   readonly hand: MageHandId;
+  /**
+   * Como a conjuração aparece na mão. `arcane` (padrão) usa os anéis/selos de
+   * energia; `flame` acende uma chama viva, sem nenhum círculo ou linha — é o
+   * que combina com feitiços de fogo.
+   */
+  readonly chargeVisual?: 'arcane' | 'flame';
   readonly qualityParticleMultiplier: Readonly<Record<MageVFXQuality, number>>;
   readonly audio?: {
     readonly charge?: string;

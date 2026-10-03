@@ -116,21 +116,64 @@ describe('Maga — ataque básico de bola de fogo', () => {
     expect(basic.timeline.launch).toBeGreaterThanOrEqual(0.15);
   });
 
-  it('ships the comet shape: stretched head, long ember tail and smoke ribbon', () => {
+  it('ships the fireball shape: stretched head, long ember tail and a flame plume', () => {
     const basic = MAGE_SPELL_PRESETS.basic;
     const comet = basic.projectile.comet;
 
     expect(comet).toBeDefined();
     expect(comet?.headStretch).toBeGreaterThan(2);
-    expect(comet?.tailLength).toBeGreaterThan(1.2);
-    expect(comet?.smokeWidth).toBeGreaterThan(0.4);
     expect(comet?.emberCount).toBeGreaterThanOrEqual(10);
     expect(comet?.emberSize).toBeLessThan(1);
-    expect(basic.projectile.trailLength * (comet?.tailLength ?? 1)).toBeGreaterThan(3.5);
+    // A fita luminosa é só o núcleo quente, curto: a cauda longa é de chama.
+    expect(basic.projectile.trailLength).toBeLessThanOrEqual(1.5);
     // Sem dardo, sem plasma: o básico é fogo.
     expect('arrow' in basic.projectile).toBe(false);
     expect('plasma' in basic.projectile).toBe(false);
     expect(basic.style).toBe('lava');
+  });
+
+  it('conjures with living flame instead of rings or lines', () => {
+    const basic = MAGE_SPELL_PRESETS.basic;
+
+    expect(basic.chargeVisual).toBe('flame');
+    // Nada de círculo/selo desenhado na mão durante a conjuração.
+    expect(basic.timeline.magicCircle).toBeUndefined();
+    expect(basic.timeline.secondaryCharge).toBeUndefined();
+
+    const scene = new THREE.Scene();
+    const vfx = new MageVFX(scene, { quality: 'high' });
+    const { root, mixer, action } = createAction();
+    const hand = new THREE.Object3D();
+    hand.position.set(0.6, 1.4, 0);
+    root.add(hand);
+    vfx.cast('basic', {
+      caster: root,
+      action,
+      rightHand: hand,
+      leftHand: null,
+      target: null,
+      fallbackDirection: new THREE.Vector3(0, 0, 1),
+      isTargetAlive: () => true,
+    });
+
+    advance(vfx, mixer, 0.2, 0.01);
+    const charge = scene.getObjectByName('MageChargeOrbVFX');
+    expect(charge).toBeDefined();
+    const flames = charge!.children.filter(
+      (child) => child.name === 'MageConjureFlame' && child.visible
+    ) as THREE.Sprite[];
+    expect(flames.length).toBe(3);
+    // As chamas crescem com a carga e usam a textura de fogo.
+    expect(flames[0].material.map?.name ?? '').not.toBe('rune');
+    expect((flames[0].material as THREE.SpriteMaterial).opacity).toBeGreaterThan(0);
+    // Nenhum anel/círculo de energia foi criado na cena durante a conjuração.
+    expect(scene.children.some((child) => child.name.includes('MagicCircle'))).toBe(false);
+    // E os acentos geométricos (formatos) ficam desligados.
+    expect(
+      charge!.children.filter((child) => child.name === 'MageChargeAccent' && child.visible).length
+    ).toBe(0);
+
+    vfx.dispose();
   });
 
   it('has a fire impact with no circle on the ground', () => {
@@ -150,7 +193,7 @@ describe('Maga — ataque básico de bola de fogo', () => {
     expect(MAGE_SPELL_PRESETS.basic.hand).toBe('right');
   });
 
-  it('draws the stretched head, the hot trail and the smoke ribbon', () => {
+  it('draws the stretched head and builds the tail out of flame puffs', () => {
     const scene = new THREE.Scene();
     const resources = new MageVFXResources();
     const manager = new ProjectileManager(scene, resources, 'high', new VFXLightPool(scene, 4));
@@ -160,31 +203,46 @@ describe('Maga — ataque básico de bola de fogo', () => {
     const core = part(scene, 'MageProjectileCore') as THREE.Mesh;
     const head = part(scene, 'MageCometHead') as THREE.Mesh;
     const trail = part(scene, 'MageProjectileRibbonTrail');
-    const smoke = part(scene, 'MageProjectileSmokeTrail');
     expect(trail.visible).toBe(true);
-    expect(smoke.visible).toBe(true);
     // Cabeça esticada no eixo do voo (+Z local) e casca de fogo em volta dela.
     expect(core.scale.z).toBeGreaterThan(core.scale.x * 2);
     expect(head.visible).toBe(true);
     expect(head.scale.z).toBeGreaterThan(head.scale.x);
     expect(head.scale.x).toBeGreaterThan(core.scale.x);
-    // A fumaça é mais larga que o rastro quente.
-    const hotMaterial = trail.material as THREE.ShaderMaterial;
-    const smokeMaterial = smoke.material as THREE.ShaderMaterial;
-    expect(smokeMaterial.uniforms.uThickness.value)
-      .toBeGreaterThan(hotMaterial.uniforms.uThickness.value);
-    expect(smokeMaterial.uniforms.uOpacity.value).toBeGreaterThan(0);
-    // Rastro quente: núcleo claro atrás da cabeça e vermelho na ponta.
-    expect(hotMaterial.uniforms.uColorB.value.r).toBeGreaterThan(hotMaterial.uniforms.uColorB.value.b);
-    expect(hotMaterial.uniforms.uColorA.value.r).toBeGreaterThan(hotMaterial.uniforms.uColorA.value.g);
 
-    manager.update(0.05);
-    const positions = smoke.geometry.getAttribute('position') as THREE.BufferAttribute;
-    let maxAbs = 0;
-    for (let index = 0; index < positions.count; index += 1) {
-      maxAbs = Math.max(maxAbs, Math.abs(positions.getZ(index)));
+    const group = scene.getObjectByName('MageProjectileVFX')!;
+    const keyOf = (child: THREE.Object3D): string => child.name;
+    // Pré-aquecimento: a cauda já nasce com lufadas atrás da cabeça.
+    const puffs = group.children.filter(
+      (child) => keyOf(child) === 'MageProjectileFlamePuff' && child.visible
+    ) as THREE.Sprite[];
+    expect(puffs.length).toBeGreaterThanOrEqual(5);
+    // Fogo additivo + fumaça escura de verdade (blend normal).
+    expect((puffs[0].material as THREE.SpriteMaterial).blending).toBe(THREE.AdditiveBlending);
+    // As lufadas nascem atrás da cabeça e com cor quente.
+    expect(puffs.some((puff) => puff.position.z < -0.1)).toBe(true);
+    const hottest = puffs[0].material as THREE.SpriteMaterial;
+    expect(hottest.color.r).toBeGreaterThan(hottest.color.b);
+
+    manager.update(0.06);
+    const trailPuff = puffs[0];
+    const startZ = trailPuff.position.z;
+    const startOpacity = (trailPuff.material as THREE.SpriteMaterial).opacity;
+    for (let step = 0; step < 4; step += 1) manager.update(0.05);
+    // A lufada fica para trás e vai se dissolvendo (não vira luz acesa).
+    expect(trailPuff.position.z).toBeLessThan(startZ);
+    if (trailPuff.visible) {
+      expect((trailPuff.material as THREE.SpriteMaterial).opacity).toBeLessThan(startOpacity);
     }
-    expect(maxAbs).toBeGreaterThan(1);
+
+    const smoke = group.children.filter(
+      (child) => keyOf(child) === 'MageProjectileSmokePuff' && child.visible
+    ) as THREE.Sprite[];
+    expect(smoke.length).toBeGreaterThan(0);
+    const smokeMaterial = smoke[0].material as THREE.SpriteMaterial;
+    expect(smokeMaterial.blending).toBe(THREE.NormalBlending);
+    // Fumaça escura: canal vermelho baixo, não uma luz vermelha.
+    expect(smokeMaterial.color.r).toBeLessThan(0.35);
 
     manager.dispose();
     resources.dispose();
@@ -270,8 +328,17 @@ describe('Maga — ataque básico de bola de fogo', () => {
 
     fireComet(manager, { preset: MAGE_SPELL_PRESETS.water });
 
-    expect((part(scene, 'MageProjectileSmokeTrail').material as THREE.ShaderMaterial)
-      .uniforms.uOpacity.value).toBe(0);
+    const group = scene.getObjectByName('MageProjectileVFX')!;
+    expect(
+      group.children.filter(
+        (child) => child.name === 'MageProjectileFlamePuff' && child.visible
+      ).length
+    ).toBe(0);
+    expect(
+      group.children.filter(
+        (child) => child.name === 'MageProjectileSmokePuff' && child.visible
+      ).length
+    ).toBe(0);
     expect((part(scene, 'MageCometHead') as THREE.Mesh).visible).toBe(false);
     expect((part(scene, 'MageProjectileCore') as THREE.Mesh).scale.z)
       .toBeCloseTo((part(scene, 'MageProjectileCore') as THREE.Mesh).scale.x, 5);
@@ -384,8 +451,12 @@ describe('Maga — ataque básico de bola de fogo', () => {
     });
 
     advance(vfx, mixer, 0.8);
-    const smoke = scene.getObjectByName('MageProjectileSmokeTrail') as THREE.Mesh | undefined;
-    expect(smoke?.visible).toBe(true);
+    const projectile = scene.getObjectByName('MageProjectileVFX');
+    expect(projectile?.visible).toBe(true);
+    const puffs = projectile!.children.filter(
+      (child) => child.name === 'MageProjectileFlamePuff' && child.visible
+    );
+    expect(puffs.length).toBeGreaterThan(0);
 
     vfx.dispose();
   });

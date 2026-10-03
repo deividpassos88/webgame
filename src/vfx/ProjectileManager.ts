@@ -39,9 +39,15 @@ const TMP_TARGET = new THREE.Vector3();
 const TMP_DIRECTION = new THREE.Vector3();
 const TMP_LOCAL = new THREE.Vector3();
 const TMP_NEXT = new THREE.Vector3();
+const TMP_PUFF_COLOR = new THREE.Color();
+const TMP_PUFF_COLOR_2 = new THREE.Color();
 /** Where the glow light sat relative to the projectile when it was a child. */
 const LIGHT_LOCAL_OFFSET = new THREE.Vector3(0, 0.1, 0);
 const TRAIL_SEGMENTS = 14;
+/** Lufadas de chama que formam a cauda (a fita fina é só o núcleo quente). */
+const MAX_FLAME_PUFFS = 18;
+/** Nuvens de fumaça escura que sobram no fim da cauda. */
+const MAX_SMOKE_PUFFS = 10;
 
 function targetPoint(target: THREE.Object3D, output: THREE.Vector3): THREE.Vector3 {
   target.getWorldPosition(output);
@@ -80,20 +86,27 @@ class MageProjectile implements PoolableVFX {
   private readonly lavaInner: THREE.Mesh;
   private readonly glow: THREE.Sprite;
   private readonly trail: THREE.Mesh;
-  /** Faixa larga de fumaça incandescente atrás do cometa. */
-  private readonly smokeTrail: THREE.Mesh;
   private readonly trailGeometry = new THREE.BufferGeometry();
   private readonly trailPositions = new Float32Array(TRAIL_SEGMENTS * 2 * 3);
   private readonly trailUvs = new Float32Array(TRAIL_SEGMENTS * 2 * 2);
   private readonly trailPositionAttribute = new THREE.BufferAttribute(this.trailPositions, 3);
-  private readonly smokeTrailGeometry = new THREE.BufferGeometry();
-  private readonly smokeTrailPositions = new Float32Array(TRAIL_SEGMENTS * 2 * 3);
-  private readonly smokeTrailUvs = new Float32Array(TRAIL_SEGMENTS * 2 * 2);
-  private readonly smokeTrailPositionAttribute = new THREE.BufferAttribute(this.smokeTrailPositions, 3);
+  /** Cauda de fogo: lufadas alongadas + fumaça escura no fim do rastro. */
+  private readonly flamePuffs: THREE.Sprite[] = [];
+  private readonly flamePuffAges = new Float32Array(MAX_FLAME_PUFFS);
+  private readonly flamePuffLives = new Float32Array(MAX_FLAME_PUFFS);
+  private readonly flamePuffScales = new Float32Array(MAX_FLAME_PUFFS);
+  private readonly flamePuffRises = new Float32Array(MAX_FLAME_PUFFS);
+  private readonly smokePuffs: THREE.Sprite[] = [];
+  private readonly smokePuffAges = new Float32Array(MAX_SMOKE_PUFFS);
+  private readonly smokePuffLives = new Float32Array(MAX_SMOKE_PUFFS);
+  private readonly smokePuffScales = new Float32Array(MAX_SMOKE_PUFFS);
+  private puffCursor = 0;
+  private smokeCursor = 0;
+  private puffTimer = 0;
+  private smokeTimer = 0;
   private readonly secondaryParticles: PooledParticleCloud;
   private lightHandle: VFXLightHandle | null = null;
   private readonly trailMaterial: EnergyShaderMaterial;
-  private readonly smokeTrailMaterial: EnergyShaderMaterial;
   /** Cabeça do cometa: núcleo esticado no sentido do voo. */
   private headStretch = 1;
   /** Casca 3D da cabeça: dá volume de chama em volta do núcleo. */
@@ -192,29 +205,48 @@ class MageProjectile implements PoolableVFX {
     this.trail.frustumCulled = false;
     this.trail.renderOrder = 4;
 
-    // A fumaça incandescente usa a mesma malha de fita, mais larga e atrás do
-    // rastro quente: é o que dá o volume de "cometa" em vez de um raio fino.
-    for (let segment = 0; segment < TRAIL_SEGMENTS; segment += 1) {
-      const t = segment / (TRAIL_SEGMENTS - 1);
-      const uvOffset = segment * 4;
-      this.smokeTrailUvs[uvOffset] = 0;
-      this.smokeTrailUvs[uvOffset + 1] = t;
-      this.smokeTrailUvs[uvOffset + 2] = 1;
-      this.smokeTrailUvs[uvOffset + 3] = t;
+    // Cauda de FOGO: lufadas de chama (aditivas) formando a pluma e nuvens de
+    // fumaça escura (blend normal) se dissolvendo no fim do rastro.
+    for (let index = 0; index < MAX_FLAME_PUFFS; index += 1) {
+      const material = new THREE.SpriteMaterial({
+        map: resources.flame,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.name = 'MageProjectileFlamePuff';
+      sprite.visible = false;
+      sprite.renderOrder = 2;
+      this.flamePuffs.push(sprite);
+      this.group.add(sprite);
     }
-    this.smokeTrailGeometry.setAttribute('position', this.smokeTrailPositionAttribute);
-    this.smokeTrailGeometry.setAttribute('uv', new THREE.BufferAttribute(this.smokeTrailUvs, 2));
-    this.smokeTrailGeometry.setIndex(buildTrailIndices());
-    this.smokeTrailMaterial = createEnergyTrailMaterial({ opacity: 0, intensity: 1.1, thickness: 1.5, depthTest: true });
-    this.smokeTrail = new THREE.Mesh(this.smokeTrailGeometry, this.smokeTrailMaterial);
-    this.smokeTrail.name = 'MageProjectileSmokeTrail';
-    this.smokeTrail.frustumCulled = false;
-    this.smokeTrail.renderOrder = 3;
+    for (let index = 0; index < MAX_SMOKE_PUFFS; index += 1) {
+      const material = new THREE.SpriteMaterial({
+        map: resources.smoke,
+        color: 0x3a2620,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        // Blend normal: fumaça de verdade escurece o que está atrás, em vez de
+        // virar mais uma luz vermelha no rastro.
+        blending: THREE.NormalBlending,
+        toneMapped: false,
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.name = 'MageProjectileSmokePuff';
+      sprite.visible = false;
+      sprite.renderOrder = 1;
+      this.smokePuffs.push(sprite);
+      this.group.add(sprite);
+    }
 
     this.secondaryParticles = new PooledParticleCloud(38, resources.softGlow);
     this.group.add(
       this.trail,
-      this.smokeTrail,
       this.cometHead,
       this.core,
       this.iceShard,
@@ -306,17 +338,6 @@ class MageProjectile implements PoolableVFX {
       thickness: options.preset.id === 'basic' ? 1.25 : 1.08,
       distortion: styleDistortion(options.preset) * profile.distortionMultiplier,
     });
-    configureEnergyMaterial(this.smokeTrailMaterial, {
-      // Fumaça: quente (laranja) junto da cabeça e escura na ponta.
-      colorA: options.preset.colors.smoke ?? options.preset.colors.secondary,
-      colorB: options.preset.colors.glow,
-      opacity: comet ? 0.55 : 0,
-      intensity: 1.2,
-      noiseScale: 1.05,
-      scrollSpeed: 0.85,
-      thickness: 1.7,
-      distortion: 1.9,
-    });
     this.updateTrailGeometry(
       options.preset.projectile.trailLength * (comet?.tailLength ?? 1),
       options.preset.projectile.trailWidth
@@ -333,6 +354,27 @@ class MageProjectile implements PoolableVFX {
       this.syncLightPosition();
     }
     this.emitSecondaryWake();
+    // A cauda de fogo nasce junto com o disparo: cada lufada é posicionada na
+    // cabeça e depois fica para trás sozinha (o grupo anda para a frente).
+    this.puffCursor = 0;
+    this.smokeCursor = 0;
+    this.puffTimer = 0;
+    this.smokeTimer = 0;
+    for (let index = 0; index < this.flamePuffs.length; index += 1) {
+      this.flamePuffs[index].visible = false;
+      (this.flamePuffs[index].material as THREE.SpriteMaterial).opacity = 0;
+    }
+    for (let index = 0; index < this.smokePuffs.length; index += 1) {
+      this.smokePuffs[index].visible = false;
+      (this.smokePuffs[index].material as THREE.SpriteMaterial).opacity = 0;
+    }
+    if (comet) {
+      // Pré-aquece a cauda com algumas lufadas já atrás da cabeça, para o
+      // disparo não começar "careca".
+      for (let index = 0; index < 5; index += 1) {
+        this.spawnFlamePuff(comet, index * 0.16);
+      }
+    }
   }
 
   public update(delta: number): boolean {
@@ -399,6 +441,7 @@ class MageProjectile implements PoolableVFX {
     this.iceShard.rotation.z += elapsed * 5;
     this.lavaInner.rotation.x += elapsed * 7;
     const cometFade = Math.max(0, 1 - this.age / Math.max(0.001, this.config.lifetime));
+    if (this.preset.projectile.comet) this.updateFireTail(elapsed);
     if (this.cometHead.visible) {
       const flicker = 0.94 + Math.sin(this.age * 26) * 0.06;
       const headRadius = this.config.radius * 1.15;
@@ -408,12 +451,6 @@ class MageProjectile implements PoolableVFX {
         headRadius * this.headStretch * 1.5 * flicker
       );
       (this.cometHead.material as THREE.MeshBasicMaterial).opacity = 0.5 * cometFade;
-    }
-    // A fumaça incandescente se dissipa mais rápido que o rastro quente.
-    if (this.preset.projectile.comet) {
-      this.smokeTrailMaterial.uniforms.uOpacity.value =
-        0.5 * cometFade * (0.75 + Math.sin(this.age * 12) * 0.25);
-      this.smokeTrailMaterial.uniforms.uThickness.value = 1.55 + Math.sin(this.age * 9) * 0.35;
     }
 
     if (this.lightHandle) {
@@ -446,7 +483,16 @@ class MageProjectile implements PoolableVFX {
     this.secondaryParticles.reset();
     this.iceShard.visible = false;
     this.lavaInner.visible = false;
-    this.smokeTrailMaterial.uniforms.uOpacity.value = 0;
+    for (const sprite of this.flamePuffs) {
+      sprite.visible = false;
+      (sprite.material as THREE.SpriteMaterial).opacity = 0;
+    }
+    for (const sprite of this.smokePuffs) {
+      sprite.visible = false;
+      (sprite.material as THREE.SpriteMaterial).opacity = 0;
+    }
+    this.puffTimer = 0;
+    this.smokeTimer = 0;
     this.cometHead.visible = false;
     (this.cometHead.material as THREE.MeshBasicMaterial).opacity = 0;
     this.headStretch = 1;
@@ -464,8 +510,8 @@ class MageProjectile implements PoolableVFX {
     (this.cometHead.material as THREE.Material).dispose();
     this.trailMaterial.dispose();
     this.trailGeometry.dispose();
-    this.smokeTrailMaterial.dispose();
-    this.smokeTrailGeometry.dispose();
+    for (const sprite of this.flamePuffs) (sprite.material as THREE.Material).dispose();
+    for (const sprite of this.smokePuffs) (sprite.material as THREE.Material).dispose();
     this.secondaryParticles.dispose();
   }
 
@@ -482,7 +528,127 @@ class MageProjectile implements PoolableVFX {
   }
 
   /**
-   * Escreve uma fita de rastro (a quente e a de fumaça) no buffer informado.
+   * Coloca uma lufada de chama na cabeça do cometa. Ela não é "presa" à
+   * cabeça: o grupo continua voando e a lufada, parada no espaço local, fica
+   * para trás sozinha — é assim que a cauda se forma, sem nenhuma fita.
+   */
+  private spawnFlamePuff(
+    comet: NonNullable<MageProjectileConfig['comet']>,
+    backOffset: number
+  ): void {
+    if (!this.preset || !this.config) return;
+    const index = this.puffCursor;
+    this.puffCursor = (this.puffCursor + 1) % MAX_FLAME_PUFFS;
+    const sprite = this.flamePuffs[index];
+    const radius = this.config.radius;
+    sprite.visible = true;
+    sprite.position.set(
+      (Math.random() - 0.5) * radius * 0.5,
+      (Math.random() - 0.5) * radius * 0.35,
+      -backOffset
+    );
+    this.flamePuffAges[index] = 0;
+    this.flamePuffLives[index] = 0.26 + Math.random() * 0.2;
+    this.flamePuffScales[index] = radius * (0.8 + Math.random() * 0.45) * comet.headStretch * 0.6;
+    this.flamePuffRises[index] = 0.1 + Math.random() * 0.22;
+    const material = sprite.material as THREE.SpriteMaterial;
+    material.color.set(this.preset.colors.core);
+    material.opacity = 0.9;
+  }
+
+  private spawnSmokePuff(backOffset: number): void {
+    const index = this.smokeCursor;
+    this.smokeCursor = (this.smokeCursor + 1) % MAX_SMOKE_PUFFS;
+    const sprite = this.smokePuffs[index];
+    const radius = this.config ? this.config.radius : 0.5;
+    const base = sprite.material as THREE.SpriteMaterial;
+    sprite.visible = true;
+    sprite.position.set(
+      (Math.random() - 0.5) * radius * 0.55,
+      0.04 + Math.random() * radius * 0.3,
+      -backOffset
+    );
+    this.smokePuffAges[index] = 0;
+    this.smokePuffLives[index] = 0.6 + Math.random() * 0.35;
+    this.smokePuffScales[index] = radius * (1.1 + Math.random() * 0.6);
+    base.opacity = 0.34;
+  }
+
+  /**
+   * Cauda de fogo: lufadas quentes perto da cabeça que vão ficando para trás,
+   * esfriam (branco -> laranja -> vermelho), crescem e somem; junto delas,
+   * nuvens de fumaça escura se dissolvendo. Nada de fita luminosa.
+   */
+  private updateFireTail(elapsed: number): void {
+    if (!this.preset || !this.config) return;
+    const comet = this.preset.projectile.comet;
+    if (!comet) return;
+    const colors = this.preset.colors;
+    const speed = this.config.speed;
+
+    this.puffTimer += elapsed;
+    while (this.puffTimer >= 0.02) {
+      this.puffTimer -= 0.02;
+      this.spawnFlamePuff(comet, 0);
+    }
+    this.smokeTimer += elapsed;
+    while (this.smokeTimer >= 0.075) {
+      this.smokeTimer -= 0.075;
+      this.spawnSmokePuff(this.config.radius * 0.6);
+    }
+
+    for (let index = 0; index < this.flamePuffs.length; index += 1) {
+      const sprite = this.flamePuffs[index];
+      if (!sprite.visible) continue;
+      this.flamePuffAges[index] += elapsed;
+      const age = this.flamePuffAges[index];
+      const life = this.flamePuffLives[index];
+      if (age >= life) {
+        sprite.visible = false;
+        (sprite.material as THREE.SpriteMaterial).opacity = 0;
+        continue;
+      }
+      const t = age / life;
+      // O grupo anda para a frente, então a lufada "fica para trás" sozinha.
+      sprite.position.z -= speed * elapsed;
+      sprite.position.y += this.flamePuffRises[index] * elapsed;
+      const size = this.flamePuffScales[index] * (0.85 + t * 1.5);
+      sprite.scale.set(size, size * 0.92, 1);
+      const material = sprite.material as THREE.SpriteMaterial;
+      // Quente na cabeça, frio no fim, dissolvendo até sumir.
+      material.color.copy(
+        TMP_PUFF_COLOR.set(colors.core).lerp(TMP_PUFF_COLOR_2.set(colors.glow), Math.min(1, t * 2.1))
+      );
+      if (t > 0.5) {
+        material.color.lerp(TMP_PUFF_COLOR.set(colors.secondary), (t - 0.5) * 2 * 0.85);
+      }
+      const fade = 1 - t;
+      material.opacity = fade * fade * 0.9;
+    }
+
+    for (let index = 0; index < this.smokePuffs.length; index += 1) {
+      const sprite = this.smokePuffs[index];
+      if (!sprite.visible) continue;
+      this.smokePuffAges[index] += elapsed;
+      const age = this.smokePuffAges[index];
+      const life = this.smokePuffLives[index];
+      if (age >= life) {
+        sprite.visible = false;
+        (sprite.material as THREE.SpriteMaterial).opacity = 0;
+        continue;
+      }
+      const t = age / life;
+      sprite.position.z -= speed * elapsed * 0.92;
+      sprite.position.y += 0.35 * elapsed;
+      const size = this.smokePuffScales[index] * (1 + t * 1.7);
+      sprite.scale.set(size, size, 1);
+      const material = sprite.material as THREE.SpriteMaterial;
+      material.opacity = 0.34 * (1 - t) * (1 - t);
+    }
+  }
+
+  /**
+   * Escreve uma fita de rastro (só o núcleo quente, curto) no buffer informado.
    * Ambas saem da cabeça para trás, com ondulação e irregularidade que crescem
    * com a distância — é o que dá o aspecto de rastro de cometa, não de raio.
    */
@@ -536,19 +702,6 @@ class MageProjectile implements PoolableVFX {
       wobble
     );
 
-    const comet = this.preset.projectile.comet;
-    if (!comet) return;
-    // A fumaça é mais larga, mais ondulada e sobe atrás da cabeça.
-    this.writeTrailGeometry(
-      this.smokeTrailPositions,
-      this.smokeTrailPositionAttribute,
-      this.smokeTrailGeometry,
-      length * 1.35,
-      comet.smokeWidth,
-      0.55,
-      0.85,
-      3.2
-    );
   }
 
   private emitSecondaryWake(): void {
