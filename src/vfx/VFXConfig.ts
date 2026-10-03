@@ -95,28 +95,31 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       recover: 0.78,
       end: 1,
     },
-    charge: { scale: 1.05, particleCount: 24, sparkCount: 8, lightIntensity: 0.9, twoHanded: false },
-    // \"Flecha mágica\": dardo alongado com aletas rúnicas, rastro mais longo e
-    // um pouco mais rápido — o básico da Maga no estilo Magic Arrow (BDO).
+    charge: { scale: 1.3, particleCount: 38, sparkCount: 14, lightIntensity: 1.35, twoHanded: false },
+    // \"Flecha mágica\": dardo alongado com aletas rúnicas, rastro longo e
+    // rápido — o básico da Maga no estilo Magic Arrow (BDO).
     projectile: {
-      speed: 19.5,
-      lifetime: 1.25,
-      radius: 0.44,
-      trailLength: 1.75,
-      trailWidth: 0.1,
-      arrow: { length: 3, finSpin: 7.5 },
+      speed: 19,
+      lifetime: 1.3,
+      radius: 0.6,
+      trailLength: 2.5,
+      trailWidth: 0.2,
+      arrow: { length: 3.6, finSpin: 9 },
     },
     impact: {
-      duration: 0.5,
-      radius: 0.78,
-      shockwaveRadius: 1.55,
-      cameraShakeIntensity: 0.026,
-      cameraShakeDuration: 0.13,
-      lightIntensity: 1,
-      particleCount: 44,
+      duration: 0.66,
+      radius: 1.15,
+      shockwaveRadius: 2.4,
+      cameraShakeIntensity: 0.06,
+      cameraShakeDuration: 0.2,
+      lightIntensity: 2,
+      particleCount: 76,
       debrisCount: 0,
-      // Assinatura do básico: sigilo arcano carimbado no chão do impacto.
-      runeSigil: { radius: 1.95, spin: 2.7, intensity: 2 },
+      // Assinatura do básico: selo arcano no chão + coluna de luz + estilhaços
+      // em estrela. É o que faz o golpe "pesar" como um ataque de assinatura.
+      runeSigil: { radius: 2.8, spin: 3.4, intensity: 2.6, groundStamp: true },
+      pillar: { height: 4, radius: 0.65 },
+      spikes: { count: 8, length: 1.35 },
     },
     hand: 'right',
     qualityParticleMultiplier: multipliers(0.45, 0.75, 1),

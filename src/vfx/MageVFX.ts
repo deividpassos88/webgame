@@ -135,6 +135,9 @@ class ChargeOrbEffect implements PoolableVFX {
       speed: preset.style === 'water' ? 0.52 : 0.32,
       spread: preset.style === 'water' ? 0.72 : 0.48,
       lifetime: 999,
+      // Energia sendo sugada para o cajado: lê muito melhor que uma nuvem
+      // parada em volta da mão.
+      inwardRadius: preset.style === 'laser' ? 0.5 : 0.62,
     });
     this.sparks.reset();
     this.configureAccents(preset);
@@ -540,8 +543,13 @@ export class MageVFX {
     this.magicCircles = new MagicCircleVFX(this.resources);
   }
 
-  public cast(spellId: MageSpellId, context: MageCastContext): void {
-    const preset = MAGE_SPELL_PRESETS[spellId];
+  /**
+   * O `presetOverride` existe para ferramentas de teste (laboratório de
+   * efeitos): permite ligar/desligar camadas visuais sem tocar no preset do
+   * jogo. Em gameplay o preset é sempre resolvido pelo id do feitiço.
+   */
+  public cast(spellId: MageSpellId, context: MageCastContext, presetOverride?: MageSpellPreset): void {
+    const preset = presetOverride ?? MAGE_SPELL_PRESETS[spellId];
     if (!preset) return;
     const events = [
       { at: preset.timeline.chargeStart, name: 'charge' as const },
@@ -878,6 +886,9 @@ export class MageVFX {
       preset: cast.preset,
       scale: cast.preset.style === 'laser' ? 0.5 : 0.35,
       lightIntensity: cast.preset.impact.lightIntensity * 0.45,
+      // Clarão de disparo: as camadas de assinatura (sigilo/pilar/estilhaços)
+      // são do impacto no alvo, não da mão do conjurador.
+      muzzleFlash: true,
     });
     this.emitAudio(cast.context, cast.preset, 'cast', origin);
 
@@ -947,6 +958,23 @@ export class MageVFX {
         cast.preset.impact.cameraShakeDuration
       );
       this.emitAudio(cast.context, cast.preset, 'impact', impactPoint);
+      const sigil = cast.preset.impact.runeSigil;
+      if (sigil) {
+        // Resíduo: o selo continua queimando no chão depois do clarão, dando
+        // peso ao golpe (sem mexer em dano ou alcance). O chão fica na origem
+        // do mundo; o impacto acontece na altura do peito do monstro.
+        const residue = impactPoint.clone();
+        residue.y = 0.05;
+        this.magicCircles.play({
+          parent: this.scene,
+          position: residue,
+          color: cast.preset.colors.secondary,
+          radius: sigil.radius * 0.85,
+          duration: 1.15,
+          followParent: false,
+          groundAligned: true,
+        });
+      }
     }
     if (cast.impactDelivered) return;
     if (target && (!cast.context.isTargetAlive || cast.context.isTargetAlive(target))) {

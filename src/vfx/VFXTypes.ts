@@ -65,6 +65,22 @@ export interface MageImpactConfig {
     readonly spin: number;
     /** Intensidade do brilho do sigilo. */
     readonly intensity: number;
+    /**
+     * Carimba o sigilo no CHÃO sob o impacto em vez de deixá-lo na altura do
+     * golpe. O impacto de um feitiço costuma acontecer no peito do monstro, e
+     * um selo "de chão" ali dentro do corpo não seria visto.
+     */
+    readonly groundStamp?: boolean;
+  };
+  /** Coluna de luz vertical no impacto (leitura forte de longe). */
+  readonly pillar?: {
+    readonly height: number;
+    readonly radius: number;
+  };
+  /** Estilhaços rúnicos em estrela, disparados para fora no impacto. */
+  readonly spikes?: {
+    readonly count: number;
+    readonly length: number;
   };
 }
 

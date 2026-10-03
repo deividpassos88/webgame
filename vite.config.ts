@@ -26,6 +26,14 @@ export default defineConfig(({ mode }) => ({
   build: {
     target: 'esnext',
     outDir: 'dist',
+    rollupOptions: {
+      // A página de laboratório de efeitos é uma ferramenta de teste e vai
+      // junto do build para poder ser aberta em /efeitos.html.
+      input: {
+        main: 'index.html',
+        efeitos: 'efeitos.html',
+      },
+    },
   },
 }));
 

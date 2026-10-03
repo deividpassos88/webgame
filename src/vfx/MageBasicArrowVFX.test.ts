@@ -71,9 +71,14 @@ describe('Mage basic attack — rune arrow look', () => {
     expect(basic.projectile.trailLength).toBeGreaterThan(1.3);
     expect(basic.impact.runeSigil).toBeDefined();
     expect(basic.impact.runeSigil?.radius).toBeGreaterThan(1.5);
-    expect(basic.impact.particleCount).toBeGreaterThan(34);
-    expect(basic.impact.shockwaveRadius).toBeGreaterThan(1.35);
-    expect(basic.charge.sparkCount).toBeGreaterThan(5);
+    expect(basic.impact.particleCount).toBeGreaterThan(60);
+    expect(basic.impact.shockwaveRadius).toBeGreaterThan(2);
+    expect(basic.charge.sparkCount).toBeGreaterThan(10);
+    // Camadas de assinatura do impacto.
+    expect(basic.impact.runeSigil?.groundStamp).toBe(true);
+    expect(basic.impact.pillar?.height).toBeGreaterThan(2);
+    expect(basic.impact.spikes?.count).toBeGreaterThanOrEqual(6);
+    expect(basic.impact.lightIntensity).toBeGreaterThan(1.5);
   });
 
   it('keeps the rune arrow layers off for the other spells', () => {
@@ -150,6 +155,65 @@ describe('Mage basic attack — rune arrow look', () => {
     const waterSigils = waterGroup.children.filter((child) => child.name.startsWith('MageImpactRuneSigil'));
     expect(waterSigils.length).toBe(2);
     expect(waterSigils.every((sigil) => !sigil.visible)).toBe(true);
+
+    impacts.dispose();
+    resources.dispose();
+  });
+
+  it('stamps the sigil on the floor under the target, not at chest height', () => {
+    const scene = new THREE.Scene();
+    const resources = new MageVFXResources();
+    const impacts = new ImpactVFX(scene, resources, 'high', new VFXLightPool(scene, 4));
+
+    // O impacto de um feitiço acontece na altura do peito (~1 m).
+    impacts.play({ preset: MAGE_SPELL_PRESETS.basic, position: new THREE.Vector3(0, 1.02, -6) });
+    impacts.update(0.04);
+
+    const outer = scene.getObjectByName('MageImpactRuneSigilOuter') as THREE.Mesh | undefined;
+    expect(outer?.visible).toBe(true);
+    // Local + posição do grupo = praticamente no chão.
+    const worldY = (outer?.position.y ?? 0) + 1.02;
+    expect(worldY).toBeGreaterThan(0);
+    expect(worldY).toBeLessThan(0.15);
+
+    impacts.dispose();
+    resources.dispose();
+  });
+
+  it('fires the light pillar and the rune spikes on the target impact', () => {
+    const scene = new THREE.Scene();
+    const resources = new MageVFXResources();
+    const impacts = new ImpactVFX(scene, resources, 'high', new VFXLightPool(scene, 4));
+
+    impacts.play({ preset: MAGE_SPELL_PRESETS.basic, position: new THREE.Vector3(0, 1, -6) });
+    impacts.update(0.05);
+
+    const pillar = scene.getObjectByName('MageImpactLightPillar') as THREE.Mesh | undefined;
+    expect(pillar?.visible).toBe(true);
+    expect((pillar?.material as THREE.MeshBasicMaterial).opacity).toBeGreaterThan(0);
+    const spikes = scene.children
+      .flatMap((group) => group.children)
+      .filter((child) => child.name === 'MageImpactRuneSpike' && child.visible);
+    expect(spikes.length).toBe(MAGE_SPELL_PRESETS.basic.impact.spikes?.count);
+    expect(spikes.every((spike) => (spike as THREE.Mesh).scale.y > 0)).toBe(true);
+
+    // O clarão de disparo na mão não carimba selo, coluna nem estilhaços.
+    impacts.play({
+      preset: MAGE_SPELL_PRESETS.basic,
+      position: new THREE.Vector3(0.7, 2, 2.4),
+      scale: 0.35,
+      muzzleFlash: true,
+    });
+    impacts.update(0.02);
+    const muzzleGroup = scene.children[scene.children.length - 1];
+    expect(
+      muzzleGroup.children.filter((child) => child.name === 'MageImpactRuneSpike' && child.visible).length
+    ).toBe(0);
+    const muzzleSigils = muzzleGroup.children.filter(
+      (child) => child.name.startsWith('MageImpactRuneSigil') && child.visible
+    );
+    expect(muzzleSigils.length).toBe(0);
+    expect((muzzleGroup.children.find((c) => c.name === 'MageImpactLightPillar') as THREE.Mesh).visible).toBe(false);
 
     impacts.dispose();
     resources.dispose();

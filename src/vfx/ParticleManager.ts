@@ -15,6 +15,11 @@ export interface ParticleBurstOptions {
   readonly spread: number;
   readonly lifetime: number;
   readonly upwardBias?: number;
+  /**
+   * Faz as partículas NASCEREM numa casca e viajarem para dentro. É o que dá a
+   * leitura de "energia sendo sugada para o cajado" na carga do feitiço.
+   */
+  readonly inwardRadius?: number;
 }
 
 interface ParticleShaderUniforms {
@@ -155,9 +160,22 @@ export class PooledParticleCloud {
       const y = (Math.random() - 0.35) * options.spread + (options.upwardBias ?? 0);
       const radial = Math.sqrt(Math.max(0.05, 1 - y * y));
       const speed = options.speed * (0.35 + Math.random() * 0.65);
-      this.velocities[offset] = Math.cos(theta) * radial * speed;
-      this.velocities[offset + 1] = y * speed;
-      this.velocities[offset + 2] = Math.sin(theta) * radial * speed;
+      const shell = options.inwardRadius;
+      if (shell !== undefined && shell > 0) {
+        // Nascendo numa casca e voando para o centro, a partícula parece
+        // "sugada" para o cajado em vez de explodir para fora.
+        const radius = shell * (0.55 + Math.random() * 0.65);
+        this.positions[offset] = origin.x + Math.cos(theta) * radial * radius;
+        this.positions[offset + 1] = origin.y + y * radius;
+        this.positions[offset + 2] = origin.z + Math.sin(theta) * radial * radius;
+        this.velocities[offset] = -Math.cos(theta) * radial * speed;
+        this.velocities[offset + 1] = -y * speed;
+        this.velocities[offset + 2] = -Math.sin(theta) * radial * speed;
+      } else {
+        this.velocities[offset] = Math.cos(theta) * radial * speed;
+        this.velocities[offset + 1] = y * speed;
+        this.velocities[offset + 2] = Math.sin(theta) * radial * speed;
+      }
       this.maxLives[index] = this.lifetime * (0.6 + Math.random() * 0.4);
       this.lives[index] = this.maxLives[index];
       this.lifeRatios[index] = 0;

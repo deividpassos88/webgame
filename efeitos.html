@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dragon Miner — Laboratório de Efeitos</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: #05070a;
+      color: #e9e2d2;
+      font: 13px/1.4 Consolas, 'Courier New', monospace;
+      overflow: hidden;
+    }
+    #lab-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+    .lab-panel {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 320px;
+      max-height: calc(100vh - 32px);
+      overflow: auto;
+      padding: 14px;
+      border: 1px solid rgba(226, 186, 92, .5);
+      background: linear-gradient(180deg, rgba(24, 28, 30, .96), rgba(6, 9, 11, .97));
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .6);
+    }
+    .lab-panel h1 {
+      margin: 0 0 2px;
+      color: #f6e4b6;
+      font: 700 17px/1.1 Georgia, 'Times New Roman', serif;
+    }
+    .lab-panel p.lead { margin: 0 0 12px; color: #a9ada4; font-size: 11px; }
+    .lab-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(190, 151, 75, .3); }
+    .lab-section > strong { display: block; margin-bottom: 7px; color: #ffd98f; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+    button {
+      width: 100%;
+      margin-bottom: 6px;
+      padding: 8px 10px;
+      border: 1px solid rgba(218, 181, 99, .6);
+      color: #f7e8c3;
+      background: linear-gradient(180deg, rgba(63, 55, 38, .95), rgba(16, 21, 23, .96));
+      font: 700 11px/1 Consolas, 'Courier New', monospace;
+      cursor: pointer;
+    }
+    button:hover { border-color: #ffdb7d; color: #fff7df; filter: brightness(1.16); }
+    button.is-on { border-color: #f1c45a; color: #2b1c09; background: linear-gradient(#f4d078, #bd7b2f); }
+    .lab-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; color: #c9cec4; }
+    .lab-row input[type="range"] { flex: 1; }
+    .lab-log { margin-top: 8px; min-height: 34px; color: #93a08f; font-size: 10px; white-space: pre-line; }
+    .lab-hint { margin-top: 10px; color: #8e968c; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <canvas id="lab-canvas"></canvas>
+  <aside class="lab-panel">
+    <h1>Laboratório de Efeitos</h1>
+    <p class="lead">Cena limpa, sem monstros nem HUD: só o VFX real do jogo. Use para comparar e ajustar.</p>
+
+    <div class="lab-section">
+      <strong>Maga — ataque básico</strong>
+      <button type="button" data-fire="basic">Disparar (1x)</button>
+      <button type="button" data-hold="basic">Rajada automática</button>
+      <button type="button" data-toggle-turtle>Alvo com 5x mais vida</button>
+    </div>
+
+    <div class="lab-section">
+      <strong>Comparar camadas</strong>
+      <button type="button" data-layer="runeSigil" aria-pressed="true">Selo rúnico no chão</button>
+      <button type="button" data-layer="pillar" aria-pressed="true">Coluna de luz</button>
+      <button type="button" data-layer="spikes" aria-pressed="true">Estilhaços em estrela</button>
+      <button type="button" data-toggle-trail aria-pressed="true">Dardo + aletas rúnicas</button>
+    </div>
+
+    <div class="lab-section">
+      <strong>Cena</strong>
+      <div class="lab-row"><span>Zoom</span><input type="range" min="4" max="14" step="0.5" value="9" data-zoom /></div>
+      <div class="lab-row"><span>Girar</span><input type="range" min="0" max="360" step="1" value="35" data-orbit /></div>
+      <button type="button" data-reset>Limpar cena</button>
+    </div>
+
+    <div class="lab-log" data-log>Pronto.</div>
+    <p class="lab-hint">Arraste no fundo para girar a câmera. A rajada dispara no ritmo do ataque básico em jogo.</p>
+  </aside>
+  <script type="module" src="/src/effects-lab.ts"></script>
+</body>
+</html>

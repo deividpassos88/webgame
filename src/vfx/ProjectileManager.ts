@@ -293,11 +293,13 @@ class MageProjectile implements PoolableVFX {
     configureEnergyMaterial(this.trailMaterial, {
       colorA: options.preset.colors.core,
       colorB: options.preset.colors.secondary,
-      opacity: options.preset.style === 'water' ? 0.72 : options.preset.style === 'lava' ? 0.94 : 0.82,
+      opacity: options.preset.style === 'water' ? 0.72 : options.preset.style === 'lava' ? 0.94 : options.preset.id === 'basic' ? 0.95 : 0.82,
       intensity: options.preset.style === 'lava' ? 1.9 : options.preset.style === 'lightning' ? 2.1 : 1.55,
       noiseScale: options.preset.style === 'water' ? 1.1 : 1.45,
       scrollSpeed: options.preset.style === 'lava' ? 1.45 : options.preset.style === 'lightning' ? 2.6 : 1.65,
-      thickness: options.preset.id === 'basic' ? 0.8 : 1.08,
+      // O ataque básico é a assinatura da Maga: rastro mais grosso e vivo que
+      // o dos feitiços grandes, que já têm corpo próprio.
+      thickness: options.preset.id === 'basic' ? 1.25 : 1.08,
       distortion: styleDistortion(options.preset) * profile.distortionMultiplier,
     });
     this.updateTrailGeometry(options.preset.projectile.trailLength, options.preset.projectile.trailWidth);
