@@ -1,5 +1,5 @@
 import { Logger } from './utils/Logger';
-import { resolveDevAdminAccess } from './admin/AdminAccess';
+import { resolveAdminActivation } from './admin/AdminAccess';
 import { PROFILE_STORAGE_KEY } from './profile/PlayerProfile';
 import './style.css';
 
@@ -69,9 +69,16 @@ async function bootstrap() {
     Logger.info('Main', 'Módulo Game importado com sucesso.');
 
     const searchParams = new URLSearchParams(window.location.search);
-    const adminParam = searchParams.get('admin');
-    const adminExplicitlyDisabled = adminParam === '0' || adminParam === 'false' || import.meta.env.VITE_ADMIN_MODE === 'false';
-    const adminEnabled = !adminExplicitlyDisabled;
+    // Ligado por `npm run dev`/`dev:admin`, `build:admin`, `.env.admin` ou
+    // `?admin=1` no dev; desligado sempre em `?admin=0` e no build público.
+    // Toda a regra (com testes) vive em `src/admin/AdminAccess.ts`.
+    const adminEnabled = resolveAdminActivation({
+      mode: import.meta.env.MODE,
+      development: import.meta.env.DEV,
+      envValue: import.meta.env.VITE_ADMIN_MODE,
+      adminParam: searchParams.get('admin'),
+    });
+    Logger.info('Main', `Modo ADM ${adminEnabled ? 'ativado' : 'desativado'} (modo Vite: ${import.meta.env.MODE}).`);
 
     const game = new Game(canvas, { adminEnabled });
     await game.start();
