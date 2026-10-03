@@ -287,7 +287,12 @@ class MageProjectile implements PoolableVFX {
     glowMaterial.color.set(options.preset.colors.glow);
     glowMaterial.opacity = options.preset.style === 'lava' ? 0.98 : 0.9;
     this.secondaryParticles.setTexture(this.resources.mageTexture(options.preset.style, 'charge'));
-    this.glow.scale.setScalar(options.preset.projectile.radius * (options.preset.style === 'water' ? 4.0 : 3.4));
+    // O halo do dardo nasce na mão do conjurador no disparo; no básico ele é
+    // menor para o começo do efeito não virar um clarão gigante.
+    this.glow.scale.setScalar(
+      options.preset.projectile.radius
+        * (options.preset.style === 'water' ? 4.0 : options.preset.id === 'basic' ? 2.6 : 3.4)
+    );
 
     const profile = mageQualityProfile(this.quality);
     configureEnergyMaterial(this.trailMaterial, {

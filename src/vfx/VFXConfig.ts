@@ -95,7 +95,11 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       recover: 0.78,
       end: 1,
     },
-    charge: { scale: 1.3, particleCount: 38, sparkCount: 14, lightIntensity: 1.35, twoHanded: false },
+    // Ataque rápido: a carga é um acúmulo curto na mão, não um orbe gigante.
+    charge: { scale: 0.75, particleCount: 18, sparkCount: 6, lightIntensity: 0.8, twoHanded: false },
+    // O estouro na mão no disparo é enxuto de propósito: quem carrega a
+    // leitura do golpe é o dardo voando e o impacto no alvo.
+    muzzle: { scale: 0.18, particleCount: 16, lightIntensity: 0.5 },
     // \"Flecha mágica\": dardo alongado com aletas rúnicas, rastro longo e
     // rápido — o básico da Maga no estilo Magic Arrow (BDO).
     projectile: {

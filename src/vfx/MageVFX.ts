@@ -881,11 +881,13 @@ export class MageVFX {
     this.releaseCharge(cast);
 
     const direction = this.resolveLaunchDirection(cast, origin, TMP_DIRECTION).clone();
+    const muzzle = cast.preset.muzzle;
     this.impacts.play({
       position: origin,
       preset: cast.preset,
-      scale: cast.preset.style === 'laser' ? 0.5 : 0.35,
-      lightIntensity: cast.preset.impact.lightIntensity * 0.45,
+      scale: muzzle?.scale ?? (cast.preset.style === 'laser' ? 0.5 : 0.35),
+      lightIntensity: muzzle?.lightIntensity ?? cast.preset.impact.lightIntensity * 0.45,
+      particleCount: muzzle?.particleCount,
       // Clarão de disparo: as camadas de assinatura (sigilo/pilar/estilhaços)
       // são do impacto no alvo, não da mão do conjurador.
       muzzleFlash: true,

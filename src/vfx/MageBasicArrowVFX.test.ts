@@ -73,12 +73,24 @@ describe('Mage basic attack — rune arrow look', () => {
     expect(basic.impact.runeSigil?.radius).toBeGreaterThan(1.5);
     expect(basic.impact.particleCount).toBeGreaterThan(60);
     expect(basic.impact.shockwaveRadius).toBeGreaterThan(2);
-    expect(basic.charge.sparkCount).toBeGreaterThan(10);
+    expect(basic.charge.sparkCount).toBeGreaterThanOrEqual(6);
     // Camadas de assinatura do impacto.
     expect(basic.impact.runeSigil?.groundStamp).toBe(true);
     expect(basic.impact.pillar?.height).toBeGreaterThan(2);
     expect(basic.impact.spikes?.count).toBeGreaterThanOrEqual(6);
     expect(basic.impact.lightIntensity).toBeGreaterThan(1.5);
+  });
+
+  it('keeps the start of the cast small: short charge and discreet muzzle flash', () => {
+    const basic = MAGE_SPELL_PRESETS.basic;
+    // A carga é um acúmulo curto na mão, não um orbe gigante.
+    expect(basic.charge.scale).toBeLessThanOrEqual(0.8);
+    expect(basic.charge.particleCount).toBeLessThanOrEqual(20);
+    // O clarão do disparo é bem menor que o estouro no alvo.
+    expect(basic.muzzle).toBeDefined();
+    expect(basic.muzzle?.scale).toBeLessThan(0.35);
+    expect(basic.muzzle?.particleCount).toBeLessThan(basic.impact.particleCount);
+    expect(basic.muzzle?.lightIntensity).toBeLessThan(basic.impact.lightIntensity);
   });
 
   it('keeps the rune arrow layers off for the other spells', () => {

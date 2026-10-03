@@ -225,6 +225,17 @@ document.querySelector<HTMLButtonElement>('[data-reset]')?.addEventListener('cli
   setLog('Cena limpa.');
 });
 
+// Câmera lenta: o começo do feitiço (carga + clarão de disparo) passa em
+// frações de segundo e é justamente onde o ajuste fino acontece.
+const slowButton = document.querySelector<HTMLButtonElement>('[data-toggle-slow]')!;
+let timeScale = 1;
+slowButton.addEventListener('click', () => {
+  timeScale = timeScale === 1 ? 0.25 : 1;
+  slowButton.setAttribute('aria-pressed', String(timeScale !== 1));
+  slowButton.classList.toggle('is-on', timeScale !== 1);
+  setLog(timeScale === 1 ? 'Velocidade normal.' : 'Câmera lenta em 0,25x.');
+});
+
 let dragging = false;
 let lastX = 0;
 canvas.addEventListener('pointerdown', (event) => {
@@ -251,7 +262,7 @@ updateCamera();
 
 const clock = new THREE.Clock();
 function frame(): void {
-  const delta = Math.min(0.05, clock.getDelta());
+  const delta = Math.min(0.05, clock.getDelta()) * timeScale;
   mixer.update(delta);
   vfx.update(delta);
   vfx.applyCameraShake(camera, delta);

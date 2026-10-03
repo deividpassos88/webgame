@@ -117,6 +117,18 @@ export interface MageSpellPreset {
   readonly projectile: MageProjectileConfig;
   readonly impact: MageImpactConfig;
   readonly laser?: MageLaserConfig;
+  /**
+   * Clarão do disparo (a "explosão" curta na mão do conjurador no momento em
+   * que o feitiço sai). Quando ausente, o clarão deriva do preset de impacto;
+   * presets rápidos usam este bloco para um estouro pequeno e discreto.
+   */
+  readonly muzzle?: {
+    /** Multiplicador de tamanho do clarão na mão. */
+    readonly scale: number;
+    readonly particleCount: number;
+    /** Intensidade da luz do clarão na mão. */
+    readonly lightIntensity: number;
+  };
   readonly lightning?: MageLightningConfig;
   readonly hand: MageHandId;
   readonly qualityParticleMultiplier: Readonly<Record<MageVFXQuality, number>>;

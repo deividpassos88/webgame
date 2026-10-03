@@ -18,6 +18,12 @@ interface ImpactPlayOptions {
   readonly scale?: number;
   readonly lightIntensity?: number;
   /**
+   * Sobrescreve a quantidade de partículas do preset. Usado pelo clarão de
+   * disparo, que precisa de um estouro pequeno mesmo herdando o preset de um
+   * impacto grande.
+   */
+  readonly particleCount?: number;
+  /**
    * Clarão curto na mão do conjurador no disparo. Ele usa o mesmo preset do
    * impacto, então as camadas "de assinatura" (sigilo, pilar, estilhaços)
    * ficam desligadas para não carimbar um selo no pé do mago.
@@ -275,7 +281,7 @@ class ImpactEffect implements PoolableVFX {
     this.smoke.setTexture(preset.style === 'lava' ? this.resources.flame : this.resources.mageTexture(preset.style, 'impact'));
     this.particles.emit(new THREE.Vector3(), {
       color: preset.colors.spark,
-      count: qualityCount(preset.impact.particleCount, this.quality, preset.qualityParticleMultiplier),
+      count: options.particleCount ?? qualityCount(preset.impact.particleCount, this.quality, preset.qualityParticleMultiplier),
       speed: (preset.style === 'lava' ? 3.6 : preset.style === 'water' ? 2.4 : 2.8) * this.baseScale,
       spread: preset.style === 'water' ? 1.55 : 1.25,
       lifetime: this.duration,
