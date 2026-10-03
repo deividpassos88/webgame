@@ -903,8 +903,8 @@ export class MageVFX {
     this.impacts.play({
       position: origin,
       preset: cast.preset,
-      scale: bullet ? 0.22 : cast.preset.style === 'laser' ? 0.5 : 0.35,
-      lightIntensity: cast.preset.impact.lightIntensity * (bullet ? 0.28 : 0.45),
+      scale: bullet ? 0.3 : cast.preset.style === 'laser' ? 0.5 : 0.35,
+      lightIntensity: cast.preset.impact.lightIntensity * (bullet ? 0.38 : 0.45),
     });
     this.emitAudio(cast.context, cast.preset, 'cast', origin);
 
@@ -916,7 +916,7 @@ export class MageVFX {
         end: stopped.point,
         preset: cast.preset,
         onImpact: () => {
-          this.handleDirectImpact(stopped.point, cast, stopped.target);
+          this.handleDirectImpact(stopped.point, cast, stopped.target, direction);
         },
       });
       return;
@@ -937,9 +937,10 @@ export class MageVFX {
         onImpact: (target) => this.handleDirectImpact(
           this.bodyImpactPoint(target, aimed),
           cast,
-          target
+          target,
+          direction
         ),
-        onFinalImpact: (position, target) => this.handleDirectImpact(position, cast, target),
+        onFinalImpact: (position, target) => this.handleDirectImpact(position, cast, target, direction),
       });
       return;
     }
@@ -962,13 +963,24 @@ export class MageVFX {
   }
 
   private handleProjectileImpact(impact: MageProjectileImpact, cast: ActiveMageCast): void {
-    this.handleDirectImpact(impact.position, cast, impact.target);
+    this.handleDirectImpact(impact.position, cast, impact.target, impact.direction);
   }
 
-  private handleDirectImpact(position: THREE.Vector3, cast: ActiveMageCast, target: THREE.Object3D | null): void {
+  private handleDirectImpact(
+    position: THREE.Vector3,
+    cast: ActiveMageCast,
+    target: THREE.Object3D | null,
+    direction?: THREE.Vector3
+  ): void {
     const impactPoint = target ? this.bodyImpactPoint(target, position) : position;
     if (!cast.impactDelivered) {
-      this.impacts.play({ position: impactPoint, preset: cast.preset });
+      this.impacts.play({
+        position: impactPoint,
+        preset: cast.preset,
+        // Sem a direção do projétil (raio, laser, queda do alvo) o impacto usa
+        // o sentido do olhar da Maga.
+        normal: direction ?? this.resolveLaunchForward(cast, TMP_DIRECTION),
+      });
       this.cameraShake.add(
         cast.preset.impact.cameraShakeIntensity,
         cast.preset.impact.cameraShakeDuration

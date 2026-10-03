@@ -46,6 +46,29 @@ function castBasic(vfx: MageVFX, steps = 0): { root: THREE.Group; mixer: THREE.A
   return { root, mixer, action };
 }
 
+/** O impacto do alvo fica longe da mão; o flash de saída nasce colado nela. */
+function findTargetImpact(scene: THREE.Scene): THREE.Object3D | undefined {
+  return scene.children.find(
+    (child) => child.name === 'MageImpactVFX' && child.position.z > 3
+  );
+}
+
+/** Avança a simulação até o projétil bater, com um teto de passos. */
+function advanceUntilTargetImpact(
+  vfx: MageVFX,
+  mixer: THREE.AnimationMixer,
+  scene: THREE.Scene,
+  maxSteps = 60
+): THREE.Object3D | undefined {
+  for (let step = 0; step < maxSteps; step += 1) {
+    mixer.update(0.03);
+    vfx.update(0.03);
+    const impact = findTargetImpact(scene);
+    if (impact) return impact;
+  }
+  return findTargetImpact(scene);
+}
+
 describe('Mage basic attack bullet', () => {
   beforeEach(() => {
     vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
@@ -58,13 +81,27 @@ describe('Mage basic attack bullet', () => {
   it('ships a small bullet preset with a blue aura, a frost wake and a comet sprite', () => {
     const preset = MAGE_SPELL_PRESETS.basic;
     expect(preset.projectile.shape).toBe('bullet');
-    // Old preset: radius 0.42 with a 1.43 m halo. The bullet has to stay small.
-    expect(preset.projectile.radius).toBeLessThanOrEqual(0.22);
-    expect(preset.projectile.trailLength).toBeLessThanOrEqual(1);
+    // Referência: orb de 0,42 m com halo de 1,43 m (grande e redondo demais).
+    // Agora é um cometa alongado e grande o bastante para ler de longe, mas
+    // ainda um projétil: ~2,16 m × 0,72 m, proporção de ~3:1.
+    const cometLength = preset.projectile.radius * (preset.projectile.comet?.lengthScale ?? 0);
+    const cometWidth = preset.projectile.radius * (preset.projectile.comet?.widthScale ?? 0);
+    expect(preset.projectile.radius).toBeGreaterThanOrEqual(0.24);
+    expect(preset.projectile.radius).toBeLessThanOrEqual(0.36);
+    expect(cometLength).toBeGreaterThan(1.6);
+    expect(cometLength).toBeLessThan(2.6);
+    expect(cometLength / cometWidth).toBeGreaterThan(2.2);
+    expect(cometLength / cometWidth).toBeLessThan(4);
     expect(preset.projectile.trailWidth).toBeLessThanOrEqual(0.06);
-    expect(preset.impact.radius).toBeLessThanOrEqual(0.5);
-    expect(preset.impact.shockwaveRadius).toBeLessThanOrEqual(1);
-    expect(preset.charge.scale).toBeLessThanOrEqual(0.6);
+    expect(preset.charge.scale).toBeLessThanOrEqual(0.7);
+    // Impacto em camadas: bem maior que a bala, mas sem virar tela inteira.
+    expect(preset.impact.radius).toBeGreaterThan(0.8);
+    expect(preset.impact.radius).toBeLessThanOrEqual(1.2);
+    expect(preset.impact.shockwaveRadius).toBeGreaterThan(1.5);
+    expect(preset.impact.shockwaveRadius).toBeLessThanOrEqual(2.3);
+    expect(preset.impact.duration).toBeGreaterThanOrEqual(0.65);
+    expect(preset.impact.particleCount).toBeGreaterThanOrEqual(40);
+    expect(preset.impact.debrisCount).toBeGreaterThan(0);
     // Blue aura around a pale core (gelo: azul claro em cima do azul profundo).
     expect(new THREE.Color(preset.colors.glow).getHex()).toBe(0x6fd6ff);
     expect(new THREE.Color(preset.colors.secondary).getHex()).toBe(0x1f6bff);
@@ -88,7 +125,7 @@ describe('Mage basic attack bullet', () => {
     const glow = charge?.getObjectByName('MageChargeOrbGlow') as THREE.Sprite | undefined;
     expect(glow).toBeDefined();
     const worldDiameter = (glow?.scale.x ?? 0) * (charge?.scale.x ?? 1);
-    expect(worldDiameter).toBeLessThan(1);
+    expect(worldDiameter).toBeLessThan(1.3);
     vfx.dispose();
   });
 
@@ -115,9 +152,9 @@ describe('Mage basic attack bullet', () => {
     expect(bolt?.getObjectByName('MageProjectileRibbonTrail')?.visible).toBe(false);
     expect(bolt?.getObjectByName('MageIceShardProjectile')?.visible).toBe(false);
 
-    // A aura azul continua pequena (é o brilho em volta da bala).
+    // A aura azul é o brilho em volta da bala: acompanha o raio, sem estourar.
     const halo = bolt?.getObjectByName('MageProjectileAuraGlow') as THREE.Sprite;
-    expect(halo.scale.x).toBeLessThan(0.5);
+    expect(halo.scale.x).toBeLessThan(0.8);
     expect(halo.scale.x).toBeCloseTo(radius * (haloScale ?? 3.4), 1);
     vfx.dispose();
   });
@@ -155,6 +192,76 @@ describe('Mage basic attack bullet', () => {
     const spunNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(spun).normalize();
     const toCameraAgain = camera.position.clone().sub(bolt.position).normalize();
     expect(Math.abs(spunNormal.dot(toCameraAgain))).toBeGreaterThan(0.9);
+    vfx.dispose();
+  });
+
+  it('lays the basic-attack impact in layers: double ground ring plus a vertical blast ring', () => {
+    const scene = new THREE.Scene();
+    const vfx = new MageVFX(scene, { quality: 'high' });
+    const { root, mixer, action } = createAction(2, 1);
+    const rightHand = new THREE.Object3D();
+    rightHand.name = 'mixamorig:RightHand';
+    root.add(rightHand);
+    const target = new THREE.Group();
+    target.position.set(0, 0, 5);
+    target.userData.enemyBodyScale = 1;
+
+    vfx.cast('basic', {
+      caster: root,
+      rightHand,
+      leftHand: null,
+      action,
+      target,
+      fallbackDirection: new THREE.Vector3(0, 0, 1),
+      isTargetAlive: () => true,
+    });
+    // Para na primeira leitura do impacto: a onda vertical dura só os
+    // primeiros 45% dele.
+    const impact = advanceUntilTargetImpact(vfx, mixer, scene);
+    expect(impact).toBeDefined();
+    const inner = impact?.getObjectByName('MageImpactShaderShockwave') as THREE.Mesh | undefined;
+    const outer = impact?.getObjectByName('MageImpactOuterShockwave') as THREE.Mesh | undefined;
+    const vertical = impact?.getObjectByName('MageImpactVerticalBlastRing') as THREE.Mesh | undefined;
+    expect(inner).toBeDefined();
+    expect(outer).toBeDefined();
+    expect(vertical).toBeDefined();
+    expect(vertical?.visible).toBe(true);
+    // A onda dupla é maior que a de dentro e a vertical encara a origem do tiro.
+    expect((outer?.scale.x ?? 0)).toBeGreaterThan(inner?.scale.x ?? 0);
+    const ringNormal = new THREE.Vector3(0, 0, 1)
+      .applyQuaternion(vertical!.quaternion)
+      .normalize();
+    expect(ringNormal.dot(new THREE.Vector3(0, 0, 1))).toBeLessThan(-0.9);
+    vfx.dispose();
+  });
+
+  it('scales the impact far above the old 0,42 m pop and leaves ice shards behind', () => {
+    const scene = new THREE.Scene();
+    const vfx = new MageVFX(scene, { quality: 'high' });
+    const { root, mixer, action } = createAction(2, 1);
+    const rightHand = new THREE.Object3D();
+    rightHand.name = 'mixamorig:RightHand';
+    root.add(rightHand);
+    const target = new THREE.Group();
+    target.position.set(0, 0, 5);
+    target.userData.enemyBodyScale = 1;
+    vfx.cast('basic', {
+      caster: root,
+      rightHand,
+      leftHand: null,
+      action,
+      target,
+      fallbackDirection: new THREE.Vector3(0, 0, 1),
+      isTargetAlive: () => true,
+    });
+    const impact = advanceUntilTargetImpact(vfx, mixer, scene);
+    const core = impact?.getObjectByName('MageImpactCore') as THREE.Mesh | undefined;
+    const radius = MAGE_SPELL_PRESETS.basic.impact.radius;
+    expect(core?.scale.x).toBeGreaterThan(radius * 0.9);
+    expect(core?.scale.x).toBeGreaterThan(0.8);
+
+    const shards = impact?.children.filter((child) => child.name === 'MageImpactDebris') ?? [];
+    expect(shards.filter((shard) => shard.visible).length).toBeGreaterThan(3);
     vfx.dispose();
   });
 

@@ -17,9 +17,15 @@ interface ImpactPlayOptions {
   readonly preset: MageSpellPreset;
   readonly scale?: number;
   readonly lightIntensity?: number;
+  /**
+   * Sentido do disparo no momento da batida. A onda vertical do ataque básico
+   * encara esse eixo, então o impacto tem volume visto de qualquer câmera.
+   */
+  readonly normal?: THREE.Vector3;
 }
 
 const MAX_DEBRIS = 14;
+const FORWARD = new THREE.Vector3(0, 0, 1);
 const TMP_DIR = new THREE.Vector3();
 
 class ImpactEffect implements PoolableVFX {
@@ -30,6 +36,12 @@ class ImpactEffect implements PoolableVFX {
   private readonly core: THREE.Mesh;
   private readonly shockwave: THREE.Mesh;
   private readonly shockwaveMaterial: EnergyShaderMaterial;
+  /** Segunda onda, atrasada e mais fina: dá o "duplo" do impacto de gelo. */
+  private readonly shockwaveOuter: THREE.Mesh;
+  private readonly shockwaveOuterMaterial: EnergyShaderMaterial;
+  /** Onda vertical (de frente para quem atirou), só na bala básica. */
+  private readonly blastRing: THREE.Mesh;
+  private readonly blastRingMaterial: EnergyShaderMaterial;
   private readonly particles: PooledParticleCloud;
   private readonly smoke: PooledParticleCloud;
   private readonly debris: THREE.Mesh[] = [];
@@ -37,6 +49,7 @@ class ImpactEffect implements PoolableVFX {
   private lightHandle: VFXLightHandle | null = null;
   private age = 0;
   private duration = 0.5;
+  private bulletImpactPlayed = false;
   private config: MageImpactConfig | null = null;
   private preset: MageSpellPreset | null = null;
   private baseScale = 1;
@@ -98,6 +111,29 @@ class ImpactEffect implements PoolableVFX {
     this.shockwave.rotation.x = -Math.PI / 2;
     this.shockwave.renderOrder = 3;
 
+    this.shockwaveOuterMaterial = createMagicCircleMaterial({
+      opacity: 0,
+      intensity: 1.2,
+      thickness: 0.42,
+      distortion: 0.9,
+      depthTest: true,
+    });
+    this.shockwaveOuter = new THREE.Mesh(resources.quad, this.shockwaveOuterMaterial);
+    this.shockwaveOuter.name = 'MageImpactOuterShockwave';
+    this.shockwaveOuter.rotation.x = -Math.PI / 2;
+    this.shockwaveOuter.renderOrder = 3;
+
+    this.blastRingMaterial = createMagicCircleMaterial({
+      opacity: 0,
+      intensity: 1.5,
+      thickness: 1.1,
+      distortion: 1.25,
+      depthTest: true,
+    });
+    this.blastRing = new THREE.Mesh(resources.quad, this.blastRingMaterial);
+    this.blastRing.name = 'MageImpactVerticalBlastRing';
+    this.blastRing.renderOrder = 3;
+
     this.particles = new PooledParticleCloud(64, resources.softGlow);
     this.smoke = new PooledParticleCloud(34, resources.smoke);
     for (let index = 0; index < MAX_DEBRIS; index += 1) {
@@ -116,7 +152,16 @@ class ImpactEffect implements PoolableVFX {
       this.debrisVelocities.push(new THREE.Vector3());
       this.group.add(mesh);
     }
-    this.group.add(this.core, this.burst, this.flash, this.shockwave, this.particles.points, this.smoke.points);
+    this.group.add(
+      this.core,
+      this.burst,
+      this.flash,
+      this.shockwave,
+      this.shockwaveOuter,
+      this.blastRing,
+      this.particles.points,
+      this.smoke.points
+    );
   }
 
   public play(options: ImpactPlayOptions): void {
@@ -125,6 +170,8 @@ class ImpactEffect implements PoolableVFX {
     this.config = preset.impact;
     this.duration = preset.impact.duration;
     this.baseScale = options.scale ?? 1;
+    this.bulletImpactPlayed = preset.projectile?.shape === 'bullet';
+    const bulletImpact = this.bulletImpactPlayed;
     this.age = 0;
     this.group.visible = true;
     this.group.position.copy(position);
@@ -140,7 +187,11 @@ class ImpactEffect implements PoolableVFX {
     flashMaterial.map = impactTexture;
     flashMaterial.color.set(preset.colors.glow);
     flashMaterial.opacity = preset.style === 'lava' ? 1 : 0.92;
-    this.flash.scale.setScalar(preset.impact.radius * (preset.style === 'laser' ? 3.2 : preset.style === 'lava' ? 3 : 2.45) * this.baseScale);
+    this.flash.scale.setScalar(
+      preset.impact.radius
+        * (bulletImpact ? 3.4 : preset.style === 'laser' ? 3.2 : preset.style === 'lava' ? 3 : 2.45)
+        * this.baseScale
+    );
 
     const burstMaterial = this.burst.material as THREE.SpriteMaterial;
     burstMaterial.map = impactTexture;
@@ -159,6 +210,41 @@ class ImpactEffect implements PoolableVFX {
     });
     this.shockwave.position.y = 0.025;
     this.shockwave.scale.setScalar(0.25 * this.baseScale);
+
+    configureEnergyMaterial(this.shockwaveOuterMaterial, {
+      colorA: preset.colors.core,
+      colorB: preset.colors.secondary,
+      opacity: bulletImpact ? 0.5 : 0.42,
+      intensity: 1.35,
+      thickness: 0.42,
+      distortion: 0.9,
+      scrollSpeed: 1.6,
+    });
+    this.shockwaveOuter.position.y = 0.02;
+    this.shockwaveOuter.scale.setScalar(0.2 * this.baseScale);
+
+    // Onda vertical: nasce de frente para quem atirou, então o impacto tem
+    // volume mesmo visto da câmera do jogo (atrás da Maga).
+    this.blastRing.visible = bulletImpact;
+    if (bulletImpact) {
+      configureEnergyMaterial(this.blastRingMaterial, {
+        colorA: preset.colors.core,
+        colorB: preset.colors.glow,
+        opacity: 0.62,
+        intensity: 1.6,
+        thickness: 1.05,
+        distortion: 1.2,
+        scrollSpeed: 1.8,
+      });
+      TMP_DIR.copy(options.normal ?? FORWARD).setY(0);
+      if (TMP_DIR.lengthSq() <= 1e-6) TMP_DIR.set(0, 0, 1);
+      // O quad olha para +Z; alinha para encarar quem atirou.
+      this.blastRing.quaternion.setFromUnitVectors(
+        FORWARD,
+        TMP_DIR.normalize().negate()
+      );
+      this.blastRing.scale.setScalar(0.2 * this.baseScale);
+    }
 
     // The flash light is borrowed from the shared pool: the scene light count
     // never changes, so the impact can never trigger a shader recompile.
@@ -211,14 +297,14 @@ class ImpactEffect implements PoolableVFX {
       const profile = mageQualityProfile(this.quality);
       this.smoke.emit(new THREE.Vector3(), {
         color: frost.color,
-        count: Math.max(3, Math.round(9 * profile.smokeMultiplier)),
-        speed: 0.85,
-        spread: 1.15,
-        lifetime: this.duration * 1.25,
-        upwardBias: 0.38,
-        size: [1.6, 4],
-        opacity: 0.5,
-        growth: 1.2,
+        count: Math.max(4, Math.round(16 * profile.smokeMultiplier)),
+        speed: 1.05,
+        spread: 1.25,
+        lifetime: this.duration * 1.7,
+        upwardBias: 0.42,
+        size: [2, 5.5],
+        opacity: 0.55,
+        growth: 1.35,
       });
     } else {
       this.smoke.reset();
@@ -243,6 +329,27 @@ class ImpactEffect implements PoolableVFX {
     this.burst.scale.setScalar(this.config.radius * this.baseScale * ((this.preset.style === 'lava' ? 4.4 : 3.3) + progress * 2.2));
     this.burst.material.rotation = progress * Math.PI * (this.preset.style === 'lightning' ? 2.5 : 0.7);
     this.shockwave.scale.setScalar(this.config.shockwaveRadius * this.baseScale * (0.25 + progress * 0.85));
+
+    // Segunda onda: entra depois (15% do impacto) e fecha mais devagar.
+    const outerProgress = THREE.MathUtils.clamp((progress - 0.15) / 0.85, 0, 1);
+    setEnergyTime(this.shockwaveOuterMaterial, this.age * 1.1);
+    this.shockwaveOuterMaterial.uniforms.uOpacity.value =
+      (1 - outerProgress) * (this.bulletImpactPlayed ? 0.46 : 0.38);
+    this.shockwaveOuter.scale.setScalar(
+      this.config.shockwaveRadius * this.baseScale * 1.35 * (0.3 + outerProgress * 0.9)
+    );
+    this.shockwaveOuter.visible = this.bulletImpactPlayed;
+
+    // Onda vertical: estoura rápido nos primeiros 45% e some.
+    if (this.bulletImpactPlayed) {
+      const ringProgress = THREE.MathUtils.clamp(progress / 0.45, 0, 1);
+      setEnergyTime(this.blastRingMaterial, this.age * 1.4);
+      this.blastRingMaterial.uniforms.uOpacity.value = (1 - ringProgress) * 0.62;
+      this.blastRing.scale.setScalar(
+        this.config.radius * this.baseScale * (1.1 + ringProgress * 2.6)
+      );
+      this.blastRing.visible = ringProgress < 1;
+    }
     if (this.lightHandle) this.lightHandle.light.intensity *= Math.max(0, 1 - elapsed * 8);
     this.particles.update(elapsed);
     this.smoke.update(elapsed);
@@ -264,6 +371,11 @@ class ImpactEffect implements PoolableVFX {
     (this.flash.material as THREE.SpriteMaterial).opacity = 0;
     (this.burst.material as THREE.SpriteMaterial).opacity = 0;
     this.shockwaveMaterial.uniforms.uOpacity.value = 0;
+    this.shockwaveOuterMaterial.uniforms.uOpacity.value = 0;
+    this.blastRingMaterial.uniforms.uOpacity.value = 0;
+    this.shockwaveOuter.visible = false;
+    this.blastRing.visible = false;
+    this.bulletImpactPlayed = false;
     for (const mesh of this.debris) {
       mesh.visible = false;
       (mesh.material as THREE.MeshBasicMaterial).opacity = 0;
@@ -275,6 +387,8 @@ class ImpactEffect implements PoolableVFX {
     (this.flash.material as THREE.Material).dispose();
     (this.burst.material as THREE.Material).dispose();
     this.shockwaveMaterial.dispose();
+    this.shockwaveOuterMaterial.dispose();
+    this.blastRingMaterial.dispose();
     for (const mesh of this.debris) (mesh.material as THREE.Material).dispose();
     this.particles.dispose();
     this.smoke.dispose();

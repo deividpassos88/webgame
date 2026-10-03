@@ -25,11 +25,17 @@ Maga, disparado a cada ~0,7 s).
    da tela para apontar no sentido do voo projetado, então aparece igual às
    referências de qualquer ângulo. O orbe, o shard de gelo e o núcleo de lava
    ficam escondidos nesse formato — os outros feitiços seguem com o visual antigo.
-2. **Tamanhos menores**: raio `0.42 → 0.19`, halo `raio × 2.3` (`0.44 m`),
-   rastro `1.3 → 0.85 m` / `0.08 → 0.05 m`, impacto `0.75 → 0.42 m`
-   (onda `1.35 → 0.85 m`), carga na mão `1 → 0.45`, flash de saída `0.35 → 0.22`.
-3. **Efeito azul ao redor**: azul `0x3fa6ff` como cor de aura, `0x1c63e8` no
-   cone de choque, núcleo branco-gelo e luz temporária mais fraca e curta.
+2. **Tamanhos** (pedido do usuário: "o projétil está pequeno demais"):
+   - cometa **2,16 m × 0,72 m** (raio `0.3`, `lengthScale 7.2`, `widthScale 2.4`);
+   - halo `raio × 2.2` = `0,66 m`; flash de saída `0.3`; carga na mão `0.58`.
+   Antes o efeito era um orb de 0,42 m com halo de 1,43 m — redondo e curto demais.
+3. **Impacto em camadas** (pedido: "o impacto precisa melhorar muito"):
+   raio `0,95 m` (flash da explosão ≈ 3,2 m), **duas ondas no chão**
+   (`2,0 m` + eco de `2,43 m`), **onda vertical de gelo** encarando a origem do
+   tiro, `46` partículas, `14` estilhaços de gelo, névoa de gelo que fica,
+   luz `1.0` e tremor `0,028`. Duração `0,72 s` (era `0,45 s`).
+4. **Efeito azul ao redor**: azul claro `0x6fd6ff` na aura/seda, azul profundo
+   `0x1f6bff` na cauda e branco `0xf6fcff` no miolo do dardo e no gelo solto.
 4. **Fumaça de gelo**: `PooledParticleCloud` ganhou `add()` (cauda contínua, em
    vez de substituir o puff a cada quadro), faixa de `size`, `opacity` explícita,
    `growth` (puff que cresce) e escolha de blending. A fumaça vive no **scene**,

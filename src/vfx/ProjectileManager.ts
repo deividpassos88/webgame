@@ -26,6 +26,8 @@ export interface MageProjectileImpact {
   readonly position: THREE.Vector3;
   readonly target: THREE.Object3D | null;
   readonly preset: MageSpellPreset;
+  /** Sentido do voo na batida; o impacto usa para orientar a onda vertical. */
+  readonly direction: THREE.Vector3;
 }
 
 interface ProjectileFireOptions {
@@ -637,6 +639,7 @@ class MageProjectile implements PoolableVFX {
       position: this.group.position.clone(),
       target: this.target,
       preset: this.preset,
+      direction: this.direction.clone(),
     });
   }
 }

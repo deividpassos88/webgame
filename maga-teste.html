@@ -267,9 +267,15 @@ const FIELDS = [
   { path: 'projectile.frost.opacity', label: '10. Fumaça (intensidade)', min: 0, max: 1, step: 0.02, digits: 2 },
   { path: 'projectile.frost.lifetime', label: '11. Fumaça (vida)', min: 0.1, max: 2, step: 0.05, unit: 's', digits: 2 },
   { path: 'projectile.frost.speed', label: '12. Fumaça (expansão)', min: 0, max: 3, step: 0.05, digits: 2 },
-  { path: 'impact.radius', label: '13. Impacto (raio)', min: 0.1, max: 2, step: 0.05, unit: 'm', digits: 2 },
-  { path: 'impact.shockwaveRadius', label: '14. Impacto (onda no chão)', min: 0.2, max: 4, step: 0.05, unit: 'm', digits: 2 },
-  { path: 'charge.scale', label: '15. Carga na mão', min: 0.1, max: 2, step: 0.05, digits: 2 },
+  { path: 'impact.radius', label: '13. Impacto (flash/explosão)', min: 0.2, max: 2.5, step: 0.05, unit: 'm', digits: 2 },
+  { path: 'impact.shockwaveRadius', label: '14. Impacto (ondas no chão)', min: 0.4, max: 4, step: 0.05, unit: 'm', digits: 2 },
+  { path: 'impact.duration', label: '15. Impacto (duração)', min: 0.2, max: 1.6, step: 0.02, unit: 's', digits: 2 },
+  { path: 'impact.particleCount', label: '16. Impacto (partículas)', min: 4, max: 80, step: 2, digits: 0 },
+  { path: 'impact.debrisCount', label: '17. Impacto (estilhaços de gelo)', min: 0, max: 14, step: 1, digits: 0 },
+  { path: 'impact.lightIntensity', label: '18. Impacto (luz)', min: 0, max: 2.5, step: 0.05, digits: 2 },
+  { path: 'impact.cameraShakeIntensity', label: '19. Impacto (tremor)', min: 0, max: 0.1, step: 0.002, digits: 3 },
+  { path: 'charge.scale', label: '20. Carga na mão', min: 0.1, max: 2, step: 0.05, digits: 2 },
+  { path: 'charge.lightIntensity', label: '21. Carga (luz)', min: 0, max: 2, step: 0.05, digits: 2 },
 ];
 
 function readPath(path) {
@@ -304,8 +310,12 @@ function updateReadout() {
   readout.innerHTML = [
     `Cometa: <b>${cometLength.toFixed(2)} m</b> de comprimento · <b>${cometWidth.toFixed(2)} m</b> de largura (${(cometLength / mageHeight).toFixed(2)}× a altura da Maga)`,
     `Colisão: raio <b>${radius.toFixed(2)} m</b> · Aura azul: <b>${halo.toFixed(2)} m</b> de diâmetro`,
-    `Impacto: raio <b>${PRESET.impact.radius.toFixed(2)} m</b> (onda ${PRESET.impact.shockwaveRadius.toFixed(2)} m) · Carga na mão: <b>${PRESET.charge.scale.toFixed(2)}</b>`,
+    `Impacto: flash <b>${PRESET.impact.radius.toFixed(2)} m</b> (explosão ${(PRESET.impact.radius * 3.4).toFixed(2)} m) · ondas no chão <b>${PRESET.impact.shockwaveRadius.toFixed(2)} m</b> e ${(PRESET.impact.shockwaveRadius * 1.62).toFixed(2)} m · <b>${PRESET.impact.duration.toFixed(2)} s</b>`,
+    `Impacto: <b>${PRESET.impact.particleCount}</b> partículas · <b>${PRESET.impact.debrisCount}</b> estilhaços de gelo · luz <b>${PRESET.impact.lightIntensity.toFixed(2)}</b> · tremor <b>${PRESET.impact.cameraShakeIntensity.toFixed(3)}</b> · Carga na mão: <b>${PRESET.charge.scale.toFixed(2)}</b>`,
     `Fumaça de gelo (mundo): <b>${frost ? frost.count : 0}</b> partículas a cada <b>${frost ? frost.interval.toFixed(3) : 0}s</b> → cerca de <b>${Math.round(tail)}</b> na cauda, puff de <b>${(puffMeters * 100).toFixed(0)} cm</b>`,
+    PRESET.impact.radius < cometWidth * 0.9
+      ? '<span class="warn">O impacto está pequeno para esta bala — sobe o raio do impacto.</span>'
+      : '',
     cometLength / Math.max(0.001, cometWidth * 3) > 1.4
       ? '<span class="warn">O cometa está bem mais comprido que a referência (proporção ~3:1).</span>'
       : '',
