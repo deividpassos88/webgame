@@ -53,6 +53,36 @@ export interface MageProjectileFrostConfig {
   readonly blending?: 'additive' | 'normal';
 }
 
+/**
+ * Sprite "cometa" do projétil: dardo + seda + partículas de gelo, desenhado em
+ * `createFrostBulletMaterial`. Fica sempre de frente para a câmera e gira para
+ * apontar no sentido do voo (stretched billboard), então aparece igual às
+ * referências mesmo com a câmera atrás da Maga.
+ */
+export interface MageProjectileCometConfig {
+  /** Largura do sprite em múltiplos do raio do projétil. */
+  readonly widthScale: number;
+  /** Comprimento do sprite em múltiplos do raio do projétil. */
+  readonly lengthScale: number;
+  /** Fração do comprimento ocupada pela ponta em dardo (0.3 = 30%). */
+  readonly headLength?: number;
+  readonly intensity?: number;
+  /** Quantos pontos de gelo nascem dentro do sprite (0..6). */
+  readonly sparkles?: number;
+  /** Aura suave em volta da ponta. */
+  readonly haze?: number;
+  /** Brilho dos filamentos de seda. */
+  readonly filaments?: number;
+  /** Ondulação da seda (0 = fita reta). */
+  readonly wisp?: number;
+  /** Velocidade do fluxo da seda da cauda. */
+  readonly scroll?: number;
+  /** Opacidade do rastro de energia antigo; 0 desliga. */
+  readonly trailOpacity?: number;
+  /** Semente do desenho; varia a seda entre disparos. */
+  readonly seed?: number;
+}
+
 export interface MageProjectileConfig {
   readonly speed: number;
   readonly lifetime: number;
@@ -65,6 +95,8 @@ export interface MageProjectileConfig {
   readonly haloOpacity?: number;
   /** Optional frost/smoke wake left behind the bolt. */
   readonly frost?: MageProjectileFrostConfig;
+  /** Sprite do cometa (só quando `shape` é 'bullet'). */
+  readonly comet?: MageProjectileCometConfig;
 }
 
 export interface MageImpactConfig {

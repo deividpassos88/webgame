@@ -86,7 +86,7 @@
 
 <header>
   <h1>Maga · <span>ataque básico</span></h1>
-  <p>Laboratório de VFX — bala azul com fumaça de gelo (mesmos presets do jogo)</p>
+  <p>Laboratório de VFX — cometa de gelo: dardo azul, seda e fumaça de gelo (mesmos presets do jogo)</p>
 </header>
 
 <aside id="panel">
@@ -100,6 +100,7 @@
     <button type="button" class="primary" id="fire">Disparar agora</button>
     <button type="button" id="auto">Auto: ON</button>
     <button type="button" id="slow">Câmera lenta: OFF</button>
+    <button type="button" id="view">Ver de lado</button>
     <button type="button" id="reset">Padrão do jogo</button>
   </div>
   <div class="json-box">
@@ -113,6 +114,8 @@
     Arraste com o mouse para orbitar a câmera e role a roda para aproximar. A grade do chão tem
     quadrados de <b>1 m</b>, e o boneco de treino fica a <b>7 m</b> (alcance máximo do jogo).
     O tamanho da fumaça usa a unidade do shader do jogo (1 u ≈ 21 cm).
+    <br><br><b>Ver de lado</b> coloca a câmera na altura do voo, do jeito que está na referência;
+    <b>Ver do jogo</b> volta para a câmera atrás da Maga (como o jogo mostra).
   </div>
 </aside>
 
@@ -211,7 +214,9 @@ scene.add(dummy);
 let vfx = null;
 function buildVfx() {
   vfx?.dispose();
-  vfx = new MageVFX(scene, { quality: qualitySelect.value });
+  // A câmera viva entra no MageVFX: o sprite do cometa é um stretched billboard
+  // e precisa dela para virar de frente e seguir a direção do voo.
+  vfx = new MageVFX(scene, { quality: qualitySelect.value, getCamera: () => camera });
 }
 
 const casts = [];
@@ -247,6 +252,15 @@ const FIELDS = [
   { path: 'projectile.trailWidth', label: '4. Rastro (espessura)', min: 0.01, max: 0.2, step: 0.005, unit: 'm', digits: 3 },
   { path: 'projectile.haloScale', label: '5. Aura azul (diâmetro × raio)', min: 0, max: 6, step: 0.1, unit: '×', digits: 1 },
   { path: 'projectile.haloOpacity', label: '6. Aura azul (intensidade)', min: 0, max: 1, step: 0.05, digits: 2 },
+  { path: 'projectile.comet.widthScale', label: '6a. Cometa (largura × raio)', min: 0.4, max: 6, step: 0.1, unit: '×', digits: 1 },
+  { path: 'projectile.comet.lengthScale', label: '6b. Cometa (comprimento × raio)', min: 2, max: 16, step: 0.2, unit: '×', digits: 1 },
+  { path: 'projectile.comet.headLength', label: '6c. Dardo (fração do sprite)', min: 0.12, max: 0.5, step: 0.01, digits: 2 },
+  { path: 'projectile.comet.intensity', label: '6d. Cometa (brilho)', min: 0.4, max: 3, step: 0.05, digits: 2 },
+  { path: 'projectile.comet.wisp', label: '6e. Seda (ondulação)', min: 0, max: 2, step: 0.05, digits: 2 },
+  { path: 'projectile.comet.filaments', label: '6f. Seda (filamentos)', min: 0, max: 2, step: 0.05, digits: 2 },
+  { path: 'projectile.comet.sparkles', label: '6g. Gelo solto (pontos)', min: 0, max: 6, step: 1, digits: 0 },
+  { path: 'projectile.comet.haze', label: '6h. Aura do dardo', min: 0, max: 1.5, step: 0.05, digits: 2 },
+  { path: 'projectile.comet.trailOpacity', label: '6i. Fita antiga (0 = off)', min: 0, max: 0.8, step: 0.05, digits: 2 },
   { path: 'projectile.frost.count', label: '7. Fumaça de gelo (por puff)', min: 0, max: 8, step: 1, digits: 0 },
   { path: 'projectile.frost.interval', label: '8. Fumaça (a cada)', min: 0.01, max: 0.2, step: 0.005, unit: 's', digits: 3 },
   { path: 'projectile.frost.size.1', label: '9. Fumaça (tamanho do puff)', min: 0.4, max: 12, step: 0.1, unit: 'u', digits: 1 },
@@ -278,19 +292,23 @@ const hudParticles = document.getElementById('hud-particles');
 
 function updateReadout() {
   const radius = PRESET.projectile.radius;
+  const comet = PRESET.projectile.comet;
   const halo = radius * PRESET.projectile.haloScale;
   const mageHeight = 1.8;
   const frost = PRESET.projectile.frost;
   const tail = frost ? (frost.lifetime / frost.interval) * frost.count : 0;
   // Uma unidade de partícula ≈ 21 cm na tela (escala do shader do jogo).
   const puffMeters = frost ? frost.size[1] * 0.214 : 0;
-  const impactVsCharge = PRESET.impact.radius / Math.max(0.001, halo);
+  const cometLength = radius * (comet?.lengthScale ?? 0);
+  const cometWidth = radius * (comet?.widthScale ?? 0);
   readout.innerHTML = [
-    `Bala: <b>${(radius * 5.6).toFixed(2)} m</b> de comprimento · <b>${(radius * 1.5).toFixed(2)} m</b> de espessura`,
-    `Aura azul: <b>${halo.toFixed(2)} m</b> de diâmetro (<b>${Math.round((halo / mageHeight) * 100)}%</b> da altura da Maga)`,
-    `Rastro: <b>${PRESET.projectile.trailLength.toFixed(2)} m</b> · Impacto: raio <b>${PRESET.impact.radius.toFixed(2)} m</b> (onda ${PRESET.impact.shockwaveRadius.toFixed(2)} m)`,
-    `Fumaça de gelo: <b>${frost ? frost.count : 0}</b> partículas a cada <b>${frost ? frost.interval.toFixed(3) : 0}s</b> → cerca de <b>${Math.round(tail)}</b> na cauda, puff de <b>${(puffMeters * 100).toFixed(0)} cm</b>`,
-    impactVsCharge > 2.2 ? '<span class="warn">A aura está bem menor que o impacto — a batida parece de outro ataque.</span>' : '',
+    `Cometa: <b>${cometLength.toFixed(2)} m</b> de comprimento · <b>${cometWidth.toFixed(2)} m</b> de largura (${(cometLength / mageHeight).toFixed(2)}× a altura da Maga)`,
+    `Colisão: raio <b>${radius.toFixed(2)} m</b> · Aura azul: <b>${halo.toFixed(2)} m</b> de diâmetro`,
+    `Impacto: raio <b>${PRESET.impact.radius.toFixed(2)} m</b> (onda ${PRESET.impact.shockwaveRadius.toFixed(2)} m) · Carga na mão: <b>${PRESET.charge.scale.toFixed(2)}</b>`,
+    `Fumaça de gelo (mundo): <b>${frost ? frost.count : 0}</b> partículas a cada <b>${frost ? frost.interval.toFixed(3) : 0}s</b> → cerca de <b>${Math.round(tail)}</b> na cauda, puff de <b>${(puffMeters * 100).toFixed(0)} cm</b>`,
+    cometLength / Math.max(0.001, cometWidth * 3) > 1.4
+      ? '<span class="warn">O cometa está bem mais comprido que a referência (proporção ~3:1).</span>'
+      : '',
   ].filter(Boolean).join('<br>');
 }
 
@@ -378,6 +396,22 @@ resetButton.addEventListener('click', () => {
   buildVfx();
   fireOnce();
 });
+const viewButton = document.getElementById('view');
+let sideView = false;
+const SIDE_CAMERA = { position: new THREE.Vector3(-0.6, 1.5, 3.4), target: new THREE.Vector3(0, 1.1, 3.6) };
+const GAME_CAMERA = { position: new THREE.Vector3(0, 2.6, -6.4), target: new THREE.Vector3(0, 1.1, 4.2) };
+function applyCamera(next) {
+  camera.position.copy(next.position);
+  controls.target.copy(next.target);
+  controls.update();
+}
+viewButton.addEventListener('click', () => {
+  sideView = !sideView;
+  viewButton.textContent = sideView ? 'Ver do jogo' : 'Ver de lado';
+  applyCamera(sideView ? SIDE_CAMERA : GAME_CAMERA);
+});
+applyCamera(GAME_CAMERA);
+
 document.getElementById('copy').addEventListener('click', async () => {
   jsonArea.value = JSON.stringify(PRESET, null, 2);
   try {

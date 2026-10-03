@@ -6,9 +6,13 @@ import { PooledParticleCloud, qualityCount } from './ParticleManager';
 import { VFXPool, type PoolableVFX } from './VFXPool';
 import {
   configureEnergyMaterial,
+  configureFrostBulletMaterial,
   createEnergyTrailMaterial,
+  createFrostBulletMaterial,
   setEnergyTime,
+  setFrostBulletTime,
   type EnergyShaderMaterial,
+  type FrostBulletMaterial,
 } from './VFXMaterials';
 import { VFXLightPool, type VFXLightHandle } from './VFXLightPool';
 import type {
@@ -39,6 +43,14 @@ interface ProjectileFireOptions {
 }
 
 const FORWARD = new THREE.Vector3(0, 0, 1);
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const TMP_CAMERA = new THREE.Vector3();
+const TMP_BASIS_X = new THREE.Vector3();
+const TMP_BASIS_Y = new THREE.Vector3();
+const TMP_BASIS_Z = new THREE.Vector3();
+const TMP_QUATERNION = new THREE.Quaternion();
+const TMP_QUATERNION_2 = new THREE.Quaternion();
+const COMET_BASIS = new THREE.Matrix4();
 const TMP_TARGET = new THREE.Vector3();
 const TMP_DIRECTION = new THREE.Vector3();
 const TMP_LOCAL = new THREE.Vector3();
@@ -97,9 +109,8 @@ class MageProjectile implements PoolableVFX {
   private readonly core: THREE.Mesh;
   private readonly iceShard: THREE.Mesh;
   private readonly lavaInner: THREE.Mesh;
-  private readonly bulletBody: THREE.Mesh;
-  private readonly bulletNose: THREE.Mesh;
-  private readonly bulletShockCone: THREE.Mesh;
+  private readonly comet: THREE.Mesh;
+  private readonly cometMaterial: FrostBulletMaterial;
   private readonly glow: THREE.Sprite;
   private readonly trail: THREE.Mesh;
   private readonly trailGeometry = new THREE.BufferGeometry();
@@ -120,6 +131,8 @@ class MageProjectile implements PoolableVFX {
   private traveled = 0;
   private haloScale = 3.4;
   private bullet = false;
+  /** Câmera viva, usada para orientar o sprite do cometa (billboard). */
+  private getCamera: (() => THREE.Camera | null) | undefined = undefined;
   /** World-space frost wake: it must not follow the bolt once it is released. */
   private frostCloud: PooledParticleCloud | null = null;
   private frostConfig: MageProjectileFrostConfig | null = null;
@@ -129,7 +142,8 @@ class MageProjectile implements PoolableVFX {
     private readonly resources: MageVFXResources,
     private readonly quality: MageVFXQuality,
     private readonly lightPool: VFXLightPool,
-    private readonly scene: THREE.Scene
+    private readonly scene: THREE.Scene,
+    private readonly sceneCamera: () => THREE.Camera | null = () => null
   ) {
     this.group.name = 'MageProjectileVFX';
     this.group.visible = false;
@@ -167,33 +181,16 @@ class MageProjectile implements PoolableVFX {
     this.lavaInner.name = 'MageLavaWhiteHotCoreProjectile';
     this.lavaInner.visible = false;
 
-    // Bullet silhouette: a small cylinder body, a cone nose pointing down the
-    // flight axis (+Z, the group is aimed with setFromUnitVectors) and an open
-    // shock cone bleeding backwards. All three are unit geometries scaled by the
-    // projectile radius at fire time, so the same pool serves any spell.
-    const bulletMaterial = (name: string): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      toneMapped: false,
-    });
-    this.bulletBody = new THREE.Mesh(resources.bulletBody, bulletMaterial('MageBulletBody'));
-    this.bulletBody.name = 'MageBulletBody';
-    this.bulletBody.rotation.x = Math.PI / 2;
-    this.bulletBody.visible = false;
-
-    this.bulletNose = new THREE.Mesh(resources.bulletNose, bulletMaterial('MageBulletNose'));
-    this.bulletNose.name = 'MageBulletNose';
-    this.bulletNose.rotation.x = Math.PI / 2;
-    this.bulletNose.visible = false;
-
-    this.bulletShockCone = new THREE.Mesh(resources.bulletShockCone, bulletMaterial('MageBulletShockCone'));
-    this.bulletShockCone.name = 'MageBulletShockCone';
-    this.bulletShockCone.rotation.x = Math.PI / 2;
-    (this.bulletShockCone.material as THREE.MeshBasicMaterial).side = THREE.DoubleSide;
-    this.bulletShockCone.visible = false;
+    // Sprite do cometa de gelo: dardo + seda + gelo, todo em shader. Ele fica
+    // sempre de frente para a câmera e gira para apontar no sentido do voo
+    // (stretched billboard), então o desenho aparece igual à referência mesmo
+    // com a câmera atrás da Maga.
+    this.cometMaterial = createFrostBulletMaterial({ opacity: 0 });
+    this.comet = new THREE.Mesh(resources.quad, this.cometMaterial);
+    this.comet.name = 'MageFrostBulletComet';
+    this.comet.visible = false;
+    this.comet.frustumCulled = false;
+    this.comet.renderOrder = 5;
 
     this.glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: resources.softGlow,
@@ -226,13 +223,11 @@ class MageProjectile implements PoolableVFX {
 
     this.secondaryParticles = new PooledParticleCloud(38, resources.softGlow);
     this.group.add(
+      this.comet,
       this.trail,
       this.core,
       this.iceShard,
       this.lavaInner,
-      this.bulletShockCone,
-      this.bulletBody,
-      this.bulletNose,
       this.glow,
       this.secondaryParticles.points
     );
@@ -245,6 +240,7 @@ class MageProjectile implements PoolableVFX {
     this.isTargetAlive = options.isTargetAlive;
     this.queryBodyHit = options.queryBodyHit;
     this.onImpact = options.onImpact;
+    this.getCamera = this.sceneCamera;
     this.age = 0;
     this.traveled = 0;
     this.group.visible = true;
@@ -256,15 +252,15 @@ class MageProjectile implements PoolableVFX {
 
     const radius = options.preset.projectile.radius;
     this.bullet = options.preset.projectile.shape === 'bullet';
-    this.configureBullet(options.preset, radius);
+    this.configureComet(options.preset, radius);
 
     const coreMaterial = this.core.material as THREE.MeshBasicMaterial;
     coreMaterial.color.set(options.preset.colors.core);
-    coreMaterial.opacity = this.bullet ? 1 : options.preset.style === 'ice' ? 0.28 : 0.96;
-    this.core.visible = this.bullet || options.preset.style !== 'ice';
+    coreMaterial.opacity = this.bullet ? 0 : options.preset.style === 'ice' ? 0.28 : 0.96;
+    // Na bala quem desenha a ponta é o sprite do cometa.
+    this.core.visible = !this.bullet && options.preset.style !== 'ice';
     this.core.scale.setScalar(radius * (this.bullet ? 0.75 : options.preset.style === 'water' ? 1.25 : 1.15));
-    // On the bullet the core is the white-hot tip at the end of the nose.
-    this.core.position.set(0, 0, this.bullet ? radius * 2.8 : 0);
+    this.core.position.set(0, 0, 0);
 
     this.iceShard.visible = options.preset.style === 'ice' && !this.bullet;
     (this.iceShard.material as THREE.MeshBasicMaterial).opacity = this.iceShard.visible ? 0.95 : 0;
@@ -317,7 +313,11 @@ class MageProjectile implements PoolableVFX {
     if (!this.config || !this.preset || !this.onImpact) return false;
     const elapsed = Math.max(0, delta);
     this.age += elapsed;
-    setEnergyTime(this.trailMaterial, this.age);
+    if (this.bullet) {
+      setFrostBulletTime(this.cometMaterial, this.age);
+    } else {
+      setEnergyTime(this.trailMaterial, this.age);
+    }
 
     if (this.target && this.isTargetAlive && !this.isTargetAlive(this.target)) {
       this.target = null;
@@ -366,19 +366,18 @@ class MageProjectile implements PoolableVFX {
       this.impact();
       return false;
     }
-    this.updateTrailGeometry(this.config.trailLength, this.config.trailWidth);
+    if (this.bullet) {
+      // A cauda da bala é a seda do sprite; a fita de energia fica desligada.
+      this.orientComet();
+    } else {
+      this.updateTrailGeometry(this.config.trailLength, this.config.trailWidth);
+    }
     this.secondaryParticles.points.position.copy(TMP_LOCAL.set(0, 0, -this.config.trailLength * 0.26));
     this.secondaryParticles.update(elapsed);
     this.updateFrost(elapsed);
 
     const pulse = 0.92 + Math.sin(this.age * (this.preset.style === 'water' ? 18 : 28)) * 0.08;
     this.glow.scale.setScalar(this.config.radius * this.haloScale * pulse);
-    if (this.bullet) {
-      // Slow roll around the flight axis: the bolt keeps its silhouette but
-      // never looks like a static decal.
-      this.bulletBody.rotation.y += elapsed * 6;
-      this.bulletNose.rotation.y += elapsed * 6;
-    }
     this.core.rotation.y += elapsed * (this.preset.style === 'water' ? 4 : 2);
     this.iceShard.rotation.z += elapsed * 5;
     this.lavaInner.rotation.x += elapsed * 7;
@@ -412,12 +411,9 @@ class MageProjectile implements PoolableVFX {
     this.lavaInner.visible = false;
     this.core.position.set(0, 0, 0);
     this.bullet = false;
-    this.bulletBody.visible = false;
-    this.bulletNose.visible = false;
-    this.bulletShockCone.visible = false;
-    (this.bulletBody.material as THREE.MeshBasicMaterial).opacity = 0;
-    (this.bulletNose.material as THREE.MeshBasicMaterial).opacity = 0;
-    (this.bulletShockCone.material as THREE.MeshBasicMaterial).opacity = 0;
+    this.comet.visible = false;
+    this.cometMaterial.uniforms.uOpacity.value = 0;
+    this.trail.visible = true;
     this.releaseFrost();
     this.lightHandle?.release();
     this.lightHandle = null;
@@ -428,10 +424,8 @@ class MageProjectile implements PoolableVFX {
     (this.core.material as THREE.Material).dispose();
     (this.iceShard.material as THREE.Material).dispose();
     (this.lavaInner.material as THREE.Material).dispose();
-    (this.bulletBody.material as THREE.Material).dispose();
-    (this.bulletNose.material as THREE.Material).dispose();
-    (this.bulletShockCone.material as THREE.Material).dispose();
     (this.glow.material as THREE.Material).dispose();
+    this.cometMaterial.dispose();
     this.trailMaterial.dispose();
     this.trailGeometry.dispose();
     this.secondaryParticles.dispose();
@@ -441,42 +435,90 @@ class MageProjectile implements PoolableVFX {
   }
 
   /**
-   * Scales the three unit meshes into the small bolt silhouette: nose cone at
-   * +Z (flight axis), body behind it, hollow shock cone bleeding backwards.
+   * Liga/desliga o sprite do cometa e o dimensiona a partir do raio: o sprite
+   * vai da cauda (u = 0) à ponta (u = 1) no eixo +X local, e o billboard cuida
+   * de apontar esse eixo no sentido do voo.
    */
-  private configureBullet(preset: MageSpellPreset, radius: number): void {
-    const body = this.bulletBody.material as THREE.MeshBasicMaterial;
-    const nose = this.bulletNose.material as THREE.MeshBasicMaterial;
-    const shock = this.bulletShockCone.material as THREE.MeshBasicMaterial;
-
-    this.bulletBody.visible = this.bullet;
-    this.bulletNose.visible = this.bullet;
-    this.bulletShockCone.visible = this.bullet;
-    if (!this.bullet) {
-      body.opacity = 0;
-      nose.opacity = 0;
-      shock.opacity = 0;
+  private configureComet(preset: MageSpellPreset, radius: number): void {
+    const comet = preset.projectile.comet;
+    this.comet.visible = this.bullet && comet !== undefined;
+    if (!this.bullet || !comet) {
+      this.cometMaterial.uniforms.uOpacity.value = 0;
+      // Bala sem sprite cai de volta na fita de energia (nunca fica sem rastro).
+      this.trail.visible = true;
       return;
     }
 
-    const bodyLength = radius * 3.2;
-    const bodyThickness = radius * 1.5;
-    this.bulletBody.scale.set(bodyThickness, bodyLength, bodyThickness);
-    this.bulletBody.position.set(0, 0, -radius);
-    body.color.set(preset.colors.glow);
-    body.opacity = 0.95;
+    const width = radius * comet.widthScale;
+    const length = radius * comet.lengthScale;
+    this.comet.scale.set(length, width, 1);
+    // O grupo marca o ponto de colisão; o sprite recua para a PONTA do cometa
+    // cair exatamente nesse ponto (o rastro vem atrás, como na referência).
+    this.comet.position.set(0, 0, -length * 0.5);
+    configureFrostBulletMaterial(this.cometMaterial, {
+      core: preset.colors.core,
+      glow: preset.colors.glow,
+      deep: preset.colors.secondary,
+      opacity: 1,
+      intensity: comet.intensity ?? 1.45,
+      headLength: comet.headLength ?? 0.3,
+      wisp: comet.wisp ?? 1,
+      filament: comet.filaments ?? 1,
+      sparks: comet.sparkles ?? 5,
+      haze: comet.haze ?? 0.35,
+      // Seeds diferentes por disparo: a seda de duas balas no ar não é idêntica.
+      seed: Math.random(),
+      scroll: comet.scroll ?? 1,
+    });
 
-    const noseLength = radius * 2.4;
-    this.bulletNose.scale.set(bodyThickness, noseLength, bodyThickness);
-    this.bulletNose.position.set(0, 0, radius * 1.8);
-    nose.color.set(preset.colors.core);
-    nose.opacity = 0.98;
+    // O rastro de energia antigo pode ficar ligado em intensidade baixa como
+    // fumaça extra, ou desligado de vez quando a seda já faz a cauda inteira.
+    const trailOpacity = comet.trailOpacity ?? 0;
+    this.trail.visible = trailOpacity > 0;
+    if (this.trail.visible) this.trailMaterial.uniforms.uOpacity.value = trailOpacity;
+  }
 
-    const shockLength = radius * 3.1;
-    this.bulletShockCone.scale.set(radius * 2.4, shockLength, radius * 2.4);
-    this.bulletShockCone.position.set(0, 0, -radius * 2.1);
-    shock.color.set(preset.colors.secondary);
-    shock.opacity = 0.22;
+  /**
+   * Stretched billboard: o sprite fica sempre de frente para a câmera e gira
+   * dentro do plano da tela para que o eixo do desenho acompanhe a direção do
+   * voo projetada. É assim que a referência aparece de qualquer ângulo de
+   * câmera (uma fita presa ao eixo do voo ficaria de perfil).
+   */
+  private orientComet(): void {
+    const camera = this.getCamera?.() ?? null;
+    if (camera) {
+      TMP_CAMERA.subVectors(camera.position, this.group.position);
+    } else {
+      // Sem câmera (testes/headless): vista lateral fixa.
+      TMP_CAMERA.crossVectors(this.direction, WORLD_UP);
+    }
+    if (TMP_CAMERA.lengthSq() <= 1e-8) TMP_CAMERA.set(0, 1, 0);
+    TMP_CAMERA.normalize();
+
+    // Eixo do desenho = direção do voo projetada no plano da tela.
+    TMP_BASIS_X.copy(this.direction)
+      .addScaledVector(TMP_CAMERA, -this.direction.dot(TMP_CAMERA));
+    if (TMP_BASIS_X.lengthSq() < 1e-4) {
+      // Voando direto para dentro/fora da câmera: a projeção some e o sprite
+      // fica de topo; usa o "cima" da tela como eixo.
+      TMP_BASIS_X.set(0, 1, 0).addScaledVector(TMP_CAMERA, -TMP_CAMERA.y);
+      if (TMP_BASIS_X.lengthSq() < 1e-4) TMP_BASIS_X.set(1, 0, 0);
+    }
+    TMP_BASIS_X.normalize();
+    TMP_BASIS_Y.crossVectors(TMP_CAMERA, TMP_BASIS_X).normalize();
+    TMP_BASIS_Z.crossVectors(TMP_BASIS_X, TMP_BASIS_Y).normalize();
+    // Mantém a face do sprite virada para a câmera (eixo de base à direita).
+    if (TMP_BASIS_Z.dot(TMP_CAMERA) < 0) {
+      TMP_BASIS_Y.negate();
+      TMP_BASIS_Z.negate();
+    }
+
+    COMET_BASIS.makeBasis(TMP_BASIS_X, TMP_BASIS_Y, TMP_BASIS_Z);
+    TMP_QUATERNION.setFromRotationMatrix(COMET_BASIS);
+    // O cometa é filho do grupo (que já aponta o +Z para o voo), então a
+    // orientação local é a do mundo desfeita pela rotação do grupo.
+    TMP_QUATERNION_2.copy(this.group.quaternion).invert();
+    this.comet.quaternion.copy(TMP_QUATERNION_2).multiply(TMP_QUATERNION);
   }
 
   /** Builds (once) and restarts the world-space frost wake of this bolt. */
@@ -607,11 +649,13 @@ export class ProjectileManager {
     private readonly scene: THREE.Scene,
     resources: MageVFXResources,
     quality: MageVFXQuality,
-    lightPool: VFXLightPool
+    lightPool: VFXLightPool,
+    camera: () => THREE.Camera | null = () => null
   ) {
     this.pool = new VFXPool(
-      // Scene is handed to each bolt so its frost wake can live in world space.
-      () => new MageProjectile(resources, quality, lightPool, scene),
+      // Scene is handed to each bolt so its frost wake can live in world space,
+      // and the camera provider so the comet sprite can billboard.
+      () => new MageProjectile(resources, quality, lightPool, scene, camera),
       MAGE_VFX_LIMITS.maxProjectiles
     );
   }

@@ -87,11 +87,11 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
     style: 'arcane',
     delivery: 'projectile',
     colors: {
-      core: 0xf2fbff,
-      glow: 0x3fa6ff,
-      secondary: 0x1c63e8,
-      spark: 0xbfe8ff,
-      smoke: 0x9fd6f2,
+      core: 0xf6fcff,
+      glow: 0x6fd6ff,
+      secondary: 0x1f6bff,
+      spark: 0xd8f4ff,
+      smoke: 0xbfe4f7,
     },
     timeline: {
       chargeStart: 0.12,
@@ -112,15 +112,30 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       shape: 'bullet',
       haloScale: 2.3,
       haloOpacity: 0.6,
+      comet: {
+        widthScale: 2.6,
+        lengthScale: 8.4,
+        headLength: 0.3,
+        intensity: 1.45,
+        sparkles: 5,
+        haze: 0.35,
+        filaments: 1,
+        wisp: 1,
+        // A fita de energia antiga sai de cena: a cauda agora é a seda do
+        // próprio sprite, e as duas juntas viravam um rastro duplo.
+        trailOpacity: 0,
+      },
+      // A cauda principal agora é a seda do sprite; esta fumaça no espaço do
+      // mundo entra só como névoa fina atrás do cometa (0 na contagem = desliga).
       frost: {
         color: 0xcfeaff,
-        count: 2,
-        interval: 0.035,
+        count: 1,
+        interval: 0.05,
         size: [1.1, 2.6],
         speed: 0.42,
         spread: 0.7,
-        lifetime: 0.55,
-        opacity: 0.42,
+        lifetime: 0.5,
+        opacity: 0.3,
         upwardBias: 0.22,
         growth: 1.1,
         blending: 'additive',

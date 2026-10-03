@@ -55,7 +55,7 @@ describe('Mage basic attack bullet', () => {
     vi.restoreAllMocks();
   });
 
-  it('ships a small bullet preset with a blue aura and a frost wake', () => {
+  it('ships a small bullet preset with a blue aura, a frost wake and a comet sprite', () => {
     const preset = MAGE_SPELL_PRESETS.basic;
     expect(preset.projectile.shape).toBe('bullet');
     // Old preset: radius 0.42 with a 1.43 m halo. The bullet has to stay small.
@@ -65,9 +65,13 @@ describe('Mage basic attack bullet', () => {
     expect(preset.impact.radius).toBeLessThanOrEqual(0.5);
     expect(preset.impact.shockwaveRadius).toBeLessThanOrEqual(1);
     expect(preset.charge.scale).toBeLessThanOrEqual(0.6);
-    // Blue aura around a pale core.
-    expect(new THREE.Color(preset.colors.glow).getHex()).toBe(0x3fa6ff);
-    expect(new THREE.Color(preset.colors.secondary).getHex()).toBe(0x1c63e8);
+    // Blue aura around a pale core (gelo: azul claro em cima do azul profundo).
+    expect(new THREE.Color(preset.colors.glow).getHex()).toBe(0x6fd6ff);
+    expect(new THREE.Color(preset.colors.secondary).getHex()).toBe(0x1f6bff);
+    // Sprite do cometa: dardo + seda + partículas, sem a fita de energia antiga.
+    expect(preset.projectile.comet?.widthScale).toBeGreaterThan(1);
+    expect(preset.projectile.comet?.lengthScale).toBeGreaterThan(preset.projectile.comet?.widthScale ?? 0);
+    expect(preset.projectile.comet?.trailOpacity).toBe(0);
     expect(preset.projectile.frost?.color).toBe(0xcfeaff);
     expect(preset.projectile.frost?.blending).toBe('additive');
     // Particle sizes are screen-space units (~0.21 m each): anything above ~3
@@ -88,28 +92,69 @@ describe('Mage basic attack bullet', () => {
     vfx.dispose();
   });
 
-  it('renders the bolt as a nose + body + shock cone instead of the old orb', () => {
+  it('renders the bolt as the frost comet sprite instead of the old orb', () => {
     const scene = new THREE.Scene();
     const vfx = new MageVFX(scene, { quality: 'high' });
     castBasic(vfx, 16);
 
     const bolt = scene.getObjectByName('MageProjectileVFX');
     expect(bolt).toBeDefined();
-    const nose = bolt?.getObjectByName('MageBulletNose') as THREE.Mesh | undefined;
-    const body = bolt?.getObjectByName('MageBulletBody') as THREE.Mesh | undefined;
-    const shock = bolt?.getObjectByName('MageBulletShockCone') as THREE.Mesh | undefined;
-    expect(nose?.visible).toBe(true);
-    expect(body?.visible).toBe(true);
-    expect(shock?.visible).toBe(true);
+    const comet = bolt?.getObjectByName('MageFrostBulletComet') as THREE.Mesh | undefined;
+    expect(comet?.visible).toBe(true);
+    expect(comet?.material).toBeInstanceOf(THREE.ShaderMaterial);
+
+    const { radius, comet: config, haloScale } = MAGE_SPELL_PRESETS.basic.projectile;
+    // Comprimento no eixo do voo, largura no eixo transversal.
+    expect(comet?.scale.x).toBeCloseTo(radius * (config?.lengthScale ?? 0), 3);
+    expect(comet?.scale.y).toBeCloseTo(radius * (config?.widthScale ?? 0), 3);
+    // A ponta do sprite fica no ponto de colisão: o sprite recua metade dele.
+    expect(comet?.position.z).toBeCloseTo(-(comet?.scale.x ?? 0) * 0.5, 5);
+
+    // O orbe branco e a fita de energia antigos saem de cena na bala.
+    expect(bolt?.getObjectByName('MageProjectileCore')?.visible).toBe(false);
+    expect(bolt?.getObjectByName('MageProjectileRibbonTrail')?.visible).toBe(false);
     expect(bolt?.getObjectByName('MageIceShardProjectile')?.visible).toBe(false);
 
-    const { radius, haloScale } = MAGE_SPELL_PRESETS.basic.projectile;
+    // A aura azul continua pequena (é o brilho em volta da bala).
     const halo = bolt?.getObjectByName('MageProjectileAuraGlow') as THREE.Sprite;
-    // The halo is a world-space quad: it must stay under ~0.5 m of diameter.
-    const haloDiameter = halo.scale.x;
-    expect(haloDiameter).toBeLessThan(0.5);
-    expect(haloDiameter).toBeCloseTo(radius * (haloScale ?? 3.4), 1);
-    expect(bolt?.getObjectByName('MageBulletNose')?.scale.x).toBeLessThan(haloDiameter);
+    expect(halo.scale.x).toBeLessThan(0.5);
+    expect(halo.scale.x).toBeCloseTo(radius * (haloScale ?? 3.4), 1);
+    vfx.dispose();
+  });
+
+  it('stretches the comet sprite: faces the camera and follows the projected flight path', () => {
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+    // Câmera de lado: a projeção do voo aparece inteira na tela.
+    camera.position.set(9, 2.5, 0);
+    const vfx = new MageVFX(scene, { quality: 'high', getCamera: () => camera });
+    const { mixer } = castBasic(vfx, 16);
+
+    const bolt = scene.getObjectByName('MageProjectileVFX')!;
+    const comet = bolt.getObjectByName('MageFrostBulletComet') as THREE.Mesh;
+    mixer.update(0.01);
+    vfx.update(0.01);
+    bolt.updateMatrixWorld(true);
+
+    const orientation = comet.getWorldQuaternion(new THREE.Quaternion());
+    const axisX = new THREE.Vector3(1, 0, 0).applyQuaternion(orientation).normalize();
+    const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(orientation).normalize();
+    const toCamera = camera.position.clone().sub(bolt.position).normalize();
+    // A face do sprite olha para a câmera...
+    expect(Math.abs(normal.dot(toCamera))).toBeGreaterThan(0.9);
+    // ...e o eixo do desenho aponta no sentido do voo projetado.
+    expect(axisX.dot(new THREE.Vector3(0, 0, 1))).toBeGreaterThan(0.9);
+
+    // Voando direto para dentro da câmera a projeção some: o sprite continua
+    // de frente para ela (é o caso normal no jogo, com a câmera atrás da Maga).
+    camera.position.set(0, 1.6, -6);
+    mixer.update(0.01);
+    vfx.update(0.01);
+    bolt.updateMatrixWorld(true);
+    const spun = comet.getWorldQuaternion(new THREE.Quaternion());
+    const spunNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(spun).normalize();
+    const toCameraAgain = camera.position.clone().sub(bolt.position).normalize();
+    expect(Math.abs(spunNormal.dot(toCameraAgain))).toBeGreaterThan(0.9);
     vfx.dispose();
   });
 

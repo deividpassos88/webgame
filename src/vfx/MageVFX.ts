@@ -510,6 +510,12 @@ export interface MageVFXOptions {
    * MageVFX creates (and owns) its own pool sized by maxTemporaryLights.
    */
   readonly lightPool?: VFXLightPool;
+  /**
+   * Live camera provider. The basic-attack bullet draws a flat comet sprite, so
+   * it needs the camera to stay facing it and keep pointing down the flight
+   * path. When omitted the sprite falls back to a fixed side view.
+   */
+  readonly getCamera?: () => THREE.Camera | null;
 }
 
 export class MageVFX {
@@ -546,7 +552,13 @@ export class MageVFX {
       () => new BarrierAuraEffect(this.resources, this.quality),
       MAGE_VFX_LIMITS.maxBarriers
     );
-    this.projectiles = new ProjectileManager(scene, this.resources, this.quality, this.lightPool);
+    this.projectiles = new ProjectileManager(
+      scene,
+      this.resources,
+      this.quality,
+      this.lightPool,
+      options.getCamera ?? (() => null)
+    );
     this.lightning = new LightningVFX(scene, this.resources, this.quality);
     this.lasers = new LaserVFX(scene, this.resources, this.quality, this.lightPool);
     this.impacts = new ImpactVFX(scene, this.resources, this.quality, this.lightPool);

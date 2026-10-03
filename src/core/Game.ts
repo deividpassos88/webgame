@@ -241,7 +241,12 @@ export class Game {
   /** Seconds the boss stays planted after a skill blast before it chases again. */
   private bossPostCastLock = 0;
   private readonly vfxLightPool = new VFXLightPool(this.scene, MAGE_VFX_LIMITS.maxTemporaryLights);
-  private readonly mageVFX = new MageVFX(this.scene, { lightPool: this.vfxLightPool });
+  private readonly mageVFX = new MageVFX(this.scene, {
+    lightPool: this.vfxLightPool,
+    // O sprite do cometa do ataque básico precisa da câmera viva para virar
+    // billboard e apontar no sentido do voo.
+    getCamera: () => this.cameraController.camera,
+  });
   private readonly warriorSlashVFX = new WarriorSlashVFX(this.scene, this.vfxLightPool);
   /** Agenda os arcos de lâmina em vertical do Corte Duplo. */
   private readonly warriorBladeStorm = new WarriorBladeStorm(
