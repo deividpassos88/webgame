@@ -135,14 +135,19 @@ class ChargeOrbEffect implements PoolableVFX {
     // keep their wide glow field.
     const arcane = preset.style === 'arcane';
     this.arcaneParticleSize = arcane;
-    this.orbitParticles.emit(new THREE.Vector3(), {
-      color: preset.colors.secondary,
-      count: qualityCount(preset.charge.particleCount, this.quality, preset.qualityParticleMultiplier),
-      speed: preset.style === 'water' ? 0.52 : 0.32,
-      spread: preset.style === 'water' ? 0.72 : 0.48,
-      lifetime: 999,
-      ...(arcane ? { size: [1.2, 3] as const } : {}),
-    });
+    // 0 partículas = conjuração só com o brilho na mão (sem poeira girando e
+    // sem faísca). É assim que o ataque básico da Maga é pedido agora.
+    this.orbitParticles.reset();
+    if (preset.charge.particleCount > 0) {
+      this.orbitParticles.emit(new THREE.Vector3(), {
+        color: preset.colors.secondary,
+        count: qualityCount(preset.charge.particleCount, this.quality, preset.qualityParticleMultiplier),
+        speed: preset.style === 'water' ? 0.52 : 0.32,
+        spread: preset.style === 'water' ? 0.72 : 0.48,
+        lifetime: 999,
+        ...(arcane ? { size: [1.2, 3] as const } : {}),
+      });
+    }
     this.sparks.reset();
     this.configureAccents(preset);
   }
@@ -177,7 +182,7 @@ class ChargeOrbEffect implements PoolableVFX {
     this.updateOrbitParticles();
     this.updateAccents(elapsed);
     const sparkInterval = this.preset.style === 'lightning' ? 0.05 : this.preset.style === 'lava' ? 0.09 : 0.12;
-    if (this.age % sparkInterval < elapsed) {
+    if (this.preset.charge.sparkCount > 0 && this.age % sparkInterval < elapsed) {
       this.sparks.emit(new THREE.Vector3(), {
         color: this.preset.colors.spark,
         count: qualityCount(this.preset.charge.sparkCount, this.quality, this.preset.qualityParticleMultiplier),
@@ -249,6 +254,7 @@ class ChargeOrbEffect implements PoolableVFX {
   }
 
   private updateOrbitParticles(): void {
+    if (this.preset && this.preset.charge.particleCount <= 0) return;
     if (!this.preset) return;
     const points = this.orbitParticles.points;
     const geometry = points.geometry as THREE.BufferGeometry;

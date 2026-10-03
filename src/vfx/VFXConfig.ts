@@ -102,7 +102,9 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       recover: 0.72,
       end: 1,
     },
-    charge: { scale: 0.58, particleCount: 14, sparkCount: 5, lightIntensity: 0.62, twoHanded: false },
+    // Conjuração reduzida a um brilho na mão: sem poeira girando e sem faísca
+    // (0 desliga as duas nuvens). O que importa é a luz que anuncia o tiro.
+    charge: { scale: 0.58, particleCount: 0, sparkCount: 0, lightIntensity: 0.62, twoHanded: false },
     projectile: {
       speed: 25,
       lifetime: 1.1,

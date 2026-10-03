@@ -96,3 +96,20 @@ mas o proxy do preview segurava a página antiga no navegador. Medidas tomadas:
 
 Medição na câmera de jogo (1600×900, FOV 60): a Maga de 1,8 m ocupa 224 px de
 altura e o cometa chega a 441 px; o flash do impacto, a 304 px.
+
+## Terceira rodada (03/10, noite) — comportamento do básico
+
+- **Conjuração só com brilho**: `basic.charge.particleCount = 0` e
+  `charge.sparkCount = 0` (o efeito de carga desliga as duas nuvens; as outras
+  magias mantêm as suas). O clarão da mão continua sendo o próprio brilho.
+- **Impacto só quando acerta inimigo**: o tiro que chega ao fim da vida ou do
+  alcance sem topar ninguém não explode — ele se dissolve em 0,4 s
+  (`beginFade`/`updateFade` no `ProjectileManager`), sem clarão, sem tremor,
+  sem som e sem dano. O impacto em camadas fica reservado ao acerto.
+- **Dano em área de 2 m**: `MAGE_BASIC_SPLASH_RADIUS_METERS = 2` e
+  `MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER = 0.6` em `MageSkillImpact.ts`. O
+  `Game.applyMageBasicSplashDamage` roda depois do dano cheio no alvo e
+  queima os vizinhos dentro de 2 m do ponto de impacto (o alvo fica de fora),
+  incluindo o boneco de treino.
+- Laboratório: sliders **22** (poeira girando) e **23** (faíscas) da carga,
+  para ligar de volta e comparar; selo subiu para **FX v4**.

@@ -265,6 +265,71 @@ describe('Mage basic attack bullet', () => {
     vfx.dispose();
   });
 
+  it('conjura só com o brilho na mão: sem poeira girando nem faísca', () => {
+    const scene = new THREE.Scene();
+    const vfx = new MageVFX(scene, { quality: 'high' });
+    castBasic(vfx, 8);
+
+    const charge = scene.getObjectByName('MageChargeOrbVFX');
+    const glow = charge?.getObjectByName('MageChargeOrbGlow') as THREE.Sprite | undefined;
+    expect(glow?.visible).toBe(true);
+
+    const clouds = charge?.children.filter((child) => child instanceof THREE.Points) ?? [];
+    expect(clouds.length).toBeGreaterThan(0);
+    for (const cloud of clouds) {
+      expect((cloud as THREE.Points).visible).toBe(false);
+      expect((cloud.geometry as THREE.BufferGeometry).drawRange.count).toBe(0);
+    }
+    expect(MAGE_SPELL_PRESETS.basic.charge.particleCount).toBe(0);
+    expect(MAGE_SPELL_PRESETS.basic.charge.sparkCount).toBe(0);
+    vfx.dispose();
+  });
+
+  it('some aos poucos quando o tiro não acerta ninguém, sem explosão', () => {
+    const scene = new THREE.Scene();
+    const vfx = new MageVFX(scene, { quality: 'high' });
+    const { root, mixer, action } = createAction(2, 1);
+    const rightHand = new THREE.Object3D();
+    rightHand.name = 'mixamorig:RightHand';
+    root.add(rightHand);
+    const onImpact = vi.fn();
+    vfx.cast('basic', {
+      caster: root,
+      rightHand,
+      leftHand: null,
+      action,
+      // Ninguém para acertar: o tiro tem que se dissolver sozinho.
+      target: null,
+      fallbackDirection: new THREE.Vector3(0, 0, 1),
+      onImpact,
+    });
+
+    let sawBolt = false;
+    let peakOpacity = 0;
+    let fadedToNothing = false;
+    for (let step = 0; step < 400; step += 1) {
+      mixer.update(0.02);
+      vfx.update(0.02);
+      const bolt = scene.getObjectByName('MageProjectileVFX');
+      if (!bolt) continue;
+      sawBolt = true;
+      const comet = bolt.getObjectByName('MageFrostBulletComet') as THREE.Mesh | undefined;
+      const uniforms = (comet?.material as unknown as {
+        uniforms: { uOpacity: { value: number } };
+      })?.uniforms;
+      const opacity = uniforms?.uOpacity.value ?? 0;
+      peakOpacity = Math.max(peakOpacity, opacity);
+      if (peakOpacity > 0 && opacity <= peakOpacity * 0.35) fadedToNothing = true;
+    }
+
+    expect(sawBolt).toBe(true);
+    expect(fadedToNothing).toBe(true);
+    expect(onImpact).not.toHaveBeenCalled();
+    // Nada de explosão no vazio: só o flash da mão na saída do tiro.
+    expect(findTargetImpact(scene)).toBeUndefined();
+    vfx.dispose();
+  });
+
   it('leaves the frost wake in world space so the trail stays behind the bolt', () => {
     const scene = new THREE.Scene();
     const vfx = new MageVFX(scene, { quality: 'high' });

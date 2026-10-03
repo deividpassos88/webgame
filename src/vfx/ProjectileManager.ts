@@ -60,6 +60,11 @@ const TMP_NEXT = new THREE.Vector3();
 /** Where the glow light sat relative to the projectile when it was a child. */
 const LIGHT_LOCAL_OFFSET = new THREE.Vector3(0, 0.1, 0);
 const TRAIL_SEGMENTS = 14;
+/**
+ * Tiro que não acha ninguém: em vez de explodir, ele perde o brilho e some.
+ * O impacto (clarão, onda, tremor) é reservado para quando existe inimigo.
+ */
+const PROJECTILE_FADE_SECONDS = 0.4;
 /** Particles kept per bullet frost wake, in world space behind the bolt. */
 const FROST_CLOUD_SIZE = 48;
 
@@ -139,6 +144,12 @@ class MageProjectile implements PoolableVFX {
   private frostCloud: PooledParticleCloud | null = null;
   private frostConfig: MageProjectileFrostConfig | null = null;
   private frostTimer = 0;
+  /** Dissolução do tiro que passou reto: sem impacto, só sumindo. */
+  private fading = false;
+  private fadeAge = 0;
+  private fadeGlowOpacity = 0;
+  private fadeTrailOpacity = 0;
+  private fadeMaterials: { material: THREE.MeshBasicMaterial; opacity: number }[] = [];
 
   public constructor(
     private readonly resources: MageVFXResources,
@@ -245,6 +256,9 @@ class MageProjectile implements PoolableVFX {
     this.getCamera = this.sceneCamera;
     this.age = 0;
     this.traveled = 0;
+    this.fading = false;
+    this.fadeAge = 0;
+    this.fadeMaterials = [];
     this.group.visible = true;
     this.group.position.copy(options.origin);
     this.direction.copy(options.direction).setY(options.direction.y);
@@ -312,8 +326,10 @@ class MageProjectile implements PoolableVFX {
   }
 
   public update(delta: number): boolean {
-    if (!this.config || !this.preset || !this.onImpact) return false;
     const elapsed = Math.max(0, delta);
+    // Some aos poucos quando não acertou ninguém: nada de impacto.
+    if (this.fading) return this.updateFade(elapsed);
+    if (!this.config || !this.preset || !this.onImpact) return false;
     this.age += elapsed;
     if (this.bullet) {
       setFrostBulletTime(this.cometMaterial, this.age);
@@ -362,8 +378,12 @@ class MageProjectile implements PoolableVFX {
     this.group.position.copy(next);
     this.traveled += travel;
     if (reachedEnd) {
-      if (!this.target || hitDistance > Math.max(this.config.radius, travel + 0.05)) {
-        this.target = null;
+      const targetInReach = this.target !== null
+        && hitDistance <= Math.max(this.config.radius, travel + 0.05);
+      if (!targetInReach) {
+        // Fim do alcance sem ninguém no caminho: dissolve em vez de explodir.
+        this.beginFade();
+        return true;
       }
       this.impact();
       return false;
@@ -391,10 +411,55 @@ class MageProjectile implements PoolableVFX {
     if (this.age % 0.075 < elapsed) this.emitSecondaryWake();
 
     if (this.age >= this.config.lifetime) {
-      this.impact();
-      return false;
+      // Viveu até o fim da vida sem topar com inimigo: sem impacto, só some.
+      this.beginFade();
+      return true;
     }
     return true;
+  }
+
+  /**
+   * Começa a dissolução: guarda os brilhos atuais para apagá-los em curva e
+   * corta qualquer impacto/rastro novo (o efeito de explosão pertence ao
+   * acerto em inimigo).
+   */
+  private beginFade(): void {
+    if (this.fading) return;
+    this.fading = true;
+    this.fadeAge = 0;
+    this.target = null;
+    this.onImpact = null;
+    this.fadeGlowOpacity = (this.glow.material as THREE.SpriteMaterial).opacity;
+    this.fadeTrailOpacity = this.trailMaterial.uniforms.uOpacity.value;
+    this.fadeMaterials = [this.core, this.iceShard, this.lavaInner].map((mesh) => {
+      const material = mesh.material as THREE.MeshBasicMaterial;
+      return { material, opacity: material.opacity };
+    });
+    this.secondaryParticles.reset();
+    this.releaseFrost();
+  }
+
+  /** Apaga o tiro em ~0,4 s enquanto ele ainda anda um pouco para a frente. */
+  private updateFade(elapsed: number): boolean {
+    this.age += elapsed;
+    this.fadeAge += elapsed;
+    const fade = Math.max(0, 1 - this.fadeAge / PROJECTILE_FADE_SECONDS);
+    this.cometMaterial.uniforms.uOpacity.value = fade;
+    (this.glow.material as THREE.SpriteMaterial).opacity = this.fadeGlowOpacity * fade;
+    this.trailMaterial.uniforms.uOpacity.value = this.fadeTrailOpacity * fade;
+    for (const entry of this.fadeMaterials) entry.material.opacity = entry.opacity * fade;
+    if (this.lightHandle) {
+      this.lightHandle.light.intensity *= 0.86;
+      this.syncLightPosition();
+    }
+    if (this.config) {
+      this.group.position.addScaledVector(this.direction, this.config.speed * 0.3 * elapsed);
+    }
+    if (this.bullet) {
+      setFrostBulletTime(this.cometMaterial, this.age);
+      this.orientComet();
+    }
+    return this.fadeAge < PROJECTILE_FADE_SECONDS;
   }
 
   public reset(): void {
@@ -408,6 +473,9 @@ class MageProjectile implements PoolableVFX {
     this.queryBodyHit = undefined;
     this.age = 0;
     this.traveled = 0;
+    this.fading = false;
+    this.fadeAge = 0;
+    this.fadeMaterials = [];
     this.secondaryParticles.reset();
     this.iceShard.visible = false;
     this.lavaInner.visible = false;
