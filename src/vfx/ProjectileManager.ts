@@ -96,6 +96,8 @@ class MageProjectile implements PoolableVFX {
   private readonly smokeTrailMaterial: EnergyShaderMaterial;
   /** Cabeça do cometa: núcleo esticado no sentido do voo. */
   private headStretch = 1;
+  /** Casca 3D da cabeça: dá volume de chama em volta do núcleo. */
+  private readonly cometHead: THREE.Mesh;
   private config: MageProjectileConfig | null = null;
   private preset: MageSpellPreset | null = null;
   private target: THREE.Object3D | null = null;
@@ -146,6 +148,20 @@ class MageProjectile implements PoolableVFX {
     }));
     this.lavaInner.name = 'MageLavaWhiteHotCoreProjectile';
     this.lavaInner.visible = false;
+
+    // Casca da cabeça do cometa: uma esfera esticada no eixo do voo, bem mais
+    // larga que o núcleo. É o volume de fogo que aparece na imagem.
+    this.cometHead = new THREE.Mesh(resources.sphere, new THREE.MeshBasicMaterial({
+      color: 0xffa526,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    }));
+    this.cometHead.name = 'MageCometHead';
+    this.cometHead.visible = false;
+    this.cometHead.renderOrder = 3;
 
     this.glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: resources.softGlow,
@@ -199,6 +215,7 @@ class MageProjectile implements PoolableVFX {
     this.group.add(
       this.trail,
       this.smokeTrail,
+      this.cometHead,
       this.core,
       this.iceShard,
       this.lavaInner,
@@ -246,6 +263,19 @@ class MageProjectile implements PoolableVFX {
     this.headStretch = comet?.headStretch ?? 1;
     const headRadius = options.preset.projectile.radius * (options.preset.style === 'water' ? 1.25 : 1.15);
     this.core.scale.set(headRadius, headRadius, headRadius * this.headStretch);
+    this.cometHead.visible = comet !== undefined;
+    if (comet) {
+      const headMaterial = this.cometHead.material as THREE.MeshBasicMaterial;
+      headMaterial.color.set(options.preset.colors.glow);
+      headMaterial.opacity = 0.5;
+      // Um pouco maior que o núcleo em todas as direções: o núcleo branco
+      // aparece "dentro" da chama, como na imagem.
+      this.cometHead.scale.set(
+        headRadius * 1.45,
+        headRadius * 1.45,
+        headRadius * this.headStretch * 1.5
+      );
+    }
 
     const glowMaterial = this.glow.material as THREE.SpriteMaterial;
     glowMaterial.map = this.resources.mageTexture(options.preset.style, 'charge');
@@ -261,8 +291,12 @@ class MageProjectile implements PoolableVFX {
 
     const profile = mageQualityProfile(this.quality);
     configureEnergyMaterial(this.trailMaterial, {
-      colorA: options.preset.colors.core,
-      colorB: options.preset.colors.secondary,
+      // ATENÇÃO à convenção da fita: a coordenada `along` é 0 na CABEÇA (z=0)
+      // e 1 na ponta da calda, e o shader pinta `colorB` na cabeça e `colorA`
+      // na calda. Por isso, no cometa: núcleo branco-amarelo atrás da cabeça
+      // derretendo para o vermelho fundo na ponta — igual à imagem.
+      colorA: comet ? options.preset.colors.secondary : options.preset.colors.core,
+      colorB: comet ? options.preset.colors.core : options.preset.colors.secondary,
       opacity: options.preset.style === 'water' ? 0.72 : options.preset.style === 'lava' ? 0.94 : options.preset.id === 'basic' ? 0.95 : 0.82,
       intensity: options.preset.style === 'lava' ? 1.9 : options.preset.style === 'lightning' ? 2.1 : 1.55,
       noiseScale: options.preset.style === 'water' ? 1.1 : 1.45,
@@ -273,14 +307,15 @@ class MageProjectile implements PoolableVFX {
       distortion: styleDistortion(options.preset) * profile.distortionMultiplier,
     });
     configureEnergyMaterial(this.smokeTrailMaterial, {
-      colorA: options.preset.colors.glow,
-      colorB: options.preset.colors.smoke ?? options.preset.colors.secondary,
-      opacity: comet ? 0.5 : 0,
-      intensity: 1.15,
+      // Fumaça: quente (laranja) junto da cabeça e escura na ponta.
+      colorA: options.preset.colors.smoke ?? options.preset.colors.secondary,
+      colorB: options.preset.colors.glow,
+      opacity: comet ? 0.55 : 0,
+      intensity: 1.2,
       noiseScale: 1.05,
       scrollSpeed: 0.85,
-      thickness: 1.55,
-      distortion: 1.8,
+      thickness: 1.7,
+      distortion: 1.9,
     });
     this.updateTrailGeometry(
       options.preset.projectile.trailLength * (comet?.tailLength ?? 1),
@@ -347,10 +382,11 @@ class MageProjectile implements PoolableVFX {
     this.group.position.copy(next);
     this.traveled += travel;
     if (reachedEnd) {
-      if (!this.target || hitDistance > Math.max(this.config.radius, travel + 0.05)) {
-        this.target = null;
+      // Chegou ao alcance máximo sem acertar ninguém: o feitiço se dissipa no
+      // ar. Não existe impacto "no vazio" — impacto é só quando acerta um alvo.
+      if (this.target && hitDistance <= Math.max(this.config.radius, travel + 0.05)) {
+        this.impact();
       }
-      this.impact();
       return false;
     }
     this.updateTrailGeometry(this.config.trailLength, this.config.trailWidth);
@@ -363,6 +399,16 @@ class MageProjectile implements PoolableVFX {
     this.iceShard.rotation.z += elapsed * 5;
     this.lavaInner.rotation.x += elapsed * 7;
     const cometFade = Math.max(0, 1 - this.age / Math.max(0.001, this.config.lifetime));
+    if (this.cometHead.visible) {
+      const flicker = 0.94 + Math.sin(this.age * 26) * 0.06;
+      const headRadius = this.config.radius * 1.15;
+      this.cometHead.scale.set(
+        headRadius * 1.45 * flicker,
+        headRadius * 1.45 * flicker,
+        headRadius * this.headStretch * 1.5 * flicker
+      );
+      (this.cometHead.material as THREE.MeshBasicMaterial).opacity = 0.5 * cometFade;
+    }
     // A fumaça incandescente se dissipa mais rápido que o rastro quente.
     if (this.preset.projectile.comet) {
       this.smokeTrailMaterial.uniforms.uOpacity.value =
@@ -379,7 +425,8 @@ class MageProjectile implements PoolableVFX {
     if (this.age % (this.preset.projectile.comet ? 0.045 : 0.075) < elapsed) this.emitSecondaryWake();
 
     if (this.age >= this.config.lifetime) {
-      this.impact();
+      // Mesma regra do fim de alcance: sem alvo, sem impacto.
+      if (this.target) this.impact();
       return false;
     }
     return true;
@@ -400,6 +447,8 @@ class MageProjectile implements PoolableVFX {
     this.iceShard.visible = false;
     this.lavaInner.visible = false;
     this.smokeTrailMaterial.uniforms.uOpacity.value = 0;
+    this.cometHead.visible = false;
+    (this.cometHead.material as THREE.MeshBasicMaterial).opacity = 0;
     this.headStretch = 1;
     this.lightHandle?.release();
     this.lightHandle = null;
@@ -412,6 +461,7 @@ class MageProjectile implements PoolableVFX {
     (this.iceShard.material as THREE.Material).dispose();
     (this.lavaInner.material as THREE.Material).dispose();
     (this.glow.material as THREE.Material).dispose();
+    (this.cometHead.material as THREE.Material).dispose();
     this.trailMaterial.dispose();
     this.trailGeometry.dispose();
     this.smokeTrailMaterial.dispose();

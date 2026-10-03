@@ -61,24 +61,6 @@ export interface MageImpactConfig {
   readonly lightIntensity: number;
   readonly particleCount: number;
   readonly debrisCount: number;
-  /**
-   * Sigilo rúnico carimbado no chão sob o impacto. É a assinatura do ataque
-   * básico: dá peso ao golpe sem precisar de uma explosão grande.
-   */
-  readonly runeSigil?: {
-    /** Raio final do sigilo, em metros. */
-    readonly radius: number;
-    /** Giro das duas camadas concêntricas (rad/s). */
-    readonly spin: number;
-    /** Intensidade do brilho do sigilo. */
-    readonly intensity: number;
-    /**
-     * Carimba o sigilo no CHÃO sob o impacto em vez de deixá-lo na altura do
-     * golpe. O impacto de um feitiço costuma acontecer no peito do monstro, e
-     * um selo "de chão" ali dentro do corpo não seria visto.
-     */
-    readonly groundStamp?: boolean;
-  };
   /** Coluna de luz vertical no impacto (leitura forte de longe). */
   readonly pillar?: {
     readonly height: number;

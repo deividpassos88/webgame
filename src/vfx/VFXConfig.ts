@@ -78,59 +78,58 @@ function multipliers(low = 0.45, medium = 0.75, high = 1, ultra = high * 1.15): 
 export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> = {
   basic: {
     id: 'basic',
-    // Fogo: o básico é um COMETA incandescente (referência: imagem do cometa
-    // laranja enviada pelo usuário). O estilo 'lava' também troca as texturas
-    // de partícula para as de fogo — nada de plasma azul.
+    // FOGO. O básico é uma bola de fogo com rastro, fiel à imagem de referência:
+    // cabeça amarela incandescente, corpo laranja, calda vermelha e brasas
+    // soltas. O estilo 'lava' também usa as texturas de chama nas partículas.
     style: 'lava',
     delivery: 'projectile',
     colors: {
-      // Núcleo branco-quente, corpo laranja, ponta vermelha, brasas douradas.
-      core: 0xfff6e2,
-      glow: 0xff7a1e,
-      secondary: 0xe2301a,
-      spark: 0xffb648,
-      smoke: 0x5c3a2c,
+      // Núcleo amarelo-branco (o "início mais amarelado" da imagem), laranja
+      // vivo no corpo, vermelho fundo na calda e brasas douradas.
+      core: 0xfff6d8,
+      glow: 0xffa526,
+      secondary: 0xd41f0c,
+      spark: 0xffc25a,
+      smoke: 0x4a3229,
     },
-    // Conjuração RÁPIDA: é o ataque básico. O cometa sai no primeiro terço do
-    // clip, então o golpe encaixa no ritmo de um ataque automático.
+    // Ritmo de ataque normal, no compasso do golpe do Guerreiro: nada de
+    // conjuração instantânea. O fogo acende, o braço avança e a bola sai.
     timeline: {
-      chargeStart: 0.02,
-      magicCircle: 0.05,
-      launch: 0.14,
-      chargeEnd: 0.18,
-      recover: 0.3,
+      chargeStart: 0.04,
+      magicCircle: 0.08,
+      launch: 0.2,
+      chargeEnd: 0.26,
+      recover: 0.4,
       end: 1,
     },
-    // Carga curta: a mão acende, não cria um sol.
-    charge: { scale: 0.72, particleCount: 20, sparkCount: 10, lightIntensity: 1.2, twoHanded: false },
-    // Clarão de disparo enxuto: é o "acender" do cometa na mão.
-    muzzle: { scale: 0.22, particleCount: 20, lightIntensity: 0.7 },
-    // Cometa: rápido, cabeça alongada no sentido do voo, cauda de brasa longa
-    // e uma faixa de fumaça incandescente atrás.
+    charge: { scale: 0.75, particleCount: 22, sparkCount: 12, lightIntensity: 1.3, twoHanded: false },
+    // Clarão de disparo: o fogo acendendo na mão, curto e quente.
+    muzzle: { scale: 0.24, particleCount: 22, lightIntensity: 0.8 },
+    // Bola de fogo: MAIS LENTA (14 m/s, contra 24 antes), cabeça alongada no
+    // sentido do voo, cauda quente comprida e faixa larga de fumaça atrás.
     projectile: {
-      speed: 24,
-      lifetime: 1.15,
+      speed: 14,
+      lifetime: 1.5,
       radius: 0.5,
-      trailLength: 2.6,
-      trailWidth: 0.34,
-      comet: { headStretch: 2.4, tailLength: 1.35, smokeWidth: 0.42, emberCount: 9, emberSize: 0.62 },
+      trailLength: 3,
+      trailWidth: 0.26,
+      comet: { headStretch: 2.6, tailLength: 1.4, smokeWidth: 0.55, emberCount: 12, emberSize: 0.55 },
     },
     impact: {
-      duration: 0.6,
-      radius: 1.15,
-      shockwaveRadius: 2.4,
+      duration: 0.62,
+      radius: 1.2,
+      shockwaveRadius: 2.5,
       cameraShakeIntensity: 0.06,
       cameraShakeDuration: 0.2,
-      lightIntensity: 2,
-      particleCount: 76,
-      // Estilhaços de brasa voando: poucos e visíveis.
-      debrisCount: 6,
-      // Assinatura do impacto: selo de brasa no chão, coluna de fogo,
+      lightIntensity: 2.1,
+      particleCount: 82,
+      // Estilhaços de brasa voando.
+      debrisCount: 8,
+      // Impacto de FOGO, sem selo/círculo no chão: explosão, coluna de chama,
       // estilhaços em estrela e jatos incandescentes.
-      runeSigil: { radius: 2.6, spin: 3.6, intensity: 2.4, groundStamp: true },
-      pillar: { height: 3.8, radius: 0.62 },
-      spikes: { count: 8, length: 1.3 },
-      jets: { count: 8, length: 1.8 },
+      pillar: { height: 3.6, radius: 0.6 },
+      spikes: { count: 8, length: 1.35 },
+      jets: { count: 8, length: 1.9 },
     },
     hand: 'right',
     qualityParticleMultiplier: multipliers(0.45, 0.75, 1),

@@ -25,8 +25,8 @@ interface ImpactPlayOptions {
   readonly particleCount?: number;
   /**
    * Clarão curto na mão do conjurador no disparo. Ele usa o mesmo preset do
-   * impacto, então as camadas "de assinatura" (sigilo, pilar, estilhaços)
-   * ficam desligadas para não carimbar um selo no pé do mago.
+   * impacto, então as camadas "de assinatura" (pilar, estilhaços, jatos)
+   * ficam desligadas: o disparo é só o acender do feitiço na mão.
    */
   readonly muzzleFlash?: boolean;
 }
@@ -47,11 +47,6 @@ class ImpactEffect implements PoolableVFX {
   private readonly core: THREE.Mesh;
   private readonly shockwave: THREE.Mesh;
   private readonly shockwaveMaterial: EnergyShaderMaterial;
-  /** Sigilo rúnico do ataque básico: duas camadas concêntricas no chão. */
-  private readonly sigilOuter: THREE.Mesh;
-  private readonly sigilInner: THREE.Mesh;
-  private readonly sigilOuterMaterial: EnergyShaderMaterial;
-  private readonly sigilInnerMaterial: EnergyShaderMaterial;
   /** Segunda onda de choque, atrasada: dá o "trovão" duplo do impacto. */
   private readonly shockwaveTwo: THREE.Mesh;
   private readonly shockwaveTwoMaterial: EnergyShaderMaterial;
@@ -180,32 +175,6 @@ class ImpactEffect implements PoolableVFX {
       this.group.add(mesh);
     }
 
-    this.sigilOuterMaterial = createMagicCircleMaterial({
-      opacity: 0,
-      intensity: 1.8,
-      thickness: 0.6,
-      distortion: 1.2,
-      depthTest: true,
-    });
-    this.sigilInnerMaterial = createMagicCircleMaterial({
-      opacity: 0,
-      intensity: 1.15,
-      thickness: 0.85,
-      distortion: 0.8,
-      depthTest: true,
-    });
-    this.sigilOuter = new THREE.Mesh(resources.quad, this.sigilOuterMaterial);
-    this.sigilInner = new THREE.Mesh(resources.quad, this.sigilInnerMaterial);
-    this.sigilOuter.name = 'MageImpactRuneSigilOuter';
-    this.sigilInner.name = 'MageImpactRuneSigilInner';
-    for (const sigil of [this.sigilOuter, this.sigilInner]) {
-      // Deitado no chão, um dedo acima dele para não brigar com o piso.
-      sigil.rotation.x = -Math.PI / 2;
-      sigil.position.y = 0.04;
-      sigil.visible = false;
-      sigil.renderOrder = 4;
-      this.group.add(sigil);
-    }
     this.group.add(this.shockwaveTwo, this.pillar);
 
     for (let index = 0; index < MAX_JETS; index += 1) {
@@ -222,7 +191,7 @@ class ImpactEffect implements PoolableVFX {
         toneMapped: false,
       });
       const sprite = new THREE.Sprite(material);
-      sprite.name = 'MageImpactPlasmaJet';
+      sprite.name = 'MageImpactFlameJet';
       sprite.visible = false;
       sprite.renderOrder = 6;
       this.jets.push(sprite);
@@ -334,38 +303,6 @@ class ImpactEffect implements PoolableVFX {
     }
     this.muzzleFlash = options.muzzleFlash === true;
     this.configureJets(preset, this.muzzleFlash);
-    const sigil = this.muzzleFlash ? undefined : preset.impact.runeSigil;
-    this.sigilOuter.visible = sigil !== undefined;
-    this.sigilInner.visible = sigil !== undefined;
-    if (sigil) {
-      // O sigilo é uma marca de CHÃO: sobe/cai em relação ao ponto do impacto
-      // para ficar sempre no piso, mesmo quando o golpe acerta o peito do
-      // monstro (o impacto acontece ~1 m acima do chão).
-      const groundOffset = sigil.groundStamp === true ? -options.position.y + 0.04 : 0.04;
-      this.sigilOuter.position.y = groundOffset;
-      this.sigilInner.position.y = groundOffset;
-      configureEnergyMaterial(this.sigilOuterMaterial, {
-        colorA: 0xffffff,
-        colorB: preset.colors.glow,
-        opacity: 0.78,
-        intensity: sigil.intensity,
-        scrollSpeed: 0.9,
-        thickness: 0.6,
-        distortion: 1.2,
-      });
-      configureEnergyMaterial(this.sigilInnerMaterial, {
-        colorA: preset.colors.secondary,
-        colorB: preset.colors.core,
-        opacity: 0.6,
-        intensity: sigil.intensity * 0.8,
-        scrollSpeed: -0.7,
-        thickness: 0.85,
-        distortion: 0.8,
-      });
-      this.sigilOuter.rotation.z = Math.random() * Math.PI;
-      this.sigilInner.rotation.z = -Math.random() * Math.PI;
-    }
-
     // Coluna de luz: a leitura mais forte do impacto, visível de longe.
     const pillar = this.muzzleFlash ? undefined : preset.impact.pillar;
     this.pillar.visible = pillar !== undefined;
@@ -465,23 +402,6 @@ class ImpactEffect implements PoolableVFX {
 
     if (this.jetCount > 0) this.updateJets();
 
-    const sigil = this.preset.impact.runeSigil;
-    if (sigil && !this.muzzleFlash) {
-      // O sigilo abre junto com a onda de choque e gira em sentidos opostos.
-      const sigilProgress = Math.min(1, progress * 1.35);
-      const sigilFade = 1 - sigilProgress;
-      setEnergyTime(this.sigilOuterMaterial, this.age * sigil.spin);
-      setEnergyTime(this.sigilInnerMaterial, -this.age * sigil.spin * 0.74);
-      this.sigilOuterMaterial.uniforms.uOpacity.value = sigilFade * 0.78;
-      this.sigilInnerMaterial.uniforms.uOpacity.value = sigilFade * 0.6;
-      const sigilScale = sigil.radius * this.baseScale * (0.35 + sigilProgress * 0.75);
-      this.sigilOuter.scale.setScalar(sigilScale);
-      this.sigilInner.scale.setScalar(sigilScale * 0.62);
-      this.sigilOuter.rotation.z += elapsed * sigil.spin * 0.35;
-      this.sigilInner.rotation.z -= elapsed * sigil.spin * 0.26;
-      this.sigilOuter.visible = sigilFade > 0.01;
-      this.sigilInner.visible = sigilFade > 0.01;
-    }
     if (this.lightHandle) this.lightHandle.light.intensity *= Math.max(0, 1 - elapsed * 8);
     this.particles.update(elapsed);
     this.smoke.update(elapsed);
@@ -503,10 +423,6 @@ class ImpactEffect implements PoolableVFX {
     (this.flash.material as THREE.SpriteMaterial).opacity = 0;
     (this.burst.material as THREE.SpriteMaterial).opacity = 0;
     this.shockwaveMaterial.uniforms.uOpacity.value = 0;
-    this.sigilOuterMaterial.uniforms.uOpacity.value = 0;
-    this.sigilInnerMaterial.uniforms.uOpacity.value = 0;
-    this.sigilOuter.visible = false;
-    this.sigilInner.visible = false;
     this.shockwaveTwo.visible = false;
     this.shockwaveTwoMaterial.uniforms.uOpacity.value = 0;
     this.pillar.visible = false;
@@ -533,8 +449,6 @@ class ImpactEffect implements PoolableVFX {
     (this.burst.material as THREE.Material).dispose();
     this.shockwaveMaterial.dispose();
     for (const material of this.jetMaterials) material.dispose();
-    this.sigilOuterMaterial.dispose();
-    this.sigilInnerMaterial.dispose();
     this.shockwaveTwoMaterial.dispose();
     this.pillarMaterial.dispose();
     for (const mesh of this.spikes) (mesh.material as THREE.Material).dispose();

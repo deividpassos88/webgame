@@ -90,7 +90,6 @@ basicAction.clampWhenFinished = true;
 const vfx = new MageVFX(scene, { quality: 'high' });
 
 const layerState = {
-  runeSigil: true,
   pillar: true,
   spikes: true,
   jets: true,
@@ -104,7 +103,6 @@ function presetFor(spellId: MageSpellId): MageSpellPreset {
     ...preset,
     impact: {
       ...impact,
-      runeSigil: layerState.runeSigil ? impact.runeSigil : undefined,
       pillar: layerState.pillar ? impact.pillar : undefined,
       spikes: layerState.spikes ? impact.spikes : undefined,
       jets: layerState.jets ? impact.jets : undefined,

@@ -960,23 +960,6 @@ export class MageVFX {
         cast.preset.impact.cameraShakeDuration
       );
       this.emitAudio(cast.context, cast.preset, 'impact', impactPoint);
-      const sigil = cast.preset.impact.runeSigil;
-      if (sigil) {
-        // Resíduo: o selo continua queimando no chão depois do clarão, dando
-        // peso ao golpe (sem mexer em dano ou alcance). O chão fica na origem
-        // do mundo; o impacto acontece na altura do peito do monstro.
-        const residue = impactPoint.clone();
-        residue.y = 0.05;
-        this.magicCircles.play({
-          parent: this.scene,
-          position: residue,
-          color: cast.preset.colors.secondary,
-          radius: sigil.radius * 0.85,
-          duration: 1.15,
-          followParent: false,
-          groundAligned: true,
-        });
-      }
     }
     if (cast.impactDelivered) return;
     if (target && (!cast.context.isTargetAlive || cast.context.isTargetAlive(target))) {
