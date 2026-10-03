@@ -11,7 +11,12 @@ import {
   type EnergyShaderMaterial,
 } from './VFXMaterials';
 import { VFXLightPool, type VFXLightHandle } from './VFXLightPool';
-import type { MageProjectileConfig, MageSpellPreset, MageVFXQuality } from './VFXTypes';
+import type {
+  MageProjectileConfig,
+  MageProjectileFrostConfig,
+  MageSpellPreset,
+  MageVFXQuality,
+} from './VFXTypes';
 
 export interface MageProjectileImpact {
   readonly position: THREE.Vector3;
@@ -41,6 +46,21 @@ const TMP_NEXT = new THREE.Vector3();
 /** Where the glow light sat relative to the projectile when it was a child. */
 const LIGHT_LOCAL_OFFSET = new THREE.Vector3(0, 0.1, 0);
 const TRAIL_SEGMENTS = 14;
+/** Particles kept per bullet frost wake, in world space behind the bolt. */
+const FROST_CLOUD_SIZE = 48;
+
+/** Halo sprite diameter as a multiple of the projectile radius. */
+function resolveHaloScale(preset: MageSpellPreset): number {
+  const configured = preset.projectile.haloScale;
+  if (typeof configured === 'number' && configured > 0) return configured;
+  return preset.style === 'water' ? 4 : 3.4;
+}
+
+function resolveHaloOpacity(preset: MageSpellPreset): number {
+  const configured = preset.projectile.haloOpacity;
+  if (typeof configured === 'number' && configured >= 0) return configured;
+  return preset.style === 'lava' ? 0.98 : 0.9;
+}
 
 function targetPoint(target: THREE.Object3D, output: THREE.Vector3): THREE.Vector3 {
   target.getWorldPosition(output);
@@ -77,6 +97,9 @@ class MageProjectile implements PoolableVFX {
   private readonly core: THREE.Mesh;
   private readonly iceShard: THREE.Mesh;
   private readonly lavaInner: THREE.Mesh;
+  private readonly bulletBody: THREE.Mesh;
+  private readonly bulletNose: THREE.Mesh;
+  private readonly bulletShockCone: THREE.Mesh;
   private readonly glow: THREE.Sprite;
   private readonly trail: THREE.Mesh;
   private readonly trailGeometry = new THREE.BufferGeometry();
@@ -95,11 +118,18 @@ class MageProjectile implements PoolableVFX {
   private direction = new THREE.Vector3(0, 0, 1);
   private age = 0;
   private traveled = 0;
+  private haloScale = 3.4;
+  private bullet = false;
+  /** World-space frost wake: it must not follow the bolt once it is released. */
+  private frostCloud: PooledParticleCloud | null = null;
+  private frostConfig: MageProjectileFrostConfig | null = null;
+  private frostTimer = 0;
 
   public constructor(
     private readonly resources: MageVFXResources,
     private readonly quality: MageVFXQuality,
-    private readonly lightPool: VFXLightPool
+    private readonly lightPool: VFXLightPool,
+    private readonly scene: THREE.Scene
   ) {
     this.group.name = 'MageProjectileVFX';
     this.group.visible = false;
@@ -137,6 +167,34 @@ class MageProjectile implements PoolableVFX {
     this.lavaInner.name = 'MageLavaWhiteHotCoreProjectile';
     this.lavaInner.visible = false;
 
+    // Bullet silhouette: a small cylinder body, a cone nose pointing down the
+    // flight axis (+Z, the group is aimed with setFromUnitVectors) and an open
+    // shock cone bleeding backwards. All three are unit geometries scaled by the
+    // projectile radius at fire time, so the same pool serves any spell.
+    const bulletMaterial = (name: string): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    this.bulletBody = new THREE.Mesh(resources.bulletBody, bulletMaterial('MageBulletBody'));
+    this.bulletBody.name = 'MageBulletBody';
+    this.bulletBody.rotation.x = Math.PI / 2;
+    this.bulletBody.visible = false;
+
+    this.bulletNose = new THREE.Mesh(resources.bulletNose, bulletMaterial('MageBulletNose'));
+    this.bulletNose.name = 'MageBulletNose';
+    this.bulletNose.rotation.x = Math.PI / 2;
+    this.bulletNose.visible = false;
+
+    this.bulletShockCone = new THREE.Mesh(resources.bulletShockCone, bulletMaterial('MageBulletShockCone'));
+    this.bulletShockCone.name = 'MageBulletShockCone';
+    this.bulletShockCone.rotation.x = Math.PI / 2;
+    (this.bulletShockCone.material as THREE.MeshBasicMaterial).side = THREE.DoubleSide;
+    this.bulletShockCone.visible = false;
+
     this.glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: resources.softGlow,
       color: 0xffffff,
@@ -167,7 +225,17 @@ class MageProjectile implements PoolableVFX {
     this.trail.renderOrder = 4;
 
     this.secondaryParticles = new PooledParticleCloud(38, resources.softGlow);
-    this.group.add(this.trail, this.core, this.iceShard, this.lavaInner, this.glow, this.secondaryParticles.points);
+    this.group.add(
+      this.trail,
+      this.core,
+      this.iceShard,
+      this.lavaInner,
+      this.bulletShockCone,
+      this.bulletBody,
+      this.bulletNose,
+      this.glow,
+      this.secondaryParticles.points
+    );
   }
 
   public fire(options: ProjectileFireOptions): void {
@@ -186,38 +254,48 @@ class MageProjectile implements PoolableVFX {
     this.direction.normalize();
     this.group.quaternion.setFromUnitVectors(FORWARD, this.direction);
 
+    const radius = options.preset.projectile.radius;
+    this.bullet = options.preset.projectile.shape === 'bullet';
+    this.configureBullet(options.preset, radius);
+
     const coreMaterial = this.core.material as THREE.MeshBasicMaterial;
     coreMaterial.color.set(options.preset.colors.core);
-    coreMaterial.opacity = options.preset.style === 'ice' ? 0.28 : 0.96;
-    this.core.visible = options.preset.style !== 'ice';
-    this.core.scale.setScalar(options.preset.projectile.radius * (options.preset.style === 'water' ? 1.25 : 1.15));
+    coreMaterial.opacity = this.bullet ? 1 : options.preset.style === 'ice' ? 0.28 : 0.96;
+    this.core.visible = this.bullet || options.preset.style !== 'ice';
+    this.core.scale.setScalar(radius * (this.bullet ? 0.75 : options.preset.style === 'water' ? 1.25 : 1.15));
+    // On the bullet the core is the white-hot tip at the end of the nose.
+    this.core.position.set(0, 0, this.bullet ? radius * 2.8 : 0);
 
-    this.iceShard.visible = options.preset.style === 'ice';
-    (this.iceShard.material as THREE.MeshBasicMaterial).opacity = options.preset.style === 'ice' ? 0.95 : 0;
+    this.iceShard.visible = options.preset.style === 'ice' && !this.bullet;
+    (this.iceShard.material as THREE.MeshBasicMaterial).opacity = this.iceShard.visible ? 0.95 : 0;
     (this.iceShard.material as THREE.MeshBasicMaterial).color.set(options.preset.colors.core);
-    this.iceShard.scale.setScalar(options.preset.projectile.radius * 3.3);
+    this.iceShard.scale.setScalar(radius * 3.3);
 
-    this.lavaInner.visible = options.preset.style === 'lava';
-    (this.lavaInner.material as THREE.MeshBasicMaterial).opacity = options.preset.style === 'lava' ? 1 : 0;
+    this.lavaInner.visible = options.preset.style === 'lava' && !this.bullet;
+    (this.lavaInner.material as THREE.MeshBasicMaterial).opacity = this.lavaInner.visible ? 1 : 0;
     (this.lavaInner.material as THREE.MeshBasicMaterial).color.set(options.preset.colors.core);
-    this.lavaInner.scale.setScalar(options.preset.projectile.radius * 2.2);
+    this.lavaInner.scale.setScalar(radius * 2.2);
 
     const glowMaterial = this.glow.material as THREE.SpriteMaterial;
     glowMaterial.map = this.resources.mageTexture(options.preset.style, 'charge');
     glowMaterial.color.set(options.preset.colors.glow);
-    glowMaterial.opacity = options.preset.style === 'lava' ? 0.98 : 0.9;
+    glowMaterial.opacity = resolveHaloOpacity(options.preset);
     this.secondaryParticles.setTexture(this.resources.mageTexture(options.preset.style, 'charge'));
-    this.glow.scale.setScalar(options.preset.projectile.radius * (options.preset.style === 'water' ? 4.0 : 3.4));
+    this.haloScale = resolveHaloScale(options.preset);
+    this.glow.scale.setScalar(radius * this.haloScale);
+    this.configureFrost(options.preset);
 
     const profile = mageQualityProfile(this.quality);
     configureEnergyMaterial(this.trailMaterial, {
       colorA: options.preset.colors.core,
       colorB: options.preset.colors.secondary,
-      opacity: options.preset.style === 'water' ? 0.72 : options.preset.style === 'lava' ? 0.94 : 0.82,
+      opacity: this.bullet
+        ? 0.55
+        : options.preset.style === 'water' ? 0.72 : options.preset.style === 'lava' ? 0.94 : 0.82,
       intensity: options.preset.style === 'lava' ? 1.9 : options.preset.style === 'lightning' ? 2.1 : 1.55,
       noiseScale: options.preset.style === 'water' ? 1.1 : 1.45,
       scrollSpeed: options.preset.style === 'lava' ? 1.45 : options.preset.style === 'lightning' ? 2.6 : 1.65,
-      thickness: options.preset.id === 'basic' ? 0.8 : 1.08,
+      thickness: this.bullet ? 0.62 : options.preset.id === 'basic' ? 0.8 : 1.08,
       distortion: styleDistortion(options.preset) * profile.distortionMultiplier,
     });
     this.updateTrailGeometry(options.preset.projectile.trailLength, options.preset.projectile.trailWidth);
@@ -228,8 +306,8 @@ class MageProjectile implements PoolableVFX {
     this.lightHandle = profile.enableSecondaryLights ? this.lightPool.acquire() : null;
     if (this.lightHandle) {
       this.lightHandle.light.color.set(options.preset.colors.glow);
-      this.lightHandle.light.intensity = options.preset.style === 'lava' ? 0.9 : 0.55;
-      this.lightHandle.light.distance = options.preset.projectile.radius * 8;
+      this.lightHandle.light.intensity = options.preset.style === 'lava' ? 0.9 : this.bullet ? 0.32 : 0.55;
+      this.lightHandle.light.distance = options.preset.projectile.radius * (this.bullet ? 14 : 8);
       this.syncLightPosition();
     }
     this.emitSecondaryWake();
@@ -291,9 +369,16 @@ class MageProjectile implements PoolableVFX {
     this.updateTrailGeometry(this.config.trailLength, this.config.trailWidth);
     this.secondaryParticles.points.position.copy(TMP_LOCAL.set(0, 0, -this.config.trailLength * 0.26));
     this.secondaryParticles.update(elapsed);
+    this.updateFrost(elapsed);
 
     const pulse = 0.92 + Math.sin(this.age * (this.preset.style === 'water' ? 18 : 28)) * 0.08;
-    this.glow.scale.setScalar(this.config.radius * (this.preset.style === 'water' ? 3.6 : 3.1) * pulse);
+    this.glow.scale.setScalar(this.config.radius * this.haloScale * pulse);
+    if (this.bullet) {
+      // Slow roll around the flight axis: the bolt keeps its silhouette but
+      // never looks like a static decal.
+      this.bulletBody.rotation.y += elapsed * 6;
+      this.bulletNose.rotation.y += elapsed * 6;
+    }
     this.core.rotation.y += elapsed * (this.preset.style === 'water' ? 4 : 2);
     this.iceShard.rotation.z += elapsed * 5;
     this.lavaInner.rotation.x += elapsed * 7;
@@ -325,6 +410,15 @@ class MageProjectile implements PoolableVFX {
     this.secondaryParticles.reset();
     this.iceShard.visible = false;
     this.lavaInner.visible = false;
+    this.core.position.set(0, 0, 0);
+    this.bullet = false;
+    this.bulletBody.visible = false;
+    this.bulletNose.visible = false;
+    this.bulletShockCone.visible = false;
+    (this.bulletBody.material as THREE.MeshBasicMaterial).opacity = 0;
+    (this.bulletNose.material as THREE.MeshBasicMaterial).opacity = 0;
+    (this.bulletShockCone.material as THREE.MeshBasicMaterial).opacity = 0;
+    this.releaseFrost();
     this.lightHandle?.release();
     this.lightHandle = null;
     this.trailMaterial.uniforms.uOpacity.value = 0;
@@ -334,10 +428,107 @@ class MageProjectile implements PoolableVFX {
     (this.core.material as THREE.Material).dispose();
     (this.iceShard.material as THREE.Material).dispose();
     (this.lavaInner.material as THREE.Material).dispose();
+    (this.bulletBody.material as THREE.Material).dispose();
+    (this.bulletNose.material as THREE.Material).dispose();
+    (this.bulletShockCone.material as THREE.Material).dispose();
     (this.glow.material as THREE.Material).dispose();
     this.trailMaterial.dispose();
     this.trailGeometry.dispose();
     this.secondaryParticles.dispose();
+    this.releaseFrost();
+    this.frostCloud?.dispose();
+    this.frostCloud = null;
+  }
+
+  /**
+   * Scales the three unit meshes into the small bolt silhouette: nose cone at
+   * +Z (flight axis), body behind it, hollow shock cone bleeding backwards.
+   */
+  private configureBullet(preset: MageSpellPreset, radius: number): void {
+    const body = this.bulletBody.material as THREE.MeshBasicMaterial;
+    const nose = this.bulletNose.material as THREE.MeshBasicMaterial;
+    const shock = this.bulletShockCone.material as THREE.MeshBasicMaterial;
+
+    this.bulletBody.visible = this.bullet;
+    this.bulletNose.visible = this.bullet;
+    this.bulletShockCone.visible = this.bullet;
+    if (!this.bullet) {
+      body.opacity = 0;
+      nose.opacity = 0;
+      shock.opacity = 0;
+      return;
+    }
+
+    const bodyLength = radius * 3.2;
+    const bodyThickness = radius * 1.5;
+    this.bulletBody.scale.set(bodyThickness, bodyLength, bodyThickness);
+    this.bulletBody.position.set(0, 0, -radius);
+    body.color.set(preset.colors.glow);
+    body.opacity = 0.95;
+
+    const noseLength = radius * 2.4;
+    this.bulletNose.scale.set(bodyThickness, noseLength, bodyThickness);
+    this.bulletNose.position.set(0, 0, radius * 1.8);
+    nose.color.set(preset.colors.core);
+    nose.opacity = 0.98;
+
+    const shockLength = radius * 3.1;
+    this.bulletShockCone.scale.set(radius * 2.4, shockLength, radius * 2.4);
+    this.bulletShockCone.position.set(0, 0, -radius * 2.1);
+    shock.color.set(preset.colors.secondary);
+    shock.opacity = 0.22;
+  }
+
+  /** Builds (once) and restarts the world-space frost wake of this bolt. */
+  private configureFrost(preset: MageSpellPreset): void {
+    this.frostConfig = preset.projectile.frost ?? null;
+    this.frostTimer = 0;
+    if (!this.frostConfig) return;
+    if (!this.frostCloud) {
+      const blending = this.frostConfig.blending === 'normal' ? 'normal' as const : 'additive' as const;
+      this.frostCloud = new PooledParticleCloud(FROST_CLOUD_SIZE, this.resources.smoke, { blending });
+    }
+    this.frostCloud.reset();
+    // The wake lives in the scene, not under the bolt: particles must stay
+    // where they were released while the bolt keeps flying (a child cloud would
+    // drag the whole trail along).
+    this.scene.add(this.frostCloud.points);
+  }
+
+  private releaseFrost(): void {
+    this.frostConfig = null;
+    this.frostTimer = 0;
+    this.frostCloud?.reset();
+    this.frostCloud?.points.removeFromParent();
+  }
+
+  private updateFrost(delta: number): void {
+    const frost = this.frostConfig;
+    const cloud = this.frostCloud;
+    if (!frost || !cloud) return;
+    const interval = Math.max(0.008, frost.interval);
+    this.frostTimer += delta;
+    const perPuff = Math.max(
+      1,
+      Math.round(frost.count * mageQualityProfile(this.quality).smokeMultiplier)
+    );
+    let puffs = 0;
+    while (this.frostTimer >= interval && puffs < 4) {
+      this.frostTimer -= interval;
+      puffs += 1;
+      cloud.add(this.group.position, {
+        color: frost.color,
+        count: perPuff,
+        speed: frost.speed,
+        spread: frost.spread,
+        lifetime: frost.lifetime,
+        upwardBias: frost.upwardBias ?? 0,
+        size: frost.size,
+        opacity: frost.opacity,
+        growth: frost.growth ?? 1,
+      });
+    }
+    cloud.update(delta);
   }
 
   /**
@@ -379,14 +570,22 @@ class MageProjectile implements PoolableVFX {
   private emitSecondaryWake(): void {
     if (!this.preset) return;
     const profile = mageQualityProfile(this.quality);
-    const base = this.preset.style === 'lava' ? 16 : this.preset.style === 'water' ? 16 : this.preset.style === 'ice' ? 12 : 10;
+    // The bullet already carries a frost wake, so its sparkles stay sparse.
+    const base = this.bullet
+      ? 4
+      : this.preset.style === 'lava' || this.preset.style === 'water'
+        ? 16
+        : this.preset.style === 'ice'
+          ? 12
+          : 10;
     this.secondaryParticles.emit(new THREE.Vector3(), {
       color: this.preset.style === 'lava' ? (this.preset.colors.smoke ?? this.preset.colors.secondary) : this.preset.colors.spark,
       count: Math.max(1, Math.round(base * profile.particleMultiplier)),
-      speed: this.preset.style === 'lava' ? 0.75 : 1.05,
-      spread: this.preset.style === 'water' ? 1.2 : 0.82,
-      lifetime: this.preset.style === 'lava' ? 0.58 : 0.44,
+      speed: this.preset.style === 'lava' ? 0.75 : this.bullet ? 0.7 : 1.05,
+      spread: this.preset.style === 'water' ? 1.2 : this.bullet ? 0.7 : 0.82,
+      lifetime: this.preset.style === 'lava' ? 0.58 : this.bullet ? 0.3 : 0.44,
       upwardBias: this.preset.style === 'lava' ? 0.22 : 0.05,
+      ...(this.bullet ? { size: [0.8, 2] as const } : {}),
     });
   }
 
@@ -411,7 +610,8 @@ export class ProjectileManager {
     lightPool: VFXLightPool
   ) {
     this.pool = new VFXPool(
-      () => new MageProjectile(resources, quality, lightPool),
+      // Scene is handed to each bolt so its frost wake can live in world space.
+      () => new MageProjectile(resources, quality, lightPool, scene),
       MAGE_VFX_LIMITS.maxProjectiles
     );
   }

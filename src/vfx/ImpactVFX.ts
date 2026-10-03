@@ -176,7 +176,16 @@ class ImpactEffect implements PoolableVFX {
     }
 
     this.particles.setTexture(this.resources.mageTexture(preset.style, 'impact'));
-    this.smoke.setTexture(preset.style === 'lava' ? this.resources.flame : this.resources.mageTexture(preset.style, 'impact'));
+    this.smoke.setTexture(
+      preset.style === 'lava'
+        ? this.resources.flame
+        : preset.projectile?.frost
+          ? this.resources.smoke
+          : this.resources.mageTexture(preset.style, 'impact')
+    );
+    // Particle sizes are screen-space units (~0.21 m each): the bullet impact
+    // has to use small sparks, not the 2-8 m glow blobs of the big spells.
+    const bullet = preset.projectile?.shape === 'bullet';
     this.particles.emit(new THREE.Vector3(), {
       color: preset.colors.spark,
       count: qualityCount(preset.impact.particleCount, this.quality, preset.qualityParticleMultiplier),
@@ -184,7 +193,9 @@ class ImpactEffect implements PoolableVFX {
       spread: preset.style === 'water' ? 1.55 : 1.25,
       lifetime: this.duration,
       upwardBias: preset.style === 'water' ? 0.55 : 0.32,
+      ...(bullet ? { size: [1.5, 4] as const } : {}),
     });
+    const frost = preset.projectile?.frost;
     if (preset.style === 'lava' || preset.style === 'water' || preset.style === 'ice') {
       const profile = mageQualityProfile(this.quality);
       this.smoke.emit(new THREE.Vector3(), {
@@ -194,6 +205,20 @@ class ImpactEffect implements PoolableVFX {
         spread: 1,
         lifetime: this.duration * 1.15,
         upwardBias: preset.style === 'lava' ? 0.65 : 0.35,
+      });
+    } else if (frost) {
+      // Bullet impact: a short puff of the same frost vapor the bolt trailed.
+      const profile = mageQualityProfile(this.quality);
+      this.smoke.emit(new THREE.Vector3(), {
+        color: frost.color,
+        count: Math.max(3, Math.round(9 * profile.smokeMultiplier)),
+        speed: 0.85,
+        spread: 1.15,
+        lifetime: this.duration * 1.25,
+        upwardBias: 0.38,
+        size: [1.6, 4],
+        opacity: 0.5,
+        growth: 1.2,
       });
     } else {
       this.smoke.reset();

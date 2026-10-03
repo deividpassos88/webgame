@@ -45,6 +45,9 @@ export class MageVFXResources {
   public readonly shockwave = new THREE.RingGeometry(0.18, 0.24, 36);
   public readonly magicCircle = new THREE.RingGeometry(0.24, 0.28, 48);
   public readonly beamCylinder = new THREE.CylinderGeometry(1, 1, 1, 16, 1, true);
+  public readonly bulletBody = new THREE.CylinderGeometry(1, 1, 1, 12, 1, false);
+  public readonly bulletNose = new THREE.ConeGeometry(1, 1, 12, 1, false);
+  public readonly bulletShockCone = new THREE.ConeGeometry(1, 1, 12, 1, true);
   public readonly barrierSphere = new THREE.SphereGeometry(1, 32, 18);
   public readonly quad = new THREE.PlaneGeometry(1, 1);
   public readonly loader = new THREE.TextureLoader();
@@ -111,6 +114,9 @@ export class MageVFXResources {
     this.shockwave.dispose();
     this.magicCircle.dispose();
     this.beamCylinder.dispose();
+    this.bulletBody.dispose();
+    this.bulletNose.dispose();
+    this.bulletShockCone.dispose();
     this.barrierSphere.dispose();
     this.quad.dispose();
     this.softGlow.dispose();

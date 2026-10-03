@@ -44,6 +44,7 @@ class ChargeOrbEffect implements PoolableVFX {
   private age = 0;
   private intensity = 0;
   private preset: MageSpellPreset | null = null;
+  private arcaneParticleSize = false;
 
   public constructor(
     private readonly resources: MageVFXResources,
@@ -129,12 +130,18 @@ class ChargeOrbEffect implements PoolableVFX {
       this.lightHandle.light.position.copy(this.group.position);
     }
 
+    // Sizes are screen-space units (~0.21 m each). The arcane charge belongs to
+    // the basic attack, so it stays a small spark in the palm; the big spells
+    // keep their wide glow field.
+    const arcane = preset.style === 'arcane';
+    this.arcaneParticleSize = arcane;
     this.orbitParticles.emit(new THREE.Vector3(), {
       color: preset.colors.secondary,
       count: qualityCount(preset.charge.particleCount, this.quality, preset.qualityParticleMultiplier),
       speed: preset.style === 'water' ? 0.52 : 0.32,
       spread: preset.style === 'water' ? 0.72 : 0.48,
       lifetime: 999,
+      ...(arcane ? { size: [1.2, 3] as const } : {}),
     });
     this.sparks.reset();
     this.configureAccents(preset);
@@ -156,7 +163,12 @@ class ChargeOrbEffect implements PoolableVFX {
     (this.core.material as THREE.MeshBasicMaterial).color.copy(TMP_COLOR);
     (this.core.material as THREE.MeshBasicMaterial).opacity = 0.65 + this.intensity * 0.3;
     (this.glow.material as THREE.SpriteMaterial).opacity = 0.32 + this.intensity * 0.5;
-    this.glow.scale.setScalar(2.2 + this.intensity * (this.preset.style === 'laser' ? 2.8 : 1.6));
+    // The arcane charge is the Mage's basic attack: it must stay a small spark
+    // in the palm instead of the 3.8 m ball of light the other spells use.
+    const arcane = this.preset.style === 'arcane';
+    this.glow.scale.setScalar(
+      (arcane ? 1.35 : 2.2) + this.intensity * (this.preset.style === 'laser' ? 2.8 : arcane ? 0.55 : 1.6)
+    );
     if (this.lightHandle) {
       this.lightHandle.light.intensity = this.preset.charge.lightIntensity * this.intensity;
       this.lightHandle.light.position.copy(this.group.position);
@@ -173,6 +185,7 @@ class ChargeOrbEffect implements PoolableVFX {
         spread: this.preset.style === 'lightning' ? 1.05 : 0.75,
         lifetime: this.preset.style === 'lava' ? 0.32 : 0.24,
         upwardBias: this.preset.style === 'lava' ? 0.35 : 0,
+        ...(this.arcaneParticleSize ? { size: [1.1, 2.6] as const } : {}),
       });
     }
     this.sparks.update(elapsed);
@@ -873,11 +886,13 @@ export class MageVFX {
     this.releaseCharge(cast);
 
     const direction = this.resolveLaunchDirection(cast, origin, TMP_DIRECTION).clone();
+    // Muzzle flash: the bolt leaves the palm with a small puff, not an explosion.
+    const bullet = cast.preset.projectile.shape === 'bullet';
     this.impacts.play({
       position: origin,
       preset: cast.preset,
-      scale: cast.preset.style === 'laser' ? 0.5 : 0.35,
-      lightIntensity: cast.preset.impact.lightIntensity * 0.45,
+      scale: bullet ? 0.22 : cast.preset.style === 'laser' ? 0.5 : 0.35,
+      lightIntensity: cast.preset.impact.lightIntensity * (bullet ? 0.28 : 0.45),
     });
     this.emitAudio(cast.context, cast.preset, 'cast', origin);
 

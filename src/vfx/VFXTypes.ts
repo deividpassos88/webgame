@@ -26,12 +26,45 @@ export interface MageSpellTimelineConfig {
   readonly end?: number;
 }
 
+/**
+ * Projectile silhouette. `orb` is the original charged sphere; `bullet` is the
+ * small elongated bolt (nose cone + body + shock cone) used by the Mage's
+ * basic attack, which must read as a projectile, not as a ball of light.
+ */
+export type MageProjectileShape = 'orb' | 'bullet';
+
+export interface MageProjectileFrostConfig {
+  /** Vapor color. Frost reads as pale ice-blue, not as glowing plasma. */
+  readonly color: THREE.ColorRepresentation;
+  /** Particles released per puff. */
+  readonly count: number;
+  /** Seconds between puffs of the trail. */
+  readonly interval: number;
+  /** Point size range in shader units. */
+  readonly size: readonly [number, number];
+  readonly speed: number;
+  readonly spread: number;
+  readonly lifetime: number;
+  /** Cloud alpha; also stops the cloud from dimming as it thins out. */
+  readonly opacity: number;
+  readonly upwardBias?: number;
+  /** How much each puff grows over its life (0.9 = +90%). */
+  readonly growth?: number;
+  readonly blending?: 'additive' | 'normal';
+}
+
 export interface MageProjectileConfig {
   readonly speed: number;
   readonly lifetime: number;
   readonly radius: number;
   readonly trailLength: number;
   readonly trailWidth: number;
+  readonly shape?: MageProjectileShape;
+  /** Halo sprite diameter as a multiple of `radius` (default 3.4). */
+  readonly haloScale?: number;
+  readonly haloOpacity?: number;
+  /** Optional frost/smoke wake left behind the bolt. */
+  readonly frost?: MageProjectileFrostConfig;
 }
 
 export interface MageImpactConfig {

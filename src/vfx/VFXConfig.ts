@@ -76,35 +76,64 @@ function multipliers(low = 0.45, medium = 0.75, high = 1, ultra = high * 1.15): 
 }
 
 export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> = {
+  /**
+   * Basic attack: a small blue bullet with a frost wake. It has to stay cheap
+   * because it is the Mage's spam attack — every number here is the *small*
+   * end of the catalogue on purpose (the old preset fired a 0.42 m orb with a
+   * 1.4 m halo, which read as a huge ball of light instead of a projectile).
+   */
   basic: {
     id: 'basic',
     style: 'arcane',
     delivery: 'projectile',
     colors: {
-      core: 0xf4fbff,
-      glow: 0x5eb7ff,
-      secondary: 0x8d55ff,
-      spark: 0xc7e9ff,
-      smoke: 0x725bc8,
+      core: 0xf2fbff,
+      glow: 0x3fa6ff,
+      secondary: 0x1c63e8,
+      spark: 0xbfe8ff,
+      smoke: 0x9fd6f2,
     },
     timeline: {
-      chargeStart: 0.1,
-      magicCircle: 0.22,
-      launch: 0.42,
-      chargeEnd: 0.52,
-      recover: 0.78,
+      chargeStart: 0.12,
+      // No hand magic circle: the basic attack fires every ~0.6 s and a seal on
+      // the palm turned the spam attack into visual noise.
+      launch: 0.36,
+      chargeEnd: 0.46,
+      recover: 0.72,
       end: 1,
     },
-    charge: { scale: 1, particleCount: 18, sparkCount: 5, lightIntensity: 0.75, twoHanded: false },
-    projectile: { speed: 18, lifetime: 1.2, radius: 0.42, trailLength: 1.3, trailWidth: 0.08 },
+    charge: { scale: 0.45, particleCount: 10, sparkCount: 3, lightIntensity: 0.5, twoHanded: false },
+    projectile: {
+      speed: 26,
+      lifetime: 1.1,
+      radius: 0.19,
+      trailLength: 0.85,
+      trailWidth: 0.05,
+      shape: 'bullet',
+      haloScale: 2.3,
+      haloOpacity: 0.6,
+      frost: {
+        color: 0xcfeaff,
+        count: 2,
+        interval: 0.035,
+        size: [1.1, 2.6],
+        speed: 0.42,
+        spread: 0.7,
+        lifetime: 0.55,
+        opacity: 0.42,
+        upwardBias: 0.22,
+        growth: 1.1,
+        blending: 'additive',
+      },
+    },
     impact: {
-      duration: 0.52,
-      radius: 0.75,
-      shockwaveRadius: 1.35,
-      cameraShakeIntensity: 0.02,
-      cameraShakeDuration: 0.12,
-      lightIntensity: 0.85,
-      particleCount: 34,
+      duration: 0.45,
+      radius: 0.42,
+      shockwaveRadius: 0.85,
+      cameraShakeIntensity: 0.012,
+      cameraShakeDuration: 0.1,
+      lightIntensity: 0.5,
+      particleCount: 20,
       debrisCount: 0,
     },
     hand: 'right',
