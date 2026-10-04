@@ -60,6 +60,7 @@ function createParticleMaterial(
       uGrowth: { value: DEFAULT_PARTICLE_GROWTH },
     },
     vertexShader: /* glsl */`
+      uniform float uGrowth;
       attribute float aLifeRatio;
       attribute float aSize;
       attribute float aSeed;

@@ -279,3 +279,19 @@ O que entrou:
 - Testes novos: `src/combat/BasicAttackArea.test.ts` (raio, 1/4, zero para
   inválido) e `src/core/BasicAttackAreaContract.test.ts` (o contrato no
   `Game.ts`: alvo cheio + respingo de 1/4 nos dois ataques e a janela do HITS).
+
+### Achado no caminho: as partículas nunca renderizavam
+
+O shader das partículas (`src/vfx/ParticleManager.ts`) usava `uGrowth` no
+`gl_PointSize` **sem declarar** `uniform float uGrowth;`. O Chromium recusava o
+programa (`'uGrowth' : undeclared identifier`) e **todo** `PooledParticleCloud`
+ficava invisível: faíscas de carga da Maga, fumaça de gelo da trilha, faíscas de
+impacto, fumaça das habilidades. Nada disso aparecia — o que explica boa parte
+da impressão de efeito "pobre".
+
+Declarado o uniform, o `tools/smoke-boot.mjs` (novo) para de acusar erro de
+shader e as figuras `artifacts/particulas-antes.png` e
+`artifacts/particulas-depois.png` mostram os pontos a mais na trilha. Como as
+partículas voltaram, **efeitos de outras skills** (laser, raio, giro do
+Guerreiro, explosões) também ficaram mais cheios; o impacto do ataque básico
+continua sem desenho por escolha do usuário (`impact.visual: false`).
