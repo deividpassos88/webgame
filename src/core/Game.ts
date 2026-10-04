@@ -129,9 +129,16 @@ import { firstColumnHit, mageSkillAttackId } from '../combat/MageSpellFlight';
 import {
   isInsideMageSkillRadius,
   mageSkillImpactEffect,
-  MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER,
   MAGE_BASIC_SPLASH_RADIUS_METERS,
 } from '../combat/MageSkillImpact';
+import {
+  basicAttackAreaDamage,
+  isInsideBasicAttackArea,
+} from '../combat/BasicAttackArea';
+import {
+  selectBasicAttackWaveTarget,
+  type BasicAttackWaveCandidate,
+} from '../combat/BasicAttackWaveTargets';
 import {
   MAGE_TELEPORT_FATIGUE_PERCENT,
   mageTeleportManaCost,
@@ -1082,6 +1089,15 @@ export class Game {
     return true;
   }
 
+  /**
+   * Janela em que um hit conta para o contador HITS: com a barra COMBO aberta
+   * (gauge/link) ou com uma skill do combo ainda rodando. Fora dela o contador
+   * fica zerado — e some da tela.
+   */
+  private comboHitWindowActive(): boolean {
+    return this.skillCombo.active || this.player.activeSkillRemainingSeconds > 0;
+  }
+
   /** Multiplicador de dano do combo gravado no cast desta skill (1 sem combo). */
   private comboDamageMultiplierFor(id: WarriorSkillId): number {
     return this.comboDamageBySkill.get(id) ?? 1;
@@ -1261,8 +1277,11 @@ export class Game {
         skillRemainingSeconds: this.player.activeSkillRemainingSeconds,
       })
     );
-    if (this.player.isDead) this.hitCounter.reset();
-    this.hitCounter.update(delta);
+    // O contador HITS é do combo de skills (pedido do usuário): só conta e só
+    // aparece enquanto o combo está vivo (barra COMBO aberta ou skill do combo
+    // ainda rodando). Ataque básico nunca conta hit.
+    if (this.player.isDead || !this.comboHitWindowActive()) this.hitCounter.reset();
+    else this.hitCounter.update(delta);
     this.hitCounterView ??= new HitCounterView();
     this.hitCounterView.render(this.hitCounter.snapshot());
 
@@ -2181,7 +2200,9 @@ export class Game {
       this.getCharacterStats().physicalDamageMultiplier,
       false
     );
-    const splashBase = baseDamage * MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER;
+    // Respingo do básico: 1/4 do dano da arma (regra compartilhada com o
+    // Guerreiro em BasicAttackArea).
+    const splashBase = basicAttackAreaDamage(baseDamage);
 
     for (const root of this.combatRegistry.activeRoots()) {
       if (root === primary) continue;
@@ -2534,90 +2555,107 @@ export class Game {
       .filter((record): record is CombatRecord => record !== null && !record.enemy.isDead);
     let lifeStealDamage = 0;
 
-    // Determine primary target for traveling slash (feixe que avança até target)
-    let primaryTargetPos: THREE.Vector3 | null = null;
-    let closestDist = Infinity;
-
-    if (this.targetedEnemyRoot && !this.targetedEnemyRoot.userData?.isDead) {
-      const t = this.targetedEnemyRoot.position.clone();
-      const d = origin.distanceTo(t);
-      if (d <= maxDistance + 1) {
-        primaryTargetPos = t;
-        closestDist = d;
-      }
+    // O leque para no primeiro corpo: a escolha do alvo é pura e testada em
+    // `BasicAttackWaveTargets`. O alvo marcado (ou do auto-ataque) tem
+    // prioridade e 1 m de tolerância; o boneco de treino também concorre.
+    const dummy = this.trainingDummy;
+    const candidates: BasicAttackWaveCandidate[] = records.map((record) => ({
+      x: record.enemy.root.position.x,
+      z: record.enemy.root.position.z,
+      bodyRadius: record.enemy.collisionRadius,
+      preferred: record.enemy.root === this.targetedEnemyRoot,
+    }));
+    if (dummy) {
+      candidates.push({
+        x: dummy.root.position.x,
+        z: dummy.root.position.z,
+        bodyRadius: 0.5,
+      });
     }
+    const selection = selectBasicAttackWaveTarget({
+      origin: { x: origin.x, z: origin.z },
+      forward: { x: forward.x, z: forward.z },
+      maxDistance,
+      coneCosine,
+      candidates,
+    });
 
-    // Find closest enemy in cone for traveling slash if no marked target
-    if (!primaryTargetPos) {
-      for (const record of records) {
-        const target = record.enemy.root.position;
-        const delta = new THREE.Vector3(target.x - origin.x, 0, target.z - origin.z);
-        const centerDistance = delta.length();
-        if (centerDistance <= 1e-8) continue;
-        const bodyRadius = Math.max(record.enemy.collisionRadius, 0.45);
-        const distance = getEffectiveTargetDistance(centerDistance, bodyRadius);
-        if (distance > maxDistance || forward.dot(delta.clone().normalize()) < coneCosine) continue;
-        if (distance < closestDist) {
-          closestDist = distance;
-          primaryTargetPos = target.clone();
-        }
-      }
-    }
+    // O leque de vento voa até o alvo escolhido; sem alvo, percorre o alcance
+    // todo e some sem impacto.
+    let travelTarget = origin.clone().addScaledVector(forward, maxDistance);
 
-    if (this.trainingDummy) {
-      const dummyDelta = new THREE.Vector3(
-        this.trainingDummy.root.position.x - origin.x,
-        0,
-        this.trainingDummy.root.position.z - origin.z
-      );
-      const dummyDistance = dummyDelta.length();
-      if (
-        dummyDistance > 1e-8
-        && dummyDistance <= maxDistance
-        && forward.dot(dummyDelta.normalize()) >= coneCosine
-      ) {
-        const damage = this.resolveOutgoingDamage(this.player.attackDamage, false);
-        this.trainingDummy.takeDamage(damage);
-        this.showFloatingDamage(this.trainingDummy.root.position, damage);
-        this.warriorSlashVFX.playImpact(this.trainingDummy.root.position, 1);
-        anyHit = true;
-        if (!primaryTargetPos) {
-          primaryTargetPos = this.trainingDummy.root.position.clone();
-        }
-      }
-    }
-
-    // Só o primeiro corpo atingido dissolve o traço e acende o flash de impacto.
-    for (const record of records) {
-      const target = record.enemy.root.position;
-      const delta = new THREE.Vector3(target.x - origin.x, 0, target.z - origin.z);
-      const centerDistance = delta.length();
-      if (centerDistance <= 1e-8) continue;
-      const bodyRadius = Math.max(record.enemy.collisionRadius, 0.45);
-      const distance = getEffectiveTargetDistance(centerDistance, bodyRadius);
-      if (distance > maxDistance || forward.dot(delta.normalize()) < coneCosine) continue;
-
+    // Só o ALVO leva o dano cheio da arma (com o falloff normal do leque) e
+    // quem estiver a até 2 m dele leva 1/4; o resto do cone não leva nada.
+    if (selection) {
+      const primaryTargetPos = new THREE.Vector3(selection.x, origin.y, selection.z);
+      travelTarget = primaryTargetPos.clone();
+      const closestDist = selection.distance;
       const stats = this.getCharacterStats();
       const baseDamage = getTypedAttackBaseDamage(
         this.player.attackDamage,
         stats.physicalDamageMultiplier,
         false
       );
-      const damage = this.resolveOutgoingDamage(
-        applyDistanceFalloff(baseDamage, distance, 'warrior-wave'),
-        false
-      );
-      if (damage <= 0) continue;
-      lifeStealDamage += damage;
-      anyHit = true;
-      record.enemy.receivePlayerHit(damage, this.player.root.position);
-      // Recuo curto: o monstro é nervoso e apenas recua um pouco no corte.
-      const impulseStrength = slashType === 'combo3' ? 0.22 : slashType === 'combo2' ? 0.16 : isAuto ? 0.17 : 0.12;
-      record.enemy.applyImpulse(forward, impulseStrength);
-      this.showFloatingDamage(record.enemy.root.position, damage);
-      this.warriorSlashVFX.playImpact(record.enemy.root.position, 1);
-      this.syncCombatHealthBars(record);
-      if (record.enemy.isDead) this.handleEnemyDeath(record);
+      const primaryDamage = applyDistanceFalloff(baseDamage, closestDist, 'warrior-wave');
+      const damage = this.resolveOutgoingDamage(primaryDamage, false);
+      const primaryRecord = selection.index < records.length ? records[selection.index] : null;
+
+      if (damage > 0) {
+        lifeStealDamage += damage;
+        anyHit = true;
+        if (primaryRecord) {
+          primaryRecord.enemy.receivePlayerHit(damage, this.player.root.position);
+          // Recuo curto: o monstro é nervoso e apenas recua um pouco no corte.
+          const impulseStrength = slashType === 'combo3' ? 0.22 : slashType === 'combo2' ? 0.16 : isAuto ? 0.17 : 0.12;
+          primaryRecord.enemy.applyImpulse(forward, impulseStrength);
+          this.showFloatingDamage(primaryRecord.enemy.root.position, damage);
+          this.syncCombatHealthBars(primaryRecord);
+          if (primaryRecord.enemy.isDead) this.handleEnemyDeath(primaryRecord);
+        } else if (this.trainingDummy) {
+          this.trainingDummy.takeDamage(damage);
+          this.showFloatingDamage(this.trainingDummy.root.position, damage);
+        }
+        this.warriorSlashVFX.playImpact(primaryTargetPos, 1);
+      }
+
+      // Respingo: 1/4 do dano do alvo em quem estiver a até 2 m dele.
+      const splashBase = basicAttackAreaDamage(primaryDamage);
+      for (const record of records) {
+        if (record === primaryRecord) continue;
+        const position = record.enemy.root.position;
+        if (!isInsideBasicAttackArea(
+          primaryTargetPos.x,
+          primaryTargetPos.z,
+          position.x,
+          position.z
+        )) {
+          continue;
+        }
+        const splashDamage = this.resolveOutgoingDamage(splashBase, false);
+        if (splashDamage <= 0) continue;
+        lifeStealDamage += splashDamage;
+        record.enemy.receivePlayerHit(splashDamage, this.player.root.position);
+        record.enemy.applyImpulse(forward, 0.06);
+        this.showFloatingDamage(position, splashDamage);
+        this.syncCombatHealthBars(record);
+        if (record.enemy.isDead) this.handleEnemyDeath(record);
+      }
+
+      if (dummy && primaryRecord) {
+        const position = dummy.root.position;
+        if (isInsideBasicAttackArea(
+          primaryTargetPos.x,
+          primaryTargetPos.z,
+          position.x,
+          position.z
+        )) {
+          const splashDamage = this.resolveOutgoingDamage(splashBase, false);
+          if (splashDamage > 0) {
+            dummy.takeDamage(splashDamage);
+            this.showFloatingDamage(position, splashDamage);
+          }
+        }
+      }
     }
 
     this.warriorSlashVFX.play({
@@ -2631,7 +2669,6 @@ export class Game {
 
     // Leque de vento: sai do rastro e avança até o alvo (máx. 7 m). Sem
     // inimigo atingido ele percorre o caminho todo e some, sem impacto.
-    const travelTarget = primaryTargetPos ?? origin.clone().addScaledVector(forward, maxDistance);
     const travelEnd = travelTarget.clone();
     travelEnd.y = origin.y;
     this.warriorSlashVFX.playTravelingSlash({
@@ -2963,8 +3000,9 @@ export class Game {
     amount: number,
     variant: FloatingDamageVariant = 'damage'
   ) {
-    // Every damaging hit a monster receives feeds the right-corner hit counter.
-    if (variant === 'damage') this.hitCounter.registerHit();
+    // Só o combo de skills alimenta o contador HITS: dano de ataque básico
+    // (inclusive o respingo de área) não conta hit.
+    if (variant === 'damage' && this.comboHitWindowActive()) this.hitCounter.registerHit();
     const pos = worldPos.clone();
     pos.y += 1.6;
     const screenPos = pos.project(this.cameraController.camera);

@@ -240,3 +240,42 @@ valor atual e lembra onde ele vive no jogo (`HIT_FLASH_INTENSITY` em
 
 Conferido por script: com 0,42 o pico do vermelho no boneco é ~0,39; com 0,8
 vai a ~0,73; com 0 (que é o "desligado") fica 0.
+
+## Nona rodada (03/10) — dano em área 4× menor no básico e HITS só no combo
+
+Pedido do usuário (vale para **os dois** ataques básicos, Maga e Guerreiro):
+
+- o **alvo** do golpe leva o dano normal da arma (exemplo dele: arma com 5 →
+  alvo leva 5);
+- os inimigos **a até 2 m** levam **4× menos** (5/4 = 1,25 → 1 na tela).
+
+Como o leque do Guerreiro acerta o cone inteiro (até 7 m), ele foi perguntado e
+escolheu: **o leque para no alvo** — só o alvo leva dano cheio, quem estiver a
+até 2 m dele leva 1/4, e o resto do cone não leva nada (é o que o visual já
+fazia: a onda para no primeiro corpo).
+
+O que entrou:
+
+- **`src/combat/BasicAttackArea.ts`** (novo): a regra fica num lugar só —
+  `BASIC_ATTACK_AREA_RADIUS_METERS = 2`, divisor `4`, `basicAttackAreaDamage()`
+  e `isInsideBasicAttackArea()`. A Maga (`MAGE_BASIC_SPLASH_*`) passou a apontar
+  para essa regra, então o respingo dela caiu de 0,6 (60%) para **0,25 (25%)**.
+- **Guerreiro**: `applyWarriorBasicWaveDamage` agora escolhe **um** alvo (o
+  marcado, se estiver no leque, senão o mais próximo dentro do cone; o boneco de
+  treino também concorre) e aplica:
+  - alvo: dano cheio, com o falloff normal do leque (`warrior-wave`);
+  - vizinhos até 2 m: `basicAttackAreaDamage(dano do alvo)` (1/4) — sem falloff
+    próprio, porque o respingo é a fração do dano do alvo;
+  - resto do cone: nada (antes todo mundo levava dano cheio).
+- **`src/combat/BasicAttackWaveTargets.ts`** (novo): a escolha do alvo do leque
+  saiu do `Game` para uma função pura (`selectBasicAttackWaveTarget`) — corpo
+  descontado da distância, prioridade para o alvo marcado (1 m de tolerância),
+  boneco de treino concorrendo — testada em `BasicAttackWaveTargets.test.ts`.
+- **Contador HITS**: como o usuário escolheu, ele agora é **do combo de skills**
+  — só conta hit enquanto a barra COMBO está aberta ou uma skill do combo ainda
+  está rodando (`comboHitWindowActive()`), e é **zerado** fora dessa janela, o
+  que faz o contador sumir da tela. Ataque básico (e o respingo de área) nunca
+  conta hit.
+- Testes novos: `src/combat/BasicAttackArea.test.ts` (raio, 1/4, zero para
+  inválido) e `src/core/BasicAttackAreaContract.test.ts` (o contrato no
+  `Game.ts`: alvo cheio + respingo de 1/4 nos dois ataques e a janela do HITS).

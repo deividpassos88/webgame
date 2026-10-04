@@ -17,8 +17,8 @@ import {
 describe('Mage skill impact control', () => {
   it('o básico respinga dano num raio de 2 m do impacto', () => {
     expect(MAGE_BASIC_SPLASH_RADIUS_METERS).toBe(2);
-    expect(MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER).toBeGreaterThan(0);
-    expect(MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER).toBeLessThanOrEqual(1);
+    // 4x menos que o dano da arma (o alvo leva 100%, o vizinho 25%).
+    expect(MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER).toBe(0.25);
     // O respingo usa o mesmo teste de raio horizontal das outras áreas.
     expect(isInsideMageSkillRadius(0, 0, 1.9, 0, MAGE_BASIC_SPLASH_RADIUS_METERS)).toBe(true);
     expect(isInsideMageSkillRadius(0, 0, 2.1, 0, MAGE_BASIC_SPLASH_RADIUS_METERS)).toBe(false);
