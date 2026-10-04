@@ -229,3 +229,14 @@ todos os efeitos de impacto, deixa apenas o impacto sem efeito visual"**. O
 - Testes: o impacto do básico não cria nenhum objeto `MageImpactVFX` nem mexe na
   câmera, `onImpact` continua entregando o alvo, e os três testes de emissivo do
   inimigo passaram a medir o vermelho fraco (com volta ao valor original).
+
+## Oitava rodada (03/10) — calibrar o vermelho do dano
+
+O vermelho é o único retorno visual do acerto, então ele precisa dar para
+ajustar na hora: o laboratório ganhou o **slider 27 (vermelho do dano —
+brilho)**, que muda o pisca do boneco de treino sem build. O painel mostra o
+valor atual e lembra onde ele vive no jogo (`HIT_FLASH_INTENSITY` em
+`src/entities/Enemy.ts`). Selo **FX v8.1**.
+
+Conferido por script: com 0,42 o pico do vermelho no boneco é ~0,39; com 0,8
+vai a ~0,73; com 0 (que é o "desligado") fica 0.

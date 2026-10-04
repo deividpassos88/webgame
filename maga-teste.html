@@ -137,7 +137,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { MageVFX } from '/src/vfx/MageVFX';
 import { MAGE_SPELL_PRESETS } from '/src/vfx/VFXConfig';
 
-const FX_REV = 'v8'; // sobe junto com cada mudança grande de efeito
+const FX_REV = 'v8.1'; // sobe junto com cada mudança grande de efeito
 const PRESET = MAGE_SPELL_PRESETS.basic;
 const PRISTINE = JSON.parse(JSON.stringify(PRESET));
 const revBadge = document.getElementById('fx-rev');
@@ -216,6 +216,10 @@ const dummyMat = new THREE.MeshStandardMaterial({ color: 0x8a5a3c, roughness: 0.
 const DUMMY_FLASH_SECONDS = 0.2;
 const DUMMY_FLASH_COLOR = 0x8f1d1d;
 let dummyFlash = 0;
+// Brilho do vermelho do dano. O padrão é o do jogo (`HIT_FLASH_INTENSITY`
+// em src/entities/Enemy.ts); o slider 27 mexe aqui para calibrar sem build.
+const GAME_HIT_FLASH_INTENSITY = 0.42;
+let hitFlashIntensity = GAME_HIT_FLASH_INTENSITY;
 const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 1.5, 12), dummyMat);
 post.position.y = 0.75;
 dummy.add(post);
@@ -315,7 +319,7 @@ const FIELDS = [
   { path: 'timeline.launch', label: '25. Disparo (sai em)', min: 0.06, max: 0.8, step: 0.01, digits: 2 },
   // Anel da referência: a billboard branca com raios que desenha o impacto.
   // O diâmetro do anel é 58% do sprite (o resto são os raios e a névoa).
-  { path: 'impact.ringScale', label: '26. Anel do impacto (tamanho)', min: 0, max: 3, step: 0.05, unit: '×', digits: 2 },
+  { path: 'impact.ringScale', label: '26. Anel do impacto (tamanho, inerte)', min: 0, max: 3, step: 0.05, unit: '×', digits: 2 },
 ];
 
 function readPath(path) {
@@ -358,6 +362,7 @@ function updateReadout() {
     `Carga na mão: <b>${PRESET.charge.scale.toFixed(2)}</b>`,
     `Fumaça de gelo (mundo): <b>${frost ? frost.count : 0}</b> partículas a cada <b>${frost ? frost.interval.toFixed(3) : 0}s</b> → cerca de <b>${Math.round(tail)}</b> na cauda, puff de <b>${(puffMeters * 100).toFixed(0)} cm</b>`,
     `Conjuração: <b>${PRESET.charge.particleCount}</b> partículas girando · <b>${PRESET.charge.sparkCount}</b> faíscas (0 = só o brilho na mão) · brilho na mão por <b>${Math.round(Math.max(0, PRESET.timeline.launch - PRESET.timeline.chargeStart) * 1800)} ms</b>`,
+    `Marca de dano: vermelho <b>#8f1d1d</b> com brilho <b>${hitFlashIntensity.toFixed(2)}</b> por <b>0,2 s</b> (no jogo: <b>HIT_FLASH_INTENSITY</b> em src/entities/Enemy.ts, hoje ${GAME_HIT_FLASH_INTENSITY.toFixed(2)}). O slider 27 calibra aqui.`,
     'Ajustes 13 a 19 (impacto) e 26 (anel) estão inertes: o impacto do ataque básico está com <b>visual: false</b> no preset. Para religar e comparar, ligue "visual" no JSON colado.',
     'Sem alvo o tiro não explode: ele perde o brilho em 0,4 s e some (impacto só quando acerta inimigo). Não fica clarão parado onde a Maga atirou.',
 
@@ -412,6 +417,34 @@ function buildFields() {
     field.input = input;
     field.valueOut = valueOut;
   }
+
+  // Controle local: não é caminho do preset, é o brilho do vermelho do dano
+  // (o mesmo número que o jogo usa em `HIT_FLASH_INTENSITY`).
+  {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'field';
+    const label = document.createElement('label');
+    const name = document.createElement('span');
+    name.textContent = '27. Vermelho do dano (brilho)';
+    const valueOut = document.createElement('b');
+    valueOut.textContent = hitFlashIntensity.toFixed(2);
+    label.append(name, valueOut);
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = '0';
+    input.max = '0.8';
+    input.step = '0.02';
+    input.value = String(hitFlashIntensity);
+    input.addEventListener('input', () => {
+      hitFlashIntensity = Number(input.value);
+      valueOut.textContent = hitFlashIntensity.toFixed(2);
+      if (hitFlashIntensity === 0) dummyFlash = 0;
+      updateReadout();
+    });
+    wrapper.append(label, input);
+    fieldsHost.append(wrapper);
+  }
+
   updateReadout();
 }
 
@@ -573,7 +606,7 @@ function frame() {
   if (dummyFlash > 0) {
     dummyFlash = Math.max(0, dummyFlash - delta);
     dummyMat.emissive.setHex(DUMMY_FLASH_COLOR);
-    dummyMat.emissiveIntensity = 0.42 * (dummyFlash / DUMMY_FLASH_SECONDS);
+    dummyMat.emissiveIntensity = hitFlashIntensity * (dummyFlash / DUMMY_FLASH_SECONDS);
   } else if (dummyMat.emissiveIntensity !== 0) {
     dummyMat.emissive.setHex(0x000000);
     dummyMat.emissiveIntensity = 0;
