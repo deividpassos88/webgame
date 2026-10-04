@@ -152,13 +152,15 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       },
     },
     impact: {
-      // O impacto é o anel da referência (billboard com raios e o miolo vazio),
-      // com um estouro curto no meio, onda dupla no chão e estilhaços. O anel
-      // nasce em `shockwaveRadius × ringScale` e abre até ~2,2× isso.
+      // Sem efeito visual nenhum (pedido do usuário): nada de explosão, clarão,
+      // anel, partícula, luz ou tremor de câmera. Quem marca o acerto é só o
+      // vermelho fraco que tinge o inimigo por ~0,2 s (`Enemy.takeDamage`).
+      // Os números ficam aqui (e são ajustáveis no laboratório) para o caso de
+      // o efeito voltar ligado.
+      visual: false,
       duration: 0.78,
       radius: 1.05,
       shockwaveRadius: 2.25,
-      ringScale: 0.68,
       cameraShakeIntensity: 0.034,
       cameraShakeDuration: 0.18,
       lightIntensity: 1.15,

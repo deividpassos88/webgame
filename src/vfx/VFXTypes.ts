@@ -104,10 +104,17 @@ export interface MageImpactConfig {
   readonly radius: number;
   readonly shockwaveRadius: number;
   /**
-   * Multiplicador do anel da referência (a billboard branca com raios que
-   * desenha o impacto da bala básica). O tamanho base é `shockwaveRadius`.
+   * Multiplicador do anel da referência (a billboard branca com raios). O
+   * tamanho base é `shockwaveRadius`. Só aparece se o impacto tiver visual.
    */
   readonly ringScale?: number;
+  /**
+   * `false` = o impacto não tem NENHUM efeito visual: sem explosão, sem clarão,
+   * sem luz, sem tremor de câmera e sem o anel. O ataque básico usa assim — o
+   * único retorno do acerto é o vermelho fraco que tinge o inimigo. O som do
+   * impacto continua tocando. Padrão: `true`.
+   */
+  readonly visual?: boolean;
   readonly cameraShakeIntensity: number;
   readonly cameraShakeDuration: number;
   readonly lightIntensity: number;

@@ -227,13 +227,18 @@ describe('animated regular enemy', () => {
     expect(material).not.toBe(sourceMaterial);
     expect(material.emissiveMap).toBe(emissiveMap);
     expect(material.emissiveIntensity).toBe(0.73);
+    expect(material.emissive.getHex()).toBe(0x14283c);
 
     enemy.takeDamage(1);
     enemy.update(0.01, new THREE.Vector3(100, 0, 0), () => undefined);
-    expect(material.emissiveIntensity).toBeCloseTo(2.73);
+    // Dano marca com um vermelho fraco, não com o clarão branco de antes.
+    expect(material.emissive.getHex()).toBe(0x8f1d1d);
+    expect(material.emissiveIntensity).toBeGreaterThan(0.73);
+    expect(material.emissiveIntensity).toBeLessThan(0.73 + 0.5);
 
-    enemy.update(0.15, new THREE.Vector3(100, 0, 0), () => undefined);
-    expect(material.emissiveIntensity).toBe(0.73);
+    enemy.update(0.4, new THREE.Vector3(100, 0, 0), () => undefined);
+    expect(material.emissive.getHex()).toBe(0x14283c);
+    expect(material.emissiveIntensity).toBeCloseTo(0.73);
     expect(sourceMaterial.emissiveIntensity).toBe(0.73);
   });
 
@@ -264,8 +269,10 @@ describe('animated regular enemy', () => {
 
     enemy.takeDamage(1);
     enemy.update(0.01, new THREE.Vector3(100, 0, 0), () => undefined);
-    expect(material.emissiveIntensity).toBe(2);
-    enemy.update(0.15, new THREE.Vector3(100, 0, 0), () => undefined);
+    // Mesmo nos materiais sem brilho próprio o vermelho é discreto.
+    expect(material.emissive.getHex()).toBe(0x8f1d1d);
+    expect(material.emissiveIntensity).toBeLessThan(0.5);
+    enemy.update(0.4, new THREE.Vector3(100, 0, 0), () => undefined);
     expect(material.emissiveIntensity).toBe(0);
   });
 
@@ -283,15 +290,21 @@ describe('animated regular enemy', () => {
     const originalIntensities = new Map(
       [...materials].map((material) => [material, material.emissiveIntensity])
     );
+    const originalColors = new Map(
+      [...materials].map((material) => [material, material.emissive.getHex()])
+    );
 
     enemy.takeDamage(1);
     enemy.update(0.01, new THREE.Vector3(100, 0, 0), () => undefined);
     for (const [material, baseIntensity] of originalIntensities) {
-      expect(material.emissiveIntensity).toBeCloseTo(baseIntensity + 2);
+      expect(material.emissive.getHex()).toBe(0x8f1d1d);
+      expect(material.emissiveIntensity).toBeGreaterThanOrEqual(baseIntensity);
+      expect(material.emissiveIntensity).toBeLessThan(baseIntensity + 0.5);
     }
 
-    enemy.update(0.15, new THREE.Vector3(100, 0, 0), () => undefined);
+    enemy.update(0.4, new THREE.Vector3(100, 0, 0), () => undefined);
     for (const [material, baseIntensity] of originalIntensities) {
+      expect(material.emissive.getHex()).toBe(originalColors.get(material));
       expect(material.emissiveIntensity).toBe(baseIntensity);
     }
   });

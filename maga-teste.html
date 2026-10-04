@@ -137,7 +137,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { MageVFX } from '/src/vfx/MageVFX';
 import { MAGE_SPELL_PRESETS } from '/src/vfx/VFXConfig';
 
-const FX_REV = 'v7'; // sobe junto com cada mudança grande de efeito
+const FX_REV = 'v8'; // sobe junto com cada mudança grande de efeito
 const PRESET = MAGE_SPELL_PRESETS.basic;
 const PRISTINE = JSON.parse(JSON.stringify(PRESET));
 const revBadge = document.getElementById('fx-rev');
@@ -211,6 +211,11 @@ dummy.position.set(0, 0, 7);
 dummy.userData.isEnemyRoot = true;
 dummy.userData.enemyBodyScale = 1;
 const dummyMat = new THREE.MeshStandardMaterial({ color: 0x8a5a3c, roughness: 0.85 });
+// Mesma marca de dano do inimigo do jogo (Enemy.takeDamage): um vermelho fraco
+// que dura 0,2 s. É o único retorno visual do impacto do ataque básico.
+const DUMMY_FLASH_SECONDS = 0.2;
+const DUMMY_FLASH_COLOR = 0x8f1d1d;
+let dummyFlash = 0;
 const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 1.5, 12), dummyMat);
 post.position.y = 0.75;
 dummy.add(post);
@@ -231,6 +236,18 @@ function buildVfx() {
 const casts = [];
 let hits = 0;
 
+// Acesso de depuração ao estado do laboratório (scripts de conferência usam).
+window.__labDebug = () => ({
+  hits,
+  dummyFlash,
+  dummyEmissive: dummyMat.emissive.getHex(),
+  dummyIntensity: dummyMat.emissiveIntensity,
+  dummyColor: dummyMat.color.getHex(),
+});
+window.__labDebugSetIntensity = (value) => {
+  dummyMat.emissiveIntensity = value;
+};
+
 function fireOnce() {
   const mixer = new THREE.AnimationMixer(caster);
   const clip = new THREE.AnimationClip('mage:attack:ataque_basico', 1.05, [
@@ -248,7 +265,11 @@ function fireOnce() {
     target: dummy,
     fallbackDirection: new THREE.Vector3(0, 0, 1),
     isTargetAlive: () => true,
-    onImpact: () => { hits += 1; hudHits.textContent = String(hits); },
+    onImpact: () => {
+      hits += 1;
+      hudHits.textContent = String(hits);
+      dummyFlash = DUMMY_FLASH_SECONDS;
+    },
   });
   casts.push({ mixer, action, age: 0 });
 }
@@ -333,15 +354,13 @@ function updateReadout() {
   readout.innerHTML = [
     `Cometa: <b>${cometLength.toFixed(2)} m</b> de comprimento · <b>${cometWidth.toFixed(2)} m</b> de largura (${(cometLength / mageHeight).toFixed(2)}× a altura da Maga)`,
     `Colisão: raio <b>${radius.toFixed(2)} m</b> · Aura azul: <b>${halo.toFixed(2)} m</b> de diâmetro`,
-    `Impacto: anel <b>${(PRESET.impact.shockwaveRadius * (PRESET.impact.ringScale ?? 1) * 0.58).toFixed(2)} m</b> de diâmetro (abre até <b>${(PRESET.impact.shockwaveRadius * (PRESET.impact.ringScale ?? 1) * 1.7 * 0.58).toFixed(2)} m</b>) · estouro curto de <b>${PRESET.impact.radius.toFixed(2)} m</b> · ondas no chão <b>${PRESET.impact.shockwaveRadius.toFixed(2)} m</b> e ${(PRESET.impact.shockwaveRadius * 1.62).toFixed(2)} m · <b>${PRESET.impact.duration.toFixed(2)} s</b>`,
-    `Impacto: <b>${PRESET.impact.particleCount}</b> partículas · <b>${PRESET.impact.debrisCount}</b> estilhaços de gelo · luz <b>${PRESET.impact.lightIntensity.toFixed(2)}</b> · tremor <b>${PRESET.impact.cameraShakeIntensity.toFixed(3)}</b> · Carga na mão: <b>${PRESET.charge.scale.toFixed(2)}</b>`,
+    `Impacto: <b>sem efeito visual</b> (nada de explosão, anel, partícula, luz ou tremor de câmera). Quem marca o acerto é só um <b>vermelho fraco</b> no inimigo por <b>0,2 s</b>.`,
+    `Carga na mão: <b>${PRESET.charge.scale.toFixed(2)}</b>`,
     `Fumaça de gelo (mundo): <b>${frost ? frost.count : 0}</b> partículas a cada <b>${frost ? frost.interval.toFixed(3) : 0}s</b> → cerca de <b>${Math.round(tail)}</b> na cauda, puff de <b>${(puffMeters * 100).toFixed(0)} cm</b>`,
     `Conjuração: <b>${PRESET.charge.particleCount}</b> partículas girando · <b>${PRESET.charge.sparkCount}</b> faíscas (0 = só o brilho na mão) · brilho na mão por <b>${Math.round(Math.max(0, PRESET.timeline.launch - PRESET.timeline.chargeStart) * 1800)} ms</b>`,
-    'Impacto da bala = um efeito só: o anel da referência (billboard que encara a câmera, anel fino branco com 48 setores de raios cruzando para dentro e para fora, névoa azul e miolo vazio). O estouro antigo (bola branca + onda de neon no chão) saiu do ataque básico.',
+    'Ajustes 13 a 19 (impacto) e 26 (anel) estão inertes: o impacto do ataque básico está com <b>visual: false</b> no preset. Para religar e comparar, ligue "visual" no JSON colado.',
     'Sem alvo o tiro não explode: ele perde o brilho em 0,4 s e some (impacto só quando acerta inimigo). Não fica clarão parado onde a Maga atirou.',
-    PRESET.impact.radius < cometWidth * 0.9
-      ? '<span class="warn">O impacto está pequeno para esta bala — sobe o raio do impacto.</span>'
-      : '',
+
     cometLength / Math.max(0.001, cometWidth * 3) > 1.4
       ? '<span class="warn">O cometa está bem mais comprido que a referência (proporção ~3:1).</span>'
       : '',
@@ -549,6 +568,16 @@ function frame() {
     }
   }
   vfx.update(delta);
+
+  // Vermelho do dano: acende junto com o tiro e some sozinho.
+  if (dummyFlash > 0) {
+    dummyFlash = Math.max(0, dummyFlash - delta);
+    dummyMat.emissive.setHex(DUMMY_FLASH_COLOR);
+    dummyMat.emissiveIntensity = 0.42 * (dummyFlash / DUMMY_FLASH_SECONDS);
+  } else if (dummyMat.emissiveIntensity !== 0) {
+    dummyMat.emissive.setHex(0x000000);
+    dummyMat.emissiveIntensity = 0;
+  }
 
   const diagnostics = vfx.diagnostics();
   controls.update();

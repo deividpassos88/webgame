@@ -274,7 +274,7 @@ describe('Mage basic attack bullet', () => {
     vfx.dispose();
   });
 
-  it('layouts the impact like the reference: billboard ring with rays, sono ground rings', () => {
+  it('não desenha NADA no impacto: sem explosão, sem anel, sem partícula', () => {
     const scene = new THREE.Scene();
     const vfx = new MageVFX(scene, { quality: 'high' });
     const { root, mixer, action } = createAction(2, 1);
@@ -284,6 +284,7 @@ describe('Mage basic attack bullet', () => {
     const target = new THREE.Group();
     target.position.set(0, 0, 5);
     target.userData.enemyBodyScale = 1;
+    const hits: THREE.Object3D[] = [];
 
     vfx.cast('basic', {
       caster: root,
@@ -293,38 +294,28 @@ describe('Mage basic attack bullet', () => {
       target,
       fallbackDirection: new THREE.Vector3(0, 0, 1),
       isTargetAlive: () => true,
+      onImpact: (hit) => hits.push(hit),
     });
-    const impact = advanceUntilTargetImpact(vfx, mixer, scene);
-    expect(impact).toBeDefined();
-    // O anel da referência é um sprite: encara a câmera de qualquer ângulo.
-    const ring = impact?.getObjectByName('MageImpactReferenceRing') as THREE.Sprite | undefined;
-    const core = impact?.getObjectByName('MageImpactCore') as THREE.Mesh | undefined;
-    const flash = impact?.getObjectByName('MageImpactFlash') as THREE.Sprite | undefined;
-    const burst = impact?.getObjectByName('MageImpactExplosionTexture') as THREE.Sprite | undefined;
-    const ground = impact?.getObjectByName('MageImpactShaderShockwave') as THREE.Mesh | undefined;
-    expect(ring).toBeInstanceOf(THREE.Sprite);
-    expect(ring?.visible).toBe(true);
-    expect(ring?.material.map).toBeTruthy();
-    expect(ring?.material.opacity).toBeGreaterThan(0.5);
-    // A bala básica tem UM efeito de impacto: o anel. O estouro antigo fica
-    // desligado nela (senão apareciam dois impactos na tela).
-    expect(core?.visible).toBe(false);
-    expect(flash?.visible).toBe(false);
-    expect(burst?.visible).toBe(false);
-    expect(ground?.visible).toBe(false);
-    expect(impact?.getObjectByName('MageImpactOuterShockwave')).toBeUndefined();
-    expect(impact?.getObjectByName('MageImpactVerticalBlastRing')).toBeUndefined();
-    // Sem faísca nem poeira: só o anel (e os estilhaços de gelo).
-    const particles = impact?.getObjectByName('MageImpactParticles') as THREE.Points | undefined;
-    const smoke = impact?.getObjectByName('MageImpactSmoke') as THREE.Points | undefined;
-    expect(particles?.geometry.drawRange.count).toBe(0);
-    expect(smoke?.geometry.drawRange.count).toBe(0);
+
+    // Roda bem além do impacto: nenhum efeito de impacto pode nascer.
+    for (let step = 0; step < 80; step += 1) {
+      mixer.update(0.03);
+      vfx.update(0.03);
+      expect(scene.getObjectByName('MageImpactVFX')).toBeUndefined();
+    }
+
+    // O acerto continua acontecendo: o dano/som dependem do onImpact.
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toBe(target);
+    expect(MAGE_SPELL_PRESETS.basic.impact.visual).toBe(false);
     vfx.dispose();
   });
 
-  it('opens the impact far above the old 0,42 m pop and leaves ice shards behind', () => {
+  it('não treme a câmera no impacto (o efeito não pode aparecer de jeito nenhum)', () => {
     const scene = new THREE.Scene();
     const vfx = new MageVFX(scene, { quality: 'high' });
+    const camera = new THREE.PerspectiveCamera();
+    camera.position.set(0, 1, -6);
     const { root, mixer, action } = createAction(2, 1);
     const rightHand = new THREE.Object3D();
     rightHand.name = 'mixamorig:RightHand';
@@ -332,6 +323,7 @@ describe('Mage basic attack bullet', () => {
     const target = new THREE.Group();
     target.position.set(0, 0, 5);
     target.userData.enemyBodyScale = 1;
+
     vfx.cast('basic', {
       caster: root,
       rightHand,
@@ -341,31 +333,16 @@ describe('Mage basic attack bullet', () => {
       fallbackDirection: new THREE.Vector3(0, 0, 1),
       isTargetAlive: () => true,
     });
-    const impact = advanceUntilTargetImpact(vfx, mixer, scene);
-    const ring = impact?.getObjectByName('MageImpactReferenceRing') as THREE.Sprite | undefined;
-    const radius = MAGE_SPELL_PRESETS.basic.impact.radius;
-    expect(ring).toBeDefined();
-    // O anel da referência é quem dá o tamanho do impacto: nasce bem acima do
-    // estouro antigo de 0,42 m e continua abrindo.
-    const impactConfig = MAGE_SPELL_PRESETS.basic.impact;
-    const spawnScale = impactConfig.shockwaveRadius * (impactConfig.ringScale ?? 1);
-    const first = ring?.scale.x ?? 0;
-    expect(ring?.material.map?.name).toBe('MageImpactRingTexture');
-    // Nasce no tamanho do preset e abre até 1,7x isso — nunca mais que isso.
-    expect(first).toBeGreaterThanOrEqual(spawnScale);
-    expect(first).toBeLessThan(spawnScale * 1.3);
-    expect(first).toBeGreaterThan(radius * 1.2);
-    const shards = impact?.children.filter((child) => child.name === 'MageImpactDebris') ?? [];
-    expect(shards.filter((shard) => shard.visible).length).toBeGreaterThan(3);
 
-    let peak = first;
-    for (let step = 0; step < 30; step += 1) {
+    for (let step = 0; step < 80; step += 1) {
       mixer.update(0.03);
       vfx.update(0.03);
-      peak = Math.max(peak, ring?.scale.x ?? 0);
+      vfx.applyCameraShake(camera, 0.03);
+      // A câmera fica exatamente onde estava: nenhum tremor de impacto.
+      expect(camera.position.x).toBe(0);
+      expect(camera.position.y).toBe(1);
+      expect(camera.position.z).toBe(-6);
     }
-    expect(peak).toBeGreaterThan(first);
-    expect(peak).toBeLessThanOrEqual(spawnScale * 1.71);
     vfx.dispose();
   });
 

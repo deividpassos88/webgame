@@ -204,3 +204,28 @@ O usuário viu **dois impactos** no mesmo acerto e pediu para deixar só o novo,
   último terço, `(1 - p^2.2)`) e some em 70% da vida, em vez de apagar em 40%.
 - Laboratório: selo **FX v7**, painel avisa que o impacto é um efeito só e o
   diâmetro do anel considera o novo crescimento (1,7×).
+
+## Sétima rodada (03/10) — impacto SEM efeito visual
+
+Depois de ver a versão do anel, o usuário decidiu: **"ainda está feio, retira
+todos os efeitos de impacto, deixa apenas o impacto sem efeito visual"**. O
+único retorno do acerto deve ser **um vermelho fraco e transparente no inimigo**
+("pouca coisa, quase não vai aparecer").
+
+- **`impact.visual` (novo, opcional)**: `false` no preset `basic`. Com ele, o
+  `MageVFX.handleDirectImpact` **não instancia nada**: sem explosão, sem clarão,
+  sem anel, sem partícula, sem luz e **sem tremor de câmera**. O som continua
+  tocando e o `onImpact` continua disparando o dano (cheio + respingo de 2 m).
+  Nas outras magias `visual` fica no padrão (`true`) e nada mudou.
+- O `ImpactVFX` continua existindo com todas as camadas (bola, flash, explosão,
+  onda no chão, anel da referência, estilhaços) — desligado só no ataque básico,
+  o que deixa religar pelo JSON do laboratório ou apagando `visual: false`.
+- **Vermelho do dano**: `Enemy.takeDamage` agora tinge cada material com um
+  emissivo **escuro e fraco** (`0x8f1d1d`, intensidade ~0,42 em 0,2 s) em vez do
+  clarão branco de +2 de emissivo. É o mesmo efeito em qualquer ataque (o corpo
+  todo pisca de leve, não uma bola branca) e o emissivo original volta no fim.
+- Laboratório: selo **FX v8**, painel avisa que o impacto está sem visual, e o
+  boneco de treino pisca o mesmo vermelho fraco no acerto.
+- Testes: o impacto do básico não cria nenhum objeto `MageImpactVFX` nem mexe na
+  câmera, `onImpact` continua entregando o alvo, e os três testes de emissivo do
+  inimigo passaram a medir o vermelho fraco (com volta ao valor original).

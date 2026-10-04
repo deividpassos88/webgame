@@ -21,6 +21,7 @@ import puppeteer from 'puppeteer';
 import sparticuz from '@sparticuz/chromium';
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { brotliDecompressSync } from 'node:zlib';
 
@@ -29,7 +30,9 @@ import { brotliDecompressSync } from 'node:zlib';
 const nssLibDir = '/tmp/al2023/lib';
 if (!existsSync(nssLibDir)) {
   const require = createRequire(import.meta.url);
-  const binDir = require.resolve('@sparticuz/chromium/package.json') + '/../bin';
+  // O pacote não exporta `package.json` em todas as versões: chega no /bin
+  // a partir do arquivo de entrada.
+  const binDir = join(dirname(require.resolve('@sparticuz/chromium')), '..', 'bin');
   const tarPath = '/tmp/al2023.tar';
   writeFileSync(tarPath, brotliDecompressSync(readFileSync(`${binDir}/al2023.tar.br`)));
   mkdirSync('/tmp/al2023', { recursive: true });

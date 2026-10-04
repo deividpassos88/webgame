@@ -995,17 +995,21 @@ export class MageVFX {
   ): void {
     const impactPoint = target ? this.bodyImpactPoint(target, position) : position;
     if (!cast.impactDelivered) {
-      this.impacts.play({
-        position: impactPoint,
-        preset: cast.preset,
-        // Sem a direção do projétil (raio, laser, queda do alvo) o impacto usa
-        // o sentido do olhar da Maga.
-        normal: direction ?? this.resolveLaunchForward(cast, TMP_DIRECTION),
-      });
-      this.cameraShake.add(
-        cast.preset.impact.cameraShakeIntensity,
-        cast.preset.impact.cameraShakeDuration
-      );
+      // `impact.visual === false` (ataque básico): o acerto não desenha nada —
+      // nem explosão, nem luz, nem tremor. O som continua.
+      if (cast.preset.impact.visual !== false) {
+        this.impacts.play({
+          position: impactPoint,
+          preset: cast.preset,
+          // Sem a direção do projétil (raio, laser, queda do alvo) o impacto usa
+          // o sentido do olhar da Maga.
+          normal: direction ?? this.resolveLaunchForward(cast, TMP_DIRECTION),
+        });
+        this.cameraShake.add(
+          cast.preset.impact.cameraShakeIntensity,
+          cast.preset.impact.cameraShakeDuration
+        );
+      }
       this.emitAudio(cast.context, cast.preset, 'impact', impactPoint);
     }
     if (cast.impactDelivered) return;
