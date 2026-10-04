@@ -58,7 +58,7 @@ function sample(x: number, y: number): [number, number, number, number] {
   // Anel fino + névoa azul irregular em volta.
   const ring = Math.exp(-Math.pow(d / (RING_WIDTH * (1 + 0.25 * Math.sin(angle * 5))), 2));
   const mist = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(angle * 9 + SEED * 3));
-  const halo = Math.exp(-Math.pow(d / (RING_WIDTH * (4.4 + 1.6 * mist)), 2)) * HALO * (0.75 + 0.5 * mist);
+  const halo = Math.exp(-Math.pow(d / (RING_WIDTH * (4.8 + 1.8 * mist)), 2)) * HALO * (0.8 + 0.55 * mist);
 
   // Raios: cada setor tem comprimento, brilho e abertura próprios.
   const sector = (angle / (Math.PI * 2) + 1) * SPIKES;
@@ -68,16 +68,18 @@ function sample(x: number, y: number): [number, number, number, number] {
   const h1 = hash(index);
   const h2 = hash(index + 91.3);
   const h3 = hash(index + 777.7);
-  const hero = h2 > 0.66 ? 2.6 : 1;
-  const width = 0.04 + 0.07 * h1;
-  const lenOut = 0.34 * (0.35 + 0.9 * h2) * hero;
-  const lenIn = 0.14 * (0.3 + 0.7 * h3);
+  // Três faixas de raio: a maioria curto, alguns médios e uns poucos bem
+  // compridos (os "heróis" da imagem).
+  const hero = h2 > 0.74 ? 2.4 : h2 > 0.5 ? 1.25 : 0.75;
+  const width = 0.032 + 0.055 * h1;
+  const lenOut = 0.27 * (0.5 + 0.95 * h2) * hero;
+  const lenIn = 0.15 * (0.35 + 0.8 * h3);
   // O raio é uma cunha: fino no anel, abrindo conforme se afasta dele.
   const span = d / (r >= radius ? lenOut : lenIn);
   const widthAt = width * (1 + 2.4 * span);
   const spike = Math.max(0, 1 - centered / widthAt);
   const spikeShape = spike * spike * (3 - 2 * spike);
-  const fall = Math.exp(-Math.pow(span, 1.9));
+  const fall = Math.exp(-Math.pow(span, 2.1));
   const brightness = 0.3 + 1.5 * h2 * (h1 > 0.45 ? 1 : 0.78);
   const ray = spikeShape * fall * brightness;
 

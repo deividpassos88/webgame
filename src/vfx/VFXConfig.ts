@@ -158,7 +158,7 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       duration: 0.78,
       radius: 1.05,
       shockwaveRadius: 2.25,
-      ringScale: 1,
+      ringScale: 0.68,
       cameraShakeIntensity: 0.034,
       cameraShakeDuration: 0.18,
       lightIntensity: 1.15,

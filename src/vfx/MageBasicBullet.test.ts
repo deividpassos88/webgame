@@ -296,21 +296,29 @@ describe('Mage basic attack bullet', () => {
     });
     const impact = advanceUntilTargetImpact(vfx, mixer, scene);
     expect(impact).toBeDefined();
-    const inner = impact?.getObjectByName('MageImpactShaderShockwave') as THREE.Mesh | undefined;
-    const outer = impact?.getObjectByName('MageImpactOuterShockwave') as THREE.Mesh | undefined;
     // O anel da referência é um sprite: encara a câmera de qualquer ângulo.
     const ring = impact?.getObjectByName('MageImpactReferenceRing') as THREE.Sprite | undefined;
-    expect(inner).toBeDefined();
-    expect(outer).toBeDefined();
-    expect(ring).toBeDefined();
+    const core = impact?.getObjectByName('MageImpactCore') as THREE.Mesh | undefined;
+    const flash = impact?.getObjectByName('MageImpactFlash') as THREE.Sprite | undefined;
+    const burst = impact?.getObjectByName('MageImpactExplosionTexture') as THREE.Sprite | undefined;
+    const ground = impact?.getObjectByName('MageImpactShaderShockwave') as THREE.Mesh | undefined;
     expect(ring).toBeInstanceOf(THREE.Sprite);
     expect(ring?.visible).toBe(true);
     expect(ring?.material.map).toBeTruthy();
     expect(ring?.material.opacity).toBeGreaterThan(0.5);
-    // A onda dupla do chão é maior que a de dentro.
-    expect(outer?.scale.x ?? 0).toBeGreaterThan(inner?.scale.x ?? 0);
-    // O anel vertical de neon (o formato que o usuário rejeitou) saiu.
+    // A bala básica tem UM efeito de impacto: o anel. O estouro antigo fica
+    // desligado nela (senão apareciam dois impactos na tela).
+    expect(core?.visible).toBe(false);
+    expect(flash?.visible).toBe(false);
+    expect(burst?.visible).toBe(false);
+    expect(ground?.visible).toBe(false);
+    expect(impact?.getObjectByName('MageImpactOuterShockwave')).toBeUndefined();
     expect(impact?.getObjectByName('MageImpactVerticalBlastRing')).toBeUndefined();
+    // Sem faísca nem poeira: só o anel (e os estilhaços de gelo).
+    const particles = impact?.getObjectByName('MageImpactParticles') as THREE.Points | undefined;
+    const smoke = impact?.getObjectByName('MageImpactSmoke') as THREE.Points | undefined;
+    expect(particles?.geometry.drawRange.count).toBe(0);
+    expect(smoke?.geometry.drawRange.count).toBe(0);
     vfx.dispose();
   });
 
@@ -339,17 +347,25 @@ describe('Mage basic attack bullet', () => {
     expect(ring).toBeDefined();
     // O anel da referência é quem dá o tamanho do impacto: nasce bem acima do
     // estouro antigo de 0,42 m e continua abrindo.
-    expect(ring?.scale.x ?? 0).toBeGreaterThan(radius * 2);
+    const impactConfig = MAGE_SPELL_PRESETS.basic.impact;
+    const spawnScale = impactConfig.shockwaveRadius * (impactConfig.ringScale ?? 1);
     const first = ring?.scale.x ?? 0;
-    expect((ring?.material as THREE.SpriteMaterial).map?.name).toBe('MageImpactRingTexture');
-    for (let step = 0; step < 4; step += 1) {
-      mixer.update(0.03);
-      vfx.update(0.03);
-    }
-    expect(ring?.scale.x ?? 0).toBeGreaterThan(first);
-
+    expect(ring?.material.map?.name).toBe('MageImpactRingTexture');
+    // Nasce no tamanho do preset e abre até 1,7x isso — nunca mais que isso.
+    expect(first).toBeGreaterThanOrEqual(spawnScale);
+    expect(first).toBeLessThan(spawnScale * 1.3);
+    expect(first).toBeGreaterThan(radius * 1.2);
     const shards = impact?.children.filter((child) => child.name === 'MageImpactDebris') ?? [];
     expect(shards.filter((shard) => shard.visible).length).toBeGreaterThan(3);
+
+    let peak = first;
+    for (let step = 0; step < 30; step += 1) {
+      mixer.update(0.03);
+      vfx.update(0.03);
+      peak = Math.max(peak, ring?.scale.x ?? 0);
+    }
+    expect(peak).toBeGreaterThan(first);
+    expect(peak).toBeLessThanOrEqual(spawnScale * 1.71);
     vfx.dispose();
   });
 

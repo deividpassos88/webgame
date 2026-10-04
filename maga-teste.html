@@ -137,7 +137,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { MageVFX } from '/src/vfx/MageVFX';
 import { MAGE_SPELL_PRESETS } from '/src/vfx/VFXConfig';
 
-const FX_REV = 'v6'; // sobe junto com cada mudança grande de efeito
+const FX_REV = 'v7'; // sobe junto com cada mudança grande de efeito
 const PRESET = MAGE_SPELL_PRESETS.basic;
 const PRISTINE = JSON.parse(JSON.stringify(PRESET));
 const revBadge = document.getElementById('fx-rev');
@@ -333,11 +333,11 @@ function updateReadout() {
   readout.innerHTML = [
     `Cometa: <b>${cometLength.toFixed(2)} m</b> de comprimento · <b>${cometWidth.toFixed(2)} m</b> de largura (${(cometLength / mageHeight).toFixed(2)}× a altura da Maga)`,
     `Colisão: raio <b>${radius.toFixed(2)} m</b> · Aura azul: <b>${halo.toFixed(2)} m</b> de diâmetro`,
-    `Impacto: anel <b>${(PRESET.impact.shockwaveRadius * (PRESET.impact.ringScale ?? 1) * 0.58).toFixed(2)} m</b> de diâmetro (abre até <b>${(PRESET.impact.shockwaveRadius * (PRESET.impact.ringScale ?? 1) * 2.2 * 0.58).toFixed(2)} m</b>) · estouro curto de <b>${PRESET.impact.radius.toFixed(2)} m</b> · ondas no chão <b>${PRESET.impact.shockwaveRadius.toFixed(2)} m</b> e ${(PRESET.impact.shockwaveRadius * 1.62).toFixed(2)} m · <b>${PRESET.impact.duration.toFixed(2)} s</b>`,
+    `Impacto: anel <b>${(PRESET.impact.shockwaveRadius * (PRESET.impact.ringScale ?? 1) * 0.58).toFixed(2)} m</b> de diâmetro (abre até <b>${(PRESET.impact.shockwaveRadius * (PRESET.impact.ringScale ?? 1) * 1.7 * 0.58).toFixed(2)} m</b>) · estouro curto de <b>${PRESET.impact.radius.toFixed(2)} m</b> · ondas no chão <b>${PRESET.impact.shockwaveRadius.toFixed(2)} m</b> e ${(PRESET.impact.shockwaveRadius * 1.62).toFixed(2)} m · <b>${PRESET.impact.duration.toFixed(2)} s</b>`,
     `Impacto: <b>${PRESET.impact.particleCount}</b> partículas · <b>${PRESET.impact.debrisCount}</b> estilhaços de gelo · luz <b>${PRESET.impact.lightIntensity.toFixed(2)}</b> · tremor <b>${PRESET.impact.cameraShakeIntensity.toFixed(3)}</b> · Carga na mão: <b>${PRESET.charge.scale.toFixed(2)}</b>`,
     `Fumaça de gelo (mundo): <b>${frost ? frost.count : 0}</b> partículas a cada <b>${frost ? frost.interval.toFixed(3) : 0}s</b> → cerca de <b>${Math.round(tail)}</b> na cauda, puff de <b>${(puffMeters * 100).toFixed(0)} cm</b>`,
     `Conjuração: <b>${PRESET.charge.particleCount}</b> partículas girando · <b>${PRESET.charge.sparkCount}</b> faíscas (0 = só o brilho na mão) · brilho na mão por <b>${Math.round(Math.max(0, PRESET.timeline.launch - PRESET.timeline.chargeStart) * 1800)} ms</b>`,
-    'Anel da referência: billboard (encara a câmera) com anel fino branco, 48 setores de raios cruzando para dentro e para fora, névoa azul e miolo vazio. O anel vertical de neon saiu.',
+    'Impacto da bala = um efeito só: o anel da referência (billboard que encara a câmera, anel fino branco com 48 setores de raios cruzando para dentro e para fora, névoa azul e miolo vazio). O estouro antigo (bola branca + onda de neon no chão) saiu do ataque básico.',
     'Sem alvo o tiro não explode: ele perde o brilho em 0,4 s e some (impacto só quando acerta inimigo). Não fica clarão parado onde a Maga atirou.',
     PRESET.impact.radius < cometWidth * 0.9
       ? '<span class="warn">O impacto está pequeno para esta bala — sobe o raio do impacto.</span>'

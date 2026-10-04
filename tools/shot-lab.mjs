@@ -48,6 +48,11 @@ const steps = (process.argv[5] ?? '20,30,40,50,55,58,61,64,67,70,75,80,90')
   .split(',')
   .map(Number);
 const side = process.argv[6] === 'side';
+// Recorte opcional ("x,y,w,h") para ver o impacto de perto no print.
+const crop = (process.argv[7] ?? process.env.CROP ?? '')
+  .split(',')
+  .filter(Boolean)
+  .map(Number);
 mkdirSync(outDir, { recursive: true });
 
 const browser = await puppeteer.launch({
@@ -109,8 +114,11 @@ for (const target of steps) {
   }, target - current);
   current = target;
   const name = `${outDir}/${side ? 'side' : 'game'}-s${String(target).padStart(3, '0')}.png`;
+  const clip = crop.length === 4
+    ? { x: crop[0], y: crop[1], width: crop[2], height: crop[3] }
+    : undefined;
   const t0 = Date.now();
-  await page.screenshot({ path: name });
+  await page.screenshot({ path: name, ...(clip ? { clip } : {}) });
   console.log(name, `${Date.now() - t0}ms`);
 }
 const hud = await page.evaluate(() => document.getElementById('hud-hits')?.textContent);

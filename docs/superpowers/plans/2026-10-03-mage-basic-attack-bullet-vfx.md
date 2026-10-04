@@ -183,3 +183,24 @@ O que entrou:
 - Testes: `src/vfx/ImpactRingTexture.test.ts` (miolo vazio, anel aceso, raios
   com ponta azulada, determinismo) e as asserções do impacto passaram a medir o
   anel no lugar do núcleo. Selo do laboratório: **FX v6**.
+
+## Sexta rodada (03/10) — um impacto só, menor e mais perto da imagem
+
+O usuário viu **dois impactos** no mesmo acerto e pediu para deixar só o novo,
+**diminuir um pouco** e **melhorar** para ficar mais parecido com a imagem.
+
+- **Um efeito só**: `ImpactVFX` ganhou o `legacyExplosion = !bulletImpact`. No
+  ataque básico o núcleo branco, o flash, a explosão em sprite, a onda no chão
+  **e a partícula/poeira** ficam desligados — sobra o anel da referência mais os
+  estilhaços de gelo. Nas outras magias nada mudou. A segunda onda
+  (`MageImpactOuterShockwave`) saiu de vez, porque só a bala a usava.
+- **Menor**: `impact.ringScale` foi para **0,68** e o crescimento caiu para
+  **1,7×** (o anel desenhado ocupa 58% do sprite). O anel final fica em torno de
+  1,8 m de diâmetro — do tamanho da área de dano de 2 m.
+- **Mais parecido com a imagem**: raios em três faixas (curtos, médios e uns
+  poucos bem compridos), mais finos onde nascem, queda mais suave no
+  comprimento (`span^2.1`) e halo azul maior/mais presente.
+- **Dura mais**: o anel fica aceso quase até o fim do impacto (a queda só no
+  último terço, `(1 - p^2.2)`) e some em 70% da vida, em vez de apagar em 40%.
+- Laboratório: selo **FX v7**, painel avisa que o impacto é um efeito só e o
+  diâmetro do anel considera o novo crescimento (1,7×).
