@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER,
+  MAGE_BASIC_SPLASH_RADIUS_METERS,
   MAGE_FIRE_BURN_DAMAGE_PER_SECOND,
   MAGE_FIRE_BURN_SECONDS,
   MAGE_FIRE_RADIUS_METERS,
@@ -13,6 +15,15 @@ import {
 } from './MageSkillImpact';
 
 describe('Mage skill impact control', () => {
+  it('o básico respinga dano num raio de 2 m do impacto', () => {
+    expect(MAGE_BASIC_SPLASH_RADIUS_METERS).toBe(2);
+    // 4x menos que o dano da arma (o alvo leva 100%, o vizinho 25%).
+    expect(MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER).toBe(0.25);
+    // O respingo usa o mesmo teste de raio horizontal das outras áreas.
+    expect(isInsideMageSkillRadius(0, 0, 1.9, 0, MAGE_BASIC_SPLASH_RADIUS_METERS)).toBe(true);
+    expect(isInsideMageSkillRadius(0, 0, 2.1, 0, MAGE_BASIC_SPLASH_RADIUS_METERS)).toBe(false);
+  });
+
   it('paralyzes with ice, slows with water, lifts with lightning and burns with lava', () => {
     expect(mageSkillImpactEffect('ice')).toEqual({
       kind: 'freeze',

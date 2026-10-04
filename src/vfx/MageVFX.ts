@@ -44,6 +44,7 @@ class ChargeOrbEffect implements PoolableVFX {
   private age = 0;
   private intensity = 0;
   private preset: MageSpellPreset | null = null;
+  private arcaneParticleSize = false;
 
   public constructor(
     private readonly resources: MageVFXResources,
@@ -129,13 +130,24 @@ class ChargeOrbEffect implements PoolableVFX {
       this.lightHandle.light.position.copy(this.group.position);
     }
 
-    this.orbitParticles.emit(new THREE.Vector3(), {
-      color: preset.colors.secondary,
-      count: qualityCount(preset.charge.particleCount, this.quality, preset.qualityParticleMultiplier),
-      speed: preset.style === 'water' ? 0.52 : 0.32,
-      spread: preset.style === 'water' ? 0.72 : 0.48,
-      lifetime: 999,
-    });
+    // Sizes are screen-space units (~0.21 m each). The arcane charge belongs to
+    // the basic attack, so it stays a small spark in the palm; the big spells
+    // keep their wide glow field.
+    const arcane = preset.style === 'arcane';
+    this.arcaneParticleSize = arcane;
+    // 0 partículas = conjuração só com o brilho na mão (sem poeira girando e
+    // sem faísca). É assim que o ataque básico da Maga é pedido agora.
+    this.orbitParticles.reset();
+    if (preset.charge.particleCount > 0) {
+      this.orbitParticles.emit(new THREE.Vector3(), {
+        color: preset.colors.secondary,
+        count: qualityCount(preset.charge.particleCount, this.quality, preset.qualityParticleMultiplier),
+        speed: preset.style === 'water' ? 0.52 : 0.32,
+        spread: preset.style === 'water' ? 0.72 : 0.48,
+        lifetime: 999,
+        ...(arcane ? { size: [1.2, 3] as const } : {}),
+      });
+    }
     this.sparks.reset();
     this.configureAccents(preset);
   }
@@ -144,7 +156,10 @@ class ChargeOrbEffect implements PoolableVFX {
     if (!this.active || !this.preset) return;
     const elapsed = Math.max(0, delta);
     this.age += elapsed;
-    this.intensity = THREE.MathUtils.clamp(this.intensity + elapsed * (this.preset.style === 'laser' ? 1.8 : 2.8), 0, 1);
+    // O arcano (ataque básico) acende quase instantâneo: a conjuração dele dura
+    // décimos de segundo, então a rampa tem que acompanhar.
+    const ramp = this.preset.style === 'laser' ? 1.8 : this.preset.style === 'arcane' ? 9 : 2.8;
+    this.intensity = THREE.MathUtils.clamp(this.intensity + elapsed * ramp, 0, 1);
     const pulseRate = this.preset.style === 'lightning' ? 34 : this.preset.style === 'water' ? 12 : 18;
     const pulse = 1 + Math.sin(this.age * pulseRate) * (this.preset.style === 'lightning' ? 0.14 : 0.08);
     const scale = (0.45 + this.intensity * (this.preset.style === 'laser' ? 1.05 : 0.75)) * this.preset.charge.scale * pulse;
@@ -156,7 +171,12 @@ class ChargeOrbEffect implements PoolableVFX {
     (this.core.material as THREE.MeshBasicMaterial).color.copy(TMP_COLOR);
     (this.core.material as THREE.MeshBasicMaterial).opacity = 0.65 + this.intensity * 0.3;
     (this.glow.material as THREE.SpriteMaterial).opacity = 0.32 + this.intensity * 0.5;
-    this.glow.scale.setScalar(2.2 + this.intensity * (this.preset.style === 'laser' ? 2.8 : 1.6));
+    // The arcane charge is the Mage's basic attack: it must stay a small spark
+    // in the palm instead of the 3.8 m ball of light the other spells use.
+    const arcane = this.preset.style === 'arcane';
+    this.glow.scale.setScalar(
+      (arcane ? 1 : 2.2) + this.intensity * (this.preset.style === 'laser' ? 2.8 : arcane ? 0.4 : 1.6)
+    );
     if (this.lightHandle) {
       this.lightHandle.light.intensity = this.preset.charge.lightIntensity * this.intensity;
       this.lightHandle.light.position.copy(this.group.position);
@@ -165,7 +185,7 @@ class ChargeOrbEffect implements PoolableVFX {
     this.updateOrbitParticles();
     this.updateAccents(elapsed);
     const sparkInterval = this.preset.style === 'lightning' ? 0.05 : this.preset.style === 'lava' ? 0.09 : 0.12;
-    if (this.age % sparkInterval < elapsed) {
+    if (this.preset.charge.sparkCount > 0 && this.age % sparkInterval < elapsed) {
       this.sparks.emit(new THREE.Vector3(), {
         color: this.preset.colors.spark,
         count: qualityCount(this.preset.charge.sparkCount, this.quality, this.preset.qualityParticleMultiplier),
@@ -173,6 +193,7 @@ class ChargeOrbEffect implements PoolableVFX {
         spread: this.preset.style === 'lightning' ? 1.05 : 0.75,
         lifetime: this.preset.style === 'lava' ? 0.32 : 0.24,
         upwardBias: this.preset.style === 'lava' ? 0.35 : 0,
+        ...(this.arcaneParticleSize ? { size: [1.1, 2.6] as const } : {}),
       });
     }
     this.sparks.update(elapsed);
@@ -236,6 +257,7 @@ class ChargeOrbEffect implements PoolableVFX {
   }
 
   private updateOrbitParticles(): void {
+    if (this.preset && this.preset.charge.particleCount <= 0) return;
     if (!this.preset) return;
     const points = this.orbitParticles.points;
     const geometry = points.geometry as THREE.BufferGeometry;
@@ -497,6 +519,12 @@ export interface MageVFXOptions {
    * MageVFX creates (and owns) its own pool sized by maxTemporaryLights.
    */
   readonly lightPool?: VFXLightPool;
+  /**
+   * Live camera provider. The basic-attack bullet draws a flat comet sprite, so
+   * it needs the camera to stay facing it and keep pointing down the flight
+   * path. When omitted the sprite falls back to a fixed side view.
+   */
+  readonly getCamera?: () => THREE.Camera | null;
 }
 
 export class MageVFX {
@@ -533,7 +561,13 @@ export class MageVFX {
       () => new BarrierAuraEffect(this.resources, this.quality),
       MAGE_VFX_LIMITS.maxBarriers
     );
-    this.projectiles = new ProjectileManager(scene, this.resources, this.quality, this.lightPool);
+    this.projectiles = new ProjectileManager(
+      scene,
+      this.resources,
+      this.quality,
+      this.lightPool,
+      options.getCamera ?? (() => null)
+    );
     this.lightning = new LightningVFX(scene, this.resources, this.quality);
     this.lasers = new LaserVFX(scene, this.resources, this.quality, this.lightPool);
     this.impacts = new ImpactVFX(scene, this.resources, this.quality, this.lightPool);
@@ -578,6 +612,9 @@ export class MageVFX {
         cast.charge.update(elapsed);
       }
       const alive = cast.timeline.update((name) => this.handleTimelineEvent(cast, name));
+      // Depois do disparo a carga não tem mais razão de existir: se algum evento
+      // repetido a recriar, ela cai aqui no mesmo quadro.
+      if (cast.launched && cast.charge) this.releaseCharge(cast);
       const actionStoppedBeforeLaunch = !cast.context.action.isRunning()
         && !cast.launched
         && cast.context.action.time <= 0.02;
@@ -826,6 +863,10 @@ export class MageVFX {
 
   private startCharge(cast: ActiveMageCast): void {
     if (cast.charge) return;
+    // Cast que já lançou não volta a carregar: quando o ataque é reiniciado no
+    // meio (andar e atacar de novo), a timeline refaz os eventos deste cast e a
+    // carga ficava pendurada na mão — sem isso o brilho nunca saía de lá.
+    if (cast.launched) return;
     const charge = this.charges.acquire();
     if (!charge) return;
     charge.play(cast.preset);
@@ -873,12 +914,19 @@ export class MageVFX {
     this.releaseCharge(cast);
 
     const direction = this.resolveLaunchDirection(cast, origin, TMP_DIRECTION).clone();
-    this.impacts.play({
-      position: origin,
-      preset: cast.preset,
-      scale: cast.preset.style === 'laser' ? 0.5 : 0.35,
-      lightIntensity: cast.preset.impact.lightIntensity * 0.45,
-    });
+    const bullet = cast.preset.projectile.shape === 'bullet';
+    // O rastro de saída do tiro (um impacto em miniatura) ficava parado no ar
+    // onde a Maga atirou: ela andava e o clarão continuava lá, brilhando por
+    // quase um segundo. Na bala ele sai de cena — o brilho da conjuração na mão
+    // já anuncia o disparo, e o efeito de impacto fica só para o acerto.
+    if (!bullet) {
+      this.impacts.play({
+        position: origin,
+        preset: cast.preset,
+        scale: cast.preset.style === 'laser' ? 0.5 : 0.35,
+        lightIntensity: cast.preset.impact.lightIntensity * 0.45,
+      });
+    }
     this.emitAudio(cast.context, cast.preset, 'cast', origin);
 
     if (cast.preset.delivery === 'instant-lightning') {
@@ -889,7 +937,7 @@ export class MageVFX {
         end: stopped.point,
         preset: cast.preset,
         onImpact: () => {
-          this.handleDirectImpact(stopped.point, cast, stopped.target);
+          this.handleDirectImpact(stopped.point, cast, stopped.target, direction);
         },
       });
       return;
@@ -910,9 +958,10 @@ export class MageVFX {
         onImpact: (target) => this.handleDirectImpact(
           this.bodyImpactPoint(target, aimed),
           cast,
-          target
+          target,
+          direction
         ),
-        onFinalImpact: (position, target) => this.handleDirectImpact(position, cast, target),
+        onFinalImpact: (position, target) => this.handleDirectImpact(position, cast, target, direction),
       });
       return;
     }
@@ -935,17 +984,32 @@ export class MageVFX {
   }
 
   private handleProjectileImpact(impact: MageProjectileImpact, cast: ActiveMageCast): void {
-    this.handleDirectImpact(impact.position, cast, impact.target);
+    this.handleDirectImpact(impact.position, cast, impact.target, impact.direction);
   }
 
-  private handleDirectImpact(position: THREE.Vector3, cast: ActiveMageCast, target: THREE.Object3D | null): void {
+  private handleDirectImpact(
+    position: THREE.Vector3,
+    cast: ActiveMageCast,
+    target: THREE.Object3D | null,
+    direction?: THREE.Vector3
+  ): void {
     const impactPoint = target ? this.bodyImpactPoint(target, position) : position;
     if (!cast.impactDelivered) {
-      this.impacts.play({ position: impactPoint, preset: cast.preset });
-      this.cameraShake.add(
-        cast.preset.impact.cameraShakeIntensity,
-        cast.preset.impact.cameraShakeDuration
-      );
+      // `impact.visual === false` (ataque básico): o acerto não desenha nada —
+      // nem explosão, nem luz, nem tremor. O som continua.
+      if (cast.preset.impact.visual !== false) {
+        this.impacts.play({
+          position: impactPoint,
+          preset: cast.preset,
+          // Sem a direção do projétil (raio, laser, queda do alvo) o impacto usa
+          // o sentido do olhar da Maga.
+          normal: direction ?? this.resolveLaunchForward(cast, TMP_DIRECTION),
+        });
+        this.cameraShake.add(
+          cast.preset.impact.cameraShakeIntensity,
+          cast.preset.impact.cameraShakeDuration
+        );
+      }
       this.emitAudio(cast.context, cast.preset, 'impact', impactPoint);
     }
     if (cast.impactDelivered) return;

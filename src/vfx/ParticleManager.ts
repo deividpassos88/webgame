@@ -15,6 +15,21 @@ export interface ParticleBurstOptions {
   readonly spread: number;
   readonly lifetime: number;
   readonly upwardBias?: number;
+  /** Point size range in shader units (before the perspective divide). */
+  readonly size?: readonly [number, number];
+  /** Cloud opacity multiplier (default 1). */
+  readonly opacity?: number;
+  /**
+   * How much a particle grows over its life: negative shrinks (sparks),
+   * positive puffs up (smoke/vapor). Shader units, default -0.52.
+   */
+  readonly growth?: number;
+}
+
+export type ParticleCloudBlending = 'additive' | 'normal';
+
+export interface ParticleCloudOptions {
+  readonly blending?: ParticleCloudBlending;
 }
 
 interface ParticleShaderUniforms {
@@ -22,19 +37,30 @@ interface ParticleShaderUniforms {
   uColor: { value: THREE.Color };
   uOpacity: { value: number };
   uTime: { value: number };
+  uGrowth: { value: number };
 }
 
 type ParticleShaderMaterial = THREE.ShaderMaterial & { uniforms: ParticleShaderUniforms };
 
-function createParticleMaterial(texture?: THREE.Texture): ParticleShaderMaterial {
+/** Default point-size range for combat sparks and glows. */
+const DEFAULT_PARTICLE_SIZE: readonly [number, number] = [10, 36];
+/** Default life growth: sparks shrink as they die. */
+const DEFAULT_PARTICLE_GROWTH = -0.52;
+
+function createParticleMaterial(
+  texture?: THREE.Texture,
+  blending: THREE.Blending = THREE.AdditiveBlending
+): ParticleShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
       uMap: { value: texture ?? EMPTY_TEXTURE },
       uColor: { value: new THREE.Color(0xffffff) },
       uOpacity: { value: 0 },
       uTime: { value: 0 },
+      uGrowth: { value: DEFAULT_PARTICLE_GROWTH },
     },
     vertexShader: /* glsl */`
+      uniform float uGrowth;
       attribute float aLifeRatio;
       attribute float aSize;
       attribute float aSeed;
@@ -46,7 +72,7 @@ function createParticleMaterial(texture?: THREE.Texture): ParticleShaderMaterial
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
         float perspective = 260.0 / max(1.0, -mvPosition.z);
         float pulse = 0.86 + sin(aSeed * 17.13 + vLife * 9.0) * 0.14;
-        gl_PointSize = aSize * perspective * pulse * (1.0 - vLife * 0.52);
+        gl_PointSize = aSize * perspective * pulse * max(0.05, 1.0 + uGrowth * vLife);
         gl_Position = projectionMatrix * mvPosition;
       }
     `,
@@ -92,10 +118,12 @@ export class PooledParticleCloud {
   private activeCount = 0;
   private lifetime = 1;
   private baseOpacity = 1;
+  private ratioDimming = true;
 
   public constructor(
     private readonly maxParticles: number,
-    texture?: THREE.Texture
+    texture?: THREE.Texture,
+    options: ParticleCloudOptions = {}
   ) {
     this.positions = new Float32Array(maxParticles * 3);
     this.velocities = new Float32Array(maxParticles * 3);
@@ -112,7 +140,13 @@ export class PooledParticleCloud {
     this.geometry.setAttribute('aSize', this.sizeAttribute);
     this.geometry.setAttribute('aSeed', new THREE.BufferAttribute(this.seeds, 1));
     this.geometry.setDrawRange(0, 0);
-    this.points = new THREE.Points(this.geometry, createParticleMaterial(texture));
+    this.points = new THREE.Points(
+      this.geometry,
+      createParticleMaterial(
+        texture,
+        options.blending === 'normal' ? THREE.NormalBlending : THREE.AdditiveBlending
+      )
+    );
     this.points.frustumCulled = false;
     this.points.visible = false;
   }
@@ -136,16 +170,54 @@ export class PooledParticleCloud {
     (this.points.material as ParticleShaderMaterial).uniforms.uColor.value.set(color);
   }
 
+  /**
+   * Restarts the cloud with one burst at `origin`. Previous particles are
+   * discarded — use {@link add} when the effect needs a continuous trail.
+   */
   public emit(origin: THREE.Vector3, options: ParticleBurstOptions): void {
+    this.applyCloudStyle(options);
     const count = Math.min(this.maxParticles, Math.max(0, Math.floor(options.count)));
-    this.activeCount = count;
+    this.activeCount = 0;
+    this.spawn(origin, options, count);
+  }
+
+  /**
+   * Appends a puff to the particles already alive, so a moving source (frost
+   * trail, smoke ribbon) leaves a continuous cloud behind instead of replacing
+   * the previous puff every frame. Dead particles are compacted on update, so
+   * appending at `activeCount` always writes into a free tail.
+   */
+  public add(origin: THREE.Vector3, options: ParticleBurstOptions): void {
+    const room = this.maxParticles - this.activeCount;
+    if (room <= 0) return;
+    this.applyCloudStyle(options);
+    this.spawn(origin, options, Math.min(room, Math.max(0, Math.floor(options.count))));
+  }
+
+  private applyCloudStyle(options: ParticleBurstOptions): void {
     this.lifetime = Math.max(0.001, options.lifetime);
     this.setColor(options.color);
-    this.setOpacity(1);
-    this.points.visible = count > 0;
-    this.geometry.setDrawRange(0, count);
+    this.setOpacity(options.opacity ?? 1);
+    // An explicit opacity is the effect's intended alpha (frost trails and
+    // other continuous clouds stay steady); without it the old behaviour is
+    // kept and the cloud fades with how full it is.
+    this.ratioDimming = options.opacity === undefined;
+    (this.points.material as ParticleShaderMaterial).uniforms.uGrowth.value =
+      options.growth ?? DEFAULT_PARTICLE_GROWTH;
+  }
 
-    for (let index = 0; index < count; index += 1) {
+  private spawn(origin: THREE.Vector3, options: ParticleBurstOptions, count: number): void {
+    if (count <= 0) {
+      this.syncBuffers();
+      return;
+    }
+    const [minSize, maxSize] = options.size ?? DEFAULT_PARTICLE_SIZE;
+    const first = this.activeCount;
+    const total = first + count;
+    this.points.visible = true;
+    this.geometry.setDrawRange(0, total);
+
+    for (let index = first; index < total; index += 1) {
       const offset = index * 3;
       this.positions[offset] = origin.x;
       this.positions[offset + 1] = origin.y;
@@ -161,9 +233,16 @@ export class PooledParticleCloud {
       this.maxLives[index] = this.lifetime * (0.6 + Math.random() * 0.4);
       this.lives[index] = this.maxLives[index];
       this.lifeRatios[index] = 0;
-      this.sizes[index] = 10 + Math.random() * 26;
+      this.sizes[index] = minSize + Math.random() * Math.max(0, maxSize - minSize);
       this.seeds[index] = Math.random() * 1000;
     }
+    this.activeCount = total;
+    this.syncBuffers();
+  }
+
+  private syncBuffers(): void {
+    this.points.visible = this.activeCount > 0;
+    this.geometry.setDrawRange(0, this.activeCount);
     this.positionAttribute.needsUpdate = true;
     this.lifeAttribute.needsUpdate = true;
     this.sizeAttribute.needsUpdate = true;
@@ -202,9 +281,10 @@ export class PooledParticleCloud {
     const seedAttribute = this.geometry.getAttribute('aSeed') as THREE.BufferAttribute | undefined;
     if (seedAttribute) seedAttribute.needsUpdate = true;
     const material = this.points.material as ParticleShaderMaterial;
-    material.uniforms.uOpacity.value = alive > 0
-      ? this.baseOpacity * THREE.MathUtils.clamp(alive / this.maxParticles, 0.15, 1)
-      : 0;
+    const fill = this.ratioDimming
+      ? THREE.MathUtils.clamp(alive / this.maxParticles, 0.15, 1)
+      : 1;
+    material.uniforms.uOpacity.value = alive > 0 ? this.baseOpacity * fill : 0;
     this.points.visible = alive > 0;
     return alive > 0;
   }

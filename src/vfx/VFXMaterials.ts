@@ -373,3 +373,261 @@ export function setWarriorSlashTime(
   material.uniforms.uTime.value = time;
   material.uniforms.uProgress.value = progress;
 }
+
+// ---------------------------------------------------------------------------
+// Projétil "cometa" do ataque básico da Maga (bala de gelo)
+// ---------------------------------------------------------------------------
+
+export type FrostBulletMaterial = THREE.ShaderMaterial & {
+  uniforms: {
+    uTime: { value: number };
+    uCore: { value: THREE.Color };
+    uGlow: { value: THREE.Color };
+    uDeep: { value: THREE.Color };
+    uOpacity: { value: number };
+    uIntensity: { value: number };
+    uHeadLength: { value: number };
+    uWidth: { value: number };
+    uWisp: { value: number };
+    uFilament: { value: number };
+    uSparks: { value: number };
+    uHaze: { value: number };
+    uSeed: { value: number };
+    uScroll: { value: number };
+  };
+};
+
+export interface FrostBulletMaterialOptions {
+  /** Miolo branco do dardo e das partículas de gelo. */
+  readonly core?: THREE.ColorRepresentation;
+  /** Azul claro predominante (seda, borda e aura). */
+  readonly glow?: THREE.ColorRepresentation;
+  /** Azul profundo do fundo da cauda. */
+  readonly deep?: THREE.ColorRepresentation;
+  readonly opacity?: number;
+  readonly intensity?: number;
+  /** Fração do sprite ocupada pela ponta em dardo (0.3 = 30%). */
+  readonly headLength?: number;
+  /** Meia-espessura da cauda em UV (0.2 = 20% do sprite). */
+  readonly width?: number;
+  /** Ondulação da seda (0 = fita reta). */
+  readonly wisp?: number;
+  /** Brilho dos filamentos internos. */
+  readonly filament?: number;
+  /** Quantos pontos de gelo nascem dentro do sprite (0..6). */
+  readonly sparks?: number;
+  /** Aura suave em volta da ponta. */
+  readonly haze?: number;
+  readonly seed?: number;
+  /** Velocidade do fluxo da seda. */
+  readonly scroll?: number;
+}
+
+/**
+ * Sprite do projétil de gelo, todo desenhado em shader: dardo com borda viva e
+ * "V" interno na frente, seda translúcida ondulando atrás, partículas de gelo
+ * presas ao rastro e uma aura suave. Segue as referências de VFX de cometa.
+ *
+ * O desenho é espelhado em `tools/preview-frost-bullet.mjs` (mesma matemática
+ * em JS, usada para gerar PNG de conferência sem navegador). Mudou aqui, mude
+ * lá também.
+ */
+export function createFrostBulletMaterial(
+  options: FrostBulletMaterialOptions = {}
+): FrostBulletMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uCore: { value: new THREE.Color(options.core ?? 0xffffff) },
+      uGlow: { value: new THREE.Color(options.glow ?? 0x8fe8ff) },
+      uDeep: { value: new THREE.Color(options.deep ?? 0x1d6cff) },
+      uOpacity: { value: options.opacity ?? 1 },
+      uIntensity: { value: options.intensity ?? 1.45 },
+      uHeadLength: { value: options.headLength ?? 0.3 },
+      uWidth: { value: options.width ?? 0.2 },
+      uWisp: { value: options.wisp ?? 1 },
+      uFilament: { value: options.filament ?? 1 },
+      uSparks: { value: options.sparks ?? 5 },
+      uHaze: { value: options.haze ?? 0.35 },
+      uSeed: { value: options.seed ?? 0 },
+      uScroll: { value: options.scroll ?? 1 },
+    },
+    vertexShader: COMMON_VERTEX,
+    fragmentShader: /* glsl */`
+      uniform float uTime;
+      uniform vec3 uCore;
+      uniform vec3 uGlow;
+      uniform vec3 uDeep;
+      uniform float uOpacity;
+      uniform float uIntensity;
+      uniform float uHeadLength;
+      uniform float uWidth;
+      uniform float uWisp;
+      uniform float uFilament;
+      uniform float uSparks;
+      uniform float uHaze;
+      uniform float uSeed;
+      uniform float uScroll;
+      varying vec2 vUv;
+      ${HASH}
+
+      float fbm(vec2 p) {
+        float value = 0.0;
+        float amplitude = 0.6;
+        for (int i = 0; i < 4; i++) {
+          value += noise(p) * amplitude;
+          p = p * 2.03 + 1.7;
+          amplitude *= 0.5;
+        }
+        return value;
+      }
+
+      float seg(vec2 p, vec2 a, vec2 b) {
+        vec2 pa = p - a;
+        vec2 ba = b - a;
+        float h = clamp(dot(pa, ba) / max(1e-5, dot(ba, ba)), 0.0, 1.0);
+        return length(pa - ba * h);
+      }
+
+      float halfWidthAt(float back) {
+        return max(1e-4, uWidth * pow(clamp(back, 0.0, 1.0), 0.78));
+      }
+
+      void main() {
+        // x: 0 = fim da cauda, 1 = ponta da bala.  y: -1..1 de espessura.
+        float x = clamp(vUv.x, 0.0, 1.0);
+        float y = (vUv.y - 0.5) * 2.0;
+        float t = uTime * uScroll;
+        float headStart = clamp(1.0 - uHeadLength, 0.0, 1.0);
+
+        // ---- cauda: seda translúcida, quase toda em vazio -------------------
+        // back > 1 é o trecho da fita que corre por baixo do dardo (o dardo
+        // cobre), assim o pescoço não termina numa parede reta.
+        float back = clamp(x / max(1e-4, headStart), 0.0, 1.18);
+        float taper = clamp(back, 0.0, 1.0);
+        float halfWidth = halfWidthAt(taper);
+        float lengthFade = smoothstep(0.0, 0.2, taper) * pow(taper, 0.42);
+        // Dobra da fita: zero no pescoço (para casar com o dardo) e maior na cauda.
+        float bend = sin(x * 3.6 - t * 1.5 + uSeed * 6.3) * 0.055 * uWisp * (1.0 - back);
+        float tail = y - bend;
+        float across = abs(tail) / halfWidth;
+        float silkNoise = fbm(vec2(x * 6.0 - t * 0.5, tail * 3.0 + t * 0.1));
+        // Tudo que é cauda morre antes do dardo: sem isso os filamentos
+        // continuam por dentro da ponta e viram uma faixa reta atravessada.
+        float tailMask = 1.0 - smoothstep(0.78, 1.1, back);
+
+        float body = (1.0 - smoothstep(0.35, 1.0, across)) * 0.07
+          * (0.45 + 0.55 * silkNoise) * lengthFade * tailMask;
+        // Borda da fita: é onde a luz pega, como na referência.
+        float ribbonEdge = (1.0 - smoothstep(0.0, 0.1, abs(across - 1.0)))
+          * 0.3 * lengthFade * tailMask;
+
+        float streaks = 0.0;
+        for (int i = 0; i < 4; i++) {
+          float fi = float(i);
+          float lane = (fi - 1.5) * 0.44;
+          float wave = sin(x * (5.5 + fi * 1.9) - t * 2.1 + fi * 1.7) * 0.5 * uWisp;
+          float pos = lane * 1.35 + wave * (0.3 + 0.7 * back);
+          float line = 1.0 - smoothstep(0.0, 0.07, abs(across - pos));
+          streaks += line * (0.35 + 0.65 * back) * (0.5 + 0.5 * silkNoise);
+        }
+        streaks *= uFilament * lengthFade * 0.45 * tailMask;
+
+        float centerLine = (1.0 - smoothstep(0.0, 0.05 + 0.03 * (1.0 - back), abs(tail)))
+          * pow(back, 1.25) * 0.36 * uFilament * tailMask;
+
+        // ---- dardo (borda viva + "V" interno + ponta) ------------------------
+        // O dardo usa 82% do espaço da ponta: o resto fica vazio, senão o
+        // perfil cai a zero na borda do sprite e a borda viva vira uma faixa
+        // horizontal colada na textura.
+        float HEAD_SPAN = 0.82;
+        float hxRaw = (x - headStart) / max(1e-4, uHeadLength);
+        float hx = clamp(hxRaw / HEAD_SPAN, 0.0, 1.0);
+        // Nasce com a largura da fita no pescoço e abre (flare) antes de afinar.
+        float flare = mix(1.0, 1.6, smoothstep(0.0, 0.32, hx));
+        float hv = (y - bend * 0.15) / max(1e-4, uWidth * flare);
+        float profile = pow(clamp(1.0 - hx, 0.0, 1.0), 0.66);
+        float inHead = step(0.0, hxRaw) * (1.0 - smoothstep(HEAD_SPAN, HEAD_SPAN + 0.12, hxRaw))
+          * smoothstep(0.0, 0.05, x - headStart);
+
+        // As bordas do smoothstep nunca podem se tocar (na ponta o perfil chega
+        // a zero, e smoothstep com edge0 == edge1 é indefinido em GLSL).
+        float fillInner = profile * 0.92;
+        float fillOuter = max(fillInner + 1e-4, profile * 1.02);
+        float fill = (1.0 - smoothstep(fillInner, fillOuter, abs(hv)))
+          * 0.32 * (0.82 + 0.18 * silkNoise) * smoothstep(0.0, 0.1, hx);
+        float rim = (1.0 - smoothstep(0.0, 0.055, abs(abs(hv) - profile))) * 1.0;
+        float chevron = 1.0 - smoothstep(
+          0.0,
+          0.05,
+          min(seg(vec2(hx, hv), vec2(0.08, 0.52), vec2(0.58, 0.0)),
+              seg(vec2(hx, hv), vec2(0.08, -0.52), vec2(0.58, 0.0)))
+        );
+        float nose = 1.0 - smoothstep(0.0, 0.3, length(vec2((hx - 0.78) * 1.15, hv * 0.9)));
+        float head = (fill + rim + chevron * 0.6 + nose * 0.75) * inHead;
+
+        // ---- aura e gelo solto ----------------------------------------------
+        vec2 auraPoint = vec2((x - headStart - 0.04) * 1.25, y * 2.4);
+        float aura = exp(-dot(auraPoint, auraPoint) * 3.0) * uHaze;
+        // Névoa de volume: leve, senão engorda a cauda e some com a seda.
+        vec2 washPoint = vec2((x - 0.45) * 1.6, tail * 2.6);
+        float wash = exp(-dot(washPoint, washPoint) * 3.4) * uHaze * 0.22 * lengthFade;
+
+        float sparks = 0.0;
+        for (int i = 0; i < 6; i++) {
+          if (float(i) < uSparks) {
+            float fi = float(i);
+            float sx = fract(sin(fi * 12.9898 + uSeed * 7.31) * 43758.5453);
+            float sy = fract(sin(fi * 43.123 + uSeed * 3.17) * 24634.6345) * 2.0 - 1.0;
+            float side = sy < 0.0 ? -1.0 : 1.0;
+            float sparkX = 0.12 + sx * 0.72;
+            float localWidth = halfWidthAt(sparkX / max(1e-4, headStart));
+            float sparkY = side * (localWidth * (1.35 + 0.75 * abs(sy)) + 0.05);
+            float twinkle = 0.55 + 0.45 * sin(uTime * 6.0 + fi * 2.4);
+            float size = 0.022 + 0.018 * fract(fi * 5.7 + uSeed);
+            float d = length(vec2(x - sparkX, (y - sparkY) * 0.65));
+            sparks += (1.0 - smoothstep(0.0, size, d)) * twinkle;
+          }
+        }
+
+        float sum = body + ribbonEdge + streaks + centerLine + head + aura + wash + sparks;
+        if (sum <= 0.004) discard;
+
+        // Branco só no miolo do dardo e no gelo solto; o resto é azul.
+        float coreWeight = clamp(chevron * 0.5 + nose * 0.85 + rim * 0.55 + sparks * 1.5, 0.0, 1.0);
+        vec3 color = mix(uDeep, uGlow, clamp(sum * 0.95, 0.0, 1.0));
+        color = mix(color, uCore, coreWeight);
+        gl_FragColor = vec4(color * uIntensity, clamp(sum, 0.0, 1.0) * uOpacity);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  }) as FrostBulletMaterial;
+}
+
+export function configureFrostBulletMaterial(
+  material: FrostBulletMaterial,
+  options: FrostBulletMaterialOptions
+): void {
+  if (options.core !== undefined) material.uniforms.uCore.value.set(options.core);
+  if (options.glow !== undefined) material.uniforms.uGlow.value.set(options.glow);
+  if (options.deep !== undefined) material.uniforms.uDeep.value.set(options.deep);
+  if (options.opacity !== undefined) material.uniforms.uOpacity.value = options.opacity;
+  if (options.intensity !== undefined) material.uniforms.uIntensity.value = options.intensity;
+  if (options.headLength !== undefined) material.uniforms.uHeadLength.value = options.headLength;
+  if (options.width !== undefined) material.uniforms.uWidth.value = options.width;
+  if (options.wisp !== undefined) material.uniforms.uWisp.value = options.wisp;
+  if (options.filament !== undefined) material.uniforms.uFilament.value = options.filament;
+  if (options.sparks !== undefined) material.uniforms.uSparks.value = options.sparks;
+  if (options.haze !== undefined) material.uniforms.uHaze.value = options.haze;
+  if (options.seed !== undefined) material.uniforms.uSeed.value = options.seed;
+  if (options.scroll !== undefined) material.uniforms.uScroll.value = options.scroll;
+}
+
+export function setFrostBulletTime(material: FrostBulletMaterial, time: number): void {
+  material.uniforms.uTime.value = time;
+}

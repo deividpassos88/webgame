@@ -1,6 +1,11 @@
 /**
  * Counts consecutive damaging hits dealt to monsters. The streak resets after
  * a short pause without hitting anything.
+ *
+ * Quem alimenta é o `Game`, e só durante o combo de skills: hits de ataque
+ * básico (Maga e Guerreiro, incluindo o respingo de área) não contam — o
+ * contador é do combo. Fora da janela do combo o `Game` zera o contador, então
+ * ele também desaparece da tela.
  */
 export const HIT_COUNTER_TIMEOUT_SECONDS = 3;
 

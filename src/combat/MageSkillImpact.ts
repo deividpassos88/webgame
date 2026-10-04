@@ -1,3 +1,7 @@
+import {
+  BASIC_ATTACK_AREA_DAMAGE_MULTIPLIER,
+  BASIC_ATTACK_AREA_RADIUS_METERS,
+} from './BasicAttackArea';
 import type { MageSpellId } from '../vfx/VFXTypes';
 
 /** Mage ice fully paralyzes the hit monster for this window. */
@@ -9,6 +13,14 @@ export const MAGE_WATER_SLOW_MULTIPLIER = 0.5;
 export const MAGE_SHOCK_LEVITATE_SECONDS = 2.1;
 export const MAGE_SHOCK_RADIUS_METERS = 2;
 export const MAGE_SHOCK_LIFT_METERS = 3.2;
+/**
+ * O ataque básico da Maga também estoura em área: quem estiver a até 2 m do
+ * ponto atingido leva o respingo. O alvo do tiro leva o dano cheio da arma; os
+ * vizinhos levam **4× menos** (1/4). A regra vive em `BasicAttackArea` porque
+ * vale para o básico do Guerreiro também.
+ */
+export const MAGE_BASIC_SPLASH_RADIUS_METERS = BASIC_ATTACK_AREA_RADIUS_METERS;
+export const MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER = BASIC_ATTACK_AREA_DAMAGE_MULTIPLIER;
 /** Mage fire burns every living monster inside this radius of the impact. */
 export const MAGE_FIRE_BURN_SECONDS = 4;
 export const MAGE_FIRE_BURN_DAMAGE_PER_SECOND = 2;

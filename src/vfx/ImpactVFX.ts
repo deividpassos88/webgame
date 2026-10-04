@@ -9,6 +9,7 @@ import {
   setEnergyTime,
   type EnergyShaderMaterial,
 } from './VFXMaterials';
+import { createImpactRingTexture } from './ImpactRingTexture';
 import { VFXLightPool, type VFXLightHandle } from './VFXLightPool';
 import type { MageImpactConfig, MageSpellPreset, MageVFXQuality } from './VFXTypes';
 
@@ -17,10 +18,25 @@ interface ImpactPlayOptions {
   readonly preset: MageSpellPreset;
   readonly scale?: number;
   readonly lightIntensity?: number;
+  /**
+   * Sentido do disparo no momento da batida. A onda vertical do ataque básico
+   * encara esse eixo, então o impacto tem volume visto de qualquer câmera.
+   */
+  readonly normal?: THREE.Vector3;
 }
 
 const MAX_DEBRIS = 14;
 const TMP_DIR = new THREE.Vector3();
+
+/**
+ * O anel da referência é sempre o mesmo desenho: uma textura só, compartilhada
+ * por todos os impactos do pool.
+ */
+let sharedRingTexture: THREE.DataTexture | null = null;
+function impactRingTexture(): THREE.DataTexture {
+  if (!sharedRingTexture) sharedRingTexture = createImpactRingTexture();
+  return sharedRingTexture;
+}
 
 class ImpactEffect implements PoolableVFX {
   public active = false;
@@ -30,6 +46,12 @@ class ImpactEffect implements PoolableVFX {
   private readonly core: THREE.Mesh;
   private readonly shockwave: THREE.Mesh;
   private readonly shockwaveMaterial: EnergyShaderMaterial;
+  /**
+   * O anel da referência, numa billboard: encara a câmera, então o impacto
+   * mostra o desenho certo mesmo com a Maga de costas para nós.
+   */
+  private readonly ring: THREE.Sprite;
+  private readonly ringMaterial: THREE.SpriteMaterial;
   private readonly particles: PooledParticleCloud;
   private readonly smoke: PooledParticleCloud;
   private readonly debris: THREE.Mesh[] = [];
@@ -37,9 +59,12 @@ class ImpactEffect implements PoolableVFX {
   private lightHandle: VFXLightHandle | null = null;
   private age = 0;
   private duration = 0.5;
+  private bulletImpactPlayed = false;
   private config: MageImpactConfig | null = null;
   private preset: MageSpellPreset | null = null;
   private baseScale = 1;
+  /** Multiplicador do anel da referência (preset, com padrão 1). */
+  private ringScale = 1;
 
   public constructor(
     private readonly resources: MageVFXResources,
@@ -98,8 +123,25 @@ class ImpactEffect implements PoolableVFX {
     this.shockwave.rotation.x = -Math.PI / 2;
     this.shockwave.renderOrder = 3;
 
+    this.ringMaterial = new THREE.SpriteMaterial({
+      map: impactRingTexture(),
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    this.ring = new THREE.Sprite(this.ringMaterial);
+    this.ring.name = 'MageImpactReferenceRing';
+    this.ring.renderOrder = 6;
+    this.ring.visible = false;
+
     this.particles = new PooledParticleCloud(64, resources.softGlow);
+    this.particles.points.name = 'MageImpactParticles';
     this.smoke = new PooledParticleCloud(34, resources.smoke);
+    this.smoke.points.name = 'MageImpactSmoke';
     for (let index = 0; index < MAX_DEBRIS; index += 1) {
       const material = new THREE.MeshBasicMaterial({
         color: 0xffffff,
@@ -116,7 +158,15 @@ class ImpactEffect implements PoolableVFX {
       this.debrisVelocities.push(new THREE.Vector3());
       this.group.add(mesh);
     }
-    this.group.add(this.core, this.burst, this.flash, this.shockwave, this.particles.points, this.smoke.points);
+    this.group.add(
+      this.core,
+      this.burst,
+      this.flash,
+      this.shockwave,
+      this.ring,
+      this.particles.points,
+      this.smoke.points
+    );
   }
 
   public play(options: ImpactPlayOptions): void {
@@ -125,10 +175,22 @@ class ImpactEffect implements PoolableVFX {
     this.config = preset.impact;
     this.duration = preset.impact.duration;
     this.baseScale = options.scale ?? 1;
+    this.bulletImpactPlayed = preset.projectile?.shape === 'bullet';
+    this.ringScale = preset.impact.ringScale ?? 1;
+    const bulletImpact = this.bulletImpactPlayed;
+    // A bala básica tem UM efeito de impacto: o anel da referência. O estouro
+    // antigo (bola branca, clarão, explosão e as ondas de neon no chão) fica
+    // desligado nela — antes os dois apareciam juntos, parecendo dois impactos.
+    const legacyExplosion = !bulletImpact;
     this.age = 0;
     this.group.visible = true;
     this.group.position.copy(position);
     this.group.scale.setScalar(1);
+
+    this.core.visible = legacyExplosion;
+    this.flash.visible = legacyExplosion;
+    this.burst.visible = legacyExplosion;
+    this.shockwave.visible = legacyExplosion;
 
     const coreMaterial = this.core.material as THREE.MeshBasicMaterial;
     coreMaterial.color.set(preset.colors.core);
@@ -140,13 +202,21 @@ class ImpactEffect implements PoolableVFX {
     flashMaterial.map = impactTexture;
     flashMaterial.color.set(preset.colors.glow);
     flashMaterial.opacity = preset.style === 'lava' ? 1 : 0.92;
-    this.flash.scale.setScalar(preset.impact.radius * (preset.style === 'laser' ? 3.2 : preset.style === 'lava' ? 3 : 2.45) * this.baseScale);
+    this.flash.scale.setScalar(
+      preset.impact.radius
+        * (bulletImpact ? 3.4 : preset.style === 'laser' ? 3.2 : preset.style === 'lava' ? 3 : 2.45)
+        * this.baseScale
+    );
 
     const burstMaterial = this.burst.material as THREE.SpriteMaterial;
     burstMaterial.map = impactTexture;
     burstMaterial.color.set(preset.style === 'lava' ? preset.colors.core : preset.colors.secondary);
     burstMaterial.opacity = preset.style === 'water' ? 0.55 : preset.style === 'ice' ? 0.72 : 0.82;
-    this.burst.scale.setScalar(preset.impact.radius * (preset.style === 'lava' ? 4.4 : preset.style === 'laser' ? 4.1 : 3.3) * this.baseScale);
+    this.burst.scale.setScalar(
+      preset.impact.radius
+        * (preset.style === 'lava' ? 4.4 : preset.style === 'laser' ? 4.1 : bulletImpact ? 2.7 : 3.3)
+        * this.baseScale
+    );
 
     configureEnergyMaterial(this.shockwaveMaterial, {
       colorA: preset.colors.core,
@@ -159,6 +229,14 @@ class ImpactEffect implements PoolableVFX {
     });
     this.shockwave.position.y = 0.025;
     this.shockwave.scale.setScalar(0.25 * this.baseScale);
+
+    // Anel da referência: só no impacto da bala básica.
+    this.ring.visible = bulletImpact;
+    this.ringMaterial.opacity = bulletImpact ? 0.95 : 0;
+    this.ringMaterial.rotation = Math.random() * Math.PI * 2;
+    // O anel desenhado ocupa 58% do quad do sprite, então o sprite é maior que
+    // a medida final do impacto.
+    this.ring.scale.setScalar(preset.impact.shockwaveRadius * this.ringScale * this.baseScale);
 
     // The flash light is borrowed from the shared pool: the scene light count
     // never changes, so the impact can never trigger a shader recompile.
@@ -175,8 +253,25 @@ class ImpactEffect implements PoolableVFX {
       this.lightHandle.light.position.copy(this.group.position);
     }
 
+    if (!legacyExplosion) {
+      // Na bala sobram o anel e os estilhaços de gelo: sem faísca nem poeira.
+      this.particles.reset();
+      this.smoke.reset();
+      this.spawnDebris(preset);
+      return;
+    }
+
     this.particles.setTexture(this.resources.mageTexture(preset.style, 'impact'));
-    this.smoke.setTexture(preset.style === 'lava' ? this.resources.flame : this.resources.mageTexture(preset.style, 'impact'));
+    this.smoke.setTexture(
+      preset.style === 'lava'
+        ? this.resources.flame
+        : preset.projectile?.frost
+          ? this.resources.smoke
+          : this.resources.mageTexture(preset.style, 'impact')
+    );
+    // Particle sizes are screen-space units (~0.21 m each): the bullet impact
+    // has to use small sparks, not the 2-8 m glow blobs of the big spells.
+    const bullet = preset.projectile?.shape === 'bullet';
     this.particles.emit(new THREE.Vector3(), {
       color: preset.colors.spark,
       count: qualityCount(preset.impact.particleCount, this.quality, preset.qualityParticleMultiplier),
@@ -184,7 +279,9 @@ class ImpactEffect implements PoolableVFX {
       spread: preset.style === 'water' ? 1.55 : 1.25,
       lifetime: this.duration,
       upwardBias: preset.style === 'water' ? 0.55 : 0.32,
+      ...(bullet ? { size: [1.5, 4] as const } : {}),
     });
+    const frost = preset.projectile?.frost;
     if (preset.style === 'lava' || preset.style === 'water' || preset.style === 'ice') {
       const profile = mageQualityProfile(this.quality);
       this.smoke.emit(new THREE.Vector3(), {
@@ -194,6 +291,20 @@ class ImpactEffect implements PoolableVFX {
         spread: 1,
         lifetime: this.duration * 1.15,
         upwardBias: preset.style === 'lava' ? 0.65 : 0.35,
+      });
+    } else if (frost) {
+      // Bullet impact: a short puff of the same frost vapor the bolt trailed.
+      const profile = mageQualityProfile(this.quality);
+      this.smoke.emit(new THREE.Vector3(), {
+        color: frost.color,
+        count: Math.max(4, Math.round(16 * profile.smokeMultiplier)),
+        speed: 1.05,
+        spread: 1.25,
+        lifetime: this.duration * 1.7,
+        upwardBias: 0.42,
+        size: [2, 5.5],
+        opacity: 0.55,
+        growth: 1.35,
       });
     } else {
       this.smoke.reset();
@@ -208,16 +319,42 @@ class ImpactEffect implements PoolableVFX {
     const progress = THREE.MathUtils.clamp(this.age / this.duration, 0, 1);
     const fade = 1 - progress;
 
-    (this.core.material as THREE.MeshBasicMaterial).opacity = fade * 0.95;
-    (this.flash.material as THREE.SpriteMaterial).opacity = fade * (this.preset.style === 'lava' ? 1 : 0.92);
-    (this.burst.material as THREE.SpriteMaterial).opacity = fade * (this.preset.style === 'water' ? 0.55 : this.preset.style === 'ice' ? 0.72 : 0.82);
-    setEnergyTime(this.shockwaveMaterial, this.age * 1.35);
-    this.shockwaveMaterial.uniforms.uOpacity.value = fade * (this.preset.style === 'water' ? 0.5 : 0.68);
-    this.core.scale.setScalar(this.config.radius * this.baseScale * (1 + progress * (this.preset.style === 'lava' ? 1.7 : 1.3)));
-    this.flash.scale.setScalar(this.config.radius * this.baseScale * (2.45 + progress * (this.preset.style === 'laser' ? 2.6 : 1.8)));
-    this.burst.scale.setScalar(this.config.radius * this.baseScale * ((this.preset.style === 'lava' ? 4.4 : 3.3) + progress * 2.2));
-    this.burst.material.rotation = progress * Math.PI * (this.preset.style === 'lightning' ? 2.5 : 0.7);
-    this.shockwave.scale.setScalar(this.config.shockwaveRadius * this.baseScale * (0.25 + progress * 0.85));
+    // Estouro grande (bola, clarão, explosão e onda no chão): só nas outras
+    // magias. Na bala básica o impacto é o anel da referência e mais nada.
+    if (!this.bulletImpactPlayed) {
+      (this.core.material as THREE.MeshBasicMaterial).opacity = fade * 0.95;
+      (this.flash.material as THREE.SpriteMaterial).opacity =
+        fade * (this.preset.style === 'lava' ? 1 : 0.92);
+      (this.burst.material as THREE.SpriteMaterial).opacity =
+        fade * (this.preset.style === 'water' ? 0.55 : this.preset.style === 'ice' ? 0.72 : 0.82);
+      setEnergyTime(this.shockwaveMaterial, this.age * 1.35);
+      this.shockwaveMaterial.uniforms.uOpacity.value =
+        fade * (this.preset.style === 'water' ? 0.5 : 0.68);
+      this.core.scale.setScalar(
+        this.config.radius * this.baseScale * (1 + progress * (this.preset.style === 'lava' ? 1.7 : 1.3))
+      );
+      this.flash.scale.setScalar(
+        this.config.radius * this.baseScale * (2.45 + progress * (this.preset.style === 'laser' ? 2.6 : 1.8))
+      );
+      this.burst.scale.setScalar(
+        this.config.radius * this.baseScale * ((this.preset.style === 'lava' ? 4.4 : 3.3) + progress * 2.2)
+      );
+      this.burst.material.rotation = progress * Math.PI * (this.preset.style === 'lightning' ? 2.5 : 0.7);
+      this.shockwave.scale.setScalar(this.config.shockwaveRadius * this.baseScale * (0.25 + progress * 0.85));
+    }
+
+    // Anel da referência: fica aceso quase até o fim (a queda só no último
+    // terço), abrindo devagar enquanto gira.
+    if (this.bulletImpactPlayed) {
+      const refProgress = THREE.MathUtils.clamp(progress / 0.7, 0, 1);
+      this.ringMaterial.opacity = (1 - Math.pow(refProgress, 2.2)) * 0.95;
+      this.ringMaterial.rotation += elapsed * 0.3;
+      this.ring.scale.setScalar(
+        this.config.shockwaveRadius * this.ringScale * this.baseScale * (1 + refProgress * 0.7)
+      );
+      this.ring.visible = refProgress < 1;
+    }
+
     if (this.lightHandle) this.lightHandle.light.intensity *= Math.max(0, 1 - elapsed * 8);
     this.particles.update(elapsed);
     this.smoke.update(elapsed);
@@ -239,6 +376,9 @@ class ImpactEffect implements PoolableVFX {
     (this.flash.material as THREE.SpriteMaterial).opacity = 0;
     (this.burst.material as THREE.SpriteMaterial).opacity = 0;
     this.shockwaveMaterial.uniforms.uOpacity.value = 0;
+    this.ring.visible = false;
+    this.ringMaterial.opacity = 0;
+    this.bulletImpactPlayed = false;
     for (const mesh of this.debris) {
       mesh.visible = false;
       (mesh.material as THREE.MeshBasicMaterial).opacity = 0;
@@ -250,6 +390,8 @@ class ImpactEffect implements PoolableVFX {
     (this.flash.material as THREE.Material).dispose();
     (this.burst.material as THREE.Material).dispose();
     this.shockwaveMaterial.dispose();
+    // A textura do anel é compartilhada entre os impactos: não é descartada.
+    this.ringMaterial.dispose();
     for (const mesh of this.debris) (mesh.material as THREE.Material).dispose();
     this.particles.dispose();
     this.smoke.dispose();

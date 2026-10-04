@@ -66,6 +66,13 @@ function getFreezePuffTexture(): THREE.Texture {
 }
 
 const FREEZE_BODY_COLOR = new THREE.Color(0xa9dcff);
+/**
+ * Marca de dano: por ~0,2 s o corpo pega um vermelho escuro com brilho baixo —
+ * tem que aparecer quase nada, só um aviso de que o golpe entrou.
+ */
+const HIT_FLASH_SECONDS = 0.2;
+const HIT_FLASH_COLOR = 0x8f1d1d;
+const HIT_FLASH_INTENSITY = 0.42;
 
 /** Four-point sparkle used by the frost glitter that twinkles around frozen monsters. */
 let frostSparkleTexture: THREE.Texture | null = null;
@@ -228,6 +235,8 @@ export class Enemy {
     THREE.MeshStandardMaterial,
     number
   >();
+  /** Cor de emissivo de cada material antes do vermelho do dano começar. */
+  private readonly hitFlashBaseColors = new Map<THREE.MeshStandardMaterial, number>();
   private fadeMaterials: THREE.Material[] = [];
   private readonly ownedGeometries = new Set<THREE.BufferGeometry>();
   private deathTimer = 0;
@@ -633,10 +642,23 @@ export class Enemy {
 
     if (this.hitFlashTime > 0) {
       this.hitFlashTime = Math.max(0, this.hitFlashTime - Math.max(0, delta));
-      const flashBonus = this.hitFlashTime > 0 ? 2 : 0;
+    }
+    if (this.hitFlashTime > 0) {
+      const strength = Math.max(0, this.hitFlashTime / HIT_FLASH_SECONDS);
       this.hitFlashBaseIntensities.forEach((baseIntensity, material) => {
-        material.emissiveIntensity = baseIntensity + flashBonus;
+        if (!this.hitFlashBaseColors.has(material)) {
+          this.hitFlashBaseColors.set(material, material.emissive.getHex());
+        }
+        material.emissive.setHex(HIT_FLASH_COLOR);
+        material.emissiveIntensity = baseIntensity + strength * HIT_FLASH_INTENSITY;
       });
+    } else if (this.hitFlashBaseColors.size > 0) {
+      // Terminou o vermelho: devolve o emissivo original de cada material.
+      this.hitFlashBaseColors.forEach((baseColor, material) => {
+        material.emissive.setHex(baseColor);
+        material.emissiveIntensity = this.hitFlashBaseIntensities.get(material) ?? material.emissiveIntensity;
+      });
+      this.hitFlashBaseColors.clear();
     }
 
     this.updateFreezeVisuals(delta);
@@ -1680,7 +1702,7 @@ export class Enemy {
       if (!(material instanceof THREE.MeshStandardMaterial)) continue;
       if (!this.freezeTintOriginals.has(material)) {
         this.freezeTintOriginals.set(material, {
-          emissive: material.emissive.getHex(),
+          emissive: this.hitFlashBaseColors.get(material) ?? material.emissive.getHex(),
           emissiveIntensity: this.hitFlashBaseIntensities.get(material) ?? material.emissiveIntensity,
           color: material.color.getHex(),
         });
@@ -1748,7 +1770,7 @@ export class Enemy {
   public takeDamage(amount: number) {
     if (this.isDead) return;
     this.hp = Math.max(0, this.hp - amount);
-    this.hitFlashTime = 0.15;
+    this.hitFlashTime = HIT_FLASH_SECONDS;
     if (this.hp <= 0) {
       if (this.levitatePoseActive) {
         this.root.position.y = this.levitateGroundY;
