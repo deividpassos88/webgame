@@ -7,6 +7,14 @@ O jogo tem dois builds de produção:
 | `npm run build` | `production` | **desligado** (build público) |
 | `npm run build:admin` | `admin` | **ligado** (painel/menu ADM funciona) |
 
+> **Correção — o build público também libera o ADM.** O `src/main.ts` atual usa
+> `adminEnabled = !(?admin === '0' || ?admin === 'false' || VITE_ADMIN_MODE === 'false')`,
+> então o botão ADM aparece em **qualquer** build, inclusive `npm run build`; o
+> `--mode admin` não muda mais o resultado. Para abrir uma sessão sem ADM use
+> `?admin=0`. O painel de teste (`/teste.html`) detecta isso no build e mostra o
+> aviso automaticamente. Enquanto o `main.ts` estiver assim, trate este documento
+> como descrição do modo pretendido, não do comportamento atual.
+
 Os dois geram a pasta `dist/` (ignorada pelo Git). O build ADMIN é o que você
 pede: o botão flutuante **ADM** aparece no canto inferior direito, por cima do
 lobby/menu e do jogo (`z-index: 10050`), e abre as waves, "Ir para o Boss",

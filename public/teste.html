@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dragon Miner · Painel de teste do build</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #05070d;
+      --bg-soft: #0b1220;
+      --panel: rgba(13, 20, 34, 0.92);
+      --panel-2: rgba(9, 14, 26, 0.85);
+      --line: rgba(126, 178, 255, 0.22);
+      --line-strong: rgba(126, 178, 255, 0.42);
+      --text: #e8f1ff;
+      --muted: #8ea6c8;
+      --accent: #ffd97a;
+      --accent-2: #4fb0ff;
+      --ok: #5ddc9a;
+      --warn: #ffc470;
+      --fail: #ff7b7b;
+      --queued: #546c8f;
+      --radius: 14px;
+      --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background:
+        radial-gradient(1200px 640px at 12% -8%, rgba(79, 176, 255, 0.16), transparent 60%),
+        radial-gradient(900px 520px at 96% 6%, rgba(255, 217, 122, 0.10), transparent 62%),
+        var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    a { color: var(--accent-2); }
+    h1, h2, h3 { font-family: Cinzel, 'Segoe UI', serif; letter-spacing: 0.02em; margin: 0; }
+
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 22px 18px 64px; }
+
+    /* ---------- topo ---------- */
+    header.top {
+      display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: center;
+      justify-content: space-between; padding: 16px 18px; margin-bottom: 18px;
+      background: linear-gradient(180deg, rgba(20, 30, 50, 0.9), rgba(10, 16, 28, 0.75));
+      border: 1px solid var(--line-strong); border-radius: var(--radius);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+    }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand__crest {
+      width: 46px; height: 46px; display: grid; place-items: center; font-size: 24px;
+      border-radius: 12px; border: 1px solid rgba(255, 217, 122, 0.5);
+      background: radial-gradient(circle at 30% 20%, rgba(255, 217, 122, 0.3), rgba(0, 0, 0, 0.35));
+    }
+    .brand h1 { font-size: 20px; color: var(--accent); }
+    .brand p { margin: 0; font-size: 12.5px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      font-family: var(--mono); font-size: 11.5px; padding: 5px 10px; border-radius: 999px;
+      border: 1px solid var(--line); background: rgba(79, 176, 255, 0.1); color: #d6e8ff;
+      white-space: nowrap;
+    }
+    .chip--admin { border-color: rgba(255, 217, 122, 0.75); background: rgba(255, 217, 122, 0.18); color: #ffe9b3; }
+    .chip--muted { background: rgba(255, 255, 255, 0.04); color: var(--muted); }
+
+    /* ---------- cartões ---------- */
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 16px 18px; margin-bottom: 16px; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
+    }
+    .card > h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); }
+    .card > h2 .hint, .card > p.hint { font-family: 'Segoe UI', sans-serif; text-transform: none; letter-spacing: 0; }
+    .hint { color: var(--muted); font-size: 12.5px; display: block; margin-top: 4px; font-weight: 400; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .row--between { justify-content: space-between; }
+
+    /* ---------- botões e campos ---------- */
+    button, .btn {
+      font: inherit; cursor: pointer; color: var(--text); text-decoration: none;
+      background: linear-gradient(180deg, rgba(79, 176, 255, 0.22), rgba(79, 176, 255, 0.08));
+      border: 1px solid var(--line-strong); border-radius: 10px; padding: 9px 14px;
+      display: inline-flex; align-items: center; gap: 8px; transition: transform .12s ease, filter .12s ease;
+    }
+    button:hover, .btn:hover { filter: brightness(1.18); }
+    button:active, .btn:active { transform: translateY(1px); }
+    button[disabled], .btn[disabled] { opacity: 0.45; cursor: not-allowed; filter: none; }
+    button.primary, .btn.primary {
+      background: linear-gradient(180deg, rgba(255, 217, 122, 0.9), rgba(214, 162, 62, 0.75));
+      color: #201503; border-color: rgba(255, 233, 179, 0.9); font-weight: 600;
+    }
+    button.ghost, .btn.ghost { background: rgba(255, 255, 255, 0.045); border-color: var(--line); }
+    .tag {
+      font-family: var(--mono); font-size: 10px; padding: 2px 6px; border-radius: 6px;
+      border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: var(--muted);
+    }
+    .tag--dev { border-color: rgba(255, 196, 112, 0.6); color: var(--warn); }
+    select, input[type="search"] {
+      font: inherit; color: var(--text); background: var(--panel-2);
+      border: 1px solid var(--line-strong); border-radius: 10px; padding: 9px 12px;
+    }
+    input[type="search"] { min-width: 220px; flex: 1 1 220px; }
+
+    /* ---------- KPIs ---------- */
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .kpi {
+      background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 15px;
+    }
+    .kpi__label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+    .kpi__value { font-family: var(--mono); font-size: 22px; margin-top: 2px; }
+    .kpi__sub { font-size: 12px; color: var(--muted); }
+    .kpi.is-ok .kpi__value { color: var(--ok); }
+    .kpi.is-warn .kpi__value { color: var(--warn); }
+    .kpi.is-fail .kpi__value { color: var(--fail); }
+
+    /* ---------- progresso ---------- */
+    .progress { height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+    .progress > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width .18s ease; }
+    .progress-label { font-family: var(--mono); font-size: 12px; color: var(--muted); min-width: 190px; }
+
+    /* ---------- avisos ---------- */
+    .callout { border-radius: 10px; padding: 12px 14px; border: 1px solid var(--line); background: rgba(79, 176, 255, 0.07); }
+    .callout--fail { border-color: rgba(255, 123, 123, 0.55); background: rgba(255, 123, 123, 0.1); }
+    .callout--warn { border-color: rgba(255, 196, 112, 0.5); background: rgba(255, 196, 112, 0.1); }
+    .callout strong { color: var(--accent); }
+
+    /* ---------- tabela ---------- */
+    .table-wrap { max-height: 62vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12.5px; }
+    thead th {
+      position: sticky; top: 0; z-index: 2; text-align: left; padding: 9px 10px;
+      background: #0d1524; border-bottom: 1px solid var(--line-strong); font-family: 'Segoe UI', sans-serif;
+      font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); white-space: nowrap;
+    }
+    tbody td { padding: 7px 10px; border-bottom: 1px solid rgba(126, 178, 255, 0.1); vertical-align: top; }
+    tbody tr:hover { background: rgba(79, 176, 255, 0.07); }
+    td.status { white-space: nowrap; }
+    td.path { max-width: 560px; overflow-wrap: anywhere; }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; background: var(--queued); }
+    .st-ok .dot { background: var(--ok); box-shadow: 0 0 8px rgba(93, 220, 154, 0.8); }
+    .st-warn .dot { background: var(--warn); box-shadow: 0 0 8px rgba(255, 196, 112, 0.8); }
+    .st-fail .dot { background: var(--fail); box-shadow: 0 0 8px rgba(255, 123, 123, 0.8); }
+    .st-running .dot { background: var(--accent-2); animation: pulse 1s infinite; }
+    .st-skip .dot { background: var(--queued); opacity: .75; }
+    .st-skip td, .st-skip .dot { color: var(--muted); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+    .size, .time { color: var(--muted); }
+    .note { color: var(--muted); }
+    .st-fail .note { color: #ffb3b3; }
+    .st-warn .note { color: #ffe0ac; }
+    .empty { padding: 18px; color: var(--muted); font-family: 'Segoe UI', sans-serif; }
+
+    footer { color: var(--muted); font-size: 12.5px; text-align: center; margin-top: 24px; }
+    code { font-family: var(--mono); background: rgba(255, 255, 255, 0.07); padding: 1px 6px; border-radius: 6px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); }
+    .legend span { display: inline-flex; align-items: center; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <div class="brand__crest">🐉</div>
+      <div>
+        <h1>Painel de teste do build</h1>
+        <p>Dragon Miner · verificação de assets e módulos</p>
+      </div>
+    </div>
+    <div class="chips" id="chips">
+      <span class="chip chip--muted">carregando build-info.json…</span>
+    </div>
+  </header>
+
+  <!-- ---------------------------------------------------------------- ações -->
+  <section class="card">
+    <h2>Atalhos <span class="hint">Abra as páginas servidas por este mesmo build.</span></h2>
+    <div class="row" style="margin-top:12px">
+      <a class="btn primary" href="/index.html">▶ Abrir o jogo</a>
+      <a class="btn ghost" href="/build-info.json" target="_blank" rel="noopener">🧾 build-info.json</a>
+      <span class="span-dev"></span>
+    </div>
+    <div class="row" style="margin-top:10px" id="dev-links"></div>
+  </section>
+
+  <!-- ----------------------------------------------------------------- KPIs -->
+  <section class="kpis" id="kpis"></section>
+
+  <!-- -------------------------------------------------------- aviso do ADM -->
+  <section class="card callout callout--warn" id="admin-card" hidden>
+    <h2>⚠ Menu ADM liberado por padrão neste build</h2>
+    <p class="hint" style="margin-top:10px">
+      <code>src/main.ts</code> calcula <code>adminEnabled = !(admin === '0' || admin === 'false' || VITE_ADMIN_MODE === 'false')</code>.
+      Na prática o botão flutuante <strong>ADM</strong> aparece para qualquer visitante — inclusive no build gerado por
+      <code>npm run build</code> — e o modo <code>admin</code> do Vite não muda mais isso. Para abrir o jogo sem ADM use
+      <code>?admin=0</code>; para publicar sem as ferramentas, ajuste <code>src/main.ts</code>.
+    </p>
+    <div class="row" style="margin-top:12px">
+      <a class="btn ghost" href="/index.html?admin=0">▶ Abrir o jogo com ?admin=0 (sem ADM)</a>
+      <a class="btn ghost" href="/index.html">▶ Abrir o jogo como o visitante vê</a>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------- executor -->
+  <section class="card">
+    <h2>Teste de arquivos <span class="hint">Cada arquivo é realmente buscado no servidor (sem cache). Imagens são decodificadas; modelos .glb têm o cabeçalho glTF validado.</span></h2>
+    <div class="row" style="margin-top:12px">
+      <label for="preset" class="hint" style="margin:0">Conjunto:</label>
+      <select id="preset">
+        <option value="referenced">Essenciais — citados no código-fonte</option>
+        <option value="mo2">Modelos 3D (.glb)</option>
+        <option value="images">Imagens (UI, itens, retratos)</option>
+        <option value="vfx">VFX (sprites de partículas)</option>
+        <option value="bundle">Apenas o bundle (JS/CSS/HTML do build)</option>
+        <option value="all">TUDO (build + public)</option>
+      </select>
+      <button class="primary" id="run">▶ Testar</button>
+      <button class="ghost" id="stop" disabled>■ Cancelar</button>
+      <button class="ghost" id="clear">✕ Limpar resultados</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div class="progress" style="flex:1 1 260px"><i id="bar"></i></div>
+      <span class="progress-label" id="progress-label">nenhum teste em execução</span>
+      <input type="search" id="filter" placeholder="filtrar por caminho (ex.: guerreiro, /vfx, .glb)" />
+      <label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">
+        <input type="checkbox" id="only-problems" /> só problemas
+      </label>
+    </div>
+    <div class="legend" style="margin-top:10px">
+      <span class="st-ok"><i class="dot"></i>ok</span>
+      <span class="st-warn"><i class="dot"></i>atenção</span>
+      <span class="st-fail"><i class="dot"></i>falhou</span>
+      <span class="st-running"><i class="dot"></i>testando</span>
+      <span class="st-skip"><i class="dot"></i>ignorado</span>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------- referências faltando -->
+  <section class="card" id="missing-card" hidden>
+    <h2>⚠ Assets citados no código e ausentes no build</h2>
+    <div class="callout callout--fail" style="margin-top:10px">
+      <p style="margin:0">Estes caminhos aparecem em <code>src/</code> mas não existem em <code>public/</code> nem no bundle. Se forem realmente obrigatórios, o jogo vai cair em fallback (ou falhar) ao pedir por eles.</p>
+    </div>
+    <div class="table-wrap" style="margin-top:12px;max-height:32vh">
+      <table>
+        <thead><tr><th>Caminho citado no código</th></tr></thead>
+        <tbody id="missing-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- resultados -->
+  <section class="card">
+    <h2>Resultados <span class="hint" id="results-summary">Ainda não há resultados.</span></h2>
+    <div class="table-wrap" style="margin-top:12px">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:110px">Status</th>
+            <th>Caminho</th>
+            <th style="width:100px">Tamanho</th>
+            <th style="width:90px">Tempo</th>
+            <th style="width:300px">Observação</th>
+          </tr>
+        </thead>
+        <tbody id="results-body">
+          <tr><td colspan="5" class="empty">Escolha um conjunto e clique em <strong>Testar</strong>. Dica: comece por “Essenciais” (segundos) e depois rode “TUDO”.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- -------------------------------------------------------------- bundle -->
+  <section class="card">
+    <h2>Módulos gerados pelo build <span class="hint">Arquivos produzidos pelo Vite (JS/CSS/HTML) e o build-info.json.</span></h2>
+    <div class="table-wrap" style="margin-top:12px;max-height:34vh">
+      <table>
+        <thead><tr><th>Caminho</th><th style="width:110px">Tamanho</th></tr></thead>
+        <tbody id="bundle-body"><tr><td colspan="2" class="empty">aguardando build-info.json…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    Página estática, somente leitura: nenhum teste altera o jogo ou o save do navegador.
+    Gerada por <code>vite.config.ts</code> + <code>public/teste.html</code>.
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------- helpers
+  var $ = function (sel) { return document.querySelector(sel); };
+
+  function encodePath(path) {
+    return path.split('/').map(function (segment, index) {
+      return index === 0 ? '' : encodeURIComponent(segment);
+    }).join('/');
+  }
+
+  function formatBytes(bytes) {
+    if (bytes === null || bytes === undefined || isNaN(bytes)) return '—';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / 1048576).toFixed(1) + ' MB';
+    return (bytes / 1073741824).toFixed(2) + ' GB';
+  }
+
+  function formatMs(ms) {
+    if (ms === null || ms === undefined) return '—';
+    return ms < 1000 ? Math.round(ms) + ' ms' : (ms / 1000).toFixed(2) + ' s';
+  }
+
+  var IMAGE_EXT = /\.(png|webp|jpe?g|gif|avif|bmp|svg)$/i;
+  var MODEL_EXT = /\.(glb|gltf)$/i;
+
+  // --------------------------------------------------------------- estado
+  var state = {
+    info: null,
+    rows: [],
+    rowByPath: new Map(),
+    running: false,
+    cancelled: false,
+    startTime: 0,
+    done: 0
+  };
+
+  // ------------------------------------------------------------ recursos
+  function assetUrl(path) { return encodePath(path); }
+
+  function put(path, kind, bytes, status, note) {
+    var row = {
+      path: path,
+      kind: kind,
+      bytes: bytes,
+      status: status || 'queued',
+      ms: null,
+      note: note || '',
+      decoded: ''
+    };
+    state.rows.push(row);
+    state.rowByPath.set(path, row);
+    return row;
+  }
+
+  function referencedAssets(info) {
+    var seen = new Set();
+    var missing = new Set(info.referencedMissing || []);
+    (info.referenced || []).forEach(function (path) {
+      if (seen.has(path)) return;
+      seen.add(path);
+      if (missing.has(path)) {
+        // Já aparece no aviso vermelho acima: aqui só registra o motivo.
+        put(path, 'referência', null, 'skip', 'citado no código, mas ausente no build');
+        return;
+      }
+      put(path, 'referência', null, 'queued');
+    });
+  }
+
+  function bundleAssets(info) {
+    var seen = new Set();
+    (info.bundle || []).forEach(function (entry) {
+      if (!seen.has(entry.path)) { seen.add(entry.path); put(entry.path, 'bundle', entry.bytes, 'queued'); }
+    });
+  }
+
+  function publicAssets(info) {
+    var seen = new Set(state.rows.map(function (row) { return row.path; }));
+    (info.assets || []).forEach(function (entry) {
+      if (!seen.has(entry.path)) { seen.add(entry.path); put(entry.path, 'public', entry.bytes, 'queued'); }
+    });
+  }
+
+  // ------------------------------------------------------- testes por tipo
+  function testImage(url, expectedBytes) {
+    return new Promise(function (resolve) {
+      var started = performance.now();
+      var img = new Image();
+      var finished = false;
+      var finish = function (result) {
+        if (finished) return;
+        finished = true;
+        result.ms = performance.now() - started;
+        if (result.ok) {
+          var transfer = 0;
+          try {
+            var entries = performance.getEntriesByName(img.src);
+            transfer = entries.length ? entries[entries.length - 1].transferSize : 0;
+          } catch (error) {
+            transfer = 0;
+          }
+          result.note = img.naturalWidth + '×' + img.naturalHeight
+            + (transfer ? ' • ' + formatBytes(transfer) + ' na rede' : '');
+          if (expectedBytes && transfer && Math.abs(transfer - expectedBytes) > 64) {
+            result.note += ' • tamanho transferido difere do build';
+          }
+        } else {
+          result.status = 404;
+          result.note = 'não decodificou (404 ou imagem inválida)';
+        }
+        resolve(result);
+      };
+      img.onload = function () { finish({ ok: true }); };
+      img.onerror = function () { finish({ ok: false }); };
+      img.src = url;
+      window.setTimeout(function () { finish({ ok: false }); }, 20000);
+    });
+  }
+
+  function testHead(url, expectedBytes) {
+    return fetch(url, { method: 'HEAD', cache: 'no-store' }).then(function (res) {
+      if (res.status === 405 || res.status === 501) {
+        return fetch(url, { method: 'GET', headers: { Range: 'bytes=0-0' }, cache: 'no-store' })
+          .then(function (rangeRes) { return { res: rangeRes, ranged: true }; });
+      }
+      return { res: res, ranged: false };
+    }).then(function (wrap) {
+      var res = wrap.res;
+      if (!res.ok && res.status !== 206 && res.status !== 304) {
+        return { ok: false, status: res.status, note: res.status === 404 ? 'não encontrado (404)' : 'HTTP ' + res.status };
+      }
+      var length = res.headers.get('content-length');
+      var size = length !== null && !wrap.ranged ? Number(length) : null;
+      var note = size !== null ? 'servido via HTTP ' + res.status : 'respondeu HTTP ' + res.status;
+      var result = { ok: true, size: size, note: note };
+      if (size !== null && expectedBytes && size !== expectedBytes) {
+        result.warn = true;
+        result.note = 'tamanho ' + formatBytes(size) + ' difere do build (' + formatBytes(expectedBytes) + ')';
+      }
+      return result;
+    });
+  }
+
+  function testGlb(url, expectedBytes) {
+    return fetch(url, { headers: { Range: 'bytes=0-11' }, cache: 'no-store' }).then(function (res) {
+      if (!res.ok && res.status !== 206) {
+        return { ok: false, status: res.status, note: 'HTTP ' + res.status + ' ao ler o cabeçalho' };
+      }
+      return res.arrayBuffer().then(function (buffer) {
+        if (buffer.byteLength < 12) {
+          return { ok: false, note: 'arquivo curto demais para um .glb' };
+        }
+        var bytes = new Uint8Array(buffer);
+        var magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+        var view = new DataView(buffer);
+        var version = view.getUint32(4, true);
+        var declared = view.getUint32(8, true);
+        if (magic !== 'glTF') {
+          return { ok: false, note: 'cabeçalho inválido (' + JSON.stringify(magic) + ') — não é um .glb' };
+        }
+        if (version !== 2) {
+          return { ok: false, note: 'versão glTF ' + version + ' (esperado 2)' };
+        }
+        if (expectedBytes && declared !== expectedBytes) {
+          return { ok: true, warn: true, note: 'glTF v2 • tamanho declarado ' + formatBytes(declared) + ' ≠ arquivo ' + formatBytes(expectedBytes) };
+        }
+        return { ok: true, note: 'glTF v2 • ' + formatBytes(declared) + ' • cabeçalho válido' };
+      });
+    });
+  }
+
+  function runOne(row) {
+    var url = assetUrl(row.path);
+    var started = performance.now();
+    var task;
+    if (MODEL_EXT.test(row.path)) {
+      task = testGlb(url, row.bytes);
+    } else if (IMAGE_EXT.test(row.path)) {
+      task = testImage(url, row.bytes);
+    } else {
+      task = testHead(url, row.bytes);
+    }
+    return task.then(function (result) {
+      row.ms = result.ms !== undefined ? result.ms : performance.now() - started;
+      if (!result.ok) {
+        row.status = 'fail';
+        row.note = 'HTTP ' + (result.status || '?') + ' • ' + (result.note || 'falhou');
+      } else if (result.warn) {
+        row.status = 'warn';
+        row.note = result.note || 'aviso';
+      } else {
+        row.status = 'ok';
+        row.note = result.note || 'ok';
+      }
+      if (result.size) row.netBytes = result.size;
+    }).catch(function (error) {
+      row.ms = performance.now() - started;
+      row.status = 'fail';
+      row.note = 'erro de rede: ' + (error && error.message ? error.message : String(error));
+    });
+  }
+
+  // --------------------------------------------------------- fila + pintura
+  var CONCURRENCY = 8;
+
+  function updateProgress() {
+    var total = state.rows.length;
+    var testable = state.rows.filter(function (row) { return row.status !== 'skip'; }).length || 1;
+    var percent = Math.min(100, Math.round((state.done / testable) * 100));
+    $('#bar').style.width = percent + '%';
+    $('#progress-label').textContent = state.running
+      ? 'testando ' + state.done + ' / ' + testable + '  (' + percent + '%)'
+      : (state.done ? state.done + ' arquivos testados em ' + formatMs(performance.now() - state.startTime) : 'nenhum teste em execução');
+    var counts = countByStatus();
+    $('#results-summary').textContent = state.rows.length
+      ? counts.ok + ' ok · ' + counts.warn + ' atenção · ' + counts.fail + ' falha(s) · ' + counts.skip + ' ignorado(s) · ' + state.rows.length + ' arquivo(s) listados'
+      : 'Ainda não há resultados.';
+    $('#kpis').innerHTML = kpiHtml();
+  }
+
+  function countByStatus() {
+    var counts = { ok: 0, warn: 0, fail: 0, queued: 0, running: 0, skip: 0 };
+    state.rows.forEach(function (row) { counts[row.status] = (counts[row.status] || 0) + 1; });
+    return counts;
+  }
+
+  function rowHtml(row) {
+    return '<td class="status st-' + row.status + '"><i class="dot"></i>' + statusLabel(row.status) + '</td>'
+      + '<td class="path">' + escapeHtml(row.path) + '<br><span class="tag">' + row.kind + '</span></td>'
+      + '<td class="size">' + formatBytes(row.bytes) + '</td>'
+      + '<td class="time">' + (row.ms === null ? '—' : formatMs(row.ms)) + '</td>'
+      + '<td class="note">' + escapeHtml(row.note || '') + '</td>';
+  }
+
+  function statusLabel(status) {
+    return status === 'ok' ? 'ok'
+      : status === 'warn' ? 'atenção'
+      : status === 'fail' ? 'falhou'
+      : status === 'running' ? 'testando'
+      : status === 'skip' ? 'ignorado'
+      : 'na fila';
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (character) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character];
+    });
+  }
+
+  function renderResults() {
+    var term = $('#filter').value.trim().toLowerCase();
+    var onlyProblems = $('#only-problems').checked;
+    var body = $('#results-body');
+    var rows = state.rows.filter(function (row) {
+      if (onlyProblems && row.status !== 'fail' && row.status !== 'warn') return false;
+      if (!term) return true;
+      return row.path.toLowerCase().indexOf(term) !== -1;
+    });
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="5" class="empty">Nenhum arquivo corresponde ao filtro.</td></tr>';
+      return;
+    }
+    var html = '';
+    for (var index = 0; index < rows.length; index += 1) {
+      html += '<tr id="row-' + index + '">' + rowHtml(rows[index]) + '</tr>';
+    }
+    body.innerHTML = html;
+  }
+
+  function patchRow(row) {
+    var term = $('#filter').value.trim().toLowerCase();
+    var onlyProblems = $('#only-problems').checked;
+    if (onlyProblems && row.status !== 'fail' && row.status !== 'warn') return;
+    if (term && row.path.toLowerCase().indexOf(term) === -1) return;
+    var buttons = $('#results-body').querySelectorAll('tr');
+    for (var index = 0; index < buttons.length; index += 1) {
+      var cell = buttons[index].querySelector('.path');
+      if (cell && cell.textContent.indexOf(row.path) === 0) {
+        buttons[index].innerHTML = rowHtml(row);
+        return;
+      }
+    }
+    renderResults();
+  }
+
+  // -------------------------------------------------------------- KPI cards
+  function kpiHtml() {
+    var info = state.info || { assets: [], bundle: [], referenced: [], referencedMissing: [] };
+    var counts = countByStatus();
+    var totalBytes = (info.assets || []).reduce(function (sum, entry) { return sum + entry.bytes; }, 0);
+    var bundleBytes = (info.bundle || []).reduce(function (sum, entry) { return sum + entry.bytes; }, 0);
+    var largest = (info.assets || []).slice().sort(function (a, b) { return b.bytes - a.bytes; })[0];
+    var isAdmin = info.mode === 'admin';
+    var adminDefaultOn = info.adminDefaultOn === true;
+    var missing = (info.referencedMissing || []).length;
+    var tested = counts.ok + counts.warn + counts.fail;
+
+    var cards = [
+      {
+        label: 'Modo do build',
+        value: isAdmin ? 'ADMIN' : (info.mode || '—'),
+        sub: adminDefaultOn
+          ? 'menu ADM liberado por padrão (ver aviso)'
+          : (isAdmin ? 'menu ADM embutido' : 'menu ADM desligado por padrão'),
+        cls: adminDefaultOn || isAdmin ? 'is-warn' : ''
+      },
+      {
+        label: 'Módulos do build',
+        value: String((info.bundle || []).length),
+        sub: 'JS/CSS/HTML · ' + formatBytes(bundleBytes),
+        cls: ''
+      },
+      {
+        label: 'Assets publicados',
+        value: String((info.assets || []).length),
+        sub: formatBytes(totalBytes) + (largest ? ' · maior: ' + largest.path.split('/').pop() + ' (' + formatBytes(largest.bytes) + ')' : ''),
+        cls: ''
+      },
+      {
+        label: 'Referências do código',
+        value: missing ? String(missing) + ' faltando' : 'todas presentes',
+        sub: (info.referenced || []).length + ' caminhos citados em src/',
+        cls: missing ? 'is-fail' : 'is-ok'
+      },
+      {
+        label: 'Último teste',
+        value: tested ? counts.ok + ' ok' : '—',
+        sub: tested
+          ? counts.warn + ' atenção · ' + counts.fail + ' falha(s)' + (counts.skip ? ' · ' + counts.skip + ' ignorado(s)' : '')
+          : 'nada testado ainda',
+        cls: counts.fail ? 'is-fail' : (counts.warn ? 'is-warn' : (tested ? 'is-ok' : ''))
+      }
+    ];
+
+    return cards.map(function (card) {
+      return '<div class="kpi ' + card.cls + '">'
+        + '<div class="kpi__label">' + escapeHtml(card.label) + '</div>'
+        + '<div class="kpi__value">' + escapeHtml(card.value) + '</div>'
+        + '<div class="kpi__sub">' + escapeHtml(card.sub) + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  // ------------------------------------------------------- presets e execução
+  function rowsForPreset(preset) {
+    var info = state.info || { assets: [], bundle: [], referenced: [] };
+    state.rows = [];
+    state.rowByPath = new Map();
+
+    if (preset === 'referenced') {
+      referencedAssets(info);
+      bundleAssets(info);
+      // Os arquivos essenciais de infraestrutura do site.
+      ['/index.html', '/build-info.json'].forEach(function (path) {
+        if (!state.rowByPath.has(path)) put(path, 'site', null, 'queued');
+      });
+    } else if (preset === 'mo2') {
+      publicAssetsFrom(info, function (path) { return MODEL_EXT.test(path); });
+    } else if (preset === 'images') {
+      publicAssetsFrom(info, function (path) { return IMAGE_EXT.test(path) && !/\.svg$/i.test(path); });
+    } else if (preset === 'vfx') {
+      publicAssetsFrom(info, function (path) { return path.indexOf('/vfx/') === 0; });
+    } else if (preset === 'bundle') {
+      bundleAssets(info);
+    } else {
+      bundleAssets(info);
+      publicAssets(info);
+    }
+    renderResults();
+    return state.rows;
+  }
+
+  function publicAssetsFrom(info, predicate) {
+    (info.assets || []).forEach(function (entry) {
+      if (predicate(entry.path)) put(entry.path, 'public', entry.bytes, 'queued');
+    });
+  }
+
+  function runQueue(rows) {
+    var queue = rows.filter(function (row) { return row.status === 'queued'; });
+    state.running = true;
+    state.cancelled = false;
+    state.done = 0;
+    state.startTime = performance.now();
+    $('#run').disabled = true;
+    $('#stop').disabled = false;
+
+    var cursor = 0;
+
+    function next() {
+      if (state.cancelled || cursor >= queue.length) return Promise.resolve();
+      var row = queue[cursor];
+      cursor += 1;
+      row.status = 'running';
+      patchRow(row);
+      updateProgress();
+      return runOne(row).then(function () {
+        state.done += 1;
+        patchRow(row);
+        updateProgress();
+        return next();
+      });
+    }
+
+    var workers = [];
+    for (var index = 0; index < CONCURRENCY; index += 1) workers.push(next());
+
+    return Promise.all(workers).then(function () {
+      state.running = false;
+      $('#run').disabled = false;
+      $('#stop').disabled = true;
+      updateProgress();
+      renderResults();
+      var counts = countByStatus();
+      if (!state.cancelled) {
+        var summary = counts.ok + ' ok, ' + counts.warn + ' com atenção, ' + counts.fail + ' falha(s)';
+        $('#progress-label').textContent = summary + ' — concluído';
+      }
+    });
+  }
+
+  // ------------------------------------------------------------ render geral
+  function renderHeader() {
+    var info = state.info;
+    var isAdmin = info.mode === 'admin';
+    var chips = [
+      '<span class="chip">build ' + escapeHtml(info.buildId) + '</span>',
+      '<span class="chip ' + (isAdmin ? 'chip--admin' : 'chip--muted') + '">modo ' + escapeHtml(info.mode) + '</span>',
+      '<span class="chip chip--muted">' + escapeHtml(new Date(info.generatedAt).toLocaleString('pt-BR')) + '</span>',
+      '<span class="chip chip--muted">node ' + escapeHtml(info.node) + '</span>'
+    ];
+    $('#chips').innerHTML = chips.join('');
+    document.title = 'Dragon Miner · teste do build ' + info.buildId;
+  }
+
+  function renderBundle() {
+    var body = $('#bundle-body');
+    var bundle = (state.info && state.info.bundle) || [];
+    if (!bundle.length) {
+      body.innerHTML = '<tr><td colspan="2" class="empty">O build-info.json não trouxe módulos.</td></tr>';
+      return;
+    }
+    body.innerHTML = bundle.slice().sort(function (a, b) { return b.bytes - a.bytes; }).map(function (entry) {
+      return '<tr><td class="path">' + escapeHtml(entry.path) + '</td><td class="size">' + formatBytes(entry.bytes) + '</td></tr>';
+    }).join('');
+  }
+
+  function renderAdminNotice() {
+    var card = $('#admin-card');
+    card.hidden = !(state.info && state.info.adminDefaultOn === true);
+  }
+
+  function renderMissing() {
+    var missing = (state.info && state.info.referencedMissing) || [];
+    var card = $('#missing-card');
+    if (!missing.length) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    $('#missing-body').innerHTML = missing.map(function (path) {
+      return '<tr><td class="path">' + escapeHtml(path) + '</td></tr>';
+    }).join('');
+  }
+
+  function renderDevLinks() {
+    var isDev = state.info.mode === 'development';
+    var container = $('#dev-links');
+    var links = [
+      { href: '/calibrate.html', label: '🔧 Calibrar armas' },
+      { href: '/attach-debug.html', label: '🧩 Anexos de armas' },
+      { href: '/maga-teste.html', label: '✨ Laboratório da Maga' }
+    ];
+    container.innerHTML = links.map(function (link) {
+      return '<a class="btn ghost" href="' + link.href + '" target="_blank" rel="noopener">' + link.label
+        + ' <span class="tag tag--dev">dev</span></a>';
+    }).join('') + (isDev
+      ? '<a class="btn ghost" href="/?admin=1">🛠 painel ADM (?admin=1)</a>'
+      : '<span class="tag tag--dev" title="As páginas de calibração importam /src/... e /node_modules/..., então só existem no servidor de desenvolvimento: npm run dev. No build de produção vale o jogo em /index.html.">páginas dev precisam de npm run dev</span>');
+  }
+
+  // ------------------------------------------------------------------- boot
+  function boot() {
+    $('#run').addEventListener('click', function () {
+      if (state.running) return;
+      var rows = rowsForPreset($('#preset').value);
+      if (!rows.length) return;
+      runQueue(rows);
+    });
+    $('#stop').addEventListener('click', function () {
+      state.cancelled = true;
+      $('#progress-label').textContent = 'cancelando…';
+    });
+    $('#clear').addEventListener('click', function () {
+      if (state.running) return;
+      state.rows = [];
+      state.rowByPath = new Map();
+      state.done = 0;
+      $('#bar').style.width = '0%';
+      $('#progress-label').textContent = 'nenhum teste em execução';
+      renderResults();
+      updateProgress();
+    });
+    $('#filter').addEventListener('input', renderResults);
+    $('#only-problems').addEventListener('change', renderResults);
+
+    fetch('/build-info.json', { cache: 'no-store' })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      })
+      .then(function (info) {
+        state.info = info;
+        renderHeader();
+        renderBundle();
+        renderMissing();
+        renderAdminNotice();
+        renderDevLinks();
+        updateProgress();
+        rowsForPreset('referenced');
+      })
+      .catch(function (error) {
+        $('#chips').innerHTML = '<span class="chip chip--admin">falha ao ler /build-info.json</span>';
+        $('#results-body').innerHTML = '<tr><td colspan="5" class="empty">Não foi possível carregar <code>/build-info.json</code> ('
+          + escapeHtml(error.message || String(error))
+          + '). Gere o build novamente com <code>npm run build</code>.</td></tr>';
+      });
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
