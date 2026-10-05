@@ -60,7 +60,15 @@ function columnEntryT(
   const a = dx * dx + dz * dz;
   const inside = fx * fx + fz * fz <= radius * radius;
   if (a <= 1e-8) {
-    return inside && yOnColumn(from.y, column) ? 0 : null;
+    if (!inside) return null;
+    if (yOnColumn(from.y, column)) return 0;
+    // Sky-delivered water can enter through the top/bottom of a body column.
+    // A purely vertical segment does not intersect the cylinder's side wall.
+    const dy = to.y - from.y;
+    if (Math.abs(dy) <= 1e-8) return null;
+    const entryY = dy < 0 ? column.maxY + 0.35 : column.minY - 0.35;
+    const t = (entryY - from.y) / dy;
+    return t >= -1e-4 && t <= 1 + 1e-4 ? THREE.MathUtils.clamp(t, 0, 1) : null;
   }
 
   const b = 2 * (fx * dx + fz * dz);

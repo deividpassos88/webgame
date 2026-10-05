@@ -1,4 +1,4 @@
-import { WARRIOR_SKILLS } from '../combat/WarriorSkillCatalog';
+import { WARRIOR_SKILLS, warriorSkillLabel } from '../combat/WarriorSkillCatalog';
 import { getInventoryItem, type InventoryItemDefinition } from '../inventory/InventoryCatalog';
 import type { InventorySnapshot } from '../inventory/InventoryStore';
 import { deriveCharacterStats, type CharacterAttributeKey } from '../profile/CharacterAttributes';
@@ -119,6 +119,7 @@ export function buildRpgUiViewModel(
   });
   const skills: WarriorSkillView[] = WARRIOR_SKILLS.map((skill) => ({
     ...skill,
+    label: warriorSkillLabel(skill.id, profile.selectedClass),
     stars: Array.from(
       { length: 5 },
       (_, index) => index < profile.skillStars[skill.id]

@@ -2,6 +2,32 @@ import { describe, expect, it } from 'vitest';
 import { SwordComboController } from './SwordComboController';
 
 describe('SwordComboController', () => {
+  it('scales damage, buffering and completion with the Mage authored basic duration', () => {
+    const combo = new SwordComboController();
+    expect(combo.request(1.8 / 0.48)).toBe(true);
+    expect(combo.update(0.6)).toEqual([]);
+    expect(combo.request()).toBe(false);
+    expect(combo.update(0.02)).toEqual([{ type: 'damage-opened', stage: 0 }]);
+    expect(combo.update(0.54)).toEqual([{ type: 'damage-closed', stage: 0 }]);
+    expect(combo.update(0.63)).toEqual([]);
+    expect(combo.active).toBe(true);
+    expect(combo.update(0.02)).toEqual([{ type: 'combo-ended' }]);
+  });
+
+  it('resets the authored timing scale for a subsequent default Warrior combo', () => {
+    const combo = new SwordComboController();
+    combo.request(3.75);
+    combo.cancel();
+    expect(combo.request()).toBe(true);
+    expect(combo.update(0.48).slice(-1)[0]).toEqual({ type: 'combo-ended' });
+  });
+
+  it.each([0, -1, NaN, Infinity])('rejects the invalid duration scale %s without starting a combo', (scale) => {
+    const combo = new SwordComboController();
+    expect(combo.request(scale)).toBe(false);
+    expect(combo.active).toBe(false);
+  });
+
   it('opens one damage window and ends the first 0.48-second stage', () => {
     const combo = new SwordComboController();
     combo.request();

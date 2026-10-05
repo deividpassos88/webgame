@@ -49,7 +49,7 @@ describe('MageVFX full spell architecture', () => {
     const vfx = new MageVFX(scene, { quality: 'low' });
     const { root, action } = createAction(0.4, 1);
 
-    vfx.cast('water', {
+    vfx.cast('ice', {
       caster: root,
       rightHand: null,
       leftHand: null,
@@ -87,6 +87,8 @@ describe('MageVFX full spell architecture', () => {
     expect(diagnostics.activeLightning).toBe(0);
     expect(diagnostics.activeLasers).toBe(0);
     expect(diagnostics.activeBarriers).toBe(0);
+    expect(diagnostics.activeWaterCharges).toBe(0);
+    expect(diagnostics.activeWaterStrikes).toBe(0);
     expect(diagnostics.pooledCharges).toBeGreaterThan(0);
     expect(diagnostics.pooledProjectiles).toBeGreaterThan(0);
     expect(diagnostics.pooledImpacts).toBeGreaterThan(0);
@@ -94,6 +96,8 @@ describe('MageVFX full spell architecture', () => {
     expect(diagnostics.pooledLightning).toBeGreaterThan(0);
     expect(diagnostics.pooledLasers).toBeGreaterThan(0);
     expect(diagnostics.pooledBarriers).toBeGreaterThan(0);
+    expect(diagnostics.pooledWaterCharges).toBeGreaterThan(0);
+    expect(diagnostics.pooledWaterStrikes).toBeGreaterThan(0);
     vfx.dispose();
   });
 
@@ -102,7 +106,7 @@ describe('MageVFX full spell architecture', () => {
     const vfx = new MageVFX(scene, { quality: 'low' });
     const { root, mixer, action } = createAction(0.4, 1);
 
-    vfx.cast('water', {
+    vfx.cast('ice', {
       caster: root,
       rightHand: null,
       leftHand: null,
@@ -165,13 +169,19 @@ describe('MageVFX full spell architecture', () => {
       if (spellId === 'lightning') {
         expect(diagnostics.activeLightning + diagnostics.pooledLightning).toBeGreaterThan(0);
         expect(impacts).toBeGreaterThan(0);
+      } else if (spellId === 'water') {
+        expect(diagnostics.activeWaterCharges + diagnostics.pooledWaterCharges).toBeGreaterThan(0);
+        expect(diagnostics.activeWaterStrikes + diagnostics.pooledWaterStrikes).toBeGreaterThan(0);
+        expect(diagnostics.activeProjectiles + diagnostics.pooledProjectiles).toBe(0);
+        expect(diagnostics.activeBarriers + diagnostics.pooledBarriers).toBe(0);
+        expect(impacts).toBe(1);
       } else if (spellId === 'laser') {
         expect(diagnostics.activeLasers + diagnostics.pooledLasers).toBeGreaterThan(0);
         expect(impacts).toBeGreaterThan(0);
       } else {
         expect(diagnostics.activeProjectiles + diagnostics.pooledProjectiles).toBeGreaterThan(0);
       }
-      if (spellId !== 'basic') {
+      if (spellId !== 'basic' && spellId !== 'water') {
         expect(diagnostics.activeBarriers + diagnostics.pooledBarriers).toBeGreaterThan(0);
       }
       expect(diagnostics.activeCharges).toBeLessThanOrEqual(1);
@@ -216,6 +226,8 @@ describe('MageVFX full spell architecture', () => {
     expect(diagnostics.activeLightning).toBe(0);
     expect(diagnostics.activeLasers).toBe(0);
     expect(diagnostics.activeBarriers).toBe(0);
+    expect(diagnostics.activeWaterCharges).toBe(0);
+    expect(diagnostics.activeWaterStrikes).toBe(0);
     vfx.dispose();
   });
 

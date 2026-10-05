@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HUD, isPrimaryMouseClick, renderCombatActionMarkup } from './HUD';
 import { WARRIOR_SKILLS } from '../combat/WarriorSkillCatalog';
 import type { WarriorSkillsSnapshot } from '../combat/WarriorSkillController';
@@ -50,6 +50,23 @@ describe('basic attack mouse input', () => {
 });
 
 describe('combat action cards', () => {
+  it('renames Mage skill one in live cards, titles and accessible text without replacing click handlers', () => {
+    const hud = createHud();
+    const button = document.querySelector<HTMLButtonElement>('[data-warrior-skill="ataque_giratorio"]')!;
+    const onClick = vi.fn();
+    button.addEventListener('click', onClick);
+    hud.setPlayerClass('mage');
+    hud.updateWarriorSkills(readySkillsSnapshot(), null, 20, false, { mageCosts: true });
+    expect(button.querySelector('.skill-card-name')?.textContent).toBe('Dragão das Marés');
+    expect(button.querySelector('.skill-card-name')?.getAttribute('title')).toBe('Dragão das Marés');
+    expect(button.getAttribute('aria-label')).toContain('Dragão das Marés');
+    button.click();
+    expect(onClick).toHaveBeenCalledTimes(1);
+    hud.setPlayerClass('paladin');
+    expect(button.querySelector('.skill-card-name')?.textContent).toBe('Ataque Giratório');
+    expect(document.querySelector('[data-warrior-skill="ataque_giratorio"]')).toBe(button);
+  });
+
   it('renders a readable basic attack card and named skill cards with their combat metadata', () => {
     const markup = renderCombatActionMarkup();
 

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 export type MageSpellId = 'basic' | 'water' | 'lightning' | 'lava' | 'ice' | 'laser';
 export type MageVFXQuality = 'low' | 'medium' | 'high' | 'ultra';
 export type MageHandId = 'right' | 'left' | 'both';
-export type MageSpellDelivery = 'projectile' | 'instant-lightning' | 'beam';
+export type MageSpellDelivery = 'projectile' | 'instant-lightning' | 'beam' | 'water-column';
 export type MageSpellVisualStyle = 'arcane' | 'water' | 'lightning' | 'lava' | 'ice' | 'laser';
 
 export interface MageSpellColors {
@@ -218,4 +218,8 @@ export interface MageVFXDiagnostics {
   readonly pooledLasers: number;
   readonly activeBarriers: number;
   readonly pooledBarriers: number;
+  readonly activeWaterCharges: number;
+  readonly pooledWaterCharges: number;
+  readonly activeWaterStrikes: number;
+  readonly pooledWaterStrikes: number;
 }

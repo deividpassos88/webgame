@@ -41,6 +41,7 @@ export class SwordComboController {
   /** Relógio interno (segundos) usado para medir o intervalo entre golpes. */
   private clock = 0;
   private stageStartedAt = 0;
+  private stageDurationScale = 1;
 
   /**
    * Intervalo mínimo entre o início de dois golpes do combo. Clicar rápido só
@@ -49,8 +50,11 @@ export class SwordComboController {
    */
   public minStageInterval = 0;
 
-  public request(): boolean {
+  /** A new combo may use authored (Mage) timing instead of the sword tempo. */
+  public request(stageDurationScale = 1): boolean {
     if (this.stage === null) {
+      if (!Number.isFinite(stageDurationScale) || stageDurationScale <= 0) return false;
+      this.stageDurationScale = stageDurationScale;
       this.stageStartedAt = this.clock;
       this.stage = 0;
       this.elapsed = 0;
@@ -65,7 +69,7 @@ export class SwordComboController {
     }
 
     const config = SWORD_COMBO_STAGES[this.stage];
-    if (this.elapsed < config.duration * config.bufferOpen) {
+    if (this.elapsed < config.duration * this.stageDurationScale * config.bufferOpen) {
       return false;
     }
 
@@ -86,8 +90,9 @@ export class SwordComboController {
     while (this.stage !== null && remaining > 0) {
       const stage: number = this.stage;
       const config = SWORD_COMBO_STAGES[stage];
-      const damageOpenAt = config.duration * config.damageOpen;
-      const damageCloseAt = config.duration * config.damageClose;
+      const duration = config.duration * this.stageDurationScale;
+      const damageOpenAt = duration * config.damageOpen;
+      const damageCloseAt = duration * config.damageClose;
 
       const toDamageOpen = damageOpenAt - this.elapsed;
       if (!this.damageOpened && remaining + TIME_EPSILON >= toDamageOpen) {
@@ -111,7 +116,7 @@ export class SwordComboController {
         continue;
       }
 
-      const toStageEnd = config.duration - this.elapsed;
+      const toStageEnd = duration - this.elapsed;
       if (remaining + TIME_EPSILON < toStageEnd) {
         this.elapsed += remaining;
         remaining = 0;
@@ -124,7 +129,7 @@ export class SwordComboController {
       if (remaining <= TIME_EPSILON) {
         remaining = 0;
       }
-      this.elapsed = config.duration;
+      this.elapsed = duration;
 
       // The configured damage close is before the stage end, but keep this
       // guard so a threshold can never be omitted if timings are edited.

@@ -95,11 +95,13 @@ class MagicCircleEffect implements PoolableVFX {
     this.particles.setTexture(this.resources.softGlow);
     this.particles.emit(new THREE.Vector3(), {
       color: options.color,
-      count: 18,
+      count: 8,
       speed: 0.36,
       spread: 0.95,
       lifetime: this.duration * 0.9,
       upwardBias: this.groundAligned ? 0.22 : 0.02,
+      size: [0.6, 1.6],
+      opacity: 0.4,
     });
     if (options.parent) options.parent.add(this.group);
   }

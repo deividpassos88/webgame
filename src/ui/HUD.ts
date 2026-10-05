@@ -16,6 +16,7 @@ import type { RewardPreviewPort } from './RewardWeaponPreview';
 import {
   isWarriorSkillUnlocked,
   warriorSkillCooldown,
+  warriorSkillLabel,
   WARRIOR_SKILLS,
   type WarriorSkillId,
 } from '../combat/WarriorSkillCatalog';
@@ -69,10 +70,10 @@ export function renderCombatActionMarkup(
       <kbd>Q</kbd><span>Target</span>
     </button>
     ${WARRIOR_SKILLS.map((skill) => `
-      <button class="skill-slot combat-skill-card" type="button" data-warrior-skill="${skill.id}" aria-label="${skill.label}, tecla ${skill.input}, custo ${skill.energyCost} de energia">
+      <button class="skill-slot combat-skill-card" type="button" data-warrior-skill="${skill.id}" aria-label="${warriorSkillLabel(skill.id, playerClass)}, tecla ${skill.input}, custo ${skill.energyCost} de energia">
         <span class="skill-cooldown" aria-hidden="true"></span>
         <img class="skill-art" data-skill-art="${skill.id}" src="${classSkillAsset(skill.id, playerClass)}" alt="">
-        <span class="skill-card-copy"><strong class="skill-card-name" title="${skill.label}">${skill.label}</strong><small class="skill-card-meta">${skill.energyCost} energia · ${formatSkillCooldown(warriorSkillCooldown(skill.id, playerClass))} recarga</small></span>
+        <span class="skill-card-copy"><strong class="skill-card-name" title="${warriorSkillLabel(skill.id, playerClass)}">${warriorSkillLabel(skill.id, playerClass)}</strong><small class="skill-card-meta">${skill.energyCost} energia · ${formatSkillCooldown(warriorSkillCooldown(skill.id, playerClass))} recarga</small></span>
         <kbd data-action-hotkey="${skill.id}">${displayPlayerHotkey(hotkeys[skill.id])}</kbd>
       </button>`).join('')}`;
 }
@@ -266,6 +267,13 @@ export class HUD {
       const skillId = img.dataset.skillArt as WarriorSkillArtId | undefined;
       if (skillId) img.src = classSkillAsset(skillId, playerClass);
     });
+    for (const skill of WARRIOR_SKILLS) {
+      const label = warriorSkillLabel(skill.id, playerClass);
+      const button = this.combatActions.querySelector<HTMLButtonElement>(`[data-warrior-skill="${skill.id}"]`);
+      const name = button?.querySelector<HTMLElement>('.skill-card-name');
+      if (name) { name.textContent = label; name.title = label; }
+      button?.setAttribute('aria-label', `${label}, tecla ${displayPlayerHotkey(this.hotkeys[skill.id])}`);
+    }
   }
 
   public onBasicAttack(callback: () => void): void {
@@ -307,9 +315,10 @@ export class HUD {
       if (!button) continue;
       const progress = state.cooldown > 0 ? state.cooldownRemaining / state.cooldown : 0;
       const unlocked = isWarriorSkillUnlocked(skill.id, characterLevel);
+      const label = warriorSkillLabel(skill.id, this.playerClass);
       const view = unlocked
-        ? getSkillButtonState(skill.label, state, lock)
-        : getLockedSkillButtonState(skill.label, skill.unlockLevel);
+        ? getSkillButtonState(label, state, lock)
+        : getLockedSkillButtonState(label, skill.unlockLevel);
       button.style.setProperty('--cooldown-progress', String(progress));
       button.disabled = view.disabled;
       button.dataset.locked = String(!unlocked);
@@ -317,7 +326,7 @@ export class HUD {
       button.dataset.cooldown = state.cooldownRemaining > 0 ? state.cooldownRemaining.toFixed(1) : '';
       button.dataset.status = view.status;
       button.dataset.available = String(unlocked && !view.disabled);
-      button.title = freeSkills ? `${skill.label}: livre no treino ADM` : `${skill.label}: ${view.status}`;
+      button.title = freeSkills ? `${label}: livre no treino ADM` : `${label}: ${view.status}`;
       button.setAttribute('aria-label', `${view.ariaLabel}. Tecla ${displayPlayerHotkey(this.hotkeys[skill.id])}`);
       const detail = button.querySelector('.skill-card-meta');
       if (detail) {

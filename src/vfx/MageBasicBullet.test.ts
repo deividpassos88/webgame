@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PooledParticleCloud } from './ParticleManager';
 import { MageVFX } from './MageVFX';
+import { MageVFXResources } from './MageVFXResources';
+import { ProjectileManager } from './ProjectileManager';
+import { VFXLightPool } from './VFXLightPool';
 import { MAGE_SPELL_PRESETS } from './VFXConfig';
 
 function createAction(duration = 2, timeScale = 1): {
@@ -94,18 +97,18 @@ describe('Mage basic attack bullet', () => {
     vi.restoreAllMocks();
   });
 
-  it('ships a small bullet preset with a blue aura, a frost wake and a comet sprite', () => {
+  it('ships a larger comet with a compact hitbox, blue aura and frost wake', () => {
     const preset = MAGE_SPELL_PRESETS.basic;
     expect(preset.projectile.shape).toBe('bullet');
-    // Referência: orb de 0,42 m com halo de 1,43 m (grande e redondo demais).
-    // Agora é o cometa da referência, só maior: ~2,74 m × 0,91 m (~3:1), quase
-    // 1,5× a altura da Maga — é para ler grande na câmera de jogo.
+    // The requested enlargement affects the silhouette, not collision.
+    // 4.104 m x 1.368 m is 50% larger than the previous 2.736 m x 0.912 m.
     const cometLength = preset.projectile.radius * (preset.projectile.comet?.lengthScale ?? 0);
     const cometWidth = preset.projectile.radius * (preset.projectile.comet?.widthScale ?? 0);
     expect(preset.projectile.radius).toBeGreaterThanOrEqual(0.3);
     expect(preset.projectile.radius).toBeLessThanOrEqual(0.42);
-    expect(cometLength).toBeGreaterThan(2.3);
-    expect(cometLength).toBeLessThan(3.2);
+    expect(cometLength).toBeCloseTo(2.736 * 1.5, 5);
+    expect(cometWidth).toBeCloseTo(0.912 * 1.5, 5);
+    expect(cometLength).toBeLessThan(4.5);
     expect(cometLength / cometWidth).toBeGreaterThan(2.2);
     expect(cometLength / cometWidth).toBeLessThan(4);
     expect(preset.projectile.trailWidth).toBeLessThanOrEqual(0.06);
@@ -130,6 +133,54 @@ describe('Mage basic attack bullet', () => {
     // Particle sizes are screen-space units (~0.21 m each): anything above ~3
     // turns the frost wake into the huge fog bank the old effect had.
     expect(preset.projectile.frost?.size[1] ?? 0).toBeLessThanOrEqual(3);
+  });
+
+  it.each(['low', 'medium', 'high', 'ultra'] as const)(
+    'enlarges only the rendered comet, preserving travel and collision in %s quality', (quality) => {
+      const scene = new THREE.Scene();
+      const resources = new MageVFXResources();
+      const lights = new VFXLightPool(scene, 2);
+      const projectiles = new ProjectileManager(scene, resources, quality, lights);
+      const queryBodyHit = vi.fn((_from: THREE.Vector3, _to: THREE.Vector3, _radius: number) => null);
+      const onImpact = vi.fn();
+      try {
+        projectiles.fire({
+          origin: new THREE.Vector3(0, 1, 0),
+          direction: new THREE.Vector3(0, 0, 1),
+          target: null, preset: MAGE_SPELL_PRESETS.basic, queryBodyHit, onImpact,
+        });
+        const bolt = scene.getObjectByName('MageProjectileVFX')!;
+        const comet = bolt.getObjectByName('MageFrostBulletComet') as THREE.Mesh;
+        const material = comet.material as THREE.ShaderMaterial;
+        expect(comet.scale.x).toBeCloseTo(4.104);
+        expect(comet.scale.y).toBeCloseTo(1.368);
+        expect(material.uniforms.uIntensity.value).toBe(1.7);
+        expect(material.uniforms.uFilament.value).toBe(1.25);
+        expect(bolt.getObjectByName('MageProjectileRibbonTrail')!.visible).toBe(false);
+        projectiles.update(0.05);
+        expect(bolt.position.z).toBeCloseTo(25 * 0.05);
+        expect(queryBodyHit).toHaveBeenCalledTimes(1);
+        expect(queryBodyHit.mock.calls[0][2]).toBe(0.38);
+        projectiles.update(1);
+        projectiles.update(0.5);
+        expect(onImpact).not.toHaveBeenCalled();
+        expect(projectiles.activeCount).toBe(0);
+        expect(lights.availableCount).toBe(lights.size);
+      } finally {
+        projectiles.dispose(); lights.dispose(); resources.dispose();
+      }
+    }
+  );
+
+  it('does not change the basic launch timing, flight lifetime or disabled impact', () => {
+    expect(MAGE_SPELL_PRESETS.basic.timeline).toEqual({
+      chargeStart: 0.3, launch: 0.36, chargeEnd: 0.4, recover: 0.72, end: 1,
+    });
+    expect(MAGE_SPELL_PRESETS.basic.projectile).toMatchObject({ speed: 25, radius: 0.38, lifetime: 1.1 });
+    expect(MAGE_SPELL_PRESETS.basic.impact.visual).toBe(false);
+    expect(MAGE_SPELL_PRESETS.basic.charge).toEqual({
+      scale: 0.5, particleCount: 0, sparkCount: 0, lightIntensity: 0.55, twoHanded: false,
+    });
   });
 
   it('keeps the palm charge of the basic attack under a metre', () => {

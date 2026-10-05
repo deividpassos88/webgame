@@ -29,6 +29,7 @@ import {
   WARRIOR_SKILLS,
   getWarriorSkill,
   warriorSkillCooldown,
+  warriorSkillLabel,
   warriorSkillDamageMultiplier,
   warriorSkillElement,
   type WarriorSkillId,
@@ -235,7 +236,8 @@ function buildLobbySkillTip(
 ): string {
   const skill = getWarriorSkill(skillId);
   const skillElement = warriorSkillElement(skillId, playerClass);
-  const elementLabel = playerClass === 'paladin' && skillId === 'corte_duplo'
+  const waterDragon = playerClass === 'mage' && skillId === 'ataque_giratorio';
+  const elementLabel = waterDragon ? 'Água' : playerClass === 'paladin' && skillId === 'corte_duplo'
     ? 'Fogo + Trevas'
     : playerClass === 'mage' && skillId === 'corte_duplo'
       ? 'Lava'
@@ -247,12 +249,14 @@ function buildLobbySkillTip(
   const damageLabel = playerClass === 'paladin' && skillId === 'corte_duplo'
     ? '×2 do dano anterior'
     : `×${warriorSkillDamageMultiplier(skillId, playerClass).toFixed(2)} do ataque`;
-  const areaLabel = playerClass === 'mage' && skillId === 'corte_duplo'
+  const areaLabel = waterDragon ? `coluna sobre o alvo · até ${MAGE_MAX_RANGE_METERS} m` : playerClass === 'mage' && skillId === 'corte_duplo'
     ? `projétil até ${MAGE_MAX_RANGE_METERS} m`
     : playerClass === 'paladin' && skillId === 'corte_duplo'
       ? 'leque frontal · 125° · raio 10 m'
       : `raio ${skill.area.radius.toFixed(1)}m`;
-  const description = playerClass === 'mage' && skillId === 'corte_duplo'
+  const description = waterDragon
+    ? 'Um dragão de água envolve a Maga e invoca uma coluna do céu sobre o alvo. O impacto aplica lentidão.'
+    : playerClass === 'mage' && skillId === 'corte_duplo'
     ? 'Magia de lava da Maga: um corte arcano lançado contra o alvo.'
     : SKILL_TIP_DESCRIPTIONS[skillId];
   const cost = playerClass === 'mage'
@@ -267,7 +271,7 @@ function buildLobbySkillTip(
     ['Desbloqueio', `Nível ${skill.unlockLevel}`],
   ];
   return `
-    <h4 class="lobby-skill-tip__title">${skill.label}</h4>
+    <h4 class="lobby-skill-tip__title">${warriorSkillLabel(skillId, playerClass)}</h4>
     <p class="lobby-skill-tip__description">${description}</p>
     <dl class="lobby-skill-tip__stats">
       ${rows.map(([term, value]) => `<div><dt>${term}</dt><dd>${value}</dd></div>`).join('')}
@@ -278,10 +282,11 @@ export function renderLobbyHotkeys(
   hotkeys: PlayerHotkeys,
   pendingAction: PlayerHotkeyAction | null,
   message: string,
-  autoBasicAttack = false
+  autoBasicAttack = false,
+  playerClass: PlayableCharacterId = 'paladin'
 ): string {
   const actions: readonly { action: PlayerHotkeyAction; label: string }[] = [
-    ...WARRIOR_SKILLS.map((skill) => ({ action: skill.id, label: skill.label })),
+    ...WARRIOR_SKILLS.map((skill) => ({ action: skill.id, label: warriorSkillLabel(skill.id, playerClass) })),
   ];
   const prompt = pendingAction
     ? `Pressione uma tecla para ${actions.find(({ action }) => action === pendingAction)?.label ?? 'a ação'}.`
@@ -1203,7 +1208,8 @@ export class LobbyScreen {
       this.profile.hotkeys,
       this.pendingHotkeyAction,
       this.hotkeyMessage,
-      this.profile.autoBasicAttack
+      this.profile.autoBasicAttack,
+      this.profile.selectedClass
     );
     this.syncStartButtonWeaponState();
   }
