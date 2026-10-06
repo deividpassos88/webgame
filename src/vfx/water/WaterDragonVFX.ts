@@ -208,6 +208,7 @@ class WaterDragonStrike implements PoolableVFX {
   private readonly splashMaterial = createWaterSurfaceMaterial('splash', false, 6);
   private readonly splashFoam = createWaterSurfaceMaterial('splash', true, 6);
   private readonly hazeMaterial: THREE.MeshBasicMaterial;
+  private readonly coreMaterial: THREE.MeshBasicMaterial;
   private readonly particles: PooledParticleCloud;
   private readonly fallingDrops: THREE.InstancedMesh;
   private readonly fallingMaterial = new THREE.MeshBasicMaterial({ color: 0x87faff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
@@ -237,13 +238,27 @@ class WaterDragonStrike implements PoolableVFX {
     for (let index = 0; index < 6; index += 1) {
       sheet(this.column, createWaterColumnVeil(index / 6 * TAU), this.veilMaterial, 'WaterDragonFallingSheet');
     }
-    for (let index = 0; index < 7; index += 1) {
-      const geometry = createWaterCrownPetal(index / 7 * TAU + Math.sin(index * 4) * 0.18, index);
+    for (let index = 0; index < 9; index += 1) {
+      const geometry = createWaterCrownPetal(index / 9 * TAU + Math.sin(index * 4) * 0.20, index);
       sheet(this.crown, geometry, this.splashMaterial, 'WaterDragonPointedSplash');
       if (index % 2 === 0) sheet(this.crown, geometry, this.splashFoam, 'WaterDragonSplashFoam', 6);
     }
-    for (let index = 0; index < 4; index += 1) {
-      const geometry = createWaterOrbit(index < 2 ? 1.65 : shape.impactRadius, 0.23 + (index % 2) * 0.035, index * 2.1, 2.1, index < 2 ? 0.70 : 1.02, 0.01, 1.26, 80);
+    // Ondulações concêntricas FINAS. Com 0,70-1,02 de largura sobre um anel de
+    // 1,65 de raio, cada "onda" ficava mais larga que o próprio anel e o
+    // conjunto virava corda enrolada no chão.
+    for (let index = 0; index < 5; index += 1) {
+      const inner = index < 3;
+      const radius = inner ? 1.30 + index * 0.42 : shape.impactRadius + (index - 3) * 0.26;
+      const geometry = createWaterOrbit(
+        radius,
+        0.20 + (index % 2) * 0.03,
+        index * 1.7,
+        2.9,
+        inner ? 0.24 : 0.32,
+        0.01,
+        1.32,
+        90
+      );
       sheet(this.rings, geometry, this.splashMaterial, 'WaterDragonSlicedGroundWave');
       sheet(this.rings, geometry, this.splashFoam, 'WaterDragonGroundWaveRim', 6);
     }
@@ -251,6 +266,12 @@ class WaterDragonStrike implements PoolableVFX {
     const mist = sheet(this.impact, new THREE.PlaneGeometry(7.2, 7.2), this.hazeMaterial, 'WaterDragonImpactMist', 3);
     mist.rotation.x = -Math.PI / 2;
     mist.position.y = 0.04;
+    // Clarão da batida: sem ele o impacto ficava escuro em relação à
+    // referência, onde a base da coluna estoura em azul-branco.
+    this.coreMaterial = new THREE.MeshBasicMaterial({ map: resources.softGlow, color: 0xbdf3ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+    const core = sheet(this.impact, new THREE.PlaneGeometry(3.4, 3.4), this.coreMaterial, 'WaterDragonImpactCoreFlash', 8);
+    core.rotation.x = -Math.PI / 2;
+    core.position.y = 0.12;
     this.particles = new PooledParticleCloud(36, resources.softGlow);
     this.particles.points.name = 'WaterDragonImpactDroplets';
     this.impact.add(this.particles.points);
@@ -314,7 +335,9 @@ class WaterDragonStrike implements PoolableVFX {
     this.crown.rotation.y = 0.10;
     this.rings.scale.set(frame.ringRadius, 1, frame.ringRadius);
     this.rings.rotation.y = -impactAge * 0.35;
-    this.hazeMaterial.opacity = splashOpacity * 0.42;
+    this.hazeMaterial.opacity = splashOpacity * 0.5;
+    // O clarão nasce no contato e decai rápido, junto com a luz da cena.
+    this.coreMaterial.opacity = this.impacted ? Math.exp(-impactAge * 6.5) * 0.95 : 0;
     this.particles.update(elapsed);
     this.fallingMaterial.opacity = columnOpacity * 0.56;
     for (let index = 0; index < this.fallingDrops.count; index += 1) {

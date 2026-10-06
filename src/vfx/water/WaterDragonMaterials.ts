@@ -154,6 +154,10 @@ export function createWaterSurfaceMaterial(
           // Keep the core connected; only the outer veil has torn alpha edges.
           color = max(color, vec3(0.012, 0.38, 0.76) * uColumnFill);
           if (column) color += vec3(0.0, 0.065, 0.095);
+          // As lâminas do respingo são estreitas: cruzam o núcleo escuro da
+          // textura e saíam quase pretas, parecendo pernas de aranha. Um piso
+          // ciano as mantém leitáveis como água batendo no chão.
+          if (splash) color = mix(color, vec3(0.10, 0.62, 0.98), 0.45);
           alpha = mix(water.a, 0.96, uColumnFill) * (column ? 0.95 : 0.96);
           if (uFoamOnly > 1.5) {
             float contour = column || head ? pow(abs(vNormal.z), 1.4) : 1.0;

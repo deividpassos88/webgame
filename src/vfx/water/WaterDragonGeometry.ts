@@ -152,19 +152,27 @@ export function createWaterDragonFin(side: number): THREE.BufferGeometry {
   );
 }
 
-/** Low, outward impact sheets. Never build the old rising "flower"/dome. */
+/**
+ * Lâmina da coroa de respingos: estreita, alta e pontuda, subindo em curva.
+ * Larga e baixa (a versão anterior) ela virava uma aba mole deitada no chão em
+ * vez dos bicos que a referência mostra em volta da coluna.
+ */
 export function createWaterCrownPetal(angle: number, seed: number): THREE.BufferGeometry {
-  const height = 0.24 + (Math.sin(seed * 2.71) * 0.5 + 0.5) * 0.38;
-  const reach = 1.4 + (Math.sin(seed * 4.31) * 0.5 + 0.5) * 0.55;
+  const height = 0.85 + (Math.sin(seed * 2.71) * 0.5 + 0.5) * 1.05;
+  const reach = 0.95 + (Math.sin(seed * 4.31) * 0.5 + 0.5) * 0.85;
   return createWaterRibbon(
     (t) => {
-      const a = angle + Math.sin(t * Math.PI) * 0.14;
-      const radius = 0.48 + t * reach;
-      return new THREE.Vector3(Math.cos(a) * radius, 0.08 + Math.sin(t * Math.PI * 0.88) * height, Math.sin(a) * radius);
+      const a = angle + Math.sin(t * Math.PI) * 0.16;
+      // Arco de fonte: sobe quase reto junto da coluna e só então abre para
+      // fora. Abrindo desde o pé (versão anterior) a lâmina deitava no chão.
+      const radius = 0.42 + Math.pow(t, 1.5) * reach;
+      const lift = Math.sin(Math.pow(t, 0.7) * Math.PI * 0.85) * height;
+      return new THREE.Vector3(Math.cos(a) * radius, 0.08 + lift, Math.sin(a) * radius);
     },
-    () => new THREE.Vector3(-Math.sin(angle), 0.08, Math.cos(angle)),
-    (t) => Math.pow(Math.sin(t * Math.PI), 0.55) * (0.88 - t * 0.42),
-    32
+    () => new THREE.Vector3(-Math.sin(angle), 0.35, Math.cos(angle)),
+    // Zero nas duas pontas: nasce no pé da coluna e termina em bico.
+    (t) => Math.pow(Math.sin(Math.PI * Math.pow(t, 0.85)), 0.9) * (0.78 - t * 0.30),
+    30
   );
 }
 
