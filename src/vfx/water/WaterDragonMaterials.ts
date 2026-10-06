@@ -70,10 +70,13 @@ export function createWaterSurfaceMaterial(
           float ripple = sin(uv.x * 26.0 - uTime * 7.0 + uSeed) * 0.023;
           p += normal * ripple * (head ? 0.25 : 1.0);
           if (!head) {
-            float fringe = pow(abs(uv.y * 2.0 - 1.0), 5.0);
-            float tooth = pow(max(0.0, sin(uv.x * 112.0 - uTime * 9.0 + uSeed)), 5.0);
-            float scallop = sin(uv.x * 43.0 - uTime * 5.0 + uSeed) * 0.055;
-            p += aFlowCross * sign(uv.y - 0.5) * fringe * (tooth * 0.055 + scallop * 0.45);
+            // Borda larga e ondulada, como a referência: a serrilha de alta
+            // frequência (sin(uv.x * 112.0)) deixava o lençol parecendo papel
+            // rasgado em vez de água.
+            float fringe = pow(abs(uv.y * 2.0 - 1.0), 3.2);
+            float tooth = pow(max(0.0, sin(uv.x * 27.0 - uTime * 3.4 + uSeed)), 3.0);
+            float scallop = sin(uv.x * 17.0 - uTime * 2.2 + uSeed) * 0.075;
+            p += aFlowCross * sign(uv.y - 0.5) * fringe * (tooth * 0.06 + scallop * 0.55);
           }
         }
         if (uFoamOnly > 1.5) {
@@ -138,7 +141,10 @@ export function createWaterSurfaceMaterial(
         if (uTextured > 0.5) {
           // Painted, tapering whitecaps replace the uniform procedural stripes.
           // A single shared texture and one distortion field keep overdraw cheap.
-          float repeats = column ? 0.65 : head ? 0.78 : splash ? 1.25 : 2.65;
+          // O ribbon repetia 2,65x e o lençol virava um emaranhado de listras
+          // finas ("espaguete") visto de cima. Menos repetições = menos faixas,
+          // cada uma mais larga, como na referência da skill.
+          float repeats = column ? 0.65 : head ? 0.78 : splash ? 1.25 : 1.55;
           float scroll = uTime * uFlowRate * (column ? 0.12 : 0.095);
           float transverse = column ? mix(fract(across), 0.16 + fract(across) * 0.68, uColumnFill) : across;
           transverse += warp * (column ? 0.035 : 0.055);

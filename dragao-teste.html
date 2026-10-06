@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dragão das Marés · laboratório de VFX</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #05070d; overflow: hidden;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #e8f1ff; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud { position: fixed; left: 12px; top: 12px; padding: 10px 12px; font-size: 12px;
+    background: rgba(9, 14, 26, 0.82); border: 1px solid rgba(126, 178, 255, 0.24);
+    border-radius: 10px; line-height: 1.5; pointer-events: none; }
+  #hud b { color: #4fb0ff; }
+  #controls { position: fixed; right: 12px; top: 12px; display: flex; flex-direction: column;
+    gap: 6px; background: rgba(9, 14, 26, 0.82); padding: 10px;
+    border: 1px solid rgba(126, 178, 255, 0.24); border-radius: 10px; }
+  button { background: rgba(79, 176, 255, 0.14); color: #e8f1ff; font-size: 12px;
+    border: 1px solid rgba(126, 178, 255, 0.3); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  button:hover { background: rgba(79, 176, 255, 0.28); }
+</style>
+</head>
+<body>
+<div id="hud">Dragão das Marés — <b id="phase">carga</b> · t=<b id="time">0.00</b>s</div>
+<div id="controls">
+  <button id="charge">Carga</button>
+  <button id="strike">Carga → Queda</button>
+  <button id="view">Vista (jogo/lado)</button>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { MageVFXResources } from '/src/vfx/MageVFXResources.ts';
+import { VFXLightPool } from '/src/vfx/VFXLightPool.ts';
+import { WaterDragonVFX } from '/src/vfx/water/WaterDragonVFX.ts';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x070b12);
+scene.fog = new THREE.Fog(0x070b12, 26, 62);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 200);
+// O alvo fica em z=6,6: no modo `strike` a câmera enquadra o impacto, senão a
+// coluna tapa a tela inteira e não dá para julgar a coroa de respingos.
+const VIEWS = {
+  game: { position: new THREE.Vector3(0, 7.4, 11.2), look: new THREE.Vector3(0, 1.9, 0) },
+  side: { position: new THREE.Vector3(9.5, 3.4, 4.6), look: new THREE.Vector3(0, 1.9, 0) },
+  impact: { position: new THREE.Vector3(6.4, 5.2, 16.6), look: new THREE.Vector3(0.4, 2.6, 6.6) },
+  impactSide: { position: new THREE.Vector3(13.5, 3.0, 10.5), look: new THREE.Vector3(0.4, 2.4, 6.6) },
+};
+const lookAt = new THREE.Vector3();
+
+// Chão escuro, como a arena do jogo: a água precisa se destacar contra ele.
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(60, 48),
+  new THREE.MeshStandardMaterial({ color: 0x11161f, roughness: 0.92, metalness: 0.05 })
+);
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+const key = new THREE.DirectionalLight(0xbfd6ff, 1.15);
+key.position.set(-5, 9, 6);
+scene.add(key);
+scene.add(new THREE.HemisphereLight(0x4a6d99, 0x0a0d13, 0.55));
+
+// "Personagem" simples só para dar escala ao redor do efeito.
+const hero = new THREE.Group();
+const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.86, 6, 12),
+  new THREE.MeshStandardMaterial({ color: 0xb6483a, roughness: 0.7 }));
+torso.position.y = 1.02;
+hero.add(torso);
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 12),
+  new THREE.MeshStandardMaterial({ color: 0xe8c9a8, roughness: 0.8 }));
+head.position.y = 1.72;
+hero.add(head);
+scene.add(hero);
+
+// Alvo marcado (a coluna cai sobre ele).
+const targetGroup = new THREE.Group();
+const dummy = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 1.15, 6, 12),
+  new THREE.MeshStandardMaterial({ color: 0x3f6b4d, roughness: 0.75 }));
+dummy.position.y = 1.0;
+targetGroup.add(dummy);
+targetGroup.position.set(0.4, 0, 6.6);
+scene.add(targetGroup);
+
+const resources = new MageVFXResources();
+const lights = new VFXLightPool(scene, 4);
+const water = new WaterDragonVFX(scene, resources, lights, 'high');
+
+const params = new URLSearchParams(location.search);
+const quality = params.get('quality') ?? 'high';
+let width = Number(params.get('w') ?? window.innerWidth);
+let height = Number(params.get('h') ?? window.innerHeight);
+
+let time = 0;
+let mode = params.get('mode') ?? 'charge';
+let chargeHandle = null;
+let viewName = params.get('view') ?? 'game';
+if (!VIEWS[viewName]) viewName = 'game';
+
+function resize() {
+  renderer.setSize(width, height, false);
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+}
+
+function setMode(next) {
+  water.clear();
+  chargeHandle = null;
+  time = 0;
+  mode = next;
+  if (next === 'charge') {
+    chargeHandle = water.charge(hero);
+  } else {
+    // Carga já madura por alguns quadros e então libera a queda, como no jogo.
+    chargeHandle = water.charge(hero);
+    water.update(0.55);
+    water.strike({
+      position: new THREE.Vector3(0.4, 0, 6.6),
+      target: targetGroup,
+      isTargetAlive: () => true,
+      onImpact: () => {},
+    });
+  }
+  updateHud();
+}
+
+function updateHud() {
+  document.getElementById('phase').textContent = mode;
+  document.getElementById('time').textContent = time.toFixed(2);
+}
+
+function frame(dt) {
+  time += dt;
+  water.update(dt);
+  const view = VIEWS[viewName];
+  camera.position.copy(view.position);
+  lookAt.copy(view.look);
+  camera.lookAt(lookAt);
+  renderer.render(scene, camera);
+  updateHud();
+}
+
+// ---- controles do laboratório (usados pelo tools/shot-dragao.mjs) ----
+window.__lab = {
+  step: (dt) => frame(dt),
+  setMode,
+  setView: (next) => { if (VIEWS[next]) viewName = next; frame(0); },
+  reset: () => setMode(mode),
+  state: () => ({ time, mode, charges: water.activeCharges, strikes: water.activeStrikes }),
+  texturesReady: () => resources.allTextures().every(
+    (texture) => texture.image !== undefined && texture.image !== null
+      && (texture.image.width === undefined || texture.image.width > 0)
+  ),
+};
+
+document.getElementById('charge').addEventListener('click', () => setMode('charge'));
+document.getElementById('strike').addEventListener('click', () => setMode('strike'));
+document.getElementById('view').addEventListener('click', () => {
+  const order = ['game', 'side', 'impact', 'impactSide'];
+  viewName = order[(order.indexOf(viewName) + 1) % order.length];
+  frame(0);
+});
+
+resize();
+setMode(mode);
+window.__labReady = true;
+</script>
+</body>
+</html>

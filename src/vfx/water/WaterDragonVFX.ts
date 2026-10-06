@@ -83,8 +83,10 @@ class WaterDragonCharge implements PoolableVFX, WaterDragonChargeHandle {
     sheet(this.dragon, body, this.glowMaterial, 'WaterDragonSoftContour', 4);
     sheet(this.dragon, body, this.bodyMaterial, 'WaterDragonBroadRibbon');
     sheet(this.dragon, body, this.foamMaterial, 'WaterDragonFoamEdges', 6);
-    for (let index = 0; index < 4; index += 1) {
-      sheet(this.dragon, createWaterWakeFin(0.22 + index * 0.18, 1), this.bodyMaterial, 'WaterDragonTornWake');
+    // Duas caudas largas em vez de quatro pontas espalhadas: as quatro liam
+    // como destroços presos no efeito, não como água sendo arrastada.
+    for (let index = 0; index < 2; index += 1) {
+      sheet(this.dragon, createWaterWakeFin(0.26 + index * 0.22, 1), this.bodyMaterial, 'WaterDragonTornWake');
     }
     // Two broad, banked water walls instead of seven narrow, wire-like hoops.
     for (let index = 0; index < 2; index += 1) {

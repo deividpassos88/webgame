@@ -55,9 +55,14 @@ export function waterDragonSpine(t: number): THREE.Vector3 {
   // A dense, low coil around the torso, then one open S-shaped neck.
   // A constant-pitch spring leaves the character in an empty wire cage.
   const neck = THREE.MathUtils.smoothstep(t, 0.52, 1);
-  const radius = WATER_DRAGON_SHAPE.radius * (1 - neck * 0.54) + Math.sin(t * TAU * 2) * 0.065;
+  // Bowl, not a cage: the coil flares wider at the bottom and the mass sits
+  // LOW, so the torso and head stay readable instead of being swallowed by the
+  // water. The neck then climbs to keep the crest above the character.
+  const flare = 1 + (1 - Math.min(t / 0.52, 1)) * 0.16;
+  const radius = WATER_DRAGON_SHAPE.radius * flare * (1 - neck * 0.56)
+    + Math.sin(t * TAU * 2) * 0.065;
   const angle = t * TAU * WATER_DRAGON_SHAPE.turns;
-  const y = 0.5 + Math.min(t / 0.52, 1) * 1.6 + neck * 2.85;
+  const y = 0.40 + Math.min(t / 0.52, 1) * 1.34 + neck * 2.72;
   return new THREE.Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
 }
 
@@ -100,55 +105,50 @@ export function createWaterOrbit(
   );
 }
 
-/** Faceted, long-snouted hydro-dragon head, shaped like the crest of the reference. */
+/**
+ * A long, tapered water blade that sweeps forward and curls up at the tip —
+ * the crest of the reference image, not a faceted tube. Eight-sided
+ * cross-sections read as folded paper at gameplay distance; a smooth ribbon
+ * with a swelling profile reads as water.
+ */
 export function createWaterDragonHead(): THREE.BufferGeometry {
-  const sections = [
-    [-1.0, -0.06, 0.23, 0.25], [-0.55, 0.06, 0.30, 0.38],
-    [-0.12, 0.16, 0.24, 0.33], [0.35, 0.10, 0.13, 0.23],
-    [0.95, 0.05, 0.09, 0.15], [1.60, 0.06, 0.08, 0.11],
-    [1.85, 0.11, 0.05, 0.08],
-  ];
-  const positions: number[] = [];
-  const uvs: number[] = [];
-  const indices: number[] = [];
-  const sides = 8;
-  sections.forEach(([x, y, h, w], index) => {
-    for (let side = 0; side <= sides; side += 1) {
-      const angle = side / sides * TAU;
-      positions.push(x, y + Math.cos(angle) * h, Math.sin(angle) * w);
-      uvs.push(index / (sections.length - 1), side / sides);
-      if (index === sections.length - 1 || side === sides) continue;
-      const a = index * (sides + 1) + side;
-      const b = a + sides + 1;
-      indices.push(a, b, a + 1, a + 1, b, b + 1);
-    }
-  });
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setAttribute('aFlowCross', new THREE.Float32BufferAttribute(new Float32Array(positions.length), 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  geometry.computeBoundingSphere();
-  return geometry;
+  return createWaterRibbon(
+    (t) => new THREE.Vector3(
+      -1.02 + t * 2.72,
+      0.06 + Math.pow(t, 1.7) * 0.72,
+      0
+    ),
+    (t) => new THREE.Vector3(0, 1, 0.30 + t * 0.22),
+    // Zero at both ends: joins the neck at the base and ends in a point.
+    (t) => 0.42 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.52)), 0.62),
+    44
+  );
 }
 
 /** A separate lower jaw leaves a readable dragon profile, rather than a round snout. */
 export function createWaterDragonJaw(): THREE.BufferGeometry {
   return createWaterRibbon(
-    (t) => new THREE.Vector3(0.05 + t * 1.55, -0.09 - Math.sin(t * Math.PI) * 0.15, 0),
-    () => new THREE.Vector3(0, 0, 1),
-    (t) => (0.32 - t * 0.26) * THREE.MathUtils.smoothstep(t, 0, 0.12),
-    24
+    (t) => new THREE.Vector3(-0.42 + t * 2.1, -0.12 - Math.sin(t * Math.PI) * 0.12 + t * 0.24, 0),
+    () => new THREE.Vector3(0, 1, 0.55),
+    (t) => 0.20 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.6)), 0.7),
+    28
   );
 }
 
+/**
+ * Thin membrane swept BACK along the neck, like water torn off the crest.
+ * Longer/straighter blades read as horns or a beak, which breaks the silhouette.
+ */
 export function createWaterDragonFin(side: number): THREE.BufferGeometry {
   return createWaterRibbon(
-    (t) => new THREE.Vector3(-0.5 - t * 1.65, 0.17 + Math.sin(t * Math.PI) * 0.045, side * (0.2 + t * 0.26)),
-    () => UP.clone(),
-    (t) => Math.sin(t * Math.PI) * (1 - t) * 0.28,
-    28
+    (t) => new THREE.Vector3(
+      -0.30 - t * 1.30,
+      0.20 + Math.sin(t * Math.PI * 0.7) * 0.20 - t * t * 0.30,
+      side * (0.10 + t * 0.22)
+    ),
+    (t) => new THREE.Vector3(0, 0.9, side * (0.45 + t * 0.5)),
+    (t) => 0.20 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.55)), 0.9),
+    26
   );
 }
 
@@ -197,17 +197,21 @@ export function createWaterColumnVeil(phase: number): THREE.BufferGeometry {
   return geometry;
 }
 
-/** Back-swept, pointed sheets tear away from the main spiral like water fins. */
+/**
+ * Broad sheet trailing the main spiral, like water pulled off the band.
+ * Narrow, sharply pointed sheets read as torn paper or debris stuck to the
+ * effect, so these stay wide, short and soft.
+ */
 export function createWaterWakeFin(at: number, side: number): THREE.BufferGeometry {
   const origin = waterDragonSpine(at);
   const tangent = waterDragonSpine(Math.min(1, at + 0.01)).sub(origin).normalize();
   const radial = new THREE.Vector3(origin.x, 0, origin.z).normalize();
   return createWaterRibbon(
-    (t) => origin.clone().addScaledVector(tangent, -t * 1.6)
-      .addScaledVector(radial, t * t * 0.48)
-      .addScaledVector(UP, side * (0.10 + Math.sin(t * Math.PI * 0.7) * 0.28)),
-    () => UP.clone().addScaledVector(radial, 0.2),
-    (t) => Math.sin(t * Math.PI) * (0.8 - t * 0.55),
-    24
+    (t) => origin.clone().addScaledVector(tangent, -t * 1.15)
+      .addScaledVector(radial, t * t * 0.34)
+      .addScaledVector(UP, side * (0.06 + Math.sin(t * Math.PI * 0.7) * 0.20)),
+    () => UP.clone().addScaledVector(radial, 0.25),
+    (t) => Math.pow(Math.sin(t * Math.PI), 0.6) * (0.62 - t * 0.30),
+    22
   );
 }
