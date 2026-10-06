@@ -133,6 +133,64 @@ describe('MageVFX full spell architecture', () => {
     vfx.dispose();
   });
 
+  it('ergue a onda de cristais de gelo no disparo da skill 2 (e só nela)', () => {
+    const scene = new THREE.Scene();
+    const vfx = new MageVFX(scene, { quality: 'low' });
+    const { root, mixer, action } = createAction(0.4, 1);
+    const target = new THREE.Group();
+    target.position.set(0, 0, 10);
+    target.userData.enemyBodyScale = 1;
+
+    vfx.cast('ice', {
+      caster: root,
+      rightHand: null,
+      leftHand: null,
+      action,
+      target,
+      fallbackDirection: new THREE.Vector3(0, 0, 1),
+      isTargetAlive: () => true,
+    });
+
+    // Antes do launch nada de cristais (sincronia com a animação do cast).
+    mixer.update(0.1);
+    vfx.update(0.1);
+    expect(scene.getObjectByName('MageIceCrystalWave')).toBeFalsy();
+
+    // Depois do launch a onda existe, com cristais e rachaduras no chão.
+    for (let step = 0; step < 3; step += 1) {
+      mixer.update(0.1);
+      vfx.update(0.1);
+    }
+    const wave = scene.getObjectByName('MageIceCrystalWave') as THREE.Group;
+    expect(wave).toBeTruthy();
+    const big = wave.getObjectByName('IceWaveBigShards') as THREE.InstancedMesh;
+    expect(big.count).toBeGreaterThan(0);
+    expect(wave.getObjectByName('IceWaveGroundCracks')).toBeTruthy();
+    // A linha nasce no pé da Maga, nunca na mão.
+    expect(wave.position.y).toBeCloseTo(root.position.y, 5);
+
+    // clear() (fim de partida/troca de cena) remove a onda imediatamente.
+    vfx.clear();
+    expect(scene.getObjectByName('MageIceCrystalWave')).toBeFalsy();
+
+    // Nenhuma outra skill ergue cristais de gelo.
+    const lava = createAction(0.4, 1);
+    vfx.cast('lava', {
+      caster: lava.root,
+      rightHand: null,
+      leftHand: null,
+      action: lava.action,
+      target: null,
+      fallbackDirection: new THREE.Vector3(0, 0, 1),
+    });
+    for (let step = 0; step < 4; step += 1) {
+      lava.mixer.update(0.1);
+      vfx.update(0.1);
+    }
+    expect(scene.getObjectByName('MageIceCrystalWave')).toBeFalsy();
+    vfx.dispose();
+  });
+
   it('launches every Mage spell preset through the AnimationAction timeline and pooled managers', () => {
     const spells: readonly MageSpellId[] = ['basic', 'water', 'lightning', 'lava', 'ice', 'laser'];
     for (const spellId of spells) {

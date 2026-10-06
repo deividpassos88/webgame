@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Maga · Onda de Cristais de Gelo (laboratório)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #05070d; color: #e8f1ff;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+  header {
+    position: fixed; top: 0; left: 0; right: 0; padding: 10px 16px; pointer-events: none;
+    background: linear-gradient(180deg, rgba(3,6,12,.85), rgba(3,6,12,0));
+  }
+  header h1 { font-size: 15px; margin: 0 0 2px; letter-spacing: .06em; text-transform: uppercase; }
+  header p { margin: 0; font-size: 12px; color: #8ea6c8; }
+  header span { color: #4fb0ff; }
+  #errors {
+    position: fixed; left: 12px; bottom: 12px; right: 12px; max-height: 40%;
+    overflow: auto; display: none; padding: 10px 12px; font: 12px/1.5 monospace;
+    color: #ffd9d9; background: rgba(80, 10, 16, .92); border: 1px solid #ff5a66;
+    border-radius: 8px; white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Onda de Cristais de Gelo <span>· skill 2 da Maga</span></h1>
+  <p>Clique no chão para disparar a onda na direção do clique · [Espaço] repete o último disparo · arraste para orbitar</p>
+</header>
+<div id="errors"></div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { IceCrystalWaveVFX } from '/src/vfx/ice/IceCrystalWaveVFX';
+import { VFXLightPool } from '/src/vfx/VFXLightPool';
+
+// -------------------------------------------------------------- erros na tela
+const errorBox = document.getElementById('errors');
+function showError(message) {
+  errorBox.style.display = 'block';
+  errorBox.textContent += `${message}\n\n`;
+}
+window.addEventListener('error', (event) => showError(`[erro] ${event.message}`));
+window.addEventListener('unhandledrejection', (event) => showError(`[promise] ${event.reason}`));
+const originalConsoleError = console.error.bind(console);
+console.error = (...args) => {
+  showError(`[console.error] ${args.map((a) => String(a)).join(' ')}`);
+  originalConsoleError(...args);
+};
+
+// ---------------------------------------------------------------------- cena
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05070d);
+scene.fog = new THREE.Fog(0x05070d, 30, 80);
+
+const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 200);
+camera.position.set(-9, 7, -9);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.4, 6);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+scene.add(new THREE.HemisphereLight(0x33415e, 0x0a0d16, 0.85));
+const key = new THREE.DirectionalLight(0x9db7e8, 0.5);
+key.position.set(-6, 10, -4);
+scene.add(key);
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(90, 90),
+  new THREE.MeshStandardMaterial({ color: 0x14161c, roughness: 0.95, metalness: 0.05 })
+);
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+const grid = new THREE.GridHelper(90, 90, 0x1f2b44, 0x121a2c);
+grid.position.y = 0.01;
+scene.add(grid);
+
+// Marcador da "Maga" no centro.
+const mage = new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.32, 1.1, 4, 10),
+  new THREE.MeshStandardMaterial({ color: 0x8fa7cc, roughness: 0.6 })
+);
+mage.position.y = 0.9;
+scene.add(mage);
+
+// -------------------------------------------------------------------- efeito
+const lightPool = new VFXLightPool(scene, 4);
+const softGlow = new THREE.TextureLoader().load('/vfx/warrior/soft-glow.png');
+const wave = new IceCrystalWaveVFX(scene, softGlow, lightPool);
+
+let lastDirection = new THREE.Vector3(0, 0, 1);
+let lastLength = 14;
+
+function fire(direction, length) {
+  lastDirection = direction.clone();
+  lastLength = length;
+  wave.play({
+    start: new THREE.Vector3(0, 0, 0),
+    direction,
+    length,
+    travelSpeed: 24,
+  });
+}
+
+// Disparo automático inicial + repetição para quem só abre e olha.
+fire(lastDirection, lastLength);
+setInterval(() => { if (wave.activeCount === 0) fire(lastDirection, lastLength); }, 4500);
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let downAt = 0;
+renderer.domElement.addEventListener('pointerdown', () => { downAt = performance.now(); });
+renderer.domElement.addEventListener('pointerup', (event) => {
+  // Só dispara em clique curto (arrastar é órbita da câmera).
+  if (performance.now() - downAt > 220) return;
+  pointer.set(
+    (event.clientX / window.innerWidth) * 2 - 1,
+    -(event.clientY / window.innerHeight) * 2 + 1
+  );
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObject(ground)[0];
+  if (!hit) return;
+  const planar = new THREE.Vector3(hit.point.x, 0, hit.point.z);
+  const length = Math.min(20, Math.max(4, planar.length()));
+  fire(planar.normalize(), length);
+});
+window.addEventListener('keydown', (event) => {
+  if (event.code === 'Space') fire(lastDirection, lastLength);
+});
+
+// ---------------------------------------------------------------------- loop
+function resize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const delta = Math.min(0.1, clock.getDelta());
+  wave.update(delta);
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

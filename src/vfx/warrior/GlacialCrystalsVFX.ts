@@ -2,6 +2,15 @@ import * as THREE from 'three';
 import type { PoolableVFX } from '../VFXPool';
 import { VFXLightPool, type VFXLightHandle } from '../VFXLightPool';
 import { PooledParticleCloud } from '../ParticleManager';
+import {
+  ICE_CRYSTAL_COLORS,
+  createShardGeometry,
+  createCrystalMaterial as createCoreCrystalMaterial,
+  createInstancedShardSet,
+  disposeInstancedShardSet,
+  type CrystalMaterial,
+  type InstancedShardSet,
+} from '../ice/IceCrystalCore';
 
 /**
  * Giro Glacial — anel de cristais de gelo que emerge do chão ao redor do
@@ -53,16 +62,8 @@ export const GLACIAL_CRYSTALS_TUNING = {
   lightIntensity: 3.0,
   /** Opacidade do corpo do cristal (quase sólido, como gelo denso). */
   crystalOpacity: 0.96,
-  /** Cores do gelo (base profunda -> corpo -> ponta -> borda). */
-  colors: {
-    deepBase: 0x0b2f6e,
-    body: 0x4fa8e8,
-    tip: 0xd9f4ff,
-    rim: 0x58e6ff,
-    cracks: 0x45d5ff,
-    mist: 0xbfe6ff,
-    sparkle: 0xcdf3ff,
-  },
+  /** Cores do gelo (paleta compartilhada da referência). */
+  colors: ICE_CRYSTAL_COLORS,
 } as const;
 
 /** Capacidade máxima de instâncias (compartilhada por todo o anel). */
@@ -72,56 +73,6 @@ const SMALL_SHARD_CAPACITY = 56;
 /* ------------------------------------------------------------------------ */
 /* Geometria                                                                  */
 /* ------------------------------------------------------------------------ */
-
-/** RNG determinístico: a malha dos cristais é estável entre execuções. */
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/**
- * Um espigão de gelo facetado e irregular: base poligonal larga (enterrada de
- * leve para nunca flutuar), anel intermediário deslocado e ponta fina fora do
- * eixo. Non-indexed: as normais planas vêm de dFdx/dFdy no fragment shader,
- * então só a posição é enviada à GPU.
- */
-function createShardGeometry(seed: number, sides: number, spiky: number): THREE.BufferGeometry {
-  const rng = mulberry32(seed);
-  const baseY = -0.16; // base enterrada: nada flutua em micro-desníveis
-  const midY = 0.4 + rng() * 0.12;
-  const base: THREE.Vector3[] = [];
-  const mid: THREE.Vector3[] = [];
-  const twist = (rng() - 0.5) * 0.7;
-  for (let i = 0; i < sides; i++) {
-    const a = (i / sides) * Math.PI * 2 + (rng() - 0.5) * (0.9 / sides);
-    const rb = 1 * (0.78 + rng() * 0.42);
-    base.push(new THREE.Vector3(Math.sin(a) * rb, baseY, Math.cos(a) * rb));
-    const rm = (0.42 + rng() * 0.2) * spiky;
-    const am = a + twist / sides + (rng() - 0.5) * 0.2;
-    mid.push(new THREE.Vector3(Math.sin(am) * rm, midY + (rng() - 0.5) * 0.08, Math.cos(am) * rm));
-  }
-  const tip = new THREE.Vector3((rng() - 0.5) * 0.3, 1, (rng() - 0.5) * 0.3);
-
-  const positions: number[] = [];
-  const push = (v: THREE.Vector3) => positions.push(v.x, v.y, v.z);
-  for (let i = 0; i < sides; i++) {
-    const j = (i + 1) % sides;
-    // Face lateral base -> meio (dois triângulos, facetas bem definidas).
-    push(base[i]); push(base[j]); push(mid[i]);
-    push(base[j]); push(mid[j]); push(mid[i]);
-    // Faceta meio -> ponta.
-    push(mid[i]); push(mid[j]); push(tip);
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  return geometry;
-}
 
 /** Disco plano no plano XZ para as rachaduras procedurais no chão. */
 function createCrackDiscGeometry(segments: number): THREE.BufferGeometry {
@@ -158,98 +109,6 @@ export function createGlacialCrystalResources(): GlacialCrystalResources {
 /* ------------------------------------------------------------------------ */
 /* Shaders                                                                    */
 /* ------------------------------------------------------------------------ */
-
-const CRYSTAL_VERTEX = /* glsl */ `
-  uniform float uTime;
-  uniform float uGrow;
-  uniform float uBreak;
-  attribute float aDelay;
-  attribute float aSeed;
-  varying vec3 vWorldPos;
-  varying float vLocalY;
-  varying float vSeed;
-  varying float vFade;
-
-  float easeOutBack(float t) {
-    float c1 = 1.70158;
-    float c3 = c1 + 1.0;
-    float x = t - 1.0;
-    return 1.0 + c3 * x * x * x + c1 * x * x;
-  }
-
-  void main() {
-    vSeed = aSeed;
-    float raw = (uTime - aDelay) / max(uGrow, 0.0001);
-    float t = clamp(raw, 0.0, 1.0);
-    float rise = raw <= 0.0 ? 0.0 : easeOutBack(t);
-    // Estilhaçamento com leve defasagem por cristal (quebra orgânica).
-    float br = clamp(uBreak * 1.35 - fract(aSeed * 7.31) * 0.35, 0.0, 1.0);
-
-    vec3 pos = position;
-    vLocalY = clamp(pos.y, 0.0, 1.0);
-    // Nasce fino e engrossa; encolhe de leve ao quebrar.
-    pos.xz *= (0.5 + 0.5 * rise) * (1.0 - 0.38 * br * br);
-    // Emerge do chão subindo pelo próprio eixo inclinado; afunda ao quebrar.
-    pos.y -= (1.0 - rise) * 1.35;
-    pos.y -= br * br * 1.6;
-    // Tremor curto no instante da quebra.
-    pos.x += sin(uTime * 41.0 + aSeed * 29.0) * 0.035 * br * (1.0 - br);
-    pos.z += cos(uTime * 37.0 + aSeed * 13.0) * 0.035 * br * (1.0 - br);
-
-    vFade = (raw <= 0.0 ? 0.0 : 1.0) * (1.0 - smoothstep(0.45, 1.0, br));
-
-    #ifdef USE_INSTANCING
-      vec4 world = modelMatrix * instanceMatrix * vec4(pos, 1.0);
-    #else
-      vec4 world = modelMatrix * vec4(pos, 1.0);
-    #endif
-    vWorldPos = world.xyz;
-    gl_Position = projectionMatrix * viewMatrix * world;
-  }
-`;
-
-const CRYSTAL_FRAGMENT = /* glsl */ `
-  uniform vec3 uColorBase;
-  uniform vec3 uColorBody;
-  uniform vec3 uColorTip;
-  uniform vec3 uColorRim;
-  uniform float uGlow;
-  uniform float uOpacity;
-  uniform float uTime;
-  varying vec3 vWorldPos;
-  varying float vLocalY;
-  varying float vSeed;
-  varying float vFade;
-
-  void main() {
-    if (vFade <= 0.002) discard;
-    // Normal plana por faceta (gelo lapidado), sem atributo de normal.
-    vec3 n = normalize(cross(dFdx(vWorldPos), dFdy(vWorldPos)));
-    vec3 v = normalize(cameraPosition - vWorldPos);
-    if (dot(n, v) < 0.0) n = -n;
-
-    // Azul profundo na base -> azul claro no corpo -> ponta quase branca.
-    vec3 col = mix(uColorBase, uColorBody, smoothstep(0.03, 0.55, vLocalY));
-    col = mix(col, uColorTip, smoothstep(0.7, 1.0, vLocalY));
-
-    // Iluminação facetada fake (chave fria + ambiente) — luz nenhuma da cena.
-    vec3 L = normalize(vec3(0.35, 0.85, 0.4));
-    float diff = max(dot(n, L), 0.0);
-    col *= 0.48 + 0.78 * diff;
-
-    // Brilho interno gelado, pulsando de leve.
-    col += uColorBody * (0.07 + 0.05 * sin(uTime * 3.1 + vSeed * 17.0));
-
-    // Bordas luminosas em ciano/branco (fresnel).
-    float fresnel = pow(1.0 - max(dot(n, v), 0.0), 2.3);
-    col += mix(uColorRim, vec3(1.0), 0.4) * fresnel * uGlow;
-
-    // Ponta acesa.
-    col += vec3(0.78, 0.94, 1.0) * smoothstep(0.86, 1.0, vLocalY) * 0.45 * uGlow;
-
-    gl_FragColor = vec4(col, uOpacity * vFade);
-  }
-`;
 
 const CRACK_VERTEX = /* glsl */ `
   varying vec2 vPos;
@@ -326,20 +185,6 @@ interface ClusterInfo {
   readonly spawnAt: number;
 }
 
-type CrystalMaterial = THREE.ShaderMaterial & {
-  uniforms: {
-    uTime: { value: number };
-    uGrow: { value: number };
-    uBreak: { value: number };
-    uColorBase: { value: THREE.Color };
-    uColorBody: { value: THREE.Color };
-    uColorTip: { value: THREE.Color };
-    uColorRim: { value: THREE.Color };
-    uGlow: { value: number };
-    uOpacity: { value: number };
-  };
-};
-
 type CrackMaterial = THREE.ShaderMaterial & {
   uniforms: {
     uColor: { value: THREE.Color };
@@ -353,25 +198,11 @@ type CrackMaterial = THREE.ShaderMaterial & {
 };
 
 function createCrystalMaterial(): CrystalMaterial {
-  const c = GLACIAL_CRYSTALS_TUNING.colors;
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0 },
-      uGrow: { value: GLACIAL_CRYSTALS_TUNING.growSeconds },
-      uBreak: { value: 0 },
-      uColorBase: { value: new THREE.Color(c.deepBase) },
-      uColorBody: { value: new THREE.Color(c.body) },
-      uColorTip: { value: new THREE.Color(c.tip) },
-      uColorRim: { value: new THREE.Color(c.rim) },
-      uGlow: { value: GLACIAL_CRYSTALS_TUNING.rimGlow },
-      uOpacity: { value: GLACIAL_CRYSTALS_TUNING.crystalOpacity },
-    },
-    vertexShader: CRYSTAL_VERTEX,
-    fragmentShader: CRYSTAL_FRAGMENT,
-    transparent: true,
-    depthWrite: true,
-    side: THREE.FrontSide,
-  }) as CrystalMaterial;
+  return createCoreCrystalMaterial({
+    growSeconds: GLACIAL_CRYSTALS_TUNING.growSeconds,
+    rimGlow: GLACIAL_CRYSTALS_TUNING.rimGlow,
+    opacity: GLACIAL_CRYSTALS_TUNING.crystalOpacity,
+  });
 }
 
 function createCrackMaterial(): CrackMaterial {
@@ -414,14 +245,14 @@ export class GlacialCrystalRingEffect implements PoolableVFX {
   public active = false;
   public readonly group = new THREE.Group();
 
+  private readonly big: InstancedShardSet;
+  private readonly small: InstancedShardSet;
   private readonly bigShards: THREE.InstancedMesh;
   private readonly smallShards: THREE.InstancedMesh;
   private readonly bigDelays: THREE.InstancedBufferAttribute;
   private readonly bigSeeds: THREE.InstancedBufferAttribute;
   private readonly smallDelays: THREE.InstancedBufferAttribute;
   private readonly smallSeeds: THREE.InstancedBufferAttribute;
-  private readonly bigGeometry: THREE.BufferGeometry;
-  private readonly smallGeometry: THREE.BufferGeometry;
   private readonly crystalMat: CrystalMaterial;
   private readonly crackMat: CrackMaterial;
   private readonly crackMesh: THREE.Mesh;
@@ -453,43 +284,17 @@ export class GlacialCrystalRingEffect implements PoolableVFX {
     // Geometrias próprias (atributos instanciados não podem ser partilhados
     // entre efeitos simultâneos), mas reutilizando os MESMOS Float32Arrays de
     // posição das geometrias-base do recurso compartilhado.
-    const makeInstanced = (
-      source: THREE.BufferGeometry,
-      capacity: number
-    ): {
-      geometry: THREE.BufferGeometry;
-      mesh: THREE.InstancedMesh;
-      delays: THREE.InstancedBufferAttribute;
-      seeds: THREE.InstancedBufferAttribute;
-    } => {
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', source.getAttribute('position'));
-      const delays = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
-      const seeds = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
-      geometry.setAttribute('aDelay', delays);
-      geometry.setAttribute('aSeed', seeds);
-      const mesh = new THREE.InstancedMesh(geometry, this.crystalMat, capacity);
-      mesh.count = 0;
-      mesh.frustumCulled = false;
-      mesh.castShadow = false;
-      mesh.receiveShadow = false;
-      mesh.renderOrder = 3;
-      return { geometry, mesh, delays, seeds };
-    };
-
-    const big = makeInstanced(resources.bigShard, BIG_SHARD_CAPACITY);
-    this.bigGeometry = big.geometry;
-    this.bigShards = big.mesh;
+    this.big = createInstancedShardSet(resources.bigShard, BIG_SHARD_CAPACITY, this.crystalMat);
+    this.bigShards = this.big.mesh;
     this.bigShards.name = 'GlacialBigShards';
-    this.bigDelays = big.delays;
-    this.bigSeeds = big.seeds;
+    this.bigDelays = this.big.delays;
+    this.bigSeeds = this.big.seeds;
 
-    const small = makeInstanced(resources.smallShard, SMALL_SHARD_CAPACITY);
-    this.smallGeometry = small.geometry;
-    this.smallShards = small.mesh;
+    this.small = createInstancedShardSet(resources.smallShard, SMALL_SHARD_CAPACITY, this.crystalMat);
+    this.smallShards = this.small.mesh;
     this.smallShards.name = 'GlacialSmallShards';
-    this.smallDelays = small.delays;
-    this.smallSeeds = small.seeds;
+    this.smallDelays = this.small.delays;
+    this.smallSeeds = this.small.seeds;
 
     this.crackMat = createCrackMaterial();
     this.crackMesh = new THREE.Mesh(resources.crackDisc, this.crackMat);
@@ -763,14 +568,10 @@ export class GlacialCrystalRingEffect implements PoolableVFX {
   public dispose(): void {
     // As posições pertencem ao recurso compartilhado; aqui saem só os
     // atributos instanciados e materiais próprios deste efeito.
-    this.bigGeometry.deleteAttribute('position');
-    this.smallGeometry.deleteAttribute('position');
-    this.bigGeometry.dispose();
-    this.smallGeometry.dispose();
+    disposeInstancedShardSet(this.big);
+    disposeInstancedShardSet(this.small);
     this.crystalMat.dispose();
     this.crackMat.dispose();
-    this.bigShards.dispose();
-    this.smallShards.dispose();
     this.sparkles.dispose();
     this.mist.dispose();
     this.shardsBurst.dispose();
