@@ -53,6 +53,18 @@ export class MageVFXResources {
   public readonly impactFlare = prepareTexture(this.loader.load(TEXTURE_PATHS.impactFlare));
   public readonly smoke = prepareTexture(this.loader.load(TEXTURE_PATHS.smoke));
   public readonly flame = prepareTexture(this.loader.load(TEXTURE_PATHS.flame));
+  /** Shared, local, painted water sheet. RGB channels also encode the foam mask. */
+  public readonly waterFlow = (() => {
+    const texture = prepareTexture(this.loader.load('/vfx/mage/water-flow-refined.png'));
+    texture.colorSpace = THREE.NoColorSpace;
+    texture.wrapS = THREE.RepeatWrapping;
+    // Unlike the small sprites, a long surface texture needs minification to
+    // avoid sparkling/shimmering crests in the elevated gameplay camera.
+    texture.generateMipmaps = true;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.anisotropy = 4;
+    return texture;
+  })();
 
   private readonly mageTextures = {
     arcane: {
@@ -94,6 +106,7 @@ export class MageVFXResources {
       this.impactFlare,
       this.smoke,
       this.flame,
+      this.waterFlow,
       ...Object.values(this.mageTextures).flatMap((textures) => [textures.charge, textures.impact]),
       this.barrierAura,
       this.barrierFilm,
@@ -117,6 +130,7 @@ export class MageVFXResources {
     this.impactFlare.dispose();
     this.smoke.dispose();
     this.flame.dispose();
+    this.waterFlow.dispose();
     Object.values(this.mageTextures).forEach((textures) => {
       textures.charge.dispose();
       textures.impact.dispose();

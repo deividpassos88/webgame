@@ -5,6 +5,15 @@ import { InventoryStore } from '../inventory/InventoryStore';
 import { buildRpgUiViewModel } from './RpgUiViewModel';
 
 describe('RpgUiViewModel', () => {
+  it('exposes the water-dragon name only in the Mage lobby', () => {
+    const profile = createDefaultPlayerProfile();
+    const inventory = InventoryStore.fromProfile(profile).snapshot();
+    profile.selectedClass = 'mage';
+    expect(buildRpgUiViewModel(profile, inventory).skills[0].label).toBe('Dragão das Marés');
+    profile.selectedClass = 'paladin';
+    expect(buildRpgUiViewModel(profile, inventory).skills[0].label).toBe('Ataque Giratório');
+  });
+
   it('exposes the approved seven-slot silhouette, twenty backpack slots and five skills', () => {
     const profile = createDefaultPlayerProfile();
     const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());

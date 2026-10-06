@@ -697,7 +697,7 @@ class MageProjectile implements PoolableVFX {
       spread: this.preset.style === 'water' ? 1.2 : this.bullet ? 0.7 : 0.82,
       lifetime: this.preset.style === 'lava' ? 0.58 : this.bullet ? 0.3 : 0.44,
       upwardBias: this.preset.style === 'lava' ? 0.22 : 0.05,
-      ...(this.bullet ? { size: [0.8, 2] as const } : {}),
+      size: this.bullet ? [0.8, 2] : [0.9, 2.6],
     });
   }
 

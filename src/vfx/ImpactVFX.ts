@@ -261,7 +261,7 @@ class ImpactEffect implements PoolableVFX {
       return;
     }
 
-    this.particles.setTexture(this.resources.mageTexture(preset.style, 'impact'));
+    this.particles.setTexture(this.resources.softGlow);
     this.smoke.setTexture(
       preset.style === 'lava'
         ? this.resources.flame
@@ -269,8 +269,8 @@ class ImpactEffect implements PoolableVFX {
           ? this.resources.smoke
           : this.resources.mageTexture(preset.style, 'impact')
     );
-    // Particle sizes are screen-space units (~0.21 m each): the bullet impact
-    // has to use small sparks, not the 2-8 m glow blobs of the big spells.
+    // A single elemental flash carries the silhouette. Sparks must stay tiny:
+    // the shared particle default would turn each point into a 2-8 m glow blob.
     const bullet = preset.projectile?.shape === 'bullet';
     this.particles.emit(new THREE.Vector3(), {
       color: preset.colors.spark,
@@ -279,7 +279,7 @@ class ImpactEffect implements PoolableVFX {
       spread: preset.style === 'water' ? 1.55 : 1.25,
       lifetime: this.duration,
       upwardBias: preset.style === 'water' ? 0.55 : 0.32,
-      ...(bullet ? { size: [1.5, 4] as const } : {}),
+      size: bullet ? [1.5, 4] : [0.8, 3],
     });
     const frost = preset.projectile?.frost;
     if (preset.style === 'lava' || preset.style === 'water' || preset.style === 'ice') {
@@ -291,6 +291,8 @@ class ImpactEffect implements PoolableVFX {
         spread: 1,
         lifetime: this.duration * 1.15,
         upwardBias: preset.style === 'lava' ? 0.65 : 0.35,
+        size: [1.2, 3.5],
+        opacity: 0.45,
       });
     } else if (frost) {
       // Bullet impact: a short puff of the same frost vapor the bolt trailed.

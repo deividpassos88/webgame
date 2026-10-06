@@ -217,6 +217,7 @@ class LaserBeam implements PoolableVFX {
         spread: 1.05,
         lifetime: 0.2,
         upwardBias: 0.16,
+        size: [0.7, 2],
       });
     }
 

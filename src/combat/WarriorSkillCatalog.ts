@@ -7,6 +7,7 @@ export type WarriorSkillId = Exclude<WarriorAttackId, 'ataque_basico'>;
 export interface WarriorSkillDefinition {
   readonly id: WarriorSkillId;
   readonly label: string;
+  readonly mageLabel?: string;
   readonly input: '1' | '2' | '3' | '4' | '5';
   readonly unlockLevel: number;
   readonly damageMultiplier: number;
@@ -21,6 +22,8 @@ export interface WarriorSkillDefinition {
   /** Explicit class-specific element override; `null` preserves a non-elemental Mage spell. */
   readonly mageElement?: ElementalType | null;
   readonly playbackRate: number;
+  /** Mage cast tempo only: damage, MP and cooldowns remain unchanged. */
+  readonly magePlaybackRate?: number;
   readonly area: WarriorSkillAreaDefinition;
 }
 
@@ -28,6 +31,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
   {
     id: 'ataque_giratorio',
     label: 'Ataque Giratório',
+    mageLabel: 'Dragão das Marés',
     input: '1',
     unlockLevel: 3,
     damageMultiplier: 1.1,
@@ -36,6 +40,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     energyCost: 8,
     cooldown: 6,
     playbackRate: 1.1,
+    magePlaybackRate: 1.8,
     area: getWarriorSkillArea('ataque_giratorio'),
   },
   {
@@ -49,6 +54,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     energyCost: 10,
     cooldown: 8,
     playbackRate: 1.1,
+    magePlaybackRate: 1.8,
     area: getWarriorSkillArea('ataque_giratorio_2'),
   },
   {
@@ -62,6 +68,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     energyCost: 14,
     cooldown: 10,
     playbackRate: 1,
+    magePlaybackRate: 2.1,
     area: getWarriorSkillArea('pulo_atacando'),
   },
   {
@@ -75,6 +82,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     energyCost: 18,
     cooldown: 12,
     playbackRate: 1.1,
+    magePlaybackRate: 1.8,
     area: getWarriorSkillArea('triplo_ataque'),
   },
   {
@@ -92,6 +100,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     mageDamageMultiplier: 1.26,
     mageElement: null,
     playbackRate: 1.2,
+    magePlaybackRate: 1.9,
     area: getWarriorSkillArea('corte_duplo'),
   },
 ] as const;
@@ -100,6 +109,14 @@ export function getWarriorSkill(id: WarriorSkillId): WarriorSkillDefinition {
   const definition = WARRIOR_SKILLS.find((skill) => skill.id === id);
   if (!definition) throw new Error(`Skill de Guerreiro desconhecida: ${id}`);
   return definition;
+}
+
+export function warriorSkillLabel(
+  id: WarriorSkillId,
+  playerClass: PlayableCharacterId = 'paladin'
+): string {
+  const skill = getWarriorSkill(id);
+  return playerClass === 'mage' ? skill.mageLabel ?? skill.label : skill.label;
 }
 
 export function warriorSkillCooldown(

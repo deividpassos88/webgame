@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { CharacterAssetStore } from '../characters/CharacterAssetStore';
 import { Player, type MageBasicAttackCastEvent, type MageSpellCastEvent } from './Player';
+import { getWeaponDefinition } from '../equipment/EquipmentCatalog';
 import { WARRIOR_SKILLS } from '../combat/WarriorSkillCatalog';
 
 function clip(name: string, duration = 1): THREE.AnimationClip {
@@ -37,12 +38,12 @@ function createMageModel(): THREE.Group {
   return model;
 }
 
-function createMageAssets(): CharacterAssetStore {
+function createMageAssets(basicDuration = 1): CharacterAssetStore {
   const mageAnimations = [
     clip('idle'),
     clip('correr para frente', 0.733),
     clip('correr rapido2', 0.62),
-    clip('ataque basico'),
+    clip('ataque basico', basicDuration),
     clip('ataque agua'),
     clip('ataque gelo'),
     clip('ataque choque'),
@@ -63,6 +64,74 @@ function createMageAssets(): CharacterAssetStore {
 }
 
 describe('Mage gameplay player', () => {
+  it('plays the basic attack at the authored 1× speed for its full 1.8-second duration', async () => {
+    const player = new Player('mage', createMageAssets(1.8));
+    await player.load();
+    const casts: MageSpellCastEvent[] = [];
+    player.onMageSpellCast((event) => { casts.push(event); });
+    player.attackAtCursor();
+    const action = casts[0].action;
+    expect(action.getEffectiveTimeScale()).toBe(1);
+    expect(action.getClip().duration).toBeCloseTo(1.8);
+
+    player.update(0.48);
+    expect(action.time).toBeCloseTo(0.48);
+    expect(player.isAttackInSwing()).toBe(true);
+    player.update(1.31);
+    expect(player.isAttackInSwing()).toBe(true);
+    player.update(0.02);
+    expect(player.isAttackInSwing()).toBe(false);
+    expect(casts).toHaveLength(1);
+  });
+
+  it('does not inherit a sword chain or spend extra MP when the Mage basic is clicked rapidly', async () => {
+    const player = new Player('mage', createMageAssets(1.8));
+    await player.load();
+    expect(player.equipWeapon(getWeaponDefinition('sword')!, new THREE.Group())).toBe(true);
+    const casts: MageSpellCastEvent[] = [];
+    player.onMageSpellCast((event) => { casts.push(event); });
+    let spent = 0;
+    player.basicAttackCost = { canAfford: () => true, spend: () => { spent += 1; } };
+    const enemy = new THREE.Group();
+    enemy.position.z = 1.7;
+    player.attackEnemy(enemy, () => undefined);
+    for (let index = 0; index < 15; index += 1) {
+      player.update(0.1);
+      player.attackAtCursor();
+      player.attackEnemy(enemy, () => undefined);
+    }
+    expect(casts).toHaveLength(1);
+    expect(spent).toBe(1);
+    player.update(0.31);
+    expect(player.isAttackInSwing()).toBe(false);
+    expect(casts).toHaveLength(1);
+    player.attackAtCursor();
+    expect(casts).toHaveLength(2);
+    expect(casts[1].action.getEffectiveTimeScale()).toBe(1);
+    expect(spent).toBe(2);
+  });
+
+  it('preserves the normal basic interval across target changes and movement cancellation', async () => {
+    const player = new Player('mage', createMageAssets(1.8));
+    await player.load();
+    const casts: MageSpellCastEvent[] = [];
+    player.onMageSpellCast((event) => { casts.push(event); });
+    const first = new THREE.Group(); first.position.z = 1;
+    const second = new THREE.Group(); second.position.z = 2;
+    player.attackEnemy(first, () => undefined);
+    player.update(0.7);
+    player.attackEnemy(second, () => undefined);
+    player.cancelMovement();
+    player.attackAtCursor();
+    expect(casts).toHaveLength(1);
+    player.update(1.0);
+    player.attackAtCursor();
+    expect(casts).toHaveLength(1);
+    player.update(0.11);
+    player.attackAtCursor();
+    expect(casts).toHaveLength(2);
+  });
+
   it('grounds the body mesh without using the staff bounds as the floor reference', async () => {
     const player = new Player('mage', createMageAssets());
 
@@ -156,6 +225,27 @@ describe('Mage gameplay player', () => {
     expect(directHits).toBe(1);
   });
 
+  it('finds the actual Mage GLB hands after GLTFLoader sanitizes Mixamo names', async () => {
+    const assets = createMageAssets();
+    assets.createModel = () => {
+      const model = createMageModel();
+      model.traverse((object) => {
+        object.name = THREE.PropertyBinding.sanitizeNodeName(object.name);
+      });
+      return model;
+    };
+    const player = new Player('mage', assets);
+    await player.load();
+    const casts: MageSpellCastEvent[] = [];
+    player.onMageSpellCast((event) => { casts.push(event); });
+
+    expect(player.tryStartSkillAttack('pulo_atacando')).toBe(true);
+    expect(casts[0].rightHand).toBe(player.root.getObjectByName('mixamorigRightHand'));
+    expect(casts[0].leftHand).toBe(player.root.getObjectByName('mixamorigLeftHand'));
+    expect(casts[0].rightHand).not.toBeNull();
+    expect(casts[0].leftHand).not.toBeNull();
+  });
+
   it('gives Mage skills no damage immunity', async () => {
     const player = new Player('mage', createMageAssets());
     await player.load();
@@ -229,6 +319,50 @@ describe('Mage gameplay player', () => {
       for (let step = 0; step < 25; step += 1) player.update(0.1);
       expect(player.isAttackInSwing()).toBe(false);
     }
+  });
+
+  it.each([
+    ['ataque_giratorio', 1.8],
+    ['ataque_giratorio_2', 1.8],
+    ['pulo_atacando', 2.1],
+    ['triplo_ataque', 1.8],
+    ['corte_duplo', 1.9],
+  ] as const)('accelerates %s without desynchronizing the clip and action slot', async (id, rate) => {
+    const player = new Player('mage', createMageAssets());
+    await player.load();
+    const casts: MageSpellCastEvent[] = [];
+    player.onMageSpellCast((event) => { casts.push(event); });
+
+    expect(player.tryStartSkillAttack(id)).toBe(true);
+    const action = casts[0].action;
+    const duration = action.getClip().duration / rate;
+    expect(action.getEffectiveTimeScale()).toBeCloseTo(rate);
+    expect(player.activeSkillRemainingSeconds).toBeCloseTo(duration);
+    expect(player.getWarriorSkillComboTiming(id)?.durationSeconds).toBeCloseTo(duration);
+
+    player.update(duration - 0.01);
+    expect(player.isCastingSkill).toBe(true);
+    player.update(0.02);
+    expect(player.isCastingSkill).toBe(false);
+  });
+
+  it('scales the faster Mage clip and combo gauge together, without the Warrior landing pause', async () => {
+    const player = new Player('mage', createMageAssets());
+    await player.load();
+    const casts: MageSpellCastEvent[] = [];
+    player.onMageSpellCast((event) => { casts.push(event); });
+    const normal = player.getWarriorSkillComboTiming('pulo_atacando')!;
+
+    expect(player.tryStartSkillAttack('pulo_atacando', { playbackScale: 1.3 })).toBe(true);
+    expect(casts[0].action.getEffectiveTimeScale()).toBeCloseTo(2.1 * 1.3);
+    const empowered = player.getWarriorSkillComboTiming('pulo_atacando')!;
+    expect(empowered.durationSeconds).toBeCloseTo(normal.durationSeconds / 1.3);
+    expect(empowered.lastHitSeconds).toBeCloseTo(normal.lastHitSeconds / 1.3);
+    expect(player.activeSkillRemainingSeconds).toBeCloseTo(empowered.durationSeconds);
+
+    player.update(empowered.durationSeconds + 0.01);
+    expect(player.isCastingSkill).toBe(false);
+    expect(player.activeSkillRemainingSeconds).toBe(0);
   });
 
   it('frees Mage movement at spell launch while recovery still owns the action slot', async () => {

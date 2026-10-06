@@ -109,11 +109,12 @@ class LightningStrike implements PoolableVFX {
     this.rebuildBolt(1);
     this.sparks.emit(options.end, {
       color: options.preset.colors.spark,
-      count: qualityCount(28, this.quality, options.preset.qualityParticleMultiplier),
+      count: qualityCount(12, this.quality, options.preset.qualityParticleMultiplier),
       speed: 3.4,
       spread: 1.15,
       lifetime: this.duration,
       upwardBias: 0.2,
+      size: [0.65, 1.8],
     });
   }
 

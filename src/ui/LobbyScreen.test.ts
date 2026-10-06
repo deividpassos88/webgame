@@ -643,6 +643,13 @@ describe('lobby character preparation', () => {
     lobby.dispose();
   });
 
+  it('names the Mage first shortcut Dragão das Marés without changing the Warrior shortcut', () => {
+    const hotkeys = createDefaultPlayerProfile().hotkeys;
+    expect(renderLobbyHotkeys(hotkeys, null, '', false, 'mage')).toContain('Dragão das Marés');
+    expect(renderLobbyHotkeys(hotkeys, null, '', false, 'mage')).not.toContain('Ataque Giratório</span>');
+    expect(renderLobbyHotkeys(hotkeys, null, '')).toContain('Ataque Giratório');
+  });
+
   it('renders automatic basic attack and registration controls for the five Warrior skills', () => {
     const markup = renderLobbyHotkeys(createDefaultPlayerProfile().hotkeys, null, '');
 

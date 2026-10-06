@@ -612,7 +612,7 @@ export class Player {
     if (this.skillAttackController.active) return;
     if (this.isSwinging) {
       if (enemy === this.attackTargetEnemy && this.isTargetInRange(enemy)) {
-        if (this.equippedWeaponId === 'sword') this.comboController.request();
+        if (this.characterId !== 'mage' && this.equippedWeaponId === 'sword') this.comboController.request();
         return;
       }
       // Selecting a different target cancels the current combo and then
@@ -633,7 +633,7 @@ export class Player {
   public attackAtCursor() {
     if (this.skillAttackController.active) return;
     if (this.isSwinging) {
-      if (this.equippedWeaponId === 'sword') this.comboController.request();
+      if (this.characterId !== 'mage' && this.equippedWeaponId === 'sword') this.comboController.request();
       return;
     }
     if (!this.canAcceptInput() || this.attackCooldown > 0) return;
@@ -692,7 +692,7 @@ export class Player {
     const clip = this.warriorAttackActions[id]?.getClip();
     if (!clip || !Number.isFinite(clip.duration) || clip.duration <= 0) return null;
     const animationDuration = clip.duration / this.skillPlaybackRate(id);
-    const landingRecovery = id === 'pulo_atacando'
+    const landingRecovery = this.characterId !== 'mage' && id === 'pulo_atacando'
       ? WARRIOR_SKILL_LANDING_RECOVERY_SECONDS / this.skillSpeedScaleFor(id)
       : 0;
     const timeline = getWarriorAttackTimeline(id);
@@ -713,8 +713,12 @@ export class Player {
       : 1;
   }
 
-  private skillPlaybackRate(id: WarriorSkillId): number {
-    return getWarriorSkill(id).playbackRate * this.skillSpeedScaleFor(id);
+  private skillPlaybackRate(id: WarriorSkillId, speedScale = this.skillSpeedScaleFor(id)): number {
+    const skill = getWarriorSkill(id);
+    const baseRate = this.characterId === 'mage'
+      ? skill.magePlaybackRate ?? skill.playbackRate
+      : skill.playbackRate;
+    return baseRate * speedScale;
   }
 
   /** Called at each authored sword damage window, including a basic swing. */
@@ -868,7 +872,12 @@ export class Player {
 
   private findObjectByName(name: string): THREE.Object3D | null {
     if (!this.characterModel) return null;
-    return this.characterModel.getObjectByName(name) ?? null;
+    // GLTFLoader removes ':' from Mixamo node names. The old exact lookup
+    // returned null for the real Mage GLB, putting every spell at a fallback
+    // near her legs instead of following the animated hand.
+    return this.characterModel.getObjectByName(name)
+      ?? this.characterModel.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(name))
+      ?? null;
   }
 
   /**
@@ -909,9 +918,9 @@ export class Player {
     if (!action) return false;
 
     const speedScale = clampSkillPlaybackScale(options.playbackScale ?? 1);
-    const playbackRate = getWarriorSkill(id).playbackRate * speedScale;
+    const playbackRate = this.skillPlaybackRate(id, speedScale);
     const animationDuration = (action.getClip().duration || 1) / playbackRate;
-    const landingRecovery = id === 'pulo_atacando'
+    const landingRecovery = this.characterId !== 'mage' && id === 'pulo_atacando'
       ? WARRIOR_SKILL_LANDING_RECOVERY_SECONDS / speedScale
       : 0;
     if (chaining) {
@@ -1347,7 +1356,11 @@ export class Player {
     // The Maga's basic cast spends MP through this hook; the Guerreiro has
     // no hook and swings for free. An unaffordable cast never starts.
     if (this.basicAttackCost && !this.basicAttackCost.canAfford()) return false;
-    if (!this.comboController.request()) return false;
+    const authoredDuration = action.getClip().duration || SWORD_COMBO_STAGES[0].duration;
+    const durationScale = this.characterId === 'mage'
+      ? authoredDuration / SWORD_COMBO_STAGES[0].duration
+      : 1;
+    if (!this.comboController.request(durationScale)) return false;
     if (this.basicAttackCost) this.basicAttackCost.spend();
     this.comboController.minStageInterval = this.attackCooldownTime;
     this.isSwinging = true;
@@ -1358,7 +1371,11 @@ export class Player {
       : BASIC_ACTION_INVULNERABILITY_SECONDS;
     this.actionInvulnerabilityFresh = this.actionInvulnerability > 0;
     this.emptyHandAttackPreview = false;
-    this.attackCooldown = this.attackCooldownTime;
+    // Do not compress the 1.8 s Mage cast into the Warrior's 0.48 s swing.
+    // The same interval also survives movement cancellation / rapid clicks.
+    this.attackCooldown = this.characterId === 'mage'
+      ? Math.max(this.attackCooldownTime, authoredDuration)
+      : this.attackCooldownTime;
     this.comboHitTargets.clear();
     this.playedComboStages = 1;
     this.playComboStage(0);
@@ -1381,7 +1398,9 @@ export class Player {
     action.reset();
     action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = true;
-    action.setEffectiveTimeScale(sourceDuration / SWORD_COMBO_STAGES[stage].duration);
+    action.setEffectiveTimeScale(this.characterId === 'mage'
+      ? 1
+      : sourceDuration / SWORD_COMBO_STAGES[stage].duration);
     action.setEffectiveWeight(1);
     // Every ordinary combo stage intentionally reuses ataque_basico. Fading
     // that instance either out or back in makes its weight pass through zero

@@ -5,6 +5,7 @@ import { DEFAULT_MAGE_VFX_QUALITY, MAGE_SPELL_PRESETS, MAGE_VFX_LIMITS, mageQual
 import { ImpactVFX } from './ImpactVFX';
 import { LaserVFX } from './LaserVFX';
 import { LightningVFX } from './LightningVFX';
+import { WaterDragonVFX, type WaterDragonChargeHandle } from './water/WaterDragonVFX';
 import { MageVFXResources } from './MageVFXResources';
 import { MagicCircleVFX } from './MagicCircleVFX';
 import { PooledParticleCloud, qualityCount } from './ParticleManager';
@@ -108,6 +109,7 @@ class ChargeOrbEffect implements PoolableVFX {
     this.intensity = 0;
     this.group.visible = true;
     this.group.scale.setScalar(0.28 * preset.charge.scale);
+    this.group.rotation.set(0, 0, 0);
 
     (this.core.material as THREE.MeshBasicMaterial).color.set(preset.colors.core);
     (this.core.material as THREE.MeshBasicMaterial).opacity = 0.65;
@@ -115,8 +117,11 @@ class ChargeOrbEffect implements PoolableVFX {
     glowMaterial.map = this.resources.mageTexture(preset.style, 'charge');
     glowMaterial.color.set(preset.colors.glow);
     glowMaterial.opacity = 0.72;
-    this.orbitParticles.setTexture(this.resources.mageTexture(preset.style, 'charge'));
-    this.sparks.setTexture(this.resources.mageTexture(preset.style, 'charge'));
+    glowMaterial.depthTest = preset.style === 'lightning';
+    // The elemental texture belongs to ONE palm sprite. Repeating that whole
+    // image on every point made the charge an opaque white mass over the Mage.
+    this.orbitParticles.setTexture(this.resources.softGlow);
+    this.sparks.setTexture(this.resources.softGlow);
     // Borrowed from the shared pool: no scene add/remove, so no recompiles.
     // (The glow map swap above needs no needsUpdate: the sprite is constructed
     // with a map, so texture-to-texture swaps keep the same program.)
@@ -130,9 +135,8 @@ class ChargeOrbEffect implements PoolableVFX {
       this.lightHandle.light.position.copy(this.group.position);
     }
 
-    // Sizes are screen-space units (~0.21 m each). The arcane charge belongs to
-    // the basic attack, so it stays a small spark in the palm; the big spells
-    // keep their wide glow field.
+    // Points use screen-space sizes, independent of group.scale. Keep them
+    // small for skills too; reducing only the group never fixed the glare.
     const arcane = preset.style === 'arcane';
     this.arcaneParticleSize = arcane;
     // 0 partículas = conjuração só com o brilho na mão (sem poeira girando e
@@ -145,7 +149,7 @@ class ChargeOrbEffect implements PoolableVFX {
         speed: preset.style === 'water' ? 0.52 : 0.32,
         spread: preset.style === 'water' ? 0.72 : 0.48,
         lifetime: 999,
-        ...(arcane ? { size: [1.2, 3] as const } : {}),
+        size: arcane ? [1.2, 3] : [0.7, 2],
       });
     }
     this.sparks.reset();
@@ -158,10 +162,12 @@ class ChargeOrbEffect implements PoolableVFX {
     this.age += elapsed;
     // O arcano (ataque básico) acende quase instantâneo: a conjuração dele dura
     // décimos de segundo, então a rampa tem que acompanhar.
-    const ramp = this.preset.style === 'laser' ? 1.8 : this.preset.style === 'arcane' ? 9 : 2.8;
+    const ramp = this.preset.style === 'arcane' ? 9
+      : this.preset.style === 'lightning' ? 8
+        : this.preset.style === 'laser' ? 4 : 5.5;
     this.intensity = THREE.MathUtils.clamp(this.intensity + elapsed * ramp, 0, 1);
     const pulseRate = this.preset.style === 'lightning' ? 34 : this.preset.style === 'water' ? 12 : 18;
-    const pulse = 1 + Math.sin(this.age * pulseRate) * (this.preset.style === 'lightning' ? 0.14 : 0.08);
+    const pulse = 1 + Math.sin(this.age * pulseRate) * (this.preset.style === 'lightning' ? 0.06 : 0.08);
     const scale = (0.45 + this.intensity * (this.preset.style === 'laser' ? 1.05 : 0.75)) * this.preset.charge.scale * pulse;
     this.group.scale.setScalar(scale);
     this.group.rotation.y += elapsed * (this.preset.style === 'water' ? 6.2 : 4.2);
@@ -170,13 +176,18 @@ class ChargeOrbEffect implements PoolableVFX {
     TMP_COLOR.set(this.preset.colors.core).lerp(TMP_COLOR_2.set(this.preset.colors.glow), this.intensity * 0.65);
     (this.core.material as THREE.MeshBasicMaterial).color.copy(TMP_COLOR);
     (this.core.material as THREE.MeshBasicMaterial).opacity = 0.65 + this.intensity * 0.3;
-    (this.glow.material as THREE.SpriteMaterial).opacity = 0.32 + this.intensity * 0.5;
-    // The arcane charge is the Mage's basic attack: it must stay a small spark
-    // in the palm instead of the 3.8 m ball of light the other spells use.
     const arcane = this.preset.style === 'arcane';
-    this.glow.scale.setScalar(
-      (arcane ? 1 : 2.2) + this.intensity * (this.preset.style === 'laser' ? 2.8 : arcane ? 0.4 : 1.6)
-    );
+    const lightning = this.preset.style === 'lightning';
+    (this.glow.material as THREE.SpriteMaterial).opacity = arcane
+      ? 0.32 + this.intensity * 0.5
+      : 0.18 + this.intensity * 0.38;
+    // The shock charge stays inside ~1.2 m at full intensity so the hand,
+    // staff and cast pose remain visible. Basic attack keeps its existing look.
+    this.glow.scale.setScalar(arcane
+      ? 1 + this.intensity * 0.4
+      : lightning
+        ? 1.1 + this.intensity * 0.35
+        : 1.2 + this.intensity * (this.preset.style === 'laser' ? 0.8 : 0.6));
     if (this.lightHandle) {
       this.lightHandle.light.intensity = this.preset.charge.lightIntensity * this.intensity;
       this.lightHandle.light.position.copy(this.group.position);
@@ -184,16 +195,16 @@ class ChargeOrbEffect implements PoolableVFX {
 
     this.updateOrbitParticles();
     this.updateAccents(elapsed);
-    const sparkInterval = this.preset.style === 'lightning' ? 0.05 : this.preset.style === 'lava' ? 0.09 : 0.12;
+    const sparkInterval = this.preset.style === 'lightning' ? 0.08 : this.preset.style === 'lava' ? 0.09 : 0.12;
     if (this.preset.charge.sparkCount > 0 && this.age % sparkInterval < elapsed) {
       this.sparks.emit(new THREE.Vector3(), {
         color: this.preset.colors.spark,
         count: qualityCount(this.preset.charge.sparkCount, this.quality, this.preset.qualityParticleMultiplier),
         speed: this.preset.style === 'lightning' ? 1.2 : 0.58,
         spread: this.preset.style === 'lightning' ? 1.05 : 0.75,
-        lifetime: this.preset.style === 'lava' ? 0.32 : 0.24,
+        lifetime: this.preset.style === 'lightning' ? 0.14 : this.preset.style === 'lava' ? 0.24 : 0.18,
         upwardBias: this.preset.style === 'lava' ? 0.35 : 0,
-        ...(this.arcaneParticleSize ? { size: [1.1, 2.6] as const } : {}),
+        size: this.arcaneParticleSize ? [1.1, 2.6] : [0.55, 1.65],
       });
     }
     this.sparks.update(elapsed);
@@ -484,8 +495,10 @@ class BarrierAuraEffect implements PoolableVFX {
       count: qualityCount(10, this.quality, preset.qualityParticleMultiplier),
       speed: 0.18,
       spread: 1.05,
-      lifetime: 0.85,
+      lifetime: 0.55,
       upwardBias: 0.08,
+      size: [0.5, 1.5],
+      opacity: 0.35,
     });
   }
 
@@ -495,8 +508,10 @@ class BarrierAuraEffect implements PoolableVFX {
       count: qualityCount(42, this.quality, preset.qualityParticleMultiplier),
       speed: 0.92,
       spread: 1.2,
-      lifetime: 0.42,
+      lifetime: 0.28,
       upwardBias: 0.24,
+      size: [0.7, 2.2],
+      opacity: 0.45,
     });
   }
 }
@@ -507,6 +522,7 @@ interface ActiveMageCast {
   readonly context: MageCastContext;
   readonly timeline: VFXTimeline<MageTimelineEvent>;
   charge: ChargeOrbEffect | null;
+  waterCharge: WaterDragonChargeHandle | null;
   launched: boolean;
   impactDelivered: boolean;
 }
@@ -536,6 +552,7 @@ export class MageVFX {
   private readonly activeCasts: ActiveMageCast[] = [];
   private readonly projectiles: ProjectileManager;
   private readonly lightning: LightningVFX;
+  private readonly waterDragon: WaterDragonVFX;
   private readonly lasers: LaserVFX;
   private readonly impacts: ImpactVFX;
   private readonly magicCircles: MagicCircleVFX;
@@ -569,6 +586,7 @@ export class MageVFX {
       options.getCamera ?? (() => null)
     );
     this.lightning = new LightningVFX(scene, this.resources, this.quality);
+    this.waterDragon = new WaterDragonVFX(scene, this.resources, this.lightPool, this.quality);
     this.lasers = new LaserVFX(scene, this.resources, this.quality, this.lightPool);
     this.impacts = new ImpactVFX(scene, this.resources, this.quality, this.lightPool);
     this.magicCircles = new MagicCircleVFX(this.resources);
@@ -596,10 +614,11 @@ export class MageVFX {
       context,
       timeline,
       charge: null,
+      waterCharge: null,
       launched: false,
       impactDelivered: false,
     });
-    if (spellId !== 'basic') this.startSkillBarrier(context, preset);
+    if (spellId !== 'basic' && spellId !== 'water') this.startSkillBarrier(context, preset);
     this.emitAudio(context, preset, 'charge');
   }
 
@@ -625,6 +644,7 @@ export class MageVFX {
     this.updateBarriers(elapsed);
     this.projectiles.update(elapsed);
     this.lightning.update(elapsed);
+    this.waterDragon.update(elapsed);
     this.lasers.update(elapsed);
     this.impacts.update(elapsed);
     this.magicCircles.update(elapsed);
@@ -641,6 +661,7 @@ export class MageVFX {
     this.activeBarriers.length = 0;
     this.projectiles.clear();
     this.lightning.clear();
+    this.waterDragon.clear();
     this.lasers.clear();
     this.impacts.clear();
     this.magicCircles.clear();
@@ -653,6 +674,7 @@ export class MageVFX {
     this.barriers.dispose();
     this.projectiles.dispose();
     this.lightning.dispose();
+    this.waterDragon.dispose();
     this.lasers.dispose();
     this.impacts.dispose();
     this.magicCircles.dispose();
@@ -715,18 +737,19 @@ export class MageVFX {
           mixer.update(0.12);
           this.update(0.12);
           const diagnostics = this.diagnostics();
-          if (!compiledStage.charge && diagnostics.activeCharges > 0) {
+          if (!compiledStage.charge && diagnostics.activeCharges + diagnostics.activeWaterCharges > 0) {
             compile();
             compiledStage.charge = true;
           }
           const deliveryActive = diagnostics.activeProjectiles
             + diagnostics.activeLasers
-            + diagnostics.activeLightning;
+            + diagnostics.activeLightning
+            + diagnostics.activeWaterStrikes;
           if (!compiledStage.delivery && deliveryActive > 0) {
             compile();
             compiledStage.delivery = true;
           }
-          if (!compiledStage.impact && diagnostics.activeImpacts > 0) {
+          if (!compiledStage.impact && diagnostics.activeImpacts + this.waterDragon.activeImpacts > 0) {
             compile();
             compiledStage.impact = true;
           }
@@ -813,6 +836,10 @@ export class MageVFX {
       pooledLasers: this.lasers.pooledCount,
       activeBarriers: this.activeBarriers.length,
       pooledBarriers: this.barriers.inactiveCount,
+      activeWaterCharges: this.waterDragon.activeCharges,
+      pooledWaterCharges: this.waterDragon.pooledCharges,
+      activeWaterStrikes: this.waterDragon.activeStrikes,
+      pooledWaterStrikes: this.waterDragon.pooledStrikes,
     };
   }
 
@@ -862,11 +889,15 @@ export class MageVFX {
   }
 
   private startCharge(cast: ActiveMageCast): void {
-    if (cast.charge) return;
+    if (cast.charge || cast.waterCharge) return;
     // Cast que já lançou não volta a carregar: quando o ataque é reiniciado no
     // meio (andar e atacar de novo), a timeline refaz os eventos deste cast e a
     // carga ficava pendurada na mão — sem isso o brilho nunca saía de lá.
     if (cast.launched) return;
+    if (cast.preset.delivery === 'water-column') {
+      cast.waterCharge = this.waterDragon.charge(cast.context.caster);
+      return;
+    }
     const charge = this.charges.acquire();
     if (!charge) return;
     charge.play(cast.preset);
@@ -883,7 +914,8 @@ export class MageVFX {
       position: this.resolveCastSocketWorldPosition(cast, hand, TMP_WORLD).clone(),
       color: cast.preset.colors.glow,
       radius: cast.preset.style === 'laser' ? 0.82 : 0.48,
-      duration: cast.preset.style === 'laser' ? 0.58 : 0.32,
+      duration: (cast.preset.style === 'laser' ? 0.58 : 0.32)
+        / Math.max(1, cast.context.action.getEffectiveTimeScale()),
       followParent: false,
       groundAligned: false,
     });
@@ -896,7 +928,8 @@ export class MageVFX {
       position: this.resolveCastSocketWorldPosition(cast, hand, TMP_WORLD).clone(),
       color: cast.preset.colors.secondary,
       radius: cast.preset.style === 'laser' ? 0.95 : cast.preset.style === 'water' ? 0.62 : 0.55,
-      duration: cast.preset.style === 'laser' ? 0.72 : 0.36,
+      duration: (cast.preset.style === 'laser' ? 0.72 : 0.36)
+        / Math.max(1, cast.context.action.getEffectiveTimeScale()),
       followParent: false,
       groundAligned: false,
     });
@@ -914,12 +947,19 @@ export class MageVFX {
     this.releaseCharge(cast);
 
     const direction = this.resolveLaunchDirection(cast, origin, TMP_DIRECTION).clone();
+    if (cast.preset.delivery === 'water-column') {
+      this.emitAudio(cast.context, cast.preset, 'cast', origin);
+      this.launchWaterDragon(cast, direction);
+      return;
+    }
     const bullet = cast.preset.projectile.shape === 'bullet';
     // O rastro de saída do tiro (um impacto em miniatura) ficava parado no ar
     // onde a Maga atirou: ela andava e o clarão continuava lá, brilhando por
     // quase um segundo. Na bala ele sai de cena — o brilho da conjuração na mão
     // já anuncia o disparo, e o efeito de impacto fica só para o acerto.
-    if (!bullet) {
+    // Lightning already flashes along the bolt. A second explosion at the
+    // hand hid the cast pose and lingered after the Mage started moving.
+    if (!bullet && cast.preset.style !== 'lightning') {
       this.impacts.play({
         position: origin,
         preset: cast.preset,
@@ -983,6 +1023,33 @@ export class MageVFX {
     }
   }
 
+  private launchWaterDragon(cast: ActiveMageCast, direction: THREE.Vector3): void {
+    const caster = cast.context.caster.getWorldPosition(new THREE.Vector3());
+    let target = cast.context.target;
+    if (target && cast.context.isTargetAlive && !cast.context.isTargetAlive(target)) target = null;
+    const ground = target
+      ? target.getWorldPosition(new THREE.Vector3())
+      : caster.clone().addScaledVector(new THREE.Vector3(direction.x, 0, direction.z).normalize(), MAGE_SPELL_TRAVEL_METERS);
+    const planar = new THREE.Vector3(ground.x - caster.x, 0, ground.z - caster.z);
+    if (planar.length() > MAGE_SPELL_TRAVEL_METERS) {
+      planar.setLength(MAGE_SPELL_TRAVEL_METERS);
+      ground.copy(caster).add(planar);
+      target = null;
+    }
+    // Water falls from above the marked enemy, never as a horizontal hand bolt.
+    // Without a mark, use the existing body query at the aimed landing point.
+    if (!target && cast.context.queryBodyHit) {
+      const top = ground.clone().add(new THREE.Vector3(0, 8.5, 0));
+      target = cast.context.queryBodyHit(top, ground, 0.65);
+    }
+    this.waterDragon.strike({
+      position: ground,
+      target,
+      isTargetAlive: cast.context.isTargetAlive,
+      onImpact: (point, hit) => this.handleDirectImpact(point, cast, hit, direction),
+    });
+  }
+
   private handleProjectileImpact(impact: MageProjectileImpact, cast: ActiveMageCast): void {
     this.handleDirectImpact(impact.position, cast, impact.target, impact.direction);
   }
@@ -998,7 +1065,7 @@ export class MageVFX {
       // `impact.visual === false` (ataque básico): o acerto não desenha nada —
       // nem explosão, nem luz, nem tremor. O som continua.
       if (cast.preset.impact.visual !== false) {
-        this.impacts.play({
+        if (cast.preset.delivery !== 'water-column') this.impacts.play({
           position: impactPoint,
           preset: cast.preset,
           // Sem a direção do projétil (raio, laser, queda do alvo) o impacto usa
@@ -1076,18 +1143,20 @@ export class MageVFX {
   }
 
   private releaseCharge(cast: ActiveMageCast): void {
+    cast.waterCharge?.release();
+    cast.waterCharge = null;
     if (!cast.charge) return;
     this.charges.release(cast.charge);
     cast.charge = null;
   }
 
   private resolveHand(cast: ActiveMageCast): THREE.Object3D | null {
-    if (cast.preset.hand === 'left') return cast.context.leftHand ?? cast.context.rightHand ?? cast.context.caster;
-    return cast.context.rightHand ?? cast.context.leftHand ?? cast.context.caster;
+    if (cast.preset.hand === 'left') return cast.context.leftHand ?? cast.context.rightHand ?? null;
+    return cast.context.rightHand ?? cast.context.leftHand ?? null;
   }
 
   private resolveOtherHand(cast: ActiveMageCast): THREE.Object3D | null {
-    return cast.context.leftHand ?? cast.context.rightHand ?? cast.context.caster;
+    return cast.context.leftHand ?? cast.context.rightHand ?? null;
   }
 
   private resolveHandWorldPosition(cast: ActiveMageCast, output: THREE.Vector3): THREE.Vector3 {
@@ -1117,7 +1186,17 @@ export class MageVFX {
       || distanceFromCaster > 8;
     if (invalidHand) this.resolveFallbackSocket(cast, output);
 
-    // Critical rule: the spell may never start behind the visible chest. Use the
+    // Shock charges at the animated palm, including when the hand is drawn
+    // back to cast. The generic front/height clamp detached its glow from the
+    // hand and slid it over the Mage's legs during this particular gesture.
+    // Invalid/missing bones still use the safe forward fallback below.
+    if (cast.preset.style === 'lightning' && anchor && !invalidHand) {
+      output.addScaledVector(TMP_DIRECTION, 0.08);
+      output.y += 0.04;
+      return output;
+    }
+
+    // Projectile/beam sockets must not start behind the visible chest. Use the
     // animated finger/palm when valid, then clamp it to the front half-space.
     // This preserves the palm feel but fixes Mixamo/GLB axes that evaluate a hand
     // behind the gameplay root in some clips.
@@ -1167,12 +1246,13 @@ export class MageVFX {
     if (!hand) return null;
     const isLeft = /LeftHand/i.test(hand.name);
     const prefix = isLeft ? 'mixamorig:LeftHand' : 'mixamorig:RightHand';
-    return hand.getObjectByName(`${prefix}Index2`)
-      ?? hand.getObjectByName(`${prefix}Index1`)
-      ?? hand.getObjectByName(`${prefix}Index3`)
-      ?? hand.getObjectByName(`${prefix}Thumb2`)
-      ?? hand.getObjectByName(`${prefix}Thumb1`)
-      ?? hand;
+    for (const suffix of ['Index2', 'Index1', 'Index3', 'Thumb2', 'Thumb1']) {
+      const name = `${prefix}${suffix}`;
+      const finger = hand.getObjectByName(name)
+        ?? hand.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(name));
+      if (finger) return finger;
+    }
+    return hand;
   }
 
   private resolveFallbackSocket(cast: ActiveMageCast, output: THREE.Vector3): THREE.Vector3 {
