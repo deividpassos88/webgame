@@ -121,6 +121,84 @@ export function adaptRotationClip(
   return new THREE.AnimationClip(newName, clip.duration, tracks, clip.blendMode);
 }
 
+export type LowerBodyStabilizer = ReadonlyMap<string, number>;
+
+function stabilizerStrengthForTrack(
+  target: string,
+  strengths: LowerBodyStabilizer
+): number | undefined {
+  const exact = strengths.get(target);
+  if (exact !== undefined) return exact;
+  for (const [name, strength] of strengths) {
+    if (THREE.PropertyBinding.sanitizeNodeName(name) === target) return strength;
+  }
+  return undefined;
+}
+
+function restRotationForTrack(
+  target: string,
+  track: THREE.KeyframeTrack,
+  restRotations: ReadonlyMap<string, THREE.Quaternion>
+): THREE.Quaternion {
+  const exact = restRotations.get(target);
+  if (exact) return exact;
+  for (const [name, rotation] of restRotations) {
+    if (THREE.PropertyBinding.sanitizeNodeName(name) === target) return rotation;
+  }
+  // Without a rest pose the joint still stops wobbling: it holds its own
+  // first key instead of swinging through the authored range.
+  return new THREE.Quaternion(
+    track.values[0] ?? 0,
+    track.values[1] ?? 0,
+    track.values[2] ?? 0,
+    track.values[3] ?? 1
+  );
+}
+
+/**
+ * Dampens lower-body joint motion toward the rest pose, for lobby idles whose
+ * authored leg/foot sway reads as wobbling on a display dais. Strength 1
+ * locks a joint fully to rest; 0 leaves it untouched. Only `.quaternion`
+ * tracks of mapped bones are rewritten; every other track (hips, spine,
+ * arms, head) and the source clip are left intact.
+ */
+export function stabilizeLowerBodyClip(
+  clip: THREE.AnimationClip,
+  restRotations: ReadonlyMap<string, THREE.Quaternion>,
+  strengths: LowerBodyStabilizer
+): THREE.AnimationClip {
+  const stabilized = clip.clone();
+  if (strengths.size === 0) return stabilized;
+  const rest = new THREE.Quaternion();
+  const key = new THREE.Quaternion();
+  const damped = new THREE.Quaternion();
+  for (const track of stabilized.tracks) {
+    if (
+      !track.name.endsWith('.quaternion')
+      || track.getValueSize() !== 4
+      || track.values.length < 4
+    ) {
+      continue;
+    }
+    const target = trackTargetName(track.name);
+    const strength = stabilizerStrengthForTrack(target, strengths);
+    if (strength === undefined || strength <= 0) continue;
+    const keep = 1 - Math.min(1, strength);
+    rest.copy(restRotationForTrack(target, track, restRotations));
+    for (let offset = 0; offset + 4 <= track.values.length; offset += 4) {
+      key.set(
+        track.values[offset],
+        track.values[offset + 1],
+        track.values[offset + 2],
+        track.values[offset + 3]
+      );
+      damped.copy(rest).slerp(key, keep);
+      damped.toArray(track.values, offset);
+    }
+  }
+  return stabilized;
+}
+
 export function makeClipInPlace(
   clip: THREE.AnimationClip,
   lockedAxes: readonly RootMotionAxis[] = ['x', 'z'],

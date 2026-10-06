@@ -11,10 +11,11 @@ const base = (paths: string) =>
  * player reads where the item goes instead of a generic outline. A socket with
  * an item shows that item's art, never this placeholder.
  *
- * The seven files live in public/assets/ui/lobby/arena/slots and were cut out
- * from the same bronze-line art direction as the equipped pieces. The primary
- * weapon socket is class-bound: the sword placeholder appears only for the
- * Guerreiro and the cajado placeholder only for the Maga.
+ * The placeholder files live in public/assets/ui/lobby/arena/slots and were cut
+ * out from the same bronze-line art direction as the equipped pieces. The
+ * primary weapon socket is class-bound: the sword placeholder appears only
+ * for the Guerreiro and the framed cajado card (slots/maga/cajado.webp) only
+ * for the Maga.
  */
 const EQUIPMENT_SLOT_ICON_SOURCES: Record<UiEquipmentSlot, string> = {
   helmet: 'guerreiro/helmet.png',
@@ -27,7 +28,7 @@ const EQUIPMENT_SLOT_ICON_SOURCES: Record<UiEquipmentSlot, string> = {
 };
 
 const CLASS_WEAPON_SLOT_ICONS: Partial<Record<PlayableCharacterId, string>> = {
-  mage: 'cajado.webp',
+  mage: 'maga/cajado.webp',
 };
 
 export function equipmentSlotIconSource(slot: UiEquipmentSlot, classId?: PlayableCharacterId): string {

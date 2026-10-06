@@ -58,6 +58,14 @@ import { MAGE_TELEPORT_INVULNERABILITY_SECONDS } from './MageTeleport';
 const BASIC_ACTION_INVULNERABILITY_SECONDS = 0;
 /** A Maga's basic cast grants no action immunity window at all (0 seconds). */
 const MAGE_BASIC_ACTION_INVULNERABILITY_SECONDS = 0;
+/**
+ * Mage basic-attack tempo: the authored 1.8 s cast plays faster so her basic
+ * interval (≈0.9 s) matches the Warrior sword cadence (0.9 s). The combo
+ * stage, the action time scale and the cooldown below all derive from this
+ * single rate, so tuning it keeps visual, VFX timeline and gameplay in
+ * lockstep. Exported for tests and for the lobby/gameplay docs.
+ */
+export const MAGE_BASIC_ATTACK_PLAYBACK_RATE = 2;
 const POST_HIT_INVULNERABILITY_SECONDS = 0.4;
 const DASH_DISTANCE = 5.4;
 const DASH_SPEED = 30;
@@ -1358,7 +1366,7 @@ export class Player {
     if (this.basicAttackCost && !this.basicAttackCost.canAfford()) return false;
     const authoredDuration = action.getClip().duration || SWORD_COMBO_STAGES[0].duration;
     const durationScale = this.characterId === 'mage'
-      ? authoredDuration / SWORD_COMBO_STAGES[0].duration
+      ? authoredDuration / MAGE_BASIC_ATTACK_PLAYBACK_RATE / SWORD_COMBO_STAGES[0].duration
       : 1;
     if (!this.comboController.request(durationScale)) return false;
     if (this.basicAttackCost) this.basicAttackCost.spend();
@@ -1371,10 +1379,11 @@ export class Player {
       : BASIC_ACTION_INVULNERABILITY_SECONDS;
     this.actionInvulnerabilityFresh = this.actionInvulnerability > 0;
     this.emptyHandAttackPreview = false;
-    // Do not compress the 1.8 s Mage cast into the Warrior's 0.48 s swing.
-    // The same interval also survives movement cancellation / rapid clicks.
+    // The Mage cast keeps its own (accelerated) interval instead of the
+    // Warrior's 0.48 s swing. The same interval also survives movement
+    // cancellation / rapid clicks.
     this.attackCooldown = this.characterId === 'mage'
-      ? Math.max(this.attackCooldownTime, authoredDuration)
+      ? Math.max(this.attackCooldownTime, authoredDuration / MAGE_BASIC_ATTACK_PLAYBACK_RATE)
       : this.attackCooldownTime;
     this.comboHitTargets.clear();
     this.playedComboStages = 1;
@@ -1399,7 +1408,7 @@ export class Player {
     action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = true;
     action.setEffectiveTimeScale(this.characterId === 'mage'
-      ? 1
+      ? MAGE_BASIC_ATTACK_PLAYBACK_RATE
       : sourceDuration / SWORD_COMBO_STAGES[stage].duration);
     action.setEffectiveWeight(1);
     // Every ordinary combo stage intentionally reuses ataque_basico. Fading

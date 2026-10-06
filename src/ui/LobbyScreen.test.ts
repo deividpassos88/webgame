@@ -364,6 +364,85 @@ describe('lobby character preparation', () => {
     lobby.dispose();
   });
 
+  it('plants the Maga lobby feet while the head keeps the authored sway', () => {
+    mountLobbyRouteMarkup();
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+
+    const hips = new THREE.Bone();
+    hips.name = 'mixamorig:Hips';
+    const leg = new THREE.Bone();
+    leg.name = 'mixamorig:RightLeg';
+    const foot = new THREE.Bone();
+    foot.name = 'mixamorig:LeftFoot';
+    const head = new THREE.Bone();
+    head.name = 'mixamorig:Head';
+    hips.add(leg, foot, head);
+    const model = new THREE.Group();
+    model.add(hips);
+    const headTrack = new THREE.QuaternionKeyframeTrack(
+      'mixamorig:Head.quaternion',
+      [0, 1, 2],
+      [0, 0, 0, 1, 0, 0.3, 0, 0.95, 0, -0.2, 0, 0.98]
+    );
+    const lookAround = new THREE.AnimationClip('look_around', 2, [
+      new THREE.QuaternionKeyframeTrack(
+        'mixamorig:LeftFoot.quaternion',
+        [0, 1, 2],
+        [0, 0, 0, 1, 0.2, 0, 0, 0.98, -0.15, 0, 0, 0.99]
+      ),
+      new THREE.QuaternionKeyframeTrack(
+        'mixamorig:RightLeg.quaternion',
+        [0, 1, 2],
+        [0, 0, 0, 1, 0, 0.25, 0, 0.97, 0, -0.1, 0, 0.99]
+      ),
+      headTrack,
+    ]);
+    const assets = {
+      has: () => true,
+      createModel: () => model,
+      getAnimations: () => [lookAround],
+      getBoneNames: () => new Set(['mixamorig:Hips', 'mixamorig:RightLeg', 'mixamorig:LeftFoot', 'mixamorig:Head']),
+      getBoneRestRotations: () => new Map<string, THREE.Quaternion>([
+        ['mixamorig:LeftFoot', new THREE.Quaternion(0, 0, 0, 1)],
+        ['mixamorig:RightLeg', new THREE.Quaternion(0, 0, 0, 1)],
+      ]),
+      getBoneRestTranslations: () => new Map<string, THREE.Vector3>(),
+    } as unknown as CharacterAssetStore;
+    const profile = createDefaultPlayerProfile();
+    profile.selectedClass = 'mage';
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      assets,
+      profile,
+      InventoryStore.fromProfile(profile)
+    );
+
+    const idleAction = (lobby as unknown as { fallbackIdleAction: THREE.AnimationAction | null }).fallbackIdleAction;
+    const clip = idleAction?.getClip();
+    expect(clip?.name).toBe('mage:idle');
+    const track = (name: string) => clip?.tracks.find((candidate) => candidate.name === name);
+    // Feet hold the rest pose on every key: no more rocking on the dais.
+    expect(Array.from(track('mixamorig:LeftFoot.quaternion')?.values ?? [])).toEqual([
+      0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1,
+    ]);
+    // Legs keep 15% of the motion: planted, not frozen stiff.
+    const legValues = track('mixamorig:RightLeg.quaternion')?.values;
+    const expectedLeg = new THREE.Quaternion(0, 0, 0, 1)
+      .slerp(new THREE.Quaternion(0, 0.25, 0, 0.97), 0.15);
+    expect(legValues?.[4]).toBeCloseTo(expectedLeg.x);
+    expect(legValues?.[5]).toBeCloseTo(expectedLeg.y);
+    expect(legValues?.[6]).toBeCloseTo(expectedLeg.z);
+    expect(legValues?.[7]).toBeCloseTo(expectedLeg.w);
+    // The upper body is untouched: the look_around life stays.
+    expect(Array.from(track('mixamorig:Head.quaternion')?.values ?? [])).toEqual(
+      Array.from(headTrack.values)
+    );
+    lobby.dispose();
+  });
+
   it('spins the Mage around her own grounded center instead of orbiting the pivot', () => {
     mountLobbyRouteMarkup();
     vi.stubGlobal('requestAnimationFrame', () => 1);

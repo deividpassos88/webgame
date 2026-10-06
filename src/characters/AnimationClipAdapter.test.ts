@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { adaptRotationClip, makeClipInPlace } from './AnimationClipAdapter';
+import { adaptRotationClip, makeClipInPlace, stabilizeLowerBodyClip } from './AnimationClipAdapter';
 
 describe('adaptRotationClip', () => {
   it('keeps only rotation tracks for bones shared by the target model', () => {
@@ -149,5 +149,80 @@ describe('makeClipInPlace', () => {
     expect(Array.from(inPlace.tracks[0].values)).toEqual([
       -2, 104, -10, -2, 86, -10,
     ]);
+  });
+});
+
+describe('stabilizeLowerBodyClip', () => {
+  const footTrack = () => new THREE.QuaternionKeyframeTrack(
+    'mixamorig:LeftFoot.quaternion',
+    [0, 0.5, 1],
+    [0, 0, 0, 1, 0.2, 0, 0, 0.98, -0.15, 0, 0, 0.99]
+  );
+  const headTrack = () => new THREE.QuaternionKeyframeTrack(
+    'mixamorig:Head.quaternion',
+    [0, 0.5, 1],
+    [0, 0, 0, 1, 0, 0.3, 0, 0.95, 0, -0.2, 0, 0.98]
+  );
+  const rest = new Map<string, THREE.Quaternion>([
+    ['mixamorig:LeftFoot', new THREE.Quaternion(0, 0, 0, 1)],
+  ]);
+
+  it('locks fully-weighted joints to the rest pose on every key', () => {
+    const clip = new THREE.AnimationClip('look_around', 1, [footTrack(), headTrack()]);
+    const stabilized = stabilizeLowerBodyClip(clip, rest, new Map([['mixamorig:LeftFoot', 1]]));
+    const foot = stabilized.tracks[0].values;
+    expect(Array.from(foot)).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    // Unmapped joints keep the authored motion untouched.
+    expect(Array.from(stabilized.tracks[1].values)).toEqual(Array.from(headTrack().values));
+  });
+
+  it('dampens partially-weighted joints instead of freezing them', () => {
+    const clip = new THREE.AnimationClip('look_around', 1, [footTrack()]);
+    const stabilized = stabilizeLowerBodyClip(clip, rest, new Map([['mixamorig:LeftFoot', 0.5]]));
+    const expected = new THREE.Quaternion(0, 0, 0, 1)
+      .slerp(new THREE.Quaternion(0.2, 0, 0, 0.98), 0.5);
+    const values = stabilized.tracks[0].values;
+    expect(values[4]).toBeCloseTo(expected.x);
+    expect(values[5]).toBeCloseTo(expected.y);
+    expect(values[6]).toBeCloseTo(expected.z);
+    expect(values[7]).toBeCloseTo(expected.w);
+    // Damped, not locked: the middle key still differs from rest.
+    expect(values[4]).not.toBeCloseTo(0);
+  });
+
+  it('matches sanitized track names and never mutates the source clip', () => {
+    const sanitized = THREE.PropertyBinding.sanitizeNodeName('mixamorig:LeftFoot');
+    const track = new THREE.QuaternionKeyframeTrack(
+      `${sanitized}.quaternion`,
+      [0, 1],
+      [0, 0, 0, 1, 0.2, 0, 0, 0.98]
+    );
+    const clip = new THREE.AnimationClip('look_around', 1, [track]);
+    const before = Array.from(track.values);
+    const stabilized = stabilizeLowerBodyClip(clip, rest, new Map([['mixamorig:LeftFoot', 1]]));
+    expect(Array.from(stabilized.tracks[0].values)).toEqual([0, 0, 0, 1, 0, 0, 0, 1]);
+    expect(Array.from(track.values)).toEqual(before);
+  });
+
+  it('holds the first key when no rest pose is available', () => {
+    const clip = new THREE.AnimationClip('look_around', 1, [footTrack()]);
+    const stabilized = stabilizeLowerBodyClip(
+      clip,
+      new Map(),
+      new Map([['mixamorig:LeftFoot', 1]])
+    );
+    expect(Array.from(stabilized.tracks[0].values)).toEqual([
+      0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1,
+    ]);
+  });
+
+  it('leaves zero-strength and position tracks alone', () => {
+    const clip = new THREE.AnimationClip('look_around', 1, [
+      footTrack(),
+      new THREE.VectorKeyframeTrack('mixamorig:LeftFoot.position', [0, 1], [1, 2, 3, 4, 5, 6]),
+    ]);
+    const stabilized = stabilizeLowerBodyClip(clip, rest, new Map([['mixamorig:LeftFoot', 0]]));
+    expect(Array.from(stabilized.tracks[0].values)).toEqual(Array.from(footTrack().values));
+    expect(Array.from(stabilized.tracks[1].values)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 });

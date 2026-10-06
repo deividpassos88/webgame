@@ -21,7 +21,7 @@ describe('DistanceDamage', () => {
     });
     expect(getDistanceFalloffProfile('mage')).toEqual({
       fullDamageDistance: 3,
-      maxDistance: 7,
+      maxDistance: 12,
       minimumMultiplier: 0.35,
     });
     expect(getDistanceFalloffProfile('regular')).toEqual({
@@ -47,8 +47,8 @@ describe('DistanceDamage', () => {
     ['warrior-extended', 6, 0.62],
     ['warrior-extended', 10, 0.24],
     ['mage', 3, 1],
-    ['mage', 5, 0.675],
-    ['mage', 7, 0.35],
+    ['mage', 7.5, 0.675],
+    ['mage', 12, 0.35],
     ['regular', 1.25, 1],
     ['regular', 2.625, 0.725],
     ['regular', 4, 0.45],

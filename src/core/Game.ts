@@ -734,7 +734,11 @@ export class Game {
 
   /** Makes the rendered weapon reflect the durable primary-weapon slot. */
   private synchronizeEquippedWeapon(): void {
-    if (getPrimaryWeaponId(this.profile.equipment) !== 'starter-sword') {
+    const primaryWeaponId = getPrimaryWeaponId(this.profile.equipment);
+    // Both class starters map to the sword combat definition: the Maga keeps
+    // her embedded cajado visual (Player hides the sword for her) while sharing
+    // the same combat status — including kill healing — as the Guerreiro.
+    if (primaryWeaponId !== 'starter-sword' && primaryWeaponId !== 'starter-staff') {
       if (this.player.equippedWeaponId !== null) this.player.unequipWeapon();
       return;
     }
@@ -946,7 +950,7 @@ export class Game {
 
   private getCharacterStats(): DerivedCharacterStats {
     const primaryWeaponId = getPrimaryWeaponId(this.profile.equipment);
-    const weapon = primaryWeaponId === 'starter-sword'
+    const weapon = primaryWeaponId === 'starter-sword' || primaryWeaponId === 'starter-staff'
       ? getWeaponDefinition('sword')
       : undefined;
     return deriveCharacterStats(attributesWithEquipment(this.profile.attributes, this.profile.equipment), {
@@ -2275,7 +2279,7 @@ export class Game {
       bodyRadius
     );
     // A bolt that connects a few centimeters past the cone still hits. A miss
-    // well beyond 7m does not.
+    // well beyond 12m does not.
     const distance = rawDistance <= MAGE_MAX_RANGE_METERS + 0.45
       ? Math.min(rawDistance, MAGE_MAX_RANGE_METERS)
       : rawDistance;

@@ -19,7 +19,13 @@ export const WARRIOR_MAX_RANGE_METERS = 5;
 export const WARRIOR_CUT_FAN_RANGE_METERS = 10;
 /** Alcance do leque de vento que sai do rastro da espada. */
 export const WARRIOR_WAVE_RANGE_METERS = 7;
-export const MAGE_MAX_RANGE_METERS = 7;
+/**
+ * Alcance máximo dos ataques da Maga (em metros). O perfil de queda de dano
+ * `mage` acompanha automaticamente: dano cheio até 3 m, caindo de forma
+ * linear até 35% aos 12 m — quanto mais perto, mais dano; quanto mais longe,
+ * menor o dano. Fora dos 12 m o golpe erra.
+ */
+export const MAGE_MAX_RANGE_METERS = 12;
 
 const PROFILES: Readonly<Record<DistanceFalloffProfile, DistanceFalloffDefinition>> = Object.freeze({
   warrior: Object.freeze({
