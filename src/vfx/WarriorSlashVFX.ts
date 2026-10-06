@@ -14,6 +14,11 @@ import {
 import {
   WarriorSlashVFX as WarriorSlashTrailVFX,
 } from './warrior/WarriorSlashVFX';
+import {
+  GlacialCrystalRingEffect,
+  createGlacialCrystalResources,
+  type GlacialCrystalResources,
+} from './warrior/GlacialCrystalsVFX';
 
 export interface WarriorSlashPlayOptions {
   readonly position: THREE.Vector3;
@@ -2102,6 +2107,9 @@ export class WarriorSlashVFX {
   private readonly activeTraveling: WarriorTravelingSlashEffect[] = [];
   private readonly spinPool: VFXPool<WarriorSpinWaveEffect>;
   private readonly activeSpin: WarriorSpinWaveEffect[] = [];
+  private readonly glacialResources: GlacialCrystalResources;
+  private readonly glacialPool: VFXPool<GlacialCrystalRingEffect>;
+  private readonly activeGlacial: GlacialCrystalRingEffect[] = [];
   private readonly verticalArcPool: VFXPool<WarriorVerticalArcEffect>;
   private readonly activeVerticalArcs: WarriorVerticalArcEffect[] = [];
   private readonly jumpDivePool: VFXPool<WarriorJumpDiveEffect>;
@@ -2136,6 +2144,11 @@ export class WarriorSlashVFX {
     this.spinPool = new VFXPool(
       () => new WarriorSpinWaveEffect(this.resources, lightPool),
       8
+    );
+    this.glacialResources = createGlacialCrystalResources();
+    this.glacialPool = new VFXPool(
+      () => new GlacialCrystalRingEffect(this.glacialResources, this.resources.softGlow, lightPool),
+      4
     );
     this.verticalArcPool = new VFXPool(() => new WarriorVerticalArcEffect(), 12);
     this.jumpDivePool = new VFXPool(
@@ -2231,11 +2244,23 @@ export class WarriorSlashVFX {
     this.cameraShake.add(intensity, options.type === 'dark_flame' ? 0.19 : 0.13);
   }
 
-  public playSpin(options: { position: THREE.Vector3; forward: THREE.Vector3; type?: 'spin' | 'spin_frost'; scale?: number; maxRadius?: number }): void {
-    // Spin = rastro quase círculo completo começando na costa + círculo de ar expandindo 7m
+  public playSpin(options: {
+    position: THREE.Vector3;
+    forward: THREE.Vector3;
+    type?: 'spin' | 'spin_frost';
+    scale?: number;
+    maxRadius?: number;
+    /** Giro Glacial: segundos até o primeiro cristal nascer (timing da skill). */
+    emergeDelaySeconds?: number;
+    /** Giro Glacial: segundos até o círculo fechar (momento do impacto). */
+    ringCompleteSeconds?: number;
+  }): void {
+    // Spin = rastro quase círculo completo começando na costa + efeito de área
     const spinType = options.type ?? 'spin';
 
-    // 1. Rastro de lâmina quase círculo completo (começa na costa, rabo fino no final, meio grosso)
+    // 1. Rastro de lâmina quase círculo completo (começa na costa, rabo fino no
+    //    final, meio grosso). No Giro Glacial é a trilha de energia gelada que
+    //    acompanha o movimento da arma durante o giro.
     this.play({
       position: options.position.clone(),
       forward: options.forward.clone(),
@@ -2243,7 +2268,30 @@ export class WarriorSlashVFX {
       scale: options.scale ?? 1.15,
     });
 
-    // 2. Círculo de ar quase fechado expandindo até 7m (efeito corta do ar)
+    if (spinType === 'spin_frost') {
+      // 2. Giro Glacial: anel de cristais de gelo emergindo do chão em
+      //    sequência, acompanhando o giro. Substitui o antigo círculo de ar
+      //    congelado (removido para não sobrepor os dois efeitos).
+      const crystals = this.glacialPool.acquire();
+      if (crystals) {
+        crystals.play({
+          position: options.position.clone(),
+          forward: options.forward.clone(),
+          scale: options.scale ?? 1.15,
+          ringRadius: options.maxRadius !== undefined
+            ? THREE.MathUtils.clamp(options.maxRadius * 0.46, 2.4, 4.4)
+            : undefined,
+          emergeDelaySeconds: options.emergeDelaySeconds,
+          ringCompleteSeconds: options.ringCompleteSeconds,
+        });
+        this.scene.add(crystals.group);
+        this.activeGlacial.push(crystals);
+      }
+      this.cameraShake.add(0.068, 0.24);
+      return;
+    }
+
+    // 2. Giratório clássico: círculo de ar quase fechado expandindo até 7m
     const wave = this.spinPool.acquire();
     if (!wave) return;
     wave.play({
@@ -2257,7 +2305,7 @@ export class WarriorSlashVFX {
     this.activeSpin.push(wave);
 
     // Shake mais forte para giratório
-    this.cameraShake.add(spinType === 'spin_frost' ? 0.068 : 0.062, 0.24);
+    this.cameraShake.add(0.062, 0.24);
   }
 
   /**
@@ -2301,6 +2349,12 @@ export class WarriorSlashVFX {
       this.spinPool.release(spin);
       this.activeSpin.splice(i, 1);
     }
+    for (let i = this.activeGlacial.length - 1; i >= 0; i--) {
+      const crystals = this.activeGlacial[i];
+      if (crystals.update(delta)) continue;
+      this.glacialPool.release(crystals);
+      this.activeGlacial.splice(i, 1);
+    }
     for (let i = this.activeVerticalArcs.length - 1; i >= 0; i--) {
       const arc = this.activeVerticalArcs[i];
       if (arc.update(delta)) continue;
@@ -2334,6 +2388,8 @@ export class WarriorSlashVFX {
     this.activeTraveling.length = 0;
     for (const e of this.activeSpin) this.spinPool.release(e);
     this.activeSpin.length = 0;
+    for (const e of this.activeGlacial) this.glacialPool.release(e);
+    this.activeGlacial.length = 0;
     for (const e of this.activeVerticalArcs) this.verticalArcPool.release(e);
     this.activeVerticalArcs.length = 0;
     for (const e of this.activeJumpDive) this.jumpDivePool.release(e);
@@ -2348,6 +2404,8 @@ export class WarriorSlashVFX {
     this.impactPool.dispose();
     this.travelingPool.dispose();
     this.spinPool.dispose();
+    this.glacialPool.dispose();
+    this.glacialResources.dispose();
     this.verticalArcPool.dispose();
     this.jumpDivePool.dispose();
     this.resources.quad.dispose();
@@ -2362,6 +2420,7 @@ export class WarriorSlashVFX {
       + this.activeImpacts.length
       + this.activeTraveling.length
       + this.activeSpin.length
+      + this.activeGlacial.length
       + this.activeVerticalArcs.length
       + this.activeJumpDive.length;
   }

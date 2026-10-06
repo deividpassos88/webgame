@@ -1137,17 +1137,24 @@ export class Game {
           maxRadius: effect.maxRadius,
         });
         break;
-      // Guerreiro 2 — Giro Glacial: mesmo esqueleto do giratório, mas é um
-      // efeito próprio (anel/clarão de gelo), criado a partir dele como base.
-      case 'warrior-frost-spin-ring':
+      // Guerreiro 2 — Giro Glacial: trilha de energia gelada na arma + anel de
+      // cristais de gelo que emerge do chão acompanhando o giro. O timing da
+      // animação sincroniza o nascimento dos cristais com o início do giro e o
+      // fechamento do círculo com o frame de impacto (última janela de dano).
+      case 'warrior-frost-spin-ring': {
+        const timing = this.player.getWarriorSkillTimingSeconds(skillId);
+        const comboTiming = this.player.getWarriorSkillComboTiming(skillId);
         this.warriorSlashVFX.playSpin({
           position: origin,
           forward,
           type: effect.slashType,
           scale: effect.scale,
           maxRadius: effect.maxRadius,
+          emergeDelaySeconds: timing?.trailStartSeconds,
+          ringCompleteSeconds: comboTiming?.lastHitSeconds,
         });
         break;
+      }
       // Guerreiro 3 — Pulo Atacando: sem rastro de lâmina e sem linha no chão.
       // Todo o efeito é o IMPACTO no frame exato em que a espada bate no chão:
       // um TORNADO de chamas gigante + onda de choque enorme.

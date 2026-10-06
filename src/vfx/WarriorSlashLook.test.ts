@@ -413,8 +413,10 @@ describe('Visual do corte do guerreiro', () => {
     const frost = findMesh(scene, 'WarriorSlashMain').material as WarriorSlashMaterial;
     expect(frost.uniforms.uColorB.value.getHex()).toBe(0x7fd4ff);
 
-    const wave = scene.getObjectByName('WarriorSpinWave');
-    expect(wave).toBeTruthy();
+    // O Giro Glacial troca o antigo círculo de ar pelo anel de cristais de
+    // gelo — os dois nunca aparecem juntos (sem sobreposição de efeitos).
+    expect(scene.getObjectByName('WarriorGlacialCrystals')).toBeTruthy();
+    expect(scene.getObjectByName('WarriorSpinWave')).toBeFalsy();
     vfx.dispose();
   });
 });
