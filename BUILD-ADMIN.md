@@ -14,24 +14,41 @@ lobby/menu e do jogo (`z-index: 10050`), e abre as waves, "Ir para o Boss",
 
 ## Como funciona a ativação
 
-`src/main.ts` decide o acesso ADM assim:
+`src/main.ts` chama `resolveAdminEnabled` (em `src/admin/AdminAccess.ts`), que
+recebe o modo, o `DEV`, o `VITE_ADMIN_MODE` e o `?admin=` da URL:
 
 ```ts
-const adminFromLauncher = import.meta.env.DEV
-  && new URLSearchParams(window.location.search).get('admin') === '1';
-const adminEnabled = adminFromLauncher
-  || import.meta.env.MODE === 'admin'
-  || resolveDevAdminAccess(import.meta.env.VITE_ADMIN_MODE, import.meta.env.DEV);
+const adminEnabled = resolveAdminEnabled({
+  mode: import.meta.env.MODE,
+  development: import.meta.env.DEV,
+  envFlag: import.meta.env.VITE_ADMIN_MODE,
+  urlParam: searchParams.get('admin'),
+});
 ```
 
-- `npm run build:admin` usa `vite build --mode admin`, então `import.meta.env.MODE === 'admin'`
+A regra é:
+
+| Situação | ADM |
+|----------|-----|
+| `vite build --mode admin` | **ligado** |
+| `vite dev` | **ligado** (padrão) |
+| `VITE_ADMIN_MODE=true` | **ligado** |
+| `vite build` público | **desligado** |
+| `?admin=0` / `?admin=false` / `VITE_ADMIN_MODE=false` | **desligado** (kill switch, vence tudo) |
+| `?admin=1` no build **público** | **não liga** |
+
+- `npm run build:admin` usa `vite build --mode admin`, então `MODE === 'admin'`
   já garante o ADM ligado **sem depender de nenhum arquivo `.env`**.
 - O `.env.admin` (`VITE_ADMIN_MODE=true`) continua valendo, mas ele é ignorado
   pelo Git (`.env*`), por isso o `--mode admin` é o caminho confiável.
-- No build ADMIN o `?admin=1` da URL **não** é necessário (essa rota só existe em dev).
+- No build ADMIN o `?admin=1` da URL **não** é necessário.
+- `?admin=1` só funciona no `vite dev`. Ele **não** liga o ADM no build público
+  de propósito: se ligasse, publicar o site daria as ferramentas ADM a qualquer
+  visitante que acrescentasse `?admin=1` à URL.
 
-Depois do build dá para conferir no bundle: em `dist/assets/index-*.js` o trecho
-fica `adminEnabled: !1 || !0` (ou seja, `true`).
+Depois do build dá para conferir no bundle (`dist/assets/index-*.js`) qual foi o
+modo gravado: no build ADMIN aparece `mode:"admin"` e no público
+`mode:"production", development:!1`.
 
 ## Testar o build localmente
 

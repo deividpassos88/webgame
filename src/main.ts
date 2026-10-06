@@ -1,5 +1,5 @@
 import { Logger } from './utils/Logger';
-import { resolveDevAdminAccess } from './admin/AdminAccess';
+import { resolveAdminEnabled } from './admin/AdminAccess';
 import { refreshClientCache } from './core/ClientCache';
 import './style.css';
 
@@ -38,9 +38,12 @@ async function bootstrap() {
     Logger.info('Main', 'Módulo Game importado com sucesso.');
 
     const searchParams = new URLSearchParams(window.location.search);
-    const adminParam = searchParams.get('admin');
-    const adminExplicitlyDisabled = adminParam === '0' || adminParam === 'false' || import.meta.env.VITE_ADMIN_MODE === 'false';
-    const adminEnabled = !adminExplicitlyDisabled;
+    const adminEnabled = resolveAdminEnabled({
+      mode: import.meta.env.MODE,
+      development: import.meta.env.DEV,
+      envFlag: import.meta.env.VITE_ADMIN_MODE,
+      urlParam: searchParams.get('admin'),
+    });
 
     const game = new Game(canvas, { adminEnabled });
     await game.start();
