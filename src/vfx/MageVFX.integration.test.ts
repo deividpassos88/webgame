@@ -165,7 +165,9 @@ describe('MageVFX full spell architecture', () => {
     expect(wave).toBeTruthy();
     const big = wave.getObjectByName('IceWaveBigShards') as THREE.InstancedMesh;
     expect(big.count).toBeGreaterThan(0);
-    expect(wave.getObjectByName('IceWaveGroundCracks')).toBeTruthy();
+    expect(wave.getObjectByName('IceWaveGroundFrost')).toBeTruthy();
+    const fog = wave.getObjectByName('IceWaveFog') as THREE.InstancedMesh;
+    expect(fog.count).toBeGreaterThan(0);
     // A linha nasce no pé da Maga, nunca na mão.
     expect(wave.position.y).toBeCloseTo(root.position.y, 5);
 

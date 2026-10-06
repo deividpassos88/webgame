@@ -45,7 +45,7 @@ describe('IceCrystalWaveVFX (onda de cristais da Maga)', () => {
 
     const big = wave.getObjectByName('IceWaveBigShards') as THREE.InstancedMesh;
     const small = wave.getObjectByName('IceWaveSmallShards') as THREE.InstancedMesh;
-    expect(big.count).toBeGreaterThanOrEqual(14); // 2 cristais grandes por aglomerado
+    expect(big.count).toBeGreaterThanOrEqual(30); // 3 cristais grandes por aglomerado
     expect(small.count).toBeGreaterThan(0);
 
     const matrix = new THREE.Matrix4();
@@ -55,8 +55,8 @@ describe('IceCrystalWaveVFX (onda de cristais da Maga)', () => {
     const up = new THREE.Vector3();
     let maxHeight = 0;
     let heroZ = 0;
-    for (let i = 0; i < big.count; i += 2) {
-      // Instâncias pares = cristal principal de cada aglomerado.
+    for (let i = 0; i < big.count; i += 3) {
+      // A cada 3 instâncias, a primeira é o cristal principal do aglomerado.
       big.getMatrixAt(i, matrix);
       matrix.decompose(pos, quat, scl);
       // Base plantada no chão local e dentro da linha.
@@ -77,6 +77,14 @@ describe('IceCrystalWaveVFX (onda de cristais da Maga)', () => {
     expect(maxHeight).toBeGreaterThan(ICE_CRYSTAL_WAVE_TUNING.heightRange[1] * 0.85);
     expect(heroZ).toBeGreaterThan(14 * 0.75);
 
+    // Névoa de gelo presente (banco instanciado), e nenhum desenho de linhas:
+    // o chão é só um lustre de geada discreto.
+    const fog = wave.getObjectByName('IceWaveFog') as THREE.InstancedMesh;
+    expect(fog.count).toBeGreaterThanOrEqual(10);
+    const frost = wave.getObjectByName('IceWaveGroundFrost') as THREE.Mesh;
+    const frostShader = (frost.material as THREE.ShaderMaterial).fragmentShader;
+    expect(frostShader).not.toMatch(/pow\(abs\(sin/); // sem linhas desenhadas
+
     vfx.dispose();
   });
 
@@ -94,15 +102,15 @@ describe('IceCrystalWaveVFX (onda de cristais da Maga)', () => {
     const delays = big.geometry.getAttribute('aDelay') as THREE.InstancedBufferAttribute;
     const matrix = new THREE.Matrix4();
     const pos = new THREE.Vector3();
-    for (let i = 0; i < big.count; i += 2) {
+    for (let i = 0; i < big.count; i += 3) {
       big.getMatrixAt(i, matrix);
       pos.setFromMatrixPosition(matrix);
       // Cada cristal nasce quando a frente (24 m/s) passa pela sua posição.
       expect(delays.getX(i)).toBeCloseTo(pos.z / 24, 1);
     }
 
-    // As rachaduras do chão acompanham a frente da onda.
-    const cracks = wave.getObjectByName('IceWaveGroundCracks') as THREE.Mesh;
+    // A geada do chão e a névoa acompanham a frente da onda.
+    const cracks = wave.getObjectByName('IceWaveGroundFrost') as THREE.Mesh;
     const crackMat = cracks.material as THREE.ShaderMaterial;
     vfx.update(0.1);
     expect(crackMat.uniforms.uFront.value).toBeCloseTo(2.4, 3);
@@ -131,9 +139,13 @@ describe('IceCrystalWaveVFX (onda de cristais da Maga)', () => {
     vfx.update(0.6);
     expect(mat.uniforms.uBreak.value).toBe(0);
 
-    // Depois da permanência, estilhaça.
+    // Depois da permanência, estilhaça — e a névoa começa a dissipar por último.
     vfx.update(ICE_CRYSTAL_WAVE_TUNING.holdSeconds + 0.3);
     expect(mat.uniforms.uBreak.value).toBeGreaterThan(0);
+    const fog = wave.getObjectByName('IceWaveFog') as THREE.InstancedMesh;
+    const fogFade = (fog.material as THREE.ShaderMaterial).uniforms.uFade.value as number;
+    expect(fogFade).toBeLessThan(1);
+    expect(fogFade).toBeGreaterThan(0);
 
     // Roda até o fim: efeito devolvido ao pool, luz liberada, cena limpa.
     for (let i = 0; i < 200 && vfx.activeCount > 0; i++) vfx.update(0.05);

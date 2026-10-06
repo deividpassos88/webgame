@@ -157,8 +157,21 @@ const CRYSTAL_FRAGMENT = /* glsl */ `
     float diff = max(dot(n, L), 0.0);
     col *= 0.48 + 0.78 * diff;
 
+    // Luz rebatida fria vinda do chão congelado (preenche as faces de sombra).
+    float bounce = max(dot(n, normalize(vec3(-0.3, -0.6, -0.25))), 0.0);
+    col += uColorBody * bounce * 0.16;
+
+    // Estrias internas de gelo (veios congelados dentro do cristal).
+    float streak = sin(vWorldPos.y * 13.0 + vSeed * 31.0)
+      * sin(vWorldPos.x * 7.0 - vWorldPos.z * 6.0 + vSeed * 12.0);
+    col *= 0.94 + 0.08 * streak;
+
     // Brilho interno gelado, pulsando de leve.
     col += uColorBody * (0.07 + 0.05 * sin(uTime * 3.1 + vSeed * 17.0));
+
+    // Glint especular duro por faceta (gelo molhado/polido).
+    vec3 h = normalize(L + v);
+    col += vec3(0.88, 0.96, 1.0) * pow(max(dot(n, h), 0.0), 36.0) * 0.65;
 
     // Bordas luminosas em ciano/branco (fresnel).
     float fresnel = pow(1.0 - max(dot(n, v), 0.0), 2.3);
