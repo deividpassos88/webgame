@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { resolveCharacterClips } from '../characters/CharacterAnimations';
+import {
+  stabilizeLowerBodyClip,
+  type LowerBodyStabilizer,
+} from '../characters/AnimationClipAdapter';
 import { gameKeyForEvent } from '../core/InputManager';
 import { CharacterAssetStore } from '../characters/CharacterAssetStore';
 import {
@@ -172,6 +176,26 @@ const LOBBY_CHARACTER_PRESENTATION_PROFILES: Partial<Record<CharacterId, LobbyPr
 
 /** Fraction of the shared lobby light that remains on the Mage face. */
 export const MAGE_LOBBY_FACE_LIGHT_SCALE = 0.8;
+
+/**
+ * Maga lobby stance: her look_around clip swings the legs (±8–16°) and rocks
+ * the feet (±7–13°), which reads as wobbling feet on the dais. Feet and toes
+ * lock fully to the rest pose; upper legs and legs keep 15% of their motion
+ * so the stance stays planted but alive. Hips, spine, arms and head keep the
+ * full authored sway. Lobby preview only — gameplay clips are untouched.
+ */
+const MAGE_LOBBY_STANCE_STRENGTHS: LowerBodyStabilizer = new Map([
+  ['mixamorig:LeftFoot', 1],
+  ['mixamorig:RightFoot', 1],
+  ['mixamorig:LeftToeBase', 1],
+  ['mixamorig:RightToeBase', 1],
+  ['mixamorig:LeftToe_End', 1],
+  ['mixamorig:RightToe_End', 1],
+  ['mixamorig:LeftUpLeg', 0.85],
+  ['mixamorig:RightUpLeg', 0.85],
+  ['mixamorig:LeftLeg', 0.85],
+  ['mixamorig:RightLeg', 0.85],
+]);
 const MAGE_FACE_LIGHT_TOKEN = 'lobby-mage-face-light';
 
 const ATTRIBUTE_LABELS: Readonly<Record<string, string>> = {
@@ -917,7 +941,16 @@ export class LobbyScreen {
     // Same rotation policy as the Guerreiro: the preview group is the only thing
     // that turns. Class clips used in the lobby must be in-place so a translated
     // Mixamo root (notably the Maga idle) cannot make the body orbit the pivot.
-    const idle = resolvedLobbyClips.idle ?? lobbyIdleFallback;
+    const resolvedIdle = resolvedLobbyClips.idle ?? lobbyIdleFallback;
+    // The Maga lobby idle also plants her feet: without this the authored leg
+    // sway rocks both feet on the dais. Other classes play their clip as-is.
+    const idle = resolvedIdle && characterId === 'mage'
+      ? stabilizeLowerBodyClip(
+        resolvedIdle,
+        this.assets.getBoneRestRotations(characterId, 'lobby'),
+        MAGE_LOBBY_STANCE_STRENGTHS
+      )
+      : resolvedIdle;
 
     this.applyLobbyReferencePose(model, lobbyIdle ?? idle);
     model.updateMatrixWorld(true);

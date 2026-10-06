@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { CharacterAssetStore } from '../characters/CharacterAssetStore';
-import { Player, type MageBasicAttackCastEvent, type MageSpellCastEvent } from './Player';
+import { MAGE_BASIC_ATTACK_PLAYBACK_RATE, Player, type MageBasicAttackCastEvent, type MageSpellCastEvent } from './Player';
 import { getWeaponDefinition } from '../equipment/EquipmentCatalog';
 import { WARRIOR_SKILLS } from '../combat/WarriorSkillCatalog';
 
@@ -64,20 +64,20 @@ function createMageAssets(basicDuration = 1): CharacterAssetStore {
 }
 
 describe('Mage gameplay player', () => {
-  it('plays the basic attack at the authored 1× speed for its full 1.8-second duration', async () => {
+  it('plays the basic attack at the accelerated Mage tempo for a 0.9-second interval', async () => {
     const player = new Player('mage', createMageAssets(1.8));
     await player.load();
     const casts: MageSpellCastEvent[] = [];
     player.onMageSpellCast((event) => { casts.push(event); });
     player.attackAtCursor();
     const action = casts[0].action;
-    expect(action.getEffectiveTimeScale()).toBe(1);
+    expect(action.getEffectiveTimeScale()).toBe(MAGE_BASIC_ATTACK_PLAYBACK_RATE);
     expect(action.getClip().duration).toBeCloseTo(1.8);
 
     player.update(0.48);
-    expect(action.time).toBeCloseTo(0.48);
+    expect(action.time).toBeCloseTo(0.48 * MAGE_BASIC_ATTACK_PLAYBACK_RATE);
     expect(player.isAttackInSwing()).toBe(true);
-    player.update(1.31);
+    player.update(0.41);
     expect(player.isAttackInSwing()).toBe(true);
     player.update(0.02);
     expect(player.isAttackInSwing()).toBe(false);
@@ -95,19 +95,19 @@ describe('Mage gameplay player', () => {
     const enemy = new THREE.Group();
     enemy.position.z = 1.7;
     player.attackEnemy(enemy, () => undefined);
-    for (let index = 0; index < 15; index += 1) {
+    for (let index = 0; index < 8; index += 1) {
       player.update(0.1);
       player.attackAtCursor();
       player.attackEnemy(enemy, () => undefined);
     }
     expect(casts).toHaveLength(1);
     expect(spent).toBe(1);
-    player.update(0.31);
+    player.update(0.25);
     expect(player.isAttackInSwing()).toBe(false);
     expect(casts).toHaveLength(1);
     player.attackAtCursor();
     expect(casts).toHaveLength(2);
-    expect(casts[1].action.getEffectiveTimeScale()).toBe(1);
+    expect(casts[1].action.getEffectiveTimeScale()).toBe(MAGE_BASIC_ATTACK_PLAYBACK_RATE);
     expect(spent).toBe(2);
   });
 
@@ -124,10 +124,10 @@ describe('Mage gameplay player', () => {
     player.cancelMovement();
     player.attackAtCursor();
     expect(casts).toHaveLength(1);
-    player.update(1.0);
+    player.update(0.15);
     player.attackAtCursor();
     expect(casts).toHaveLength(1);
-    player.update(0.11);
+    player.update(0.1);
     player.attackAtCursor();
     expect(casts).toHaveLength(2);
   });

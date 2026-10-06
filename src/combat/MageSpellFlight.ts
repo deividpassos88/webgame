@@ -3,7 +3,7 @@ import { MAGE_MAX_RANGE_METERS } from './DistanceDamage';
 import type { WarriorSkillId } from './WarriorSkillCatalog';
 import type { MageSpellId } from '../vfx/VFXTypes';
 
-/** Hand-to-chest slack so a bolt still finishes on a body at the 7m cone. */
+/** Hand-to-chest slack so a bolt still finishes on a body at the 12m cone. */
 export const MAGE_SPELL_REACH_SLACK = 0.8;
 export const MAGE_SPELL_TRAVEL_METERS = MAGE_MAX_RANGE_METERS + MAGE_SPELL_REACH_SLACK;
 

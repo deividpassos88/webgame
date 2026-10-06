@@ -119,7 +119,7 @@
   </div>
   <div class="hint">
     Arraste com o mouse para orbitar a câmera e role a roda para aproximar. A grade do chão tem
-    quadrados de <b>1 m</b>, e o boneco de treino fica a <b>7 m</b> (alcance máximo do jogo).
+    quadrados de <b>1 m</b>, e o boneco de treino fica a <b>12 m</b> (alcance máximo do jogo).
     O tamanho da fumaça usa a unidade do shader do jogo (1 u ≈ 21 cm).
     <br><br><b>Ver de lado</b> coloca a câmera na altura do voo, do jeito que está na referência;
     <b>Ver do jogo</b> volta para a câmera atrás da Maga (como o jogo mostra).
@@ -173,11 +173,11 @@ const grid = new THREE.GridHelper(40, 40, 0x2c4a7a, 0x1b2b44);
 grid.position.y = 0.01;
 scene.add(grid);
 
-// Marcas de distância no chão (a cada 2 m).
-for (let z = 2; z <= 10; z += 2) {
+// Marcas de distância no chão (a cada 2 m, até o alcance máximo).
+for (let z = 2; z <= 12; z += 2) {
   const mark = new THREE.Mesh(
     new THREE.BoxGeometry(3.2, 0.02, 0.06),
-    new THREE.MeshBasicMaterial({ color: z === 6 ? 0x4fb0ff : 0x24405f })
+    new THREE.MeshBasicMaterial({ color: z === 12 ? 0x4fb0ff : 0x24405f })
   );
   mark.position.set(0, 0.02, z);
   scene.add(mark);
@@ -204,10 +204,10 @@ hand.position.set(0.34, 1.22, 0.28);
 caster.add(hand);
 scene.add(caster);
 
-// Boneco de treino a 7 m (alcance máximo do ataque básico no jogo).
+// Boneco de treino a 12 m (alcance máximo do ataque básico no jogo).
 const dummy = new THREE.Group();
 dummy.name = 'BonecoDeTreino';
-dummy.position.set(0, 0, 7);
+dummy.position.set(0, 0, 12);
 dummy.userData.isEnemyRoot = true;
 dummy.userData.enemyBodyScale = 1;
 const dummyMat = new THREE.MeshStandardMaterial({ color: 0x8a5a3c, roughness: 0.85 });

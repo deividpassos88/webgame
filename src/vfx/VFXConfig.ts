@@ -101,7 +101,8 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
       // até 0,83 s — era o borrão que continuava brilhando enquanto ela andava.
       chargeStart: 0.3,
       // No hand magic circle: repeated palm seals made the basic attack noisy.
-      // This normalized timeline still runs on the original 1x animation.
+      // Normalized fractions of the cast clip, so they scale with the Mage
+      // basic tempo (MAGE_BASIC_ATTACK_PLAYBACK_RATE in Player.ts).
       launch: 0.36,
       chargeEnd: 0.4,
       recover: 0.72,

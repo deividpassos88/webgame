@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dragão das Marés · Laboratório de impacto</title>
+<style>
+  :root { color-scheme: dark; --panel: rgba(9,14,26,.9); --line: rgba(126,178,255,.24);
+    --text: #e8f1ff; --muted: #8ea6c8; --accent: #4fd8ff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #05070d; color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
+  #lab { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+  header { position: fixed; top: 0; left: 0; right: 0; padding: 10px 16px;
+    display: flex; align-items: baseline; gap: 14px; pointer-events: none;
+    background: linear-gradient(180deg, rgba(3,6,12,.85), rgba(3,6,12,0)); z-index: 5; }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+  header p { margin: 0; font-size: 12px; color: var(--muted); }
+  header span { color: var(--accent); }
+  #panel { position: fixed; top: 12px; right: 12px; width: 330px; max-height: calc(100% - 24px);
+    overflow-y: auto; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; backdrop-filter: blur(10px); z-index: 6; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0;
+    background: var(--panel); }
+  .panel-head strong { font-size: 13px; letter-spacing: .04em; text-transform: uppercase; }
+  .panel-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; }
+  .panel-actions button { flex: 1 1 46%; padding: 8px 6px; font-size: 11.5px; border-radius: 8px;
+    cursor: pointer; background: rgba(79,216,255,.14); color: var(--text); border: 1px solid var(--line); }
+  .panel-actions button.primary { background: rgba(79,216,255,.32); border-color: rgba(140,225,255,.6); }
+  .panel-actions button.on { background: rgba(74,222,128,.28); border-color: rgba(120,255,170,.55); }
+  .panel-actions button.wide { flex: 1 1 100%; }
+  .readout { margin: 0 12px 10px; padding: 8px 10px; border-radius: 8px; font-size: 11.5px;
+    line-height: 1.55; background: rgba(79,216,255,.08); border: 1px solid var(--line); color: #d7e7ff; }
+  .readout b { color: #fff; font-variant-numeric: tabular-nums; }
+  .hint { font-size: 10.5px; color: var(--muted); padding: 0 12px 12px; line-height: 1.5; }
+  #hud { position: fixed; left: 14px; bottom: 12px; font-size: 11.5px; color: var(--muted);
+    line-height: 1.6; pointer-events: none; text-shadow: 0 1px 2px #000; z-index: 5; }
+  #hud b { color: #fff; font-variant-numeric: tabular-nums; }
+  #refbox { display: none; position: fixed; left: 12px; top: 64px; width: 300px; z-index: 6;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+  #refbox img { width: 100%; border-radius: 8px; display: block; margin-top: 6px; }
+  #refbox h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  #refbox p { margin: 4px 0 0; font-size: 11px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="lab"><canvas id="lab-canvas"></canvas></div>
+<header>
+  <h1>Dragão das Marés · <span>impacto no alvo</span></h1>
+  <p>Laboratório executor/crítico — queda real (WaterDragonVFX) sobre o inimigo</p>
+</header>
+<aside id="refbox">
+  <h3>Referência original</h3>
+  <p>Arraste a imagem original para comparar lado a lado.</p>
+  <img id="refimg" alt="Referência" />
+</aside>
+<aside id="panel">
+  <div class="panel-head"><strong>Controles do impacto</strong><span id="clock">t=0.00s</span></div>
+  <div class="panel-actions">
+    <button type="button" class="primary wide" id="fire">🌊 Disparar queda agora</button>
+    <button type="button" id="auto" class="on">Auto: ON</button>
+    <button type="button" id="slow">Câmera lenta: OFF</button>
+    <button type="button" id="freeze">Congelar no contato: OFF</button>
+    <button type="button" id="view">Ver de lado</button>
+    <button type="button" id="ref">Mostrar referência: OFF</button>
+    <button type="button" class="wide" id="shot">📸 Baixar frame atual (PNG)</button>
+  </div>
+  <div class="readout" id="readout">—</div>
+  <div class="hint">
+    Câmera padrão = <b>visão do jogo</b> (elevada, atrás da Maga). <b>Ver de lado</b> mostra a
+    coluna na altura do inimigo, como na referência.<br><br>
+    <b>Congelar no contato</b> pausa no exato momento em que a água toca o inimigo —
+    o frame que o crítico compara com a imagem original.<br><br>
+    Arraste para orbitar, roda para zoom. Inimigo (vermelho) a <b>6 m</b> da Maga.
+  </div>
+</aside>
+<div id="hud">
+  <div>Quadros: <b id="hud-fps">–</b> · Quedas: <b id="hud-hits">0</b> · Strikes ativos: <b id="hud-active">0</b></div>
+  <div id="hud-state">Aguardando disparo…</div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { MageVFXResources } from '/src/vfx/MageVFXResources';
+import { VFXLightPool } from '/src/vfx/VFXLightPool';
+import { WaterDragonVFX, WATER_DRAGON_FALL_SECONDS } from '/src/vfx/water/WaterDragonVFX';
+import { WATER_DRAGON_SHAPE } from '/src/vfx/water/WaterDragonGeometry';
+
+const canvas = document.getElementById('lab-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05070d);
+scene.fog = new THREE.Fog(0x05070d, 18, 48);
+
+const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 200);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+const GAME_CAMERA = { position: new THREE.Vector3(0, 4.6, -3.4), target: new THREE.Vector3(0, 1.0, 4.6) };
+const SIDE_CAMERA = { position: new THREE.Vector3(6.4, 1.7, 5.2), target: new THREE.Vector3(0, 1.4, 5.4) };
+function applyCamera(next) {
+  camera.position.copy(next.position);
+  controls.target.copy(next.target);
+  controls.update();
+}
+applyCamera(GAME_CAMERA);
+
+scene.add(new THREE.HemisphereLight(0x93b7ff, 0x0a0f1c, 1.15));
+const key = new THREE.DirectionalLight(0xdcecff, 1.2);
+key.position.set(-4, 7, -3);
+scene.add(key);
+
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(80, 80),
+  new THREE.MeshStandardMaterial({ color: 0x121a29, roughness: 0.95, metalness: 0.05 })
+);
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+const grid = new THREE.GridHelper(40, 40, 0x2c4a7a, 0x1b2b44);
+grid.position.y = 0.01;
+scene.add(grid);
+
+// Maga placeholder (1,8 m) na origem, olhando para +Z (inimigo).
+const caster = new THREE.Group();
+caster.name = 'MagaPlaceholder';
+const robe = new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.28, 1.05, 6, 12),
+  new THREE.MeshStandardMaterial({ color: 0x3c5a8f, roughness: 0.6 })
+);
+robe.position.y = 0.95;
+caster.add(robe);
+const hat = new THREE.Mesh(
+  new THREE.ConeGeometry(0.3, 0.55, 12),
+  new THREE.MeshStandardMaterial({ color: 0x27406b, roughness: 0.7 })
+);
+hat.position.y = 1.95;
+caster.add(hat);
+scene.add(caster);
+
+// Inimigo placeholder a 6 m — corpo avermelhado p/ leitura do contato.
+const enemy = new THREE.Group();
+enemy.name = 'InimigoAlvo';
+enemy.position.set(0, 0, 6);
+enemy.userData.isEnemyRoot = true;
+enemy.userData.enemyBodyScale = 1;
+const enemyMat = new THREE.MeshStandardMaterial({ color: 0x7a3030, roughness: 0.8 });
+const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.9, 6, 12), enemyMat);
+torso.position.y = 1.0;
+enemy.add(torso);
+const skull = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 12), enemyMat);
+skull.position.y = 1.85;
+enemy.add(skull);
+scene.add(enemy);
+
+const resources = new MageVFXResources();
+const lights = new VFXLightPool(scene, 4);
+const water = new WaterDragonVFX(scene, resources, lights, 'high');
+
+let strikes = 0;
+let strikeAge = -1; // -1 = sem strike ativo
+let frozen = false;
+let freezeAtContact = false;
+let auto = true;
+let slow = false;
+let sideView = false;
+
+const hudFps = document.getElementById('hud-fps');
+const hudHits = document.getElementById('hud-hits');
+const hudActive = document.getElementById('hud-active');
+const hudState = document.getElementById('hud-state');
+const readout = document.getElementById('readout');
+const clockEl = document.getElementById('clock');
+
+function fireOnce() {
+  if (frozen) return;
+  water.strike({
+    position: enemy.position.clone(),
+    target: enemy,
+    isTargetAlive: () => true,
+    onImpact: () => {
+      strikes += 1;
+      hudHits.textContent = String(strikes);
+      if (freezeAtContact) {
+        frozen = true;
+        freezeBtn.classList.add('on');
+        freezeBtn.textContent = 'Congelar no contato: ON (pausado — clique p/ soltar)';
+        hudState.textContent = '⏸ Congelado no contato — compare com a referência.';
+      }
+    },
+  });
+  strikeAge = 0;
+  if (!freezeAtContact) hudState.textContent = 'Queda em curso…';
+}
+
+const fireBtn = document.getElementById('fire');
+const autoBtn = document.getElementById('auto');
+const slowBtn = document.getElementById('slow');
+const freezeBtn = document.getElementById('freeze');
+const viewBtn = document.getElementById('view');
+const refBtn = document.getElementById('ref');
+const shotBtn = document.getElementById('shot');
+const refbox = document.getElementById('refbox');
+const refimg = document.getElementById('refimg');
+
+fireBtn.addEventListener('click', fireOnce);
+autoBtn.addEventListener('click', () => {
+  auto = !auto;
+  autoBtn.classList.toggle('on', auto);
+  autoBtn.textContent = auto ? 'Auto: ON' : 'Auto: OFF';
+});
+slowBtn.addEventListener('click', () => {
+  slow = !slow;
+  slowBtn.classList.toggle('on', slow);
+  slowBtn.textContent = slow ? 'Câmera lenta: ON (0,2×)' : 'Câmera lenta: OFF';
+});
+freezeBtn.addEventListener('click', () => {
+  if (frozen) {
+    frozen = false;
+    freezeBtn.textContent = 'Congelar no contato: ON';
+    hudState.textContent = 'Retomando…';
+    return;
+  }
+  freezeAtContact = !freezeAtContact;
+  freezeBtn.classList.toggle('on', freezeAtContact);
+  freezeBtn.textContent = freezeAtContact ? 'Congelar no contato: ON' : 'Congelar no contato: OFF';
+});
+viewBtn.addEventListener('click', () => {
+  sideView = !sideView;
+  viewBtn.textContent = sideView ? 'Ver do jogo' : 'Ver de lado';
+  applyCamera(sideView ? SIDE_CAMERA : GAME_CAMERA);
+});
+let refOn = false;
+refBtn.addEventListener('click', () => {
+  refOn = !refOn;
+  refBtn.classList.toggle('on', refOn);
+  refBtn.textContent = refOn ? 'Mostrar referência: ON' : 'Mostrar referência: OFF';
+  refbox.style.display = refOn ? 'block' : 'none';
+});
+// Permite arrastar a imagem original para dentro do lab.
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return;
+  refimg.src = URL.createObjectURL(file);
+  if (!refOn) refBtn.click();
+});
+shotBtn.addEventListener('click', () => {
+  renderer.render(scene, camera);
+  const a = document.createElement('a');
+  a.download = `dragao-mares-t${strikeAge.toFixed(2)}s.png`;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+});
+
+function resize() {
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Debug p/ capturas automatizadas do loop executor/crítico.
+window.__dragaoLab = {
+  fire: fireOnce,
+  getState: () => ({ strikes, strikeAge, frozen, active: water.activeStrikes }),
+  setCamera: (side) => { sideView = !!side; applyCamera(sideView ? SIDE_CAMERA : GAME_CAMERA); },
+  screenshot: () => { renderer.render(scene, camera); return canvas.toDataURL('image/png'); },
+};
+
+const clock = new THREE.Clock();
+let autoTimer = 0;
+let fpsAccum = 0, fpsFrames = 0;
+
+function frame() {
+  const raw = Math.min(0.05, clock.getDelta());
+  const delta = frozen ? 0 : (slow ? raw * 0.2 : raw);
+  if (!frozen) {
+    autoTimer += raw;
+    if (auto && autoTimer >= 1.6) { autoTimer = 0; fireOnce(); }
+    if (strikeAge >= 0) strikeAge += delta;
+    water.update(delta);
+    if (water.activeStrikes === 0 && strikeAge > 2) {
+      strikeAge = -1;
+      if (!frozen) hudState.textContent = 'Efeito encerrado — próximo disparo…';
+    }
+  }
+  controls.update();
+  renderer.render(scene, camera);
+
+  const strike = scene.getObjectByName('MageWaterDragonSkyStrikeVFX');
+  const column = strike?.getObjectByName('WaterDragonDescendingColumn');
+  const crown = strike?.getObjectByName('WaterDragonOutwardSheets');
+  clockEl.textContent = `t=${Math.max(0, strikeAge).toFixed(2)}s`;
+  readout.innerHTML = [
+    `Fase: <b>${strikeAge < 0 ? 'ocioso' : strikeAge < WATER_DRAGON_FALL_SECONDS ? 'QUEDA ⬇' : 'CONTATO/SPREAD 🌊'}</b>`,
+    `Coluna Y: <b>${column ? column.position.y.toFixed(2) : '—'}</b> m (altura total ${WATER_DRAGON_SHAPE.columnHeight} m)`,
+    `Splash XZ: <b>${crown ? crown.scale.x.toFixed(2) : '—'}</b> · Splash Y: <b>${crown ? crown.scale.y.toFixed(2) : '—'}</b>`,
+    `Queda: <b>${WATER_DRAGON_FALL_SECONDS}s</b> · Frame de contato ≈ <b>t=${WATER_DRAGON_FALL_SECONDS.toFixed(2)}s</b>`,
+  ].join('<br>');
+
+  fpsAccum += raw; fpsFrames += 1;
+  if (fpsAccum >= 0.4) {
+    hudFps.textContent = String(Math.round(fpsFrames / fpsAccum));
+    hudActive.textContent = String(water.activeStrikes);
+    fpsAccum = 0; fpsFrames = 0;
+  }
+  requestAnimationFrame(frame);
+}
+fireOnce();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

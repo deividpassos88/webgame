@@ -5,6 +5,7 @@ import { MAGE_SPELL_PRESETS } from './VFXConfig';
 import { firstColumnHit, MAGE_SPELL_TRAVEL_METERS } from '../combat/MageSpellFlight';
 import type { MageCastContext, MageSpellId } from './VFXTypes';
 import { WATER_DRAGON_FALL_SECONDS } from './water/WaterDragonVFX';
+import { MAGE_BASIC_ATTACK_PLAYBACK_RATE } from '../entities/Player';
 
 const dispose: Array<() => void> = [];
 function setup(spellId: MageSpellId = 'water', overrides: Partial<MageCastContext> = {}) {
@@ -21,7 +22,7 @@ function setup(spellId: MageSpellId = 'water', overrides: Partial<MageCastContex
   ]));
   action.setLoop(THREE.LoopOnce, 1);
   action.clampWhenFinished = true;
-  action.setEffectiveTimeScale(spellId === 'basic' ? 1 : 1.8).play();
+  action.setEffectiveTimeScale(spellId === 'basic' ? MAGE_BASIC_ATTACK_PLAYBACK_RATE : 1.8).play();
   const vfx = new MageVFX(scene, { quality: 'low' });
   let now = 0;
   const launchTimes: number[] = [];
@@ -81,13 +82,13 @@ describe('Mage water-dragon animation / gameplay bridge', () => {
     expect(vfx.diagnostics()).toMatchObject({ activeCasts: 0, activeWaterCharges: 0, activeWaterStrikes: 0 });
   });
 
-  it('keeps the basic projectile release on the normal 1× animation clock', () => {
+  it('releases the basic projectile on the accelerated Mage basic clock', () => {
     const { onLaunch, launchTimes, advance } = setup('basic');
-    advance(0.48);
+    advance(0.2);
     expect(onLaunch).not.toHaveBeenCalled();
     advance(0.2);
     expect(onLaunch).toHaveBeenCalledTimes(1);
-    expect(launchTimes[0]).toBeCloseTo(1.8 * MAGE_SPELL_PRESETS.basic.timeline.launch, 1);
+    expect(launchTimes[0]).toBeCloseTo(1.8 / MAGE_BASIC_ATTACK_PLAYBACK_RATE * MAGE_SPELL_PRESETS.basic.timeline.launch, 1);
   });
 
   it('cancels an interrupted charge without launching a stray water column', () => {
