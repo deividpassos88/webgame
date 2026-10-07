@@ -196,7 +196,7 @@ sensibilidade do giro da prévia, salvos no perfil (schema 12). Detalhes em
 
 ```
 npm run typecheck     → limpo
-npm test              → 183 arquivos · 1.223 testes · 0 falhas (~44 s)
+npm test              → 184 arquivos · 1.228 testes · 0 falhas (~44 s)
 npm run build         → dist/ público sem ADM
 npm run build:admin   → dist/ com ADM (servido em http://localhost:5173)
 ```

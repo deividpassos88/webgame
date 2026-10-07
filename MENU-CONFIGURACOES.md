@@ -52,6 +52,6 @@ quadro para o lobby pelo callback `onFrameSample`.
 
 ```
 npm run typecheck    → limpo
-npm test             → 183 arquivos · 1.223 testes · 0 falhas
+npm test             → 184 arquivos · 1.228 testes · 0 falhas
 npm run build:admin  → dist/ com o painel (CSS em assets/index-*.css)
 ```
