@@ -135,11 +135,15 @@ import { HitCounterView } from '../ui/HitCounterView';
 import { FatigueMeter, MAX_FATIGUE, DASH_FATIGUE_COST } from '../combat/FatigueMeter';
 import { mageBasicAttackManaCost, mageSkillFatiguePercent } from '../combat/MageSkillCost';
 import { firstColumnHit, mageSkillAttackId } from '../combat/MageSpellFlight';
+import type { ElementalType } from '../combat/ElementalStatus';
 import {
   isInsideMageSkillRadius,
+  mageGroundImpactDecalStyle,
   mageSkillImpactEffect,
   MAGE_BASIC_SPLASH_RADIUS_METERS,
+  MAGE_SKILL_AREA_RADIUS_METERS,
 } from '../combat/MageSkillImpact';
+import { resolveMageSkillAreaTargets } from './MageAreaDamage';
 import {
   basicAttackAreaDamage,
   isInsideBasicAttackArea,
@@ -1150,7 +1154,10 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     const activation = this.warriorSkills.tryActivate(id, {
       paused: false,
       dead: this.player.isDead,
-      busy: this.player.isAttackInSwing() && !chaining,
+      // Prioridade do comando na Maga: durante o ataque básico (inclusive no
+      // automático) a skill ainda entra, cortando o básico. Nas outras classes
+      // o golpe em andamento continua bloqueando a skill.
+      busy: this.player.isAttackInSwing() && !chaining && !this.player.canInterruptBasicWithSkill,
       // Admin training is a true preview: no energy, fatigue, or cooldown cost.
       free: adminPreview,
       cooldownOverrideSeconds: warriorSkillCooldown(id, mage ? 'mage' : 'paladin'),
@@ -2358,38 +2365,123 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       elemental
     );
     const body = this.resolveLivingEnemyRoot(target) ?? target;
+    // Ponto do impacto: é a posição que o dano em área e o desenho de chão usam.
     const center = body.getWorldPosition(new THREE.Vector3());
-    const bodyRadius = this.isTrainingDummyTarget(body)
-      ? 0.45
-      : (this.combatRegistry.findByRoot(body)?.enemy.collisionRadius ?? 0.45);
+
+    // Alvo principal: o feitiço acertou em cheio — dano, status e lifesteal.
+    if (this.isTrainingDummyTarget(body) && this.trainingDummy) {
+      const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, center, 0.45);
+      if (damage > 0) {
+        this.trainingDummy.takeDamage(damage);
+        this.showFloatingDamage(this.trainingDummy.root.position, damage);
+      }
+    } else {
+      const record = this.combatRegistry.findByRoot(body);
+      if (record) {
+        const bodyRadius = record.enemy.collisionRadius ?? 0.45;
+        const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, center, bodyRadius);
+        if (!record.enemy.isDead && damage > 0) {
+          this.damageEnemyWithMageSkill(spellId, skillElement, record, damage, center);
+        }
+      }
+    }
+
+    // Skills 1 (água) e 2 (gelo): além do alvo em cheio, o feitiço estoura no
+    // ponto de impacto e atinge TODO monstro vivo num raio de 3 m. O dano de
+    // cada um segue as mesmas regras do alvo principal (falloff pela distância
+    // até a Maga, elemento, lifesteal, número de dano, morte) e o alvo do
+    // feitiço fica de fora da varredura, então ninguém leva duas vezes.
+    const areaStyle = mageGroundImpactDecalStyle(spellId);
+    if (!areaStyle) return;
+    // O desenho de chão cobre exatamente o raio do dano, no mesmo ponto.
+    this.mageVFX.playGroundImpactDecal({
+      position: center,
+      radius: MAGE_SKILL_AREA_RADIUS_METERS,
+      style: areaStyle,
+    });
+    const areaRecords = this.combatRegistry.activeRoots()
+      .map((root) => this.combatRegistry.findByRoot(root))
+      .filter((record): record is CombatRecord => record !== null && !record.enemy.isDead);
+    for (const record of resolveMageSkillAreaTargets(areaRecords, center, body)) {
+      const bodyRadius = record.enemy.collisionRadius ?? 0.45;
+      const damage = this.mageSkillDamageAtDistance(
+        baseDamage,
+        elemental,
+        record.enemy.root.position,
+        bodyRadius
+      );
+      if (damage <= 0) continue;
+      // Congelar (gelo) e desacelerar (água) continuam sendo só do alvo que o
+      // feitiço acertou: a explosão entrega dano, não controle.
+      this.damageEnemyWithMageSkill(spellId, skillElement, record, damage, center, { control: false });
+    }
+
+    // Boneco de treino: fora do registro de combate, mas precisa contar a
+    // explosão quando o feitiço acertou outra coisa por perto.
+    const dummy = this.trainingDummy;
+    if (dummy && !this.isTrainingDummyTarget(body)) {
+      const position = dummy.root.position;
+      if (isInsideMageSkillRadius(
+        center.x,
+        center.z,
+        position.x,
+        position.z,
+        MAGE_SKILL_AREA_RADIUS_METERS
+      )) {
+        const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, position, 0.45);
+        if (damage > 0) {
+          dummy.takeDamage(damage);
+          this.showFloatingDamage(position, damage);
+        }
+      }
+    }
+  }
+
+  /**
+   * Dano do feitiço da Maga numa vítima. É a MESMA conta para o alvo que o
+   * feitiço acertou em cheio e para os vizinhos do impacto: falloff pela
+   * distância até a Maga (descontando o raio do corpo) e corte no alcance —
+   * uma bola que passa alguns centímetros do cone ainda acerta, um erro bem
+   * além dos 12 m não.
+   */
+  private mageSkillDamageAtDistance(
+    baseDamage: number,
+    elemental: boolean,
+    center: THREE.Vector3,
+    bodyRadius: number
+  ): number {
     const rawDistance = getEffectiveTargetDistance(
       this.player.root.position.distanceTo(center),
       bodyRadius
     );
-    // A bolt that connects a few centimeters past the cone still hits. A miss
-    // well beyond 12m does not.
     const distance = rawDistance <= MAGE_MAX_RANGE_METERS + 0.45
       ? Math.min(rawDistance, MAGE_MAX_RANGE_METERS)
       : rawDistance;
-    const damage = this.resolveOutgoingDamage(
+    return this.resolveOutgoingDamage(
       applyDistanceFalloff(baseDamage, distance, 'mage'),
       elemental
     );
-    if (damage <= 0) return;
+  }
 
-    if (this.isTrainingDummyTarget(body) && this.trainingDummy) {
-      this.trainingDummy.takeDamage(damage);
-      this.showFloatingDamage(this.trainingDummy.root.position, damage);
-      return;
-    }
-
-    const record = this.combatRegistry.findByRoot(body);
-    if (!record || record.enemy.isDead) return;
+  /**
+   * Aplica num inimigo o dano de skill da Maga que já foi calculado: status de
+   * fogo quando o elemento é fogo, lifesteal, número de dano, barra de vida e
+   * morte. O controle (congelar/desacelerar/erguer) fica ligado só no alvo
+   * principal — `control: false` é o que os vizinhos da explosão levam.
+   */
+  private damageEnemyWithMageSkill(
+    spellId: MageSpellId,
+    skillElement: ElementalType | null,
+    record: CombatRecord,
+    damage: number,
+    impact: THREE.Vector3,
+    options: { readonly control?: boolean } = {}
+  ): void {
     record.enemy.receivePlayerHit(damage, this.player.root.position);
     if (skillElement === 'fire' && !record.enemy.isDead) {
       record.enemy.applyElementalHit(skillElement, Math.max(1, damage * 0.12));
     }
-    this.applyMageSkillControl(spellId, record.enemy, center);
+    if (options.control !== false) this.applyMageSkillControl(spellId, record.enemy, impact);
     this.healFromLifeSteal(damage);
     this.showFloatingDamage(record.enemy.root.position, damage);
     this.syncCombatHealthBars(record);
@@ -3560,7 +3652,9 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
           ? 'unavailable'
           : !this.hasAdminFreeSkills() && !this.fatigue.canUseSkills
             ? 'fatigue-exhausted'
-            : this.player.isAttackInSwing() && this.skillCombo.snapshot().phase !== 'linked'
+            : this.player.isAttackInSwing()
+              && !this.player.canInterruptBasicWithSkill
+              && this.skillCombo.snapshot().phase !== 'linked'
               ? 'busy'
               : this.profile.selectedClass === 'mage' && this.player.blocksSkillsWhileMoving
                 ? 'moving'

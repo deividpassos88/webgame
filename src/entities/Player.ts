@@ -120,6 +120,8 @@ export interface MageSpellCastEvent {
   readonly caster: THREE.Object3D;
   readonly rightHand: THREE.Object3D | null;
   readonly leftHand: THREE.Object3D | null;
+  /** Ponta do cajado na pose animada; ver MageCastContext.resolveWeaponSocket. */
+  readonly resolveWeaponSocket?: (output: THREE.Vector3) => boolean;
   readonly action: THREE.AnimationAction;
   readonly target: THREE.Object3D | null;
   readonly fallbackDirection: THREE.Vector3;
@@ -238,6 +240,8 @@ export class Player {
   private characterModel: THREE.Group | null = null;
   private embeddedSword: THREE.Object3D | null = null;
   private embeddedSwordTip: THREE.Object3D | null = null;
+  /** Ponta do cajado no espaço do nó `cajado` (ver resolveEmbeddedStaffTip). */
+  private embeddedStaffTipLocal: THREE.Vector3 | null = null;
   private embeddedSwordBladeMesh: THREE.Mesh | null = null;
   private embeddedSwordBladeTipLocal: THREE.Vector3 | null = null;
   private embeddedStaff: THREE.Object3D | null = null;
@@ -268,6 +272,7 @@ export class Player {
     // A Maga luta com o cajado embutido no próprio modelo: garanta que ele
     // esteja sempre visível e que nenhuma espada residual apareça nela.
     this.embeddedStaff = model.getObjectByName('cajado') ?? null;
+    this.resolveEmbeddedStaffTip();
     const straySword = model.getObjectByName('espada');
     if (straySword) straySword.visible = false;
     if (this.characterId === 'mage' && this.embeddedStaff) {
@@ -577,14 +582,62 @@ export class Player {
     if (state === 'running') this.updateRunningPlaybackRate(nextAction);
     nextAction.reset();
     nextAction.setEffectiveWeight(1);
-    nextAction.fadeIn(fadeDuration);
-    this.currentAction?.fadeOut(fadeDuration);
+    if (this.animationWeightCarriedByOther(nextAction)) {
+      nextAction.fadeIn(fadeDuration);
+      this.currentAction?.fadeOut(fadeDuration);
+    } else {
+      // Fade-in parte de peso 0. Quando a action que sai já está parada (combo
+      // cancelado por dano, morte ou movimento) não sobra contrapeso e o three
+      // completa o resto do blend com a POSE DE BIND do esqueleto — na Maga ela
+      // é o corpo DEITADO flutuando a ~1 m, o "deitado e flutuando" que
+      // aparecia ao levar dano atacando e na saída/chegada do teletransporte.
+      // Sem contrapeso o estado novo entra com peso cheio, sem passar por zero.
+      nextAction.stopFading();
+      this.currentAction?.stop();
+    }
 
     nextAction.play();
     this.currentAction = nextAction;
     this.state = state;
     Logger.debug('Player:Animation', `Estado ativo: ${state} (${nextAction.getClip().name})`);
     return true;
+  }
+
+  /** true quando alguma outra action ainda carrega peso e sustenta o fade. */
+  private animationWeightCarriedByOther(entering: THREE.AnimationAction): boolean {
+    return this.trackedActions().some(
+      (action) => action !== entering && this.actionCarriesAnimationWeight(action)
+    );
+  }
+
+  /**
+   * Peso de animação de verdade: uma action recém-criada já reporta peso 1 sem
+   * nunca ter tocado, então só conta quando está rodando — ou congelada no fim
+   * (`clampWhenFinished`), que é como o ataque básico da Maga segura o último
+   * quadro.
+   */
+  private actionCarriesAnimationWeight(action: THREE.AnimationAction): boolean {
+    if (!action.enabled || action.getEffectiveWeight() <= 0.001) return false;
+    return action.isRunning() || (action.paused && action.time > 0);
+  }
+
+  /**
+   * Rede de segurança da pose: com o esqueleto SEM nenhum peso de animação o
+   * mixer do three completa o restante do blend com a pose de bind do GLB — na
+   * Maga ela é o corpo deitado flutuando a ~1 m. `playState` já não deixa o
+   * peso cair a zero, mas se alguma transição escapar, a action do estado
+   * atual volta com peso cheio antes do próximo quadro.
+   */
+  private repairWeightlessPose(): void {
+    const current = this.currentAction;
+    if (!current) return;
+    if (current.enabled && current.getEffectiveWeight() > 0.001) return;
+    if (this.animationWeightCarriedByOther(current)) return;
+    Logger.warn('Player', 'Pose sem peso de animação recuperada (pose de bind evitada).');
+    current.stopFading();
+    current.enabled = true;
+    current.setEffectiveWeight(1);
+    if (!current.isRunning()) current.play();
   }
 
   private updateRunningPlaybackRate(action: THREE.AnimationAction): void {
@@ -791,6 +844,63 @@ export class Player {
   }
 
   /**
+   * Ponta do cajado da Maga no espaço local do próprio nó `cajado`. O GLB não
+   * traz marcador de VFX (como o `VFX_SwordTip` da espada), então a ponta é a
+   * extremidade mais distante do pivô — que fica na mão, na empunhadura — ao
+   * longo do eixo mais longo da malha. Guardada uma única vez porque o cajado é
+   * rígido: quem muda a cada quadro é a transformação do nó.
+   */
+  private resolveEmbeddedStaffTip(): void {
+    this.embeddedStaffTipLocal = null;
+    const staff = this.embeddedStaff;
+    if (!staff) return;
+    staff.updateWorldMatrix(true, true);
+    const toStaffLocal = new THREE.Matrix4().copy(staff.matrixWorld).invert();
+    const bounds = new THREE.Box3();
+    const meshToStaff = new THREE.Matrix4();
+    const meshBounds = new THREE.Box3();
+    staff.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.geometry) return;
+      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+      const geometryBounds = mesh.geometry.boundingBox;
+      if (!geometryBounds) return;
+      meshToStaff.multiplyMatrices(toStaffLocal, mesh.matrixWorld);
+      meshBounds.copy(geometryBounds).applyMatrix4(meshToStaff);
+      bounds.union(meshBounds);
+    });
+    if (bounds.isEmpty()) return;
+    const size = bounds.getSize(new THREE.Vector3());
+    const axis: 'x' | 'y' | 'z' = size.x >= size.y && size.x >= size.z
+      ? 'x'
+      : size.y >= size.z
+        ? 'y'
+        : 'z';
+    const tip = bounds.getCenter(new THREE.Vector3());
+    tip[axis] = Math.abs(bounds.max[axis]) >= Math.abs(bounds.min[axis])
+      ? bounds.max[axis]
+      : bounds.min[axis];
+    this.embeddedStaffTipLocal = tip;
+  }
+
+  /**
+   * Soquete da arma da Maga: a ponta do cajado na pose ANIMADA do quadro, lida
+   * do nó `cajado` (filho do dedo indicador da mão direita no rig). Como o nó é
+   * animado com o resto do esqueleto, a origem acompanha a Maga parada, correndo
+   * ou no ataque automático, e funciona virada para qualquer direção — inclusive
+   * nas diagonais. Sem cajado no modelo devolve `false` e o feitiço volta para o
+   * soquete de mão do MageVFX.
+   */
+  private resolveMageWeaponSocket(output: THREE.Vector3): boolean {
+    const staff = this.embeddedStaff;
+    const localTip = this.embeddedStaffTipLocal;
+    if (!staff || !localTip) return false;
+    staff.updateWorldMatrix(true, false);
+    output.copy(localTip).applyMatrix4(staff.matrixWorld);
+    return true;
+  }
+
+  /**
    * Samples the actual animated sword tip at one normalized clip time without
    * advancing combat. Restoring the action time immediately keeps the visible
    * animation on its normal frame.
@@ -871,6 +981,7 @@ export class Player {
       caster: this.root,
       rightHand: this.findObjectByName('mixamorig:RightHand'),
       leftHand: this.findObjectByName('mixamorig:LeftHand'),
+      resolveWeaponSocket: (output: THREE.Vector3) => this.resolveMageWeaponSocket(output),
       action: this.currentAction,
       target: this.attackTargetEnemy,
       fallbackDirection: this.faceDirection.clone(),
@@ -906,16 +1017,41 @@ export class Player {
    * `playbackScale` speeds the clip up — the combo uses it so every skill after
    * the first green hit plays faster (see `ComboEmpowerment`).
    */
+  /**
+   * Ataque básico em andamento que a Maga pode interromper com uma skill.
+   * Vale só para o básico (combo) dela: uma skill já rodando continua
+   * intocável — ali só o combo link encadeia — e o Guerreiro não é afetado.
+   */
+  public get canInterruptBasicWithSkill(): boolean {
+    return this.characterId === 'mage'
+      && this.isSwinging
+      && this.comboController.active
+      && !this.skillAttackController.active
+      && !this.isDead
+      && !this.isHitReacting;
+  }
+
+  /** Cancela o ataque básico interrompido por uma skill, sem devolver movimento. */
+  private cancelBasicAttackForSkill(): void {
+    this.comboController.cancel();
+    this.comboHitTargets.clear();
+    this.isSwinging = false;
+  }
+
   public tryStartSkillAttack(
     id: WarriorSkillId,
     options: { readonly chain?: boolean; readonly playbackScale?: number } = {}
   ): boolean {
     const chaining = options.chain === true && this.canChainSkill;
+    // A Maga pode cortar o ataque básico para lançar a skill: o comando manual
+    // tem prioridade sobre o básico (inclusive o automático). O Guerreiro
+    // mantém a regra histórica de ficar "ocupado" durante o golpe.
+    const interruptingBasicAttack = !chaining && this.canInterruptBasicWithSkill;
     if (
       !this.canUseSkillAttacks() ||
       this.isDead ||
       this.isHitReacting ||
-      (this.isSwinging && !chaining) ||
+      (this.isSwinging && !chaining && !interruptingBasicAttack) ||
       this.inputLocked ||
       this.isDashing ||
       this.blocksSkillsWhileMoving
@@ -937,6 +1073,11 @@ export class Player {
       this.skillAttackController.cancel();
       this.comboHitTargets.clear();
       this.isSwinging = false;
+    } else if (interruptingBasicAttack) {
+      // A skill assume o lugar do ataque básico: o combo é cancelado sem
+      // devolver movimento (a skill já trava a Maga no lugar) e sem mexer em
+      // recarga/fadiga — o básico interrompido não cobra nada extra.
+      this.cancelBasicAttackForSkill();
     }
     if (!this.skillAttackController.start(id, animationDuration, landingRecovery)) return false;
     this.activeSkillPlaybackScale = speedScale;
@@ -1112,6 +1253,7 @@ export class Player {
     }
     this.recoverStuckActionState(delta);
     this.reconcileLocomotionPose(delta);
+    this.repairWeightlessPose();
     if (this.isHitReacting) return;
     if (this.emptyHandAttackPreview) return;
 

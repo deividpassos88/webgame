@@ -98,6 +98,18 @@ describe('MageVFX full spell architecture', () => {
     expect(diagnostics.pooledBarriers).toBeGreaterThan(0);
     expect(diagnostics.pooledWaterCharges).toBeGreaterThan(0);
     expect(diagnostics.pooledWaterStrikes).toBeGreaterThan(0);
+    // O impacto de chão das skills 1 (chão rachado) e 2 (gelo) também fica
+    // pronto no carregamento: um decalque de cada estilo passa pelo forno e
+    // nenhum sobra na cena.
+    // Os dois desenhos de chão vão para a GPU no carregamento.
+    const initializedTextures = (renderer.initTexture as unknown as {
+      mock: { calls: Array<[THREE.Texture | undefined]> };
+    }).mock.calls.map(([texture]) => texture?.name);
+    expect(initializedTextures).toContain('MageGroundDecalCracked');
+    expect(initializedTextures).toContain('MageGroundDecalFrozen');
+    expect(diagnostics.activeGroundDecals).toBe(0);
+    expect(diagnostics.pooledGroundDecals).toBeGreaterThanOrEqual(2);
+    expect(scene.getObjectByName('MageGroundImpactDecal')).toBeUndefined();
     vfx.dispose();
   });
 

@@ -7,6 +7,10 @@ import { LaserVFX } from './LaserVFX';
 import { LightningVFX } from './LightningVFX';
 import { WaterDragonVFX, type WaterDragonChargeHandle } from './water/WaterDragonVFX';
 import { IceCrystalWaveVFX } from './ice/IceCrystalWaveVFX';
+import {
+  GroundImpactDecalVFX,
+  type GroundImpactDecalOptions,
+} from './GroundImpactDecalVFX';
 import { MageVFXResources } from './MageVFXResources';
 import { MagicCircleVFX } from './MagicCircleVFX';
 import { PooledParticleCloud, qualityCount } from './ParticleManager';
@@ -558,6 +562,7 @@ export class MageVFX {
   private readonly impacts: ImpactVFX;
   private readonly magicCircles: MagicCircleVFX;
   private readonly iceWave: IceCrystalWaveVFX;
+  private readonly groundDecals: GroundImpactDecalVFX;
   private readonly cameraShake = new CameraShake();
   private debug = false;
   private warmedUp = false;
@@ -593,6 +598,12 @@ export class MageVFX {
     this.impacts = new ImpactVFX(scene, this.resources, this.quality, this.lightPool);
     this.magicCircles = new MagicCircleVFX(this.resources);
     this.iceWave = new IceCrystalWaveVFX(scene, this.resources.softGlow, this.lightPool);
+    this.groundDecals = new GroundImpactDecalVFX(
+      scene,
+      this.resources.softGlow,
+      this.lightPool,
+      this.quality
+    );
   }
 
   public cast(spellId: MageSpellId, context: MageCastContext): void {
@@ -652,6 +663,7 @@ export class MageVFX {
     this.impacts.update(elapsed);
     this.magicCircles.update(elapsed);
     this.iceWave.update(elapsed);
+    this.groundDecals.update(elapsed);
   }
 
   public applyCameraShake(camera: THREE.Camera, delta: number): void {
@@ -670,6 +682,7 @@ export class MageVFX {
     this.impacts.clear();
     this.magicCircles.clear();
     this.iceWave.clear();
+    this.groundDecals.clear();
     this.cameraShake.clear();
   }
 
@@ -684,6 +697,7 @@ export class MageVFX {
     this.impacts.dispose();
     this.magicCircles.dispose();
     this.iceWave.dispose();
+    this.groundDecals.dispose();
     this.resources.dispose();
     if (this.ownsLightPool) this.lightPool.dispose();
   }
@@ -712,6 +726,18 @@ export class MageVFX {
 
     try {
       for (const texture of this.resources.allTextures()) renderer?.initTexture?.(texture);
+      // Os desenhos de chão das skills 1 e 2 (rachado e gelo) são gerados aqui,
+      // no carregamento, e entram no forno: um decalque de cada estilo fica no
+      // palco (longe da câmera) durante os compiles e sai no `clear` do fim.
+      for (const decalStyle of ['cracked', 'frozen'] as const) {
+        const texture = this.groundDecals.ensureTexture(decalStyle);
+        renderer?.initTexture?.(texture);
+        this.groundDecals.play({
+          position: new THREE.Vector3(0, -500, 0),
+          radius: 3,
+          style: decalStyle,
+        });
+      }
 
       for (const spellId of Object.keys(MAGE_SPELL_PRESETS) as MageSpellId[]) {
         const mixer = new THREE.AnimationMixer(caster);
@@ -845,6 +871,8 @@ export class MageVFX {
       activeWaterCharges: this.waterDragon.activeCharges,
       pooledWaterCharges: this.waterDragon.pooledCharges,
       activeWaterStrikes: this.waterDragon.activeStrikes,
+      activeGroundDecals: this.groundDecals.activeCount,
+      pooledGroundDecals: this.groundDecals.pooledCount,
       pooledWaterStrikes: this.waterDragon.pooledStrikes,
     };
   }
@@ -1149,6 +1177,15 @@ export class MageVFX {
   }
 
   /** Ground seal for the shock impact. Body lightning is owned by the monsters. */
+  /**
+   * Impacto de CHÃO das skills 1 (água) e 2 (gelo): chão rachado na água, poça
+   * de gelo no gelo. Chamado no instante do impacto, no MESMO ponto que o dano
+   * em área usa — o desenho sempre cobre o que o dano alcança.
+   */
+  public playGroundImpactDecal(options: GroundImpactDecalOptions): void {
+    this.groundDecals.play(options);
+  }
+
   public playShockImpact(position: THREE.Vector3): void {
     const preset = MAGE_SPELL_PRESETS.lightning;
     this.magicCircles.play({
@@ -1207,6 +1244,13 @@ export class MageVFX {
     output: THREE.Vector3
   ): THREE.Vector3 {
     cast.context.caster.getWorldPosition(TMP_CASTER);
+    // Ataque básico: o feitiço nasce na PONTA DO CAJADO. O soquete é pedido de
+    // novo a cada quadro (carga, disparo e círculo mágico), então segue a
+    // animação da Maga parada, correndo ou no ataque automático, e vale para
+    // qualquer direção. Modelo sem cajado cai no soquete de mão abaixo.
+    if (cast.spellId === 'basic' && this.resolveWeaponSocketWorldPosition(cast, output)) {
+      return output;
+    }
     this.resolveVisualCastForward(cast, TMP_DIRECTION);
     TMP_RIGHT.crossVectors(WORLD_UP, TMP_DIRECTION);
     if (TMP_RIGHT.lengthSq() <= 1e-8) TMP_RIGHT.set(1, 0, 0);
@@ -1259,6 +1303,24 @@ export class MageVFX {
     output.addScaledVector(TMP_DIRECTION, 0.08);
     output.y += cast.preset.style === 'laser' ? 0.1 : 0.06;
     return output;
+  }
+
+  /**
+   * Ponta do cajado vinda do modelo (Player.resolveMageWeaponSocket). Recusa
+   * leituras não finitas ou absurdamente longe do corpo — matriz inválida não
+   * pode virar origem de projétil.
+   */
+  private resolveWeaponSocketWorldPosition(
+    cast: ActiveMageCast,
+    output: THREE.Vector3
+  ): boolean {
+    const resolver = cast.context.resolveWeaponSocket;
+    if (!resolver) return false;
+    if (!resolver(output)) return false;
+    if (!Number.isFinite(output.x) || !Number.isFinite(output.y) || !Number.isFinite(output.z)) {
+      return false;
+    }
+    return output.distanceTo(TMP_CASTER) <= 8;
   }
 
   private resolveBothHandAnchorPosition(cast: ActiveMageCast, output: THREE.Vector3): boolean {
