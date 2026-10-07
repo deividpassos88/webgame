@@ -225,7 +225,11 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
     colors: { core: 0xffffff, glow: 0x92e9ff, secondary: 0x4c83ff, spark: 0xe7fbff, smoke: 0xb6efff },
     timeline: { chargeStart: 0.18, secondaryCharge: 0.32, magicCircle: 0.38, launch: 0.5, chargeEnd: 0.52, recover: 0.86, end: 1 },
     charge: { scale: 0.8, particleCount: 12, sparkCount: 4, lightIntensity: 0.65, twoHanded: false },
-    projectile: { speed: 24, lifetime: 1.25, radius: 0.48, trailLength: 1.6, trailWidth: 0.1 },
+    // Visual antigo (cone voando + explosão no acerto) removido: a onda de
+    // cristais (IceCrystalWaveVFX) é o único desenho da skill 2. O projétil
+    // invisível segue carregando dano/alcance/recarga; o tremor e o som do
+    // impacto continuam.
+    projectile: { speed: 24, lifetime: 1.25, radius: 0.48, trailLength: 1.6, trailWidth: 0.1, visual: false },
     impact: { duration: 0.42, radius: 1, shockwaveRadius: 1.7, cameraShakeIntensity: 0.032, cameraShakeDuration: 0.15, lightIntensity: 0.9, particleCount: 30, debrisCount: 12 },
     hand: 'right',
     qualityParticleMultiplier: multipliers(0.45, 0.75, 1),

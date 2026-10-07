@@ -965,7 +965,9 @@ export class MageVFX {
     // já anuncia o disparo, e o efeito de impacto fica só para o acerto.
     // Lightning already flashes along the bolt. A second explosion at the
     // hand hid the cast pose and lingered after the Mage started moving.
-    if (!bullet && cast.preset.style !== 'lightning') {
+    // No gelo (skill 2) o clarão de saída também sai: o único visual do
+    // disparo é a onda de cristais irrompendo do chão.
+    if (!bullet && cast.preset.style !== 'lightning' && cast.preset.style !== 'ice') {
       this.impacts.play({
         position: origin,
         preset: cast.preset,
@@ -1098,7 +1100,10 @@ export class MageVFX {
       // `impact.visual === false` (ataque básico): o acerto não desenha nada —
       // nem explosão, nem luz, nem tremor. O som continua.
       if (cast.preset.impact.visual !== false) {
-        if (cast.preset.delivery !== 'water-column') this.impacts.play({
+        // Skill 2 (gelo): o acerto é desenhado pelo cristal-herói da onda — a
+        // explosão antiga ficava sobreposta a ele. Mantém o tremor de câmera
+        // e o som; só o desenho antigo sai.
+        if (cast.preset.delivery !== 'water-column' && cast.preset.style !== 'ice') this.impacts.play({
           position: impactPoint,
           preset: cast.preset,
           // Sem a direção do projétil (raio, laser, queda do alvo) o impacto usa

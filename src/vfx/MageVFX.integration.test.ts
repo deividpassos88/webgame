@@ -171,6 +171,20 @@ describe('MageVFX full spell architecture', () => {
     // A linha nasce no pé da Maga, nunca na mão.
     expect(wave.position.y).toBeCloseTo(root.position.y, 5);
 
+    // O efeito antigo saiu: o projétil voa invisível (só física) e o acerto
+    // não desenha a explosão antiga — o cristal-herói da onda é o impacto.
+    expect(vfx.diagnostics().activeProjectiles).toBe(1);
+    const bolt = scene.getObjectByName('MageProjectileVFX');
+    expect(bolt).toBeTruthy();
+    expect(bolt?.visible).toBe(false);
+    for (let step = 0; step < 5; step += 1) {
+      mixer.update(0.1);
+      vfx.update(0.1);
+    }
+    expect(vfx.diagnostics().activeProjectiles).toBe(0);
+    expect(vfx.diagnostics().activeImpacts).toBe(0);
+    expect(scene.getObjectByName('MageImpactVFX')).toBeFalsy();
+
     // clear() (fim de partida/troca de cena) remove a onda imediatamente.
     vfx.clear();
     expect(scene.getObjectByName('MageIceCrystalWave')).toBeFalsy();
