@@ -47,6 +47,22 @@ Depois do build dá para conferir no bundle: em `dist/assets/index-*.js` o build
 passa `mode:"admin",viteAdminMode:"true"`, enquanto o público passa
 `mode:"production",viteAdminMode:void 0`.
 
+## Sintoma: "buildei e o menu ADM sumiu"
+
+Os dois comandos escrevem na **mesma** pasta `dist/`. Se o último build foi o
+público (`npm run build`), o `dist/` inteiro perde o ADM — inclusive o que já
+estava sendo servido. Não existe build "meio ADM": o menu só volta rodando de
+novo o build ADMIN:
+
+```bash
+npm run build:admin
+```
+
+Depois disso, recarregue a página com cache limpo (`Ctrl+Shift+R`). No preview
+deste repositório (porta 5173) isso vale igual: o servidor entrega o `dist/`
+tal como está no disco, então qualquer `npm run build` público tira o botão ADM
+até o `build:admin` rodar de novo.
+
 ## Testar o build localmente
 
 ```bash
