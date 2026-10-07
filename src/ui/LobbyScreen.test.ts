@@ -616,7 +616,12 @@ describe('lobby character preparation', () => {
 
     void lobby.show(options);
     const start = document.getElementById('start-game') as HTMLButtonElement;
-    expect(start.disabled).toBe(true);
+    // O gate da arma não usa `disabled`: o botão continua clicável para que o
+    // clique mostre o aviso central explicando o que falta. O bloqueio é
+    // anunciado por aria-disabled, title e pela aparência travada.
+    expect(start.disabled).toBe(false);
+    expect(start.getAttribute('aria-disabled')).toBe('true');
+    expect(start.classList.contains('is-weapon-locked')).toBe(true);
     expect(start.title).toContain('Equipe uma arma');
 
     equipStarterSword(profile);
@@ -624,6 +629,8 @@ describe('lobby character preparation', () => {
     void lobby.show(options);
 
     expect(start.disabled).toBe(false);
+    expect(start.getAttribute('aria-disabled')).toBe('false');
+    expect(start.classList.contains('is-weapon-locked')).toBe(false);
     expect(start.title).toBe('');
     lobby.dispose();
   });

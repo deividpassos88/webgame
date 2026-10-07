@@ -1250,12 +1250,10 @@ export class LobbyScreen {
   /**
    * "Iniciar partida" stays locked until the hero has a weapon equipped.
    * The button stays clickable so the click can explain why (center notice).
+   * O estado clicável/travado é aplicado por `applyStartButtonState`.
    */
   private syncStartButtonWeaponState(): void {
-    const armed = Boolean(getPrimaryWeaponId(this.inventory.snapshot().equipment));
-    this.startButton.classList.toggle('is-weapon-locked', !armed);
-    this.startButton.setAttribute('aria-disabled', String(!armed));
-    if (armed) this.hideStartWeaponNotice();
+    this.syncStartGate();
   }
 
   private showStartWeaponNotice(): void {
@@ -1508,19 +1506,30 @@ export class LobbyScreen {
     this.applyStartButtonState();
   }
 
-  /** Reconciles the blacksmith lock with the equipped-weapon gate. */
+  /**
+   * Reconciles the blacksmith lock with the equipped-weapon gate.
+   *
+   * Somente a Oficina em tela cheia desabilita de verdade o botão (`disabled`),
+   * porque ali o lobby está fora de cena. O gate da arma deixa o botão
+   * clicável de propósito: o clique é o que explica o que falta ("Equipe sua
+   * arma antes de iniciar a partida."). O bloqueio aparece na aparência
+   * (`.is-weapon-locked`), no `title` e no `aria-disabled` — antes o botão era
+   * desabilitado de fato e o aviso central nunca chegava a ser exibido.
+   */
   private applyStartButtonState(): void {
     const blocked = this.startActionsDisabled || this.startBlockedByWeapon;
-    this.startButton.disabled = blocked;
+    this.startButton.disabled = this.startActionsDisabled;
+    this.startButton.classList.toggle('is-weapon-locked', this.startBlockedByWeapon);
     this.startButton.title = this.startBlockedByWeapon
       ? 'Equipe uma arma na aba Equipamentos antes de iniciar a partida.'
       : '';
-    this.startButton.setAttribute('aria-disabled', String(this.startBlockedByWeapon));
+    this.startButton.setAttribute('aria-disabled', String(blocked));
   }
 
   private syncStartGate(): void {
-    this.startBlockedByWeapon = this.inventory.snapshot().equipment.primaryWeapon === null;
+    this.startBlockedByWeapon = getPrimaryWeaponId(this.inventory.snapshot().equipment) === null;
     this.applyStartButtonState();
+    if (!this.startBlockedByWeapon) this.hideStartWeaponNotice();
   }
 
   private createSkillTip(): HTMLElement {

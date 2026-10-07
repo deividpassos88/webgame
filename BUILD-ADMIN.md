@@ -14,24 +14,38 @@ lobby/menu e do jogo (`z-index: 10050`), e abre as waves, "Ir para o Boss",
 
 ## Como funciona a ativação
 
-`src/main.ts` decide o acesso ADM assim:
+`src/main.ts` pergunta para `resolveAdminEnabled` (em `src/admin/AdminAccess.ts`),
+que recebe os sinais do bundle atual:
 
 ```ts
-const adminFromLauncher = import.meta.env.DEV
-  && new URLSearchParams(window.location.search).get('admin') === '1';
-const adminEnabled = adminFromLauncher
-  || import.meta.env.MODE === 'admin'
-  || resolveDevAdminAccess(import.meta.env.VITE_ADMIN_MODE, import.meta.env.DEV);
+const adminEnabled = resolveAdminEnabled({
+  adminParam: new URLSearchParams(window.location.search).get('admin'),
+  mode: import.meta.env.MODE,
+  viteAdminMode: import.meta.env.VITE_ADMIN_MODE,
+  development: import.meta.env.DEV,
+});
 ```
+
+A regra, na ordem:
+
+| Sinal | Resultado |
+| --- | --- |
+| `?admin=0`, `?admin=false` ou `VITE_ADMIN_MODE=false` | **desligado**, sempre |
+| `npm run build:admin` (`MODE === 'admin'`) | **ligado** |
+| servidor de desenvolvimento (`npm run dev`) | **ligado** |
+| `.env.admin` (`VITE_ADMIN_MODE=true`) | **ligado** |
+| build público (`npm run build`) | **desligado** — nem `?admin=1` liga |
 
 - `npm run build:admin` usa `vite build --mode admin`, então `import.meta.env.MODE === 'admin'`
   já garante o ADM ligado **sem depender de nenhum arquivo `.env`**.
 - O `.env.admin` (`VITE_ADMIN_MODE=true`) continua valendo, mas ele é ignorado
   pelo Git (`.env*`), por isso o `--mode admin` é o caminho confiável.
 - No build ADMIN o `?admin=1` da URL **não** é necessário (essa rota só existe em dev).
+- Os casos acima estão cobertos por `src/admin/AdminAccess.test.ts`.
 
-Depois do build dá para conferir no bundle: em `dist/assets/index-*.js` o trecho
-fica `adminEnabled: !1 || !0` (ou seja, `true`).
+Depois do build dá para conferir no bundle: em `dist/assets/index-*.js` o build ADM
+passa `mode:"admin",viteAdminMode:"true"`, enquanto o público passa
+`mode:"production",viteAdminMode:void 0`.
 
 ## Testar o build localmente
 
@@ -49,7 +63,9 @@ servidor da porta 4173.
 
 Basta copiar **todo o conteúdo de `dist/`** para a hospedagem estática
 (incluindo `models/`, `assets/`, `items/`, `ui/`, `vfx/`, `blacksmith/` e
-`draco/`, que vêm de `public/`). São ~158 MB, a maior parte modelos `.glb`.
+`draco/`, que vêm de `public/`). São ~190 MB hoje, a maior parte modelos `.glb`
+— e cerca de 125 MB disso são arquivos que nenhuma tela carrega (fontes `.blend`
+e imagens de referência; veja a seção 7.3 do `ANALISE-PROJETO.md`).
 
 > Aviso: um build ADMIN publicado dá essas ferramentas a **qualquer pessoa** que
 > abrir o site. Use-o para teste interno; para o público, gere com `npm run build`.
