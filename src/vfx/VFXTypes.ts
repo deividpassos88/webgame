@@ -90,6 +90,13 @@ export interface MageProjectileConfig {
   readonly trailLength: number;
   readonly trailWidth: number;
   readonly shape?: MageProjectileShape;
+  /**
+   * `false` = o projétil voa invisível: sem núcleo, cone, halo, rastro ou luz.
+   * O voo, a colisão, o alcance e o dano continuam exatos — só o desenho some.
+   * A skill 2 (gelo) usa assim: quem conta a história é a onda de cristais que
+   * irrompe do chão na mesma velocidade do tiro. Padrão: `true`.
+   */
+  readonly visual?: boolean;
   /** Halo sprite diameter as a multiple of `radius` (default 3.4). */
   readonly haloScale?: number;
   readonly haloOpacity?: number;

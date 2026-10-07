@@ -6,6 +6,7 @@ import { ImpactVFX } from './ImpactVFX';
 import { LaserVFX } from './LaserVFX';
 import { LightningVFX } from './LightningVFX';
 import { WaterDragonVFX, type WaterDragonChargeHandle } from './water/WaterDragonVFX';
+import { IceCrystalWaveVFX } from './ice/IceCrystalWaveVFX';
 import { MageVFXResources } from './MageVFXResources';
 import { MagicCircleVFX } from './MagicCircleVFX';
 import { PooledParticleCloud, qualityCount } from './ParticleManager';
@@ -556,6 +557,7 @@ export class MageVFX {
   private readonly lasers: LaserVFX;
   private readonly impacts: ImpactVFX;
   private readonly magicCircles: MagicCircleVFX;
+  private readonly iceWave: IceCrystalWaveVFX;
   private readonly cameraShake = new CameraShake();
   private debug = false;
   private warmedUp = false;
@@ -590,6 +592,7 @@ export class MageVFX {
     this.lasers = new LaserVFX(scene, this.resources, this.quality, this.lightPool);
     this.impacts = new ImpactVFX(scene, this.resources, this.quality, this.lightPool);
     this.magicCircles = new MagicCircleVFX(this.resources);
+    this.iceWave = new IceCrystalWaveVFX(scene, this.resources.softGlow, this.lightPool);
   }
 
   public cast(spellId: MageSpellId, context: MageCastContext): void {
@@ -648,6 +651,7 @@ export class MageVFX {
     this.lasers.update(elapsed);
     this.impacts.update(elapsed);
     this.magicCircles.update(elapsed);
+    this.iceWave.update(elapsed);
   }
 
   public applyCameraShake(camera: THREE.Camera, delta: number): void {
@@ -665,6 +669,7 @@ export class MageVFX {
     this.lasers.clear();
     this.impacts.clear();
     this.magicCircles.clear();
+    this.iceWave.clear();
     this.cameraShake.clear();
   }
 
@@ -678,6 +683,7 @@ export class MageVFX {
     this.lasers.dispose();
     this.impacts.dispose();
     this.magicCircles.dispose();
+    this.iceWave.dispose();
     this.resources.dispose();
     if (this.ownsLightPool) this.lightPool.dispose();
   }
@@ -959,7 +965,9 @@ export class MageVFX {
     // já anuncia o disparo, e o efeito de impacto fica só para o acerto.
     // Lightning already flashes along the bolt. A second explosion at the
     // hand hid the cast pose and lingered after the Mage started moving.
-    if (!bullet && cast.preset.style !== 'lightning') {
+    // No gelo (skill 2) o clarão de saída também sai: o único visual do
+    // disparo é a onda de cristais irrompendo do chão.
+    if (!bullet && cast.preset.style !== 'lightning' && cast.preset.style !== 'ice') {
       this.impacts.play({
         position: origin,
         preset: cast.preset,
@@ -968,6 +976,33 @@ export class MageVFX {
       });
     }
     this.emitAudio(cast.context, cast.preset, 'cast', origin);
+
+    // Skill 2 (gelo): a onda de cristais da referência irrompe do chão a
+    // partir da Maga até o ponto de impacto resolvido, na MESMA velocidade do
+    // projétil — o cristal-herói gigante nasce onde o feitiço acerta. O
+    // projétil continua carregando o dano/alcance/recarga reais.
+    if (cast.preset.style === 'ice') {
+      const casterGround = cast.context.caster.getWorldPosition(new THREE.Vector3());
+      const aimedIce = this.resolveTargetPoint(cast, origin, direction, MAGE_SPELL_TRAVEL_METERS);
+      const stoppedIce = this.stopOnBody(cast, origin, aimedIce);
+      const planar = new THREE.Vector3(
+        stoppedIce.point.x - casterGround.x,
+        0,
+        stoppedIce.point.z - casterGround.z
+      );
+      const planarLength = planar.length();
+      const waveDirection = planarLength > 1e-4
+        ? planar.multiplyScalar(1 / planarLength)
+        : new THREE.Vector3(direction.x, 0, direction.z).normalize();
+      if (waveDirection.lengthSq() > 1e-8) {
+        this.iceWave.play({
+          start: casterGround,
+          direction: waveDirection,
+          length: THREE.MathUtils.clamp(planarLength, 4, MAGE_SPELL_TRAVEL_METERS),
+          travelSpeed: cast.preset.projectile.speed,
+        });
+      }
+    }
 
     if (cast.preset.delivery === 'instant-lightning') {
       const aimed = this.resolveTargetPoint(cast, origin, direction, MAGE_SPELL_TRAVEL_METERS);
@@ -1065,7 +1100,10 @@ export class MageVFX {
       // `impact.visual === false` (ataque básico): o acerto não desenha nada —
       // nem explosão, nem luz, nem tremor. O som continua.
       if (cast.preset.impact.visual !== false) {
-        if (cast.preset.delivery !== 'water-column') this.impacts.play({
+        // Skill 2 (gelo): o acerto é desenhado pelo cristal-herói da onda — a
+        // explosão antiga ficava sobreposta a ele. Mantém o tremor de câmera
+        // e o som; só o desenho antigo sai.
+        if (cast.preset.delivery !== 'water-column' && cast.preset.style !== 'ice') this.impacts.play({
           position: impactPoint,
           preset: cast.preset,
           // Sem a direção do projétil (raio, laser, queda do alvo) o impacto usa

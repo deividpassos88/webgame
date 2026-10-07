@@ -259,7 +259,9 @@ class MageProjectile implements PoolableVFX {
     this.fading = false;
     this.fadeAge = 0;
     this.fadeMaterials = [];
-    this.group.visible = true;
+    // `projectile.visual === false` (skill 2 de gelo): o tiro voa às cegas —
+    // nenhum desenho, só a física. A onda de cristais no chão é o visual.
+    this.group.visible = options.preset.projectile.visual !== false;
     this.group.position.copy(options.origin);
     this.direction.copy(options.direction).setY(options.direction.y);
     if (this.direction.lengthSq() <= 1e-8) this.direction.set(0, 0, 1);
@@ -315,7 +317,9 @@ class MageProjectile implements PoolableVFX {
     // Borrowed from the shared pool: no scene add/remove, so no recompiles.
     // (The glow map swap above needs no needsUpdate: the sprite is constructed
     // with a map, so texture-to-texture swaps keep the same program.)
-    this.lightHandle = profile.enableSecondaryLights ? this.lightPool.acquire() : null;
+    this.lightHandle = profile.enableSecondaryLights && this.group.visible
+      ? this.lightPool.acquire()
+      : null;
     if (this.lightHandle) {
       this.lightHandle.light.color.set(options.preset.colors.glow);
       this.lightHandle.light.intensity = options.preset.style === 'lava' ? 0.9 : this.bullet ? 0.32 : 0.55;
