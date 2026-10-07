@@ -100,6 +100,24 @@ function buildTrailIndices(): number[] {
   return indices;
 }
 
+/**
+ * O cometa do ataque básico desenha 4,1 m de seda ATRÁS do ponto de colisão.
+ * Nascendo inteira junto com o dardo, essa seda atravessava o corpo da Maga —
+ * na câmera isométrica do jogo a cauda passava por cima da cabeça e chegava
+ * embaixo dos pés — e o tiro parecia sair das costas dela. Por isso o desenho
+ * nasce com 0,6 m e ESTICA conforme o tiro caminha (a ponta avança na frente
+ * da cauda), até chegar ao desenho cheio da referência em ~3,5 m de voo (0,14 s).
+ * O ponto de colisão continua sendo a PONTA do dardo, no mesmo lugar de sempre.
+ */
+const COMET_SPAWN_LENGTH_METERS = 0.6;
+/**
+ * Metros de seda ganhos por metro voado. Com 1 a cauda fica PRESA no ponto de
+ * saída (a ponta do cajado) enquanto o dardo avança, então o desenho nunca
+ * aparece atrás de quem atirou — que é o que fazia o tiro parecer sair das
+ * costas da Maga. Chega ao desenho cheio em ~3,5 m de voo (0,14 s a 25 m/s).
+ */
+const COMET_GROWTH_PER_METER = 1;
+
 function styleDistortion(preset: MageSpellPreset): number {
   switch (preset.style) {
     case 'lava': return 1.35;
@@ -138,6 +156,11 @@ class MageProjectile implements PoolableVFX {
   private traveled = 0;
   private haloScale = 3.4;
   private bullet = false;
+  /** Desenho do cometa: comprimento cheio, largura fixa e o que está desenhado agora. */
+  private cometFullLength = 0;
+  private cometStartLength = 0;
+  private cometWidth = 0;
+  private drawnCometLength = 0;
   /** Câmera viva, usada para orientar o sprite do cometa (billboard). */
   private getCamera: (() => THREE.Camera | null) | undefined = undefined;
   /** World-space frost wake: it must not follow the bolt once it is released. */
@@ -394,6 +417,7 @@ class MageProjectile implements PoolableVFX {
     }
     if (this.bullet) {
       // A cauda da bala é a seda do sprite; a fita de energia fica desligada.
+      this.growComet();
       this.orientComet();
     } else {
       this.updateTrailGeometry(this.config.trailLength, this.config.trailWidth);
@@ -517,6 +541,9 @@ class MageProjectile implements PoolableVFX {
     const comet = preset.projectile.comet;
     this.comet.visible = this.bullet && comet !== undefined;
     if (!this.bullet || !comet) {
+      this.cometFullLength = 0;
+      this.cometStartLength = 0;
+      this.drawnCometLength = 0;
       this.cometMaterial.uniforms.uOpacity.value = 0;
       // Bala sem sprite cai de volta na fita de energia (nunca fica sem rastro).
       this.trail.visible = true;
@@ -525,10 +552,12 @@ class MageProjectile implements PoolableVFX {
 
     const width = radius * comet.widthScale;
     const length = radius * comet.lengthScale;
-    this.comet.scale.set(length, width, 1);
+    this.cometWidth = width;
+    this.cometFullLength = length;
+    this.cometStartLength = Math.min(length, COMET_SPAWN_LENGTH_METERS);
     // O grupo marca o ponto de colisão; o sprite recua para a PONTA do cometa
     // cair exatamente nesse ponto (o rastro vem atrás, como na referência).
-    this.comet.position.set(0, 0, -length * 0.5);
+    this.drawCometLength(this.cometStartLength);
     configureFrostBulletMaterial(this.cometMaterial, {
       core: preset.colors.core,
       glow: preset.colors.glow,
@@ -550,6 +579,22 @@ class MageProjectile implements PoolableVFX {
     const trailOpacity = comet.trailOpacity ?? 0;
     this.trail.visible = trailOpacity > 0;
     if (this.trail.visible) this.trailMaterial.uniforms.uOpacity.value = trailOpacity;
+  }
+
+  /** Aplica o comprimento desenhado do cometa mantendo a PONTA no ponto de colisão. */
+  private drawCometLength(length: number): void {
+    this.drawnCometLength = length;
+    this.comet.scale.set(length, this.cometWidth, 1);
+    this.comet.position.set(0, 0, -length * 0.5);
+  }
+
+  /** A seda estica conforme o tiro caminha (ver COMET_SPAWN_LENGTH_METERS). */
+  private growComet(): void {
+    if (!this.bullet || this.cometFullLength <= 0) return;
+    const stretched = this.cometStartLength + this.traveled * COMET_GROWTH_PER_METER;
+    const length = Math.min(this.cometFullLength, stretched);
+    if (Math.abs(length - this.drawnCometLength) < 1e-4) return;
+    this.drawCometLength(length);
   }
 
   /**
