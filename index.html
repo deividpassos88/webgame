@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="/src/styles/lobby-reference.css" />
   <link rel="stylesheet" href="/src/styles/forge-reference.css" />
   <link rel="stylesheet" href="/src/styles/skills-reference.css" />
+  <link rel="stylesheet" href="/src/styles/settings-panel.css" />
 </head>
 <body>
   <!-- Tablets (from ~640px wide) and desktops only: the game renders WebGL in
@@ -105,7 +106,7 @@
           </button>
         </nav>
 
-        <button type="button" class="arena-settings" aria-label="Configurações">
+        <button type="button" class="arena-settings" data-open-settings aria-label="Abrir configurações">
           <img class="lobby-settings-mark" src="/assets/ui/lobby/arena/icons/settings.svg" alt="" aria-hidden="true">
         </button>
       </header>
@@ -320,6 +321,7 @@
         <div class="hud-utility-actions">
           <button class="hud-utility-button" type="button" data-open-backpack aria-label="Abrir mochila"><img src="/assets/ui/backpack-icon.png" alt=""><kbd>I</kbd></button>
           <button class="hud-utility-button" type="button" data-open-status aria-label="Abrir status"><img src="/assets/ui/status-icon.png" alt=""><span>STATUS</span></button>
+          <button class="hud-utility-button" type="button" data-open-settings aria-label="Abrir configurações"><img src="/assets/ui/lobby/arena/icons/settings.svg" alt=""><span>AJUSTES</span></button>
         </div>
       </aside>
 

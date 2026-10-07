@@ -21,6 +21,7 @@ import {
 import type { InventorySnapshot, InventoryStore } from '../inventory/InventoryStore';
 import type { PlayerProfile, RpgEquipmentSlot, InventoryStack } from '../profile/PlayerProfile';
 import { getPrimaryWeaponId } from '../profile/PlayerProfile';
+import { clampCameraSensitivity } from '../profile/PlayerSettings';
 import { getInventoryItem, type InventoryItemDefinition } from '../inventory/InventoryCatalog';
 import {
   displayPlayerHotkey,
@@ -79,6 +80,10 @@ export interface LobbyScreenOptions {
   readonly onBlacksmithCraft: (recipeId: BlacksmithRecipeId) => BlacksmithLobbyActionResult;
   readonly adminTrainingEnabled?: boolean;
   readonly onRunModeSelected?: (mode: LobbyRunMode) => void;
+  /** Abre o menu de Configuracoes (botao de engrenagem do lobby). */
+  readonly onOpenSettings?: () => void;
+  /** Amostra de quadro para o contador de FPS do menu de Configuracoes. */
+  readonly onFrameSample?: (nowMs: number) => void;
 }
 
 export type BlacksmithLobbyActionResult = BlacksmithScreenActionResult;
@@ -591,6 +596,10 @@ export class LobbyScreen {
   private readonly destroyConfirmDialog = document.getElementById('lobby-item-destroy-confirm')!;
   private readonly destroyConfirmName = document.getElementById('lobby-item-destroy-name')!;
   private lobbyInventoryChanged: (() => void) | null = null;
+  private openSettings: (() => void) | null = null;
+  private frameSample: ((nowMs: number) => void) | null = null;
+  /** Engrenagem do topo (existe no index.html, nao no markup dos testes). */
+  private readonly settingsButton = document.querySelector<HTMLButtonElement>('[data-open-settings]');
   /** "Iniciar partida" fica bloqueado até o jogador equipar uma arma. */
   private startBlockedByWeapon = true;
   private startActionsDisabled = false;
@@ -664,6 +673,8 @@ export class LobbyScreen {
     this.hotkeysChanged = options.onHotkeysChanged;
     this.autoBasicAttackChanged = options.onAutoBasicAttackChanged;
     this.lobbyInventoryChanged = options.onLobbyInventoryChanged ?? null;
+    this.openSettings = options.onOpenSettings ?? null;
+    this.frameSample = options.onFrameSample ?? null;
     this.blacksmithLicensePurchase = options.onBlacksmithLicensePurchase;
     this.blacksmithCraft = options.onBlacksmithCraft;
     this.blacksmithScreen.hide();
@@ -1283,6 +1294,7 @@ export class LobbyScreen {
     this.classChoiceButtons.forEach((button) => button.addEventListener('click', this.confirmClass));
     this.startButton.addEventListener('click', this.startGame);
     this.adminTrainingButton.addEventListener('click', this.toggleAdminMode);
+    this.settingsButton?.addEventListener('click', this.settingsClick);
     this.heroStage.addEventListener('pointerdown', this.pointerDown);
     window.addEventListener('pointermove', this.pointerMove);
     window.addEventListener('pointerup', this.pointerUp);
@@ -1312,6 +1324,7 @@ export class LobbyScreen {
     this.classChoiceButtons.forEach((button) => button.removeEventListener('click', this.confirmClass));
     this.startButton.removeEventListener('click', this.startGame);
     this.adminTrainingButton.removeEventListener('click', this.toggleAdminMode);
+    this.settingsButton?.removeEventListener('click', this.settingsClick);
     this.heroStage.removeEventListener('pointerdown', this.pointerDown);
     window.removeEventListener('pointermove', this.pointerMove);
     window.removeEventListener('pointerup', this.pointerUp);
@@ -2021,6 +2034,15 @@ export class LobbyScreen {
     document.getElementById('lobby-status')!.textContent = message;
   }
 
+  private settingsClick = (): void => {
+    this.openSettings?.();
+  };
+
+  /** Sensibilidade do arrasto vinda do menu de Configuracoes (1x por padrao). */
+  private dragSensitivity(): number {
+    return clampCameraSensitivity(this.profile?.settings?.cameraSensitivity ?? 1);
+  }
+
   private pointerDown = (event: PointerEvent): void => {
     this.dragging = true;
     this.lastPointerX = event.clientX;
@@ -2030,7 +2052,7 @@ export class LobbyScreen {
     if (!this.dragging) return;
     const delta = event.clientX - this.lastPointerX;
     this.lastPointerX = event.clientX;
-    this.modelHolder.rotation.y += delta * 0.008;
+    this.modelHolder.rotation.y += delta * 0.008 * this.dragSensitivity();
     this.requestFrame();
   };
 
@@ -2083,6 +2105,7 @@ export class LobbyScreen {
 
   private render = (): void => {
     this.frameId = 0;
+    this.frameSample?.(performance.now());
     const delta = Math.min(this.clock.getDelta(), 0.1);
     const motion = lobbyMotionPolicy(this.reducedMotionQuery.matches);
     this.mixer?.update(motion.animateIdle ? delta : 0);

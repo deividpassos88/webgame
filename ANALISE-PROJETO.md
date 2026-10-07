@@ -168,14 +168,21 @@ Limpar isso reduz o deploy de **190 MB para ~65 MB** sem tocar em nenhum asset e
 (a varredura marca `monster_arch.glb`/`monstro_*.glb` só por causa do caminho
 codificado `fase%201-1`, esses **estão** em uso).
 
-### 7.4 Aberto: documentação defasada
+### 7.4 Resolvido: menu de Configurações do lobby
+
+A engrenagem do lobby não tinha handler. Agora ela (e o botão **AJUSTES** da doca do
+HUD) abrem um painel com qualidade gráfica, contador de FPS, números de dano e
+sensibilidade do giro da prévia, salvos no perfil (schema 12). Detalhes em
+`MENU-CONFIGURACOES.md`.
+
+### 7.5 Aberto: documentação defasada
 
 - `BUILD-ADMIN.md` descrevia o `main.ts` antigo (já atualizado nesta entrega).
 - `ARQUIVOS-UTILIZADOS.md` / `LIMPEZA-RESUMO.md` falam de um projeto com 52 assets e
   123 MB; hoje são 289 arquivos e 188 MB. Os documentos anteriores também usam
   acentuação inconsistente (`CODEX_HANDOFF.md` sem acentos).
 
-### 7.5 Observações menores
+### 7.6 Observações menores
 
 - `Game.ts` com 3.497 linhas é o maior ponto de acoplamento; mudanças de combate
   costumam exigir leitura extensa. Já há extrações (políticas, controllers), então é
@@ -189,10 +196,13 @@ codificado `fase%201-1`, esses **estão** em uso).
 
 ```
 npm run typecheck     → limpo
-npm test              → 180 arquivos · 1.196 testes · 0 falhas (~44 s)
+npm test              → 183 arquivos · 1.223 testes · 0 falhas (~44 s)
 npm run build         → dist/ público sem ADM
 npm run build:admin   → dist/ com ADM (servido em http://localhost:5173)
 ```
 
-Mudanças de código: `src/admin/AdminAccess.ts`, `src/admin/AdminAccess.test.ts`,
-`src/main.ts`, `src/ui/LobbyScreen.ts`, `src/ui/LobbyScreen.test.ts`.
+Mudanças de código deste ciclo: `src/admin/AdminAccess.ts` (+ teste), `src/main.ts`,
+`src/ui/LobbyScreen.ts` (+ teste), `src/profile/PlayerSettings.ts` (+ teste),
+`src/profile/PlayerProfile.ts` (schema 12 + teste de migração), `src/ui/SettingsPanel.ts`
+(+ teste), `src/ui/FpsBadge.ts` (+ teste), `src/ui/SettingsMenuContract.test.ts`,
+`src/core/Game.ts`, `src/styles/settings-panel.css`, `index.html`.

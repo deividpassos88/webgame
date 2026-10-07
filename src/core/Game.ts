@@ -86,6 +86,15 @@ import { GameLightingRig } from './GameLightingRig';
 import { AdminCommandGate, type AdminSpawnRole } from '../admin/AdminCommandGate';
 import { AdminGameActions } from '../admin/AdminGameActions';
 import { AdminPanel } from '../admin/AdminPanel';
+import { FpsBadge } from '../ui/FpsBadge';
+import { SettingsPanel } from '../ui/SettingsPanel';
+import {
+  clampCameraSensitivity,
+  normalizePlayerSettings,
+  resolveGraphicsProfile,
+  resolvePixelRatio,
+  type PlayerSettings,
+} from '../profile/PlayerSettings';
 import {
   awardPlayerExperience,
   getPrimaryWeaponId,
@@ -344,6 +353,8 @@ export class Game {
   private readonly adminGate: AdminCommandGate;
   private adminActions!: AdminGameActions;
   private adminPanel: AdminPanel | null = null;
+  private settingsPanel: SettingsPanel | null = null;
+  private fpsBadge: FpsBadge | null = null;
 
   constructor(private canvas: HTMLCanvasElement, options: GameOptions = {}) {
     this.adminEnabled = options.adminEnabled === true;
@@ -386,6 +397,8 @@ export class Game {
       Object.assign(this.profile, resetRunProgression(this.profile));
       this.persistProfileState();
       this.inventory = InventoryStore.fromProfile(this.profile);
+      // O menu de Configuracoes do lobby escreve no mesmo perfil (schema 12).
+      this.setupPlayerSettings();
       // The administrator can add inventory items before entering the dungeon.
       this.setupAdminTools();
       this.flow = new GameFlowController(
@@ -467,7 +480,9 @@ export class Game {
             onAutoBasicAttackChanged: () => this.persistProfileState(),
             onLobbyInventoryChanged: () => this.persistInventory(),
             onBlacksmithLicensePurchase: () => this.purchaseBlacksmithWorkshopLicense(),
-            onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+            onOpenSettings: () => this.settingsPanel?.show(),
+            onFrameSample: (nowMs) => this.fpsBadge?.frame(nowMs),
             adminTrainingEnabled: this.adminEnabled,
             onRunModeSelected: (mode) => { this.pendingRunMode = mode; },
           });
@@ -641,6 +656,68 @@ export class Game {
       this.hud.showLoadingError(Logger.formatError(err));
       throw err;
     }
+  }
+
+  /**
+   * Menu de Configuracoes do lobby (engrenagem) e do HUD.
+   *
+   * O painel so devolve o objeto completo; quem aplica e persiste e o Game,
+   * para que a qualidade grafica, o contador de FPS e os numeros de dano
+   * valham tanto no lobby quanto na masmorra.
+   */
+  private setupPlayerSettings(): void {
+    // Saves antigos chegam migrados com os padroes; aqui so garantimos que o
+    // objeto esta completo antes de o painel ler os controles.
+    this.profile.settings = normalizePlayerSettings(this.profile.settings);
+    this.fpsBadge = FpsBadge.mount(document.body);
+    this.settingsPanel = SettingsPanel.mount(
+      document.body,
+      this.profile.settings,
+      (settings) => this.updatePlayerSettings(settings)
+    );
+    document.querySelectorAll<HTMLElement>('[data-open-settings]').forEach((button) => {
+      button.addEventListener('click', () => this.settingsPanel?.show());
+    });
+    this.applyPlayerSettings();
+  }
+
+  private updatePlayerSettings(settings: PlayerSettings): void {
+    this.profile.settings = settings;
+    this.applyPlayerSettings();
+    this.persistProfileState();
+    Logger.info(
+      'Game:Settings',
+      `Configuracoes atualizadas (graficos ${settings.graphicsQuality}, FPS ${settings.showFps ? 'on' : 'off'}, dano ${settings.showDamageNumbers ? 'on' : 'off'}, giro ${settings.cameraSensitivity}x).`
+    );
+  }
+
+  /** Aplica no renderer/HUD os ajustes que valem para lobby e partida. */
+  private applyPlayerSettings(): void {
+    const settings = this.profile.settings;
+    const graphics = resolveGraphicsProfile(settings.graphicsQuality);
+    this.renderer.setPixelRatio(resolvePixelRatio(settings.graphicsQuality, window.devicePixelRatio));
+    if (this.renderer.shadowMap.enabled !== graphics.shadows) {
+      this.renderer.shadowMap.enabled = graphics.shadows;
+      // Three.js recompila os materiais no proximo desenho quando as sombras
+      // mudam de estado; sem isso a luz continuaria projetando a antiga.
+      this.scene.traverse((object) => {
+        const material = (object as THREE.Mesh).material;
+        if (!material) return;
+        if (Array.isArray(material)) material.forEach((entry) => { entry.needsUpdate = true; });
+        else material.needsUpdate = true;
+      });
+    }
+    this.fpsBadge?.setVisible(settings.showFps);
+  }
+
+  /** Leitura defensiva: perfis antigos sem o bloco de configuracoes mostram dano. */
+  private damageNumbersEnabled(): boolean {
+    return this.profile?.settings?.showDamageNumbers !== false;
+  }
+
+  /** Sensibilidade do arrasto usada pela previa 3D do lobby. */
+  private cameraSensitivity(): number {
+    return clampCameraSensitivity(this.profile?.settings?.cameraSensitivity ?? 1);
   }
 
   private setupAdminTools(): void {
@@ -1953,7 +2030,9 @@ export class Game {
         onAutoBasicAttackChanged: () => this.persistProfileState(),
         onLobbyInventoryChanged: () => this.persistInventory(),
         onBlacksmithLicensePurchase: () => this.purchaseBlacksmithWorkshopLicense(),
-        onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+        onOpenSettings: () => this.settingsPanel?.show(),
+        onFrameSample: (nowMs) => this.fpsBadge?.frame(nowMs),
         adminTrainingEnabled: this.adminEnabled,
         onRunModeSelected: (mode) => { this.pendingRunMode = mode; },
       });
@@ -2007,7 +2086,9 @@ export class Game {
         onAutoBasicAttackChanged: () => this.persistProfileState(),
         onLobbyInventoryChanged: () => this.persistInventory(),
         onBlacksmithLicensePurchase: () => this.purchaseBlacksmithWorkshopLicense(),
-        onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+        onOpenSettings: () => this.settingsPanel?.show(),
+        onFrameSample: (nowMs) => this.fpsBadge?.frame(nowMs),
         adminTrainingEnabled: this.adminEnabled,
         onRunModeSelected: (mode) => { this.pendingRunMode = mode; },
       });
@@ -3012,8 +3093,11 @@ export class Game {
     variant: FloatingDamageVariant = 'damage'
   ) {
     // Só o combo de skills alimenta o contador HITS: dano de ataque básico
-    // (inclusive o respingo de área) não conta hit.
+    // (inclusive o respingo de área) não conta hit. O contador é regra de jogo
+    // e continua rodando mesmo com os números de dano desligados.
     if (variant === 'damage' && this.comboHitWindowActive()) this.hitCounter.registerHit();
+    // Desligar os números de dano corta só o texto flutuante.
+    if (!this.damageNumbersEnabled()) return;
     const pos = worldPos.clone();
     pos.y += 1.6;
     const screenPos = pos.project(this.cameraController.camera);
@@ -3392,6 +3476,7 @@ export class Game {
   private loop = () => {
     if (!this.running) return;
     requestAnimationFrame(this.loop);
+    this.fpsBadge?.frame(performance.now());
 
     try {
       const rawDelta = this.clock.getDelta();

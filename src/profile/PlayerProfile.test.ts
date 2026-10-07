@@ -138,6 +138,28 @@ describe('PlayerProfile progression', () => {
     expect(JSON.parse(storage.value!).schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
   });
 
+  it('migrates a schema-eleven save by adding the default settings block', () => {
+    const { settings: _settings, ...withoutSettings } = createDefaultPlayerProfile();
+    const schemaEleven = {
+      ...withoutSettings,
+      schemaVersion: 11,
+      backpack: [{ itemId: 'runic-crystal', quantity: 7 }],
+    };
+    const storage = memoryStorage(JSON.stringify(schemaEleven));
+    const result = loadPlayerProfile(storage);
+
+    expect(result.kind).toBe('loaded');
+    expect(result.profile.schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
+    expect(result.profile.backpack).toEqual([{ itemId: 'runic-crystal', quantity: 7 }]);
+    expect(result.profile.settings).toEqual({
+      graphicsQuality: 'alta',
+      showFps: false,
+      showDamageNumbers: true,
+      cameraSensitivity: 1,
+    });
+    expect(JSON.parse(storage.value!).schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
+  });
+
   it('migrates a schema-ten save from strength into vitality without losing its build', () => {
     // Level five earns eight points, so a fully spent schema-ten build has
     // exactly the same budget the current schema expects.

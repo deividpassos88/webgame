@@ -30,10 +30,20 @@ import {
   isPlayerHotkeys,
   type PlayerHotkeys,
 } from './PlayerHotkeys';
+import {
+  createDefaultPlayerSettings,
+  isPlayerSettings,
+  type PlayerSettings,
+} from './PlayerSettings';
 
 /** The key stays stable so existing browser saves can be upgraded in place. */
 export const PROFILE_STORAGE_KEY = 'dragon-miner.profile.v1';
-export const PROFILE_SCHEMA_VERSION = 11 as const;
+export const PROFILE_SCHEMA_VERSION = 12 as const;
+/**
+ * Schema eleven is the last one written before the lobby Settings menu: it has
+ * no `settings` block, so those saves gain the defaults on load.
+ */
+export const SETTINGS_PROFILE_SCHEMA_VERSION = 11 as const;
 /**
  * Schema ten used `strength` (health + physical damage) as a player attribute.
  * Schema eleven replaces it with `vitality` and adds `criticalDamage` and
@@ -111,6 +121,8 @@ export interface PlayerProfile {
   guildVault: InventoryStack[];
   /** Player-configurable desktop keyboard bindings for combat actions. */
   hotkeys: PlayerHotkeys;
+  /** Preferências do menu de Configurações (gráficos, FPS, dano, sensibilidade). */
+  settings: PlayerSettings;
   /** Opt-in automatic basic attack against the current marked target. */
   autoBasicAttack: boolean;
   /** Paid workshop access. A null timestamp means no active license. */
@@ -187,6 +199,7 @@ export function createDefaultPlayerProfile(): PlayerProfile {
     backpackCapacity: BACKPACK_INITIAL_CAPACITY,
     guildVault: [],
     hotkeys: { ...DEFAULT_PLAYER_HOTKEYS },
+    settings: createDefaultPlayerSettings(),
     // O ataque básico automático já vem ligado em perfis novos e migrados.
     autoBasicAttack: true,
     blacksmith: { availableUntil: null },
@@ -221,6 +234,11 @@ export function loadPlayerProfile(storage = browserStorage()): ProfileLoadResult
   try {
     const parsed: unknown = JSON.parse(stored);
     if (isPlayerProfile(parsed)) return { kind: 'loaded', profile: parsed };
+    if (isVersionElevenProfile(parsed)) {
+      const migrated = migrateVersionElevenProfile(parsed);
+      savePlayerProfile(migrated, storage);
+      return { kind: 'loaded', profile: migrated };
+    }
     if (isStrengthAttributeProfile(parsed)) {
       const migrated = migrateStrengthAttributeProfile(parsed);
       savePlayerProfile(migrated, storage);
@@ -448,6 +466,28 @@ export function syncStarterWeaponToClass(profile: PlayerProfile): PlayerProfile 
 function isPlayerProfile(value: unknown): value is PlayerProfile {
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== PROFILE_SCHEMA_VERSION) return false;
+  if (!isPlayableCharacterId(value.selectedClass)) return false;
+  if (!isCanonicalEquipment(value.equipment)) return false;
+  const backpackCapacity = value.backpackCapacity;
+  if (!isBackpackCapacity(backpackCapacity)) return false;
+  if (!isBackpack(value.backpack, backpackCapacity)) return false;
+  if (!isGuildVault(value.guildVault)) return false;
+  if (!isPlayerHotkeys(value.hotkeys)) return false;
+  if (!isPlayerSettings(value.settings)) return false;
+  if (typeof value.autoBasicAttack !== 'boolean') return false;
+  if (!isBlacksmithAccess(value.blacksmith)) return false;
+  if (!isSkillStars(value.skillStars)) return false;
+  const progression = value.progression;
+  return isProgression(progression) && isCurrentAttributeAllocation(value, progression);
+}
+
+/**
+ * Schema eleven is shape-compatible with the current one except for the
+ * `settings` block, so it only has to be filled with the defaults.
+ */
+function isVersionElevenProfile(value: unknown): value is VersionElevenPlayerProfile {
+  if (!isRecord(value)) return false;
+  if (value.schemaVersion !== SETTINGS_PROFILE_SCHEMA_VERSION) return false;
   if (!isPlayableCharacterId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   const backpackCapacity = value.backpackCapacity;
@@ -842,6 +882,7 @@ function migrateVersionFourProfile(previous: VersionFourPlayerProfile): PlayerPr
     backpackCapacity,
     guildVault: inventory.guildVault,
     hotkeys: { ...DEFAULT_PLAYER_HOTKEYS },
+    settings: createDefaultPlayerSettings(),
     autoBasicAttack: true,
     blacksmith: { availableUntil: null },
     skillStars: { ...previous.skillStars },
@@ -863,6 +904,7 @@ function migrateVersionFiveProfile(previous: VersionFivePlayerProfile): PlayerPr
     backpackCapacity,
     guildVault: inventory.guildVault,
     hotkeys: { ...DEFAULT_PLAYER_HOTKEYS },
+    settings: createDefaultPlayerSettings(),
     autoBasicAttack: true,
     blacksmith: { availableUntil: null },
     skillStars: { ...previous.skillStars },
@@ -882,6 +924,7 @@ function migrateVersionSixProfile(previous: VersionSixPlayerProfile): PlayerProf
     backpackCapacity: previous.backpackCapacity,
     guildVault: previous.guildVault.map((stack) => ({ ...stack })),
     hotkeys: { ...DEFAULT_PLAYER_HOTKEYS },
+    settings: createDefaultPlayerSettings(),
     autoBasicAttack: true,
     blacksmith: { availableUntil: null },
     skillStars: { ...previous.skillStars },
@@ -907,6 +950,7 @@ function migrateVersionSevenProfile(previous: VersionSevenPlayerProfile): Player
       triplo_ataque: previous.hotkeys.triplo_ataque,
       corte_duplo: previous.hotkeys.corte_duplo,
     },
+    settings: createDefaultPlayerSettings(),
     autoBasicAttack: true,
     blacksmith: { availableUntil: null },
     skillStars: { ...previous.skillStars },
@@ -954,6 +998,15 @@ function migrateStrengthAttributeProfile(previous: StrengthAttributePlayerProfil
   };
 }
 
+/** Schema eleven profiles only need the new settings block. */
+function migrateVersionElevenProfile(previous: VersionElevenPlayerProfile): PlayerProfile {
+  return {
+    ...previous,
+    schemaVersion: PROFILE_SCHEMA_VERSION,
+    settings: createDefaultPlayerSettings(),
+  };
+}
+
 function migrateVersionNineProfile(previous: VersionNinePlayerProfile): PlayerProfile {
   return {
     ...previous,
@@ -996,6 +1049,7 @@ function makeProgressionProfile(source: {
     backpackCapacity: source.backpackCapacity,
     guildVault: inventory.guildVault,
     hotkeys: { ...DEFAULT_PLAYER_HOTKEYS },
+    settings: createDefaultPlayerSettings(),
     autoBasicAttack: true,
     blacksmith: { availableUntil: null },
     skillStars: { ...source.skillStars },
@@ -1111,6 +1165,10 @@ interface VersionSevenPlayerProfile extends Omit<PlayerProfile, 'schemaVersion' 
 
 interface VersionEightPlayerProfile extends Omit<PlayerProfile, 'schemaVersion' | 'blacksmith'> {
   schemaVersion: typeof PREVIOUS_PROFILE_SCHEMA_VERSION;
+}
+
+interface VersionElevenPlayerProfile extends Omit<PlayerProfile, 'schemaVersion' | 'settings'> {
+  schemaVersion: typeof SETTINGS_PROFILE_SCHEMA_VERSION;
 }
 
 interface VersionNinePlayerProfile extends Omit<PlayerProfile, 'schemaVersion'> {
