@@ -6,7 +6,7 @@ import {
 import type { CombatRecord } from '../waves/CombatEntityRegistry';
 
 /**
- * Alvos da explosão em área das skills 1 (água) e 2 (gelo) da Maga.
+ * Alvos da explosão em área das cinco skills da Maga (água, gelo, raio, laser e lava).
  *
  * Regras, na ordem em que o impacto resolve os alvos:
  * - só monstro VIVO (`isDead` fica fora);

@@ -59,13 +59,13 @@ const BASIC_ACTION_INVULNERABILITY_SECONDS = 0;
 /** A Maga's basic cast grants no action immunity window at all (0 seconds). */
 const MAGE_BASIC_ACTION_INVULNERABILITY_SECONDS = 0;
 /**
- * Mage basic-attack tempo: the authored 1.8 s cast plays faster so her basic
- * interval (≈0.9 s) matches the Warrior sword cadence (0.9 s). The combo
- * stage, the action time scale and the cooldown below all derive from this
- * single rate, so tuning it keeps visual, VFX timeline and gameplay in
- * lockstep. Exported for tests and for the lobby/gameplay docs.
+ * A Maga recebe 5% de velocidade extra no ataque básico (somente básico).
+ * O clipe de 1,8 s passa a fechar em ~0,857 s; animação, timeline do feitiço
+ * e intervalo real usam a mesma taxa para continuar sincronizados. Skills e
+ * Guerreiro mantêm o ritmo atual. Exportado para os testes e documentação.
  */
-export const MAGE_BASIC_ATTACK_PLAYBACK_RATE = 2;
+export const MAGE_BASIC_ATTACK_SPEED_MULTIPLIER = 1.05;
+export const MAGE_BASIC_ATTACK_PLAYBACK_RATE = 2 * MAGE_BASIC_ATTACK_SPEED_MULTIPLIER;
 const POST_HIT_INVULNERABILITY_SECONDS = 0.4;
 const DASH_DISTANCE = 5.4;
 const DASH_SPEED = 30;
@@ -703,7 +703,7 @@ export class Player {
     // gate equips a weapon. Keep that preview one-shot and leave combat
     // combo timing exclusively to the equipped sword path.
     if (!this.canUseEmptySpaceComboAttacks()) {
-      this.attackCooldown = this.attackCooldownTime;
+      this.attackCooldown = this.basicAttackInterval();
       this.emptyHandAttackPreview = true;
       this.playState('attacking', 0.15);
       return;
@@ -1231,7 +1231,7 @@ export class Player {
     this.mixer.update(delta);
 
     if (this.attackCooldown > 0) this.attackCooldown -= delta;
-    this.comboController.minStageInterval = this.attackCooldownTime;
+    this.comboController.minStageInterval = this.basicAttackInterval();
     if (this.dashCooldown > 0) this.dashCooldown = Math.max(0, this.dashCooldown - delta);
     if (this.hitInvulnerability > 0) this.hitInvulnerability -= delta;
     if (this.comboInvulnerability > 0) {
@@ -1492,6 +1492,19 @@ export class Player {
     if (locomotion) this.playState(locomotion, 0.15);
   }
 
+  /** Intervalo efetivo do ataque básico: +5% só na Maga, sem alterar o Guerreiro. */
+  private basicAttackInterval(authoredDuration?: number): number {
+    if (this.characterId !== 'mage') return this.attackCooldownTime;
+    let clipDuration = authoredDuration;
+    if (typeof clipDuration !== 'number' || !Number.isFinite(clipDuration) || clipDuration <= 0) {
+      clipDuration = this.actions.attacking?.getClip().duration || SWORD_COMBO_STAGES[0].duration;
+    }
+    return Math.max(
+      this.attackCooldownTime / MAGE_BASIC_ATTACK_SPEED_MULTIPLIER,
+      clipDuration / MAGE_BASIC_ATTACK_PLAYBACK_RATE
+    );
+  }
+
   private startCombo(): boolean {
     if (
       !this.canUseComboAttacks() ||
@@ -1512,7 +1525,7 @@ export class Player {
       : 1;
     if (!this.comboController.request(durationScale)) return false;
     if (this.basicAttackCost) this.basicAttackCost.spend();
-    this.comboController.minStageInterval = this.attackCooldownTime;
+    this.comboController.minStageInterval = this.basicAttackInterval(authoredDuration);
     this.isSwinging = true;
     // Only the Guerreiro's basic combo keeps the anti-stunlock window: the
     // Maga's basic cast sets the post-action immunity to 0 seconds.
@@ -1521,12 +1534,9 @@ export class Player {
       : BASIC_ACTION_INVULNERABILITY_SECONDS;
     this.actionInvulnerabilityFresh = this.actionInvulnerability > 0;
     this.emptyHandAttackPreview = false;
-    // The Mage cast keeps its own (accelerated) interval instead of the
-    // Warrior's 0.48 s swing. The same interval also survives movement
-    // cancellation / rapid clicks.
-    this.attackCooldown = this.characterId === 'mage'
-      ? Math.max(this.attackCooldownTime, authoredDuration / MAGE_BASIC_ATTACK_PLAYBACK_RATE)
-      : this.attackCooldownTime;
+    // A Maga usa o intervalo 5% menor tanto para o cooldown quanto para o
+    // combo; no Guerreiro o helper devolve o cooldown original da arma.
+    this.attackCooldown = this.basicAttackInterval(authoredDuration);
     this.comboHitTargets.clear();
     this.playedComboStages = 1;
     this.playComboStage(0);
@@ -1600,9 +1610,9 @@ export class Player {
   private consumeComboEvent(event: SwordComboEvent): void {
     switch (event.type) {
       case 'stage-started':
-        // Cada golpe do combo reinicia o cooldown: clicar rápido nunca passa
-        // da velocidade máxima de ataque.
-        this.attackCooldown = this.attackCooldownTime;
+        // Cada golpe reinicia o intervalo do básico: o Guerreiro conserva o
+        // cooldown da arma e a Maga mantém o ajuste de +5% no autoataque.
+        this.attackCooldown = this.basicAttackInterval();
         this.comboHitTargets.clear();
         this.playedComboStages = Math.max(this.playedComboStages, event.stage + 1);
         this.playComboStage(event.stage);

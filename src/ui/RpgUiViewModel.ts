@@ -36,6 +36,7 @@ export interface BackpackSlotView {
 }
 
 export interface CurrentCharacterStatusView {
+  readonly selectedClass: PlayerProfile['selectedClass'];
   readonly level: number;
   readonly attributePointsRemaining: number;
   readonly attributes: readonly {
@@ -58,6 +59,7 @@ export interface CurrentCharacterStatusView {
     readonly damageReduction: number;
     readonly criticalMultiplier: number;
     readonly criticalAttackChance: number;
+    readonly magicCriticalChance: number;
     readonly lifeStealFraction: number;
     readonly dodgeChance: number;
     readonly movementSpeedMultiplier: number;
@@ -91,10 +93,10 @@ const CURRENT_STATUS_ATTRIBUTES: readonly {
   { key: 'attack', label: 'Ataque' },
   { key: 'defense', label: 'Defesa' },
   { key: 'agility', label: 'Agilidade' },
-  { key: 'criticalAttack', label: 'Crítico físico' },
+  { key: 'criticalAttack', label: 'Ataque Crítico' },
   { key: 'criticalDamage', label: 'Dano crítico' },
   { key: 'lifeSteal', label: 'Roubo de vida' },
-  { key: 'criticalMagic', label: 'Crítico mágico' },
+  { key: 'criticalMagic', label: 'Ataque Mágico' },
   { key: 'dodge', label: 'Esquiva' },
 ];
 
@@ -145,14 +147,19 @@ export function buildRpgUiViewModel(
     }
     : null;
   const currentStatus: CurrentCharacterStatusView = {
+    selectedClass: profile.selectedClass,
     level: profile.progression.level,
     attributePointsRemaining: profile.attributePointsRemaining,
     attributes: CURRENT_STATUS_ATTRIBUTES.map(({ key, label }) => ({
       key,
       label,
-      // The equipped weapon answers for the attack reading: wearing a sword
-      // shows its damage next to the allocated points instead of hiding it.
-      value: key === 'attack' ? equippedAttributes.attack + weaponDamage : equippedAttributes[key],
+      // Ataque inclui a arma; Dano crítico agora mostra o multiplicador fixo,
+      // não os pontos legados que são convertidos para chance na migração.
+      value: key === 'attack'
+        ? equippedAttributes.attack + weaponDamage
+        : key === 'criticalDamage'
+          ? derivedStats.criticalMultiplier
+          : equippedAttributes[key],
     })),
     setBonus,
     derived: {
@@ -162,6 +169,7 @@ export function buildRpgUiViewModel(
       damageReduction: derivedStats.damageReduction,
       criticalMultiplier: derivedStats.criticalMultiplier,
       criticalAttackChance: derivedStats.criticalAttackChance,
+      magicCriticalChance: derivedStats.magicCriticalChance,
       lifeStealFraction: derivedStats.lifeStealFraction,
       dodgeChance: derivedStats.dodgeChance,
       movementSpeedMultiplier: derivedStats.movementSpeedMultiplier,

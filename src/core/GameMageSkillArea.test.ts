@@ -24,6 +24,7 @@ interface FakeEnemy {
   readonly hits: number[];
   readonly freezes: number;
   readonly slows: number;
+  elementalHits: number;
 }
 
 function fakeEnemy(x: number, z: number): FakeEnemy {
@@ -37,6 +38,7 @@ function fakeEnemy(x: number, z: number): FakeEnemy {
     hits: [],
     freezes: 0,
     slows: 0,
+    elementalHits: 0,
   };
   Object.assign(root.userData, {
     receivePlayerHit: (damage: number) => enemy.hits.push(damage),
@@ -56,7 +58,7 @@ function buildGame(enemies: FakeEnemy[]) {
       isDead: false,
       collisionRadius: enemy.collisionRadius,
       receivePlayerHit: (damage: number) => enemy.hits.push(damage),
-      applyElementalHit: () => undefined,
+      applyElementalHit: () => { enemy.elementalHits += 1; },
       applyMageFreeze: () => { (enemy as { freezes: number }).freezes += 1; },
       applyMageSlow: () => { (enemy as { slows: number }).slows += 1; },
     } as unknown as CombatRecord['enemy'],
@@ -127,7 +129,7 @@ function expectedDamage(spellId: MageSpellId, victim: THREE.Vector3): number {
   return Math.round(applyDistanceFalloff(baseDamage, distance, 'mage'));
 }
 
-describe('dano em área das skills 1 (água) e 2 (gelo) da Maga', () => {
+describe('dano em área das cinco skills da Maga', () => {
   it('a água atinge todos os monstros vivos num raio de 3 m do impacto', () => {
     const primary = fakeEnemy(6, 0);
     const perto = fakeEnemy(8.9, 0);      // 2,9 m do alvo: dentro
@@ -192,17 +194,26 @@ describe('dano em área das skills 1 (água) e 2 (gelo) da Maga', () => {
     expect(morto.hits).toEqual([]);
   });
 
-  it('as outras skills da Maga não mexem no chão (regra preservada)', () => {
-    for (const spellId of ['lava', 'lightning', 'laser'] as const) {
+  it('raio, laser e lava também atingem vizinhos a até 3 m, sem mexer no chão', () => {
+    for (const spellId of ['lightning', 'laser', 'lava'] as const) {
       const primary = fakeEnemy(6, 0);
-      const vizinho = fakeEnemy(6, 2);
-      const { cast, decals } = buildGame([primary, vizinho]);
+      const dentro = fakeEnemy(8.9, 0); // 2,9 m: dentro do raio
+      const fora = fakeEnemy(9.01, 0);  // 3,01 m: fora do raio
+      const { cast, decals } = buildGame([primary, dentro, fora]);
+
       cast(spellId, primary.root);
-      // O alvo principal continua levando o feitiço normalmente...
+
+      // Direto e respingo: cada corpo vivo recebe exatamente um acerto.
       expect(primary.hits).toHaveLength(1);
-      // ...mas sem explosão de 3 m nem decalque de chão: só água e gelo mudaram.
-      expect(vizinho.hits).toEqual([]);
+      expect(dentro.hits).toHaveLength(1);
+      expect(fora.hits).toEqual([]);
+      // Mantêm os visuais próprios: sem rachadura nem gelo no piso.
       expect(decals).toEqual([]);
+      if (spellId === 'lightning' || spellId === 'laser') {
+        // A propagação de dano não amplia o status elemental do alvo principal.
+        expect(primary.elementalHits).toBe(1);
+        expect(dentro.elementalHits).toBe(0);
+      }
     }
   });
 

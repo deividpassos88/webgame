@@ -64,7 +64,7 @@ function createMageAssets(basicDuration = 1): CharacterAssetStore {
 }
 
 describe('Mage gameplay player', () => {
-  it('plays the basic attack at the accelerated Mage tempo for a 0.9-second interval', async () => {
+  it('acelera o ataque básico da Maga em 5%, para um intervalo de cerca de 0,86 s', async () => {
     const player = new Player('mage', createMageAssets(1.8));
     await player.load();
     const casts: MageSpellCastEvent[] = [];
@@ -77,11 +77,14 @@ describe('Mage gameplay player', () => {
     player.update(0.48);
     expect(action.time).toBeCloseTo(0.48 * MAGE_BASIC_ATTACK_PLAYBACK_RATE);
     expect(player.isAttackInSwing()).toBe(true);
-    player.update(0.41);
+    player.update(0.35);
     expect(player.isAttackInSwing()).toBe(true);
-    player.update(0.02);
+    player.update(0.03);
     expect(player.isAttackInSwing()).toBe(false);
     expect(casts).toHaveLength(1);
+    // Em 0,86 s outro básico já é aceito (antes o intervalo aguardava 0,9 s).
+    player.attackAtCursor();
+    expect(casts).toHaveLength(2);
   });
 
   it('does not inherit a sword chain or spend extra MP when the Mage basic is clicked rapidly', async () => {
@@ -140,7 +143,9 @@ describe('Mage gameplay player', () => {
     const body = player.root.getObjectByName('Maga') as THREE.Mesh;
     body.updateMatrixWorld(true);
     const bounds = new THREE.Box3().setFromObject(body);
-    expect(bounds.min.y).toBeGreaterThan(0.6);
+    // A base da malha do corpo (e, portanto, os pés) precisa ficar no plano
+    // do chão do jogo: antes um gameYOffset de +0,9 m deixava a Maga suspensa.
+    expect(bounds.min.y).toBeCloseTo(player.root.position.y, 3);
   });
 
   it('adds a texture-preserving emissive lift so the Mage face does not render black in the dungeon', async () => {

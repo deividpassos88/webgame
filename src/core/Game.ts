@@ -11,7 +11,7 @@ import { TrainingDummy } from '../entities/TrainingDummy';
 import { createBoss } from '../entities/Boss';
 import { Level } from '../world/Level';
 import { HUD } from '../ui/HUD';
-import type { FloatingDamageVariant } from '../ui/HUD';
+import type { FloatingDamageCriticalType, FloatingDamageVariant } from '../ui/HUD';
 import { Logger } from '../utils/Logger';
 import { resolveGroundClickCombatAction } from './GroundClickCombatPolicy';
 import { CharacterAssetStore } from '../characters/CharacterAssetStore';
@@ -1064,17 +1064,26 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     }
   }
 
-  private resolveOutgoingDamage(baseDamage: number, elemental: boolean): number {
+  private resolveOutgoingDamage(
+    baseDamage: number,
+    _elemental: boolean,
+    criticalHit?: { isCritical: boolean }
+  ): number {
     const stats = this.getCharacterStats();
-    const chance = elemental ? stats.magicCriticalChance : stats.criticalAttackChance;
-    return quantizeCombatDamage(
-      baseDamage * (Math.random() < chance ? stats.criticalMultiplier : 1)
-    );
+    // O atributo crítico acompanha a classe: físico para Guerreiro/Arqueiro,
+    // mágico para Maga, inclusive no básico sem elemento explícito.
+    const isMagicalCritical = this.profile.selectedClass === 'mage';
+    const chance = isMagicalCritical ? stats.magicCriticalChance : stats.criticalAttackChance;
+    const isCritical = Math.random() < chance;
+    if (criticalHit) criticalHit.isCritical = isCritical;
+    return quantizeCombatDamage(baseDamage * (isCritical ? stats.criticalMultiplier : 1));
   }
 
-  private resolveIncomingDamage(damage: number): number {
+  private resolveIncomingDamage(damage: number, dodgeResult?: { dodged: boolean }): number {
     const stats = this.getCharacterStats();
-    if (Math.random() < stats.dodgeChance) return 0;
+    const dodged = Math.random() < stats.dodgeChance;
+    if (dodgeResult) dodgeResult.dodged = dodged;
+    if (dodged) return 0;
     return quantizeCombatDamage(damage * (1 - stats.damageReduction));
   }
 
@@ -2317,11 +2326,12 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       )) {
         continue;
       }
-      const damage = this.resolveOutgoingDamage(splashBase, false);
+      const criticalHit = { isCritical: false };
+      const damage = this.resolveOutgoingDamage(splashBase, false, criticalHit);
       if (damage <= 0) continue;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
       this.healFromLifeSteal(damage);
-      this.showFloatingDamage(record.enemy.root.position, damage);
+      this.showFloatingDamage(record.enemy.root.position, damage, 'damage', criticalHit.isCritical);
       this.syncCombatHealthBars(record);
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
@@ -2337,10 +2347,11 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
         position.z,
         MAGE_BASIC_SPLASH_RADIUS_METERS
       )) {
-        const damage = this.resolveOutgoingDamage(splashBase, false);
+        const criticalHit = { isCritical: false };
+        const damage = this.resolveOutgoingDamage(splashBase, false, criticalHit);
         if (damage > 0) {
           dummy.takeDamage(damage);
-          this.showFloatingDamage(position, damage);
+          this.showFloatingDamage(position, damage, 'damage', criticalHit.isCritical);
         }
       }
     }
@@ -2370,50 +2381,59 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
 
     // Alvo principal: o feitiço acertou em cheio — dano, status e lifesteal.
     if (this.isTrainingDummyTarget(body) && this.trainingDummy) {
-      const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, center, 0.45);
+      const criticalHit = { isCritical: false };
+      const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, center, 0.45, criticalHit);
       if (damage > 0) {
         this.trainingDummy.takeDamage(damage);
-        this.showFloatingDamage(this.trainingDummy.root.position, damage);
+        this.showFloatingDamage(this.trainingDummy.root.position, damage, 'damage', criticalHit.isCritical);
       }
     } else {
       const record = this.combatRegistry.findByRoot(body);
       if (record) {
         const bodyRadius = record.enemy.collisionRadius ?? 0.45;
-        const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, center, bodyRadius);
+        const criticalHit = { isCritical: false };
+        const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, center, bodyRadius, criticalHit);
         if (!record.enemy.isDead && damage > 0) {
-          this.damageEnemyWithMageSkill(spellId, skillElement, record, damage, center);
+          this.damageEnemyWithMageSkill(spellId, skillElement, record, damage, center, {
+            isCritical: criticalHit.isCritical,
+          });
         }
       }
     }
 
-    // Skills 1 (água) e 2 (gelo): além do alvo em cheio, o feitiço estoura no
-    // ponto de impacto e atinge TODO monstro vivo num raio de 3 m. O dano de
-    // cada um segue as mesmas regras do alvo principal (falloff pela distância
-    // até a Maga, elemento, lifesteal, número de dano, morte) e o alvo do
-    // feitiço fica de fora da varredura, então ninguém leva duas vezes.
+    // Todas as skills 1–5 da Maga acertam os monstros vivos num raio de 3 m
+    // do impacto. O alvo direto fica fora da varredura porque já recebeu o
+    // golpe cheio. Só água e gelo desenham decalque no chão; as outras skills
+    // mantêm seus próprios visuais e controles.
     const areaStyle = mageGroundImpactDecalStyle(spellId);
-    if (!areaStyle) return;
-    // O desenho de chão cobre exatamente o raio do dano, no mesmo ponto.
-    this.mageVFX.playGroundImpactDecal({
-      position: center,
-      radius: MAGE_SKILL_AREA_RADIUS_METERS,
-      style: areaStyle,
-    });
+    if (areaStyle) {
+      this.mageVFX.playGroundImpactDecal({
+        position: center,
+        radius: MAGE_SKILL_AREA_RADIUS_METERS,
+        style: areaStyle,
+      });
+    }
     const areaRecords = this.combatRegistry.activeRoots()
       .map((root) => this.combatRegistry.findByRoot(root))
       .filter((record): record is CombatRecord => record !== null && !record.enemy.isDead);
     for (const record of resolveMageSkillAreaTargets(areaRecords, center, body)) {
       const bodyRadius = record.enemy.collisionRadius ?? 0.45;
+      const criticalHit = { isCritical: false };
       const damage = this.mageSkillDamageAtDistance(
         baseDamage,
         elemental,
         record.enemy.root.position,
-        bodyRadius
+        bodyRadius,
+        criticalHit
       );
       if (damage <= 0) continue;
-      // Congelar (gelo) e desacelerar (água) continuam sendo só do alvo que o
-      // feitiço acertou: a explosão entrega dano, não controle.
-      this.damageEnemyWithMageSkill(spellId, skillElement, record, damage, center, { control: false });
+      // Cada inimigo rola o próprio crítico; controle e status existentes não
+      // passam ao redor junto com o dano da explosão.
+      this.damageEnemyWithMageSkill(spellId, skillElement, record, damage, center, {
+        control: false,
+        isCritical: criticalHit.isCritical,
+        applyElementalStatus: false,
+      });
     }
 
     // Boneco de treino: fora do registro de combate, mas precisa contar a
@@ -2428,10 +2448,11 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
         position.z,
         MAGE_SKILL_AREA_RADIUS_METERS
       )) {
-        const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, position, 0.45);
+        const criticalHit = { isCritical: false };
+        const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, position, 0.45, criticalHit);
         if (damage > 0) {
           dummy.takeDamage(damage);
-          this.showFloatingDamage(position, damage);
+          this.showFloatingDamage(position, damage, 'damage', criticalHit.isCritical);
         }
       }
     }
@@ -2448,7 +2469,8 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     baseDamage: number,
     elemental: boolean,
     center: THREE.Vector3,
-    bodyRadius: number
+    bodyRadius: number,
+    criticalHit?: { isCritical: boolean }
   ): number {
     const rawDistance = getEffectiveTargetDistance(
       this.player.root.position.distanceTo(center),
@@ -2459,7 +2481,8 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       : rawDistance;
     return this.resolveOutgoingDamage(
       applyDistanceFalloff(baseDamage, distance, 'mage'),
-      elemental
+      elemental,
+      criticalHit
     );
   }
 
@@ -2475,15 +2498,19 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     record: CombatRecord,
     damage: number,
     impact: THREE.Vector3,
-    options: { readonly control?: boolean } = {}
+    options: {
+      readonly control?: boolean;
+      readonly isCritical?: boolean;
+      readonly applyElementalStatus?: boolean;
+    } = {}
   ): void {
     record.enemy.receivePlayerHit(damage, this.player.root.position);
-    if (skillElement === 'fire' && !record.enemy.isDead) {
+    if (skillElement === 'fire' && options.applyElementalStatus !== false && !record.enemy.isDead) {
       record.enemy.applyElementalHit(skillElement, Math.max(1, damage * 0.12));
     }
     if (options.control !== false) this.applyMageSkillControl(spellId, record.enemy, impact);
     this.healFromLifeSteal(damage);
-    this.showFloatingDamage(record.enemy.root.position, damage);
+    this.showFloatingDamage(record.enemy.root.position, damage, 'damage', options.isCritical ?? false);
     this.syncCombatHealthBars(record);
     if (record.enemy.isDead) this.handleEnemyDeath(record);
   }
@@ -2545,11 +2572,14 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       let obj: THREE.Object3D | null = target;
       while (obj && !obj.userData.isTrainingDummy) obj = obj.parent;
       if (obj === this.trainingDummy.root || target === this.trainingDummy.root) {
-        const damage = this.player.attackDamage;
+        const criticalHit = { isCritical: false };
+        const damage = this.resolveOutgoingDamage(this.player.attackDamage, false, criticalHit);
         this.trainingDummy.takeDamage(damage);
         this.showFloatingDamage(
           this.trainingDummy.root.position,
-          damage
+          damage,
+          'damage',
+          criticalHit.isCritical
         );
         return;
       }
@@ -2574,11 +2604,12 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       distance,
       this.playerDistanceFalloffProfile()
     );
-    const damage = this.resolveOutgoingDamage(rangedDamage, false);
+    const criticalHit = { isCritical: false };
+    const damage = this.resolveOutgoingDamage(rangedDamage, false, criticalHit);
     if (damage <= 0) return;
     record.enemy.receivePlayerHit(damage, this.player.root.position);
     this.healFromLifeSteal(damage);
-    this.showFloatingDamage(target.position, damage);
+    this.showFloatingDamage(target.position, damage, 'damage', criticalHit.isCritical);
     this.syncCombatHealthBars(record);
 
     if (record.enemy.isDead) this.handleEnemyDeath(record);
@@ -2781,7 +2812,8 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
         false
       );
       const primaryDamage = applyDistanceFalloff(baseDamage, closestDist, 'warrior-wave');
-      const damage = this.resolveOutgoingDamage(primaryDamage, false);
+      const primaryCritical = { isCritical: false };
+      const damage = this.resolveOutgoingDamage(primaryDamage, false, primaryCritical);
       const primaryRecord = selection.index < records.length ? records[selection.index] : null;
 
       if (damage > 0) {
@@ -2792,12 +2824,12 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
           // Recuo curto: o monstro é nervoso e apenas recua um pouco no corte.
           const impulseStrength = slashType === 'combo3' ? 0.22 : slashType === 'combo2' ? 0.16 : isAuto ? 0.17 : 0.12;
           primaryRecord.enemy.applyImpulse(forward, impulseStrength);
-          this.showFloatingDamage(primaryRecord.enemy.root.position, damage);
+          this.showFloatingDamage(primaryRecord.enemy.root.position, damage, 'damage', primaryCritical.isCritical);
           this.syncCombatHealthBars(primaryRecord);
           if (primaryRecord.enemy.isDead) this.handleEnemyDeath(primaryRecord);
         } else if (this.trainingDummy) {
           this.trainingDummy.takeDamage(damage);
-          this.showFloatingDamage(this.trainingDummy.root.position, damage);
+          this.showFloatingDamage(this.trainingDummy.root.position, damage, 'damage', primaryCritical.isCritical);
         }
         this.warriorSlashVFX.playImpact(primaryTargetPos, 1);
       }
@@ -2815,12 +2847,13 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
         )) {
           continue;
         }
-        const splashDamage = this.resolveOutgoingDamage(splashBase, false);
+        const splashCritical = { isCritical: false };
+        const splashDamage = this.resolveOutgoingDamage(splashBase, false, splashCritical);
         if (splashDamage <= 0) continue;
         lifeStealDamage += splashDamage;
         record.enemy.receivePlayerHit(splashDamage, this.player.root.position);
         record.enemy.applyImpulse(forward, 0.06);
-        this.showFloatingDamage(position, splashDamage);
+        this.showFloatingDamage(position, splashDamage, 'damage', splashCritical.isCritical);
         this.syncCombatHealthBars(record);
         if (record.enemy.isDead) this.handleEnemyDeath(record);
       }
@@ -2833,10 +2866,11 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
           position.x,
           position.z
         )) {
-          const splashDamage = this.resolveOutgoingDamage(splashBase, false);
+          const splashCritical = { isCritical: false };
+          const splashDamage = this.resolveOutgoingDamage(splashBase, false, splashCritical);
           if (splashDamage > 0) {
             dummy.takeDamage(splashDamage);
-            this.showFloatingDamage(position, splashDamage);
+            this.showFloatingDamage(position, splashDamage, 'damage', splashCritical.isCritical);
           }
         }
       }
@@ -2913,7 +2947,8 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
         distance,
         this.warriorSkillDistanceFalloffProfile(event.attackId)
       );
-      const damage = this.resolveOutgoingDamage(rangedDamage, elemental);
+      const criticalHit = { isCritical: false };
+      const damage = this.resolveOutgoingDamage(rangedDamage, elemental, criticalHit);
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
@@ -2931,7 +2966,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       }
       // Cada skill deixa seu próprio efeito de controle no monstro.
       if (!record.enemy.isDead) this.applyWarriorSkillEffectToEnemy(record.enemy, event.attackId);
-      this.showFloatingDamage(record.enemy.root.position, damage);
+      this.showFloatingDamage(record.enemy.root.position, damage, 'damage', criticalHit.isCritical);
       this.syncCombatHealthBars(record);
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
@@ -3026,19 +3061,21 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       if (!enemyRecord || enemyRecord.enemy.isDead) continue;
       const distance = center.distanceTo(enemyRecord.enemy.root.position);
       if (distance > BLADE_STORM_RADIUS_METERS) continue;
+      const criticalHit = { isCritical: false };
       const damage = this.resolveOutgoingDamage(
         applyDistanceFalloff(
           context.baseDamage * BLADE_STORM_DAMAGE_RATIO,
           distance,
           context.falloff
         ),
-        context.elemental
+        context.elemental,
+        criticalHit
       );
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       enemyRecord.enemy.receivePlayerHit(damage, center);
       this.warriorSlashVFX.playImpact(enemyRecord.enemy.root.position, 0.7);
-      this.showFloatingDamage(enemyRecord.enemy.root.position, damage);
+      this.showFloatingDamage(enemyRecord.enemy.root.position, damage, 'damage', criticalHit.isCritical);
       this.syncCombatHealthBars(enemyRecord);
       if (enemyRecord.enemy.isDead) this.handleEnemyDeath(enemyRecord);
     }
@@ -3182,7 +3219,8 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
   private showFloatingDamage(
     worldPos: THREE.Vector3,
     amount: number,
-    variant: FloatingDamageVariant = 'damage'
+    variant: FloatingDamageVariant = 'damage',
+    isCritical = false
   ) {
     // Só o combo de skills alimenta o contador HITS: dano de ataque básico
     // (inclusive o respingo de área) não conta hit. O contador é regra de jogo
@@ -3199,8 +3237,25 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       x,
       y,
       variant === 'heal' ? formatHealingAmount(amount) : `-${quantizeCombatDamage(amount)}`,
-      variant
+      variant,
+      isCritical && variant === 'damage'
+        ? (this.profile.selectedClass === 'mage' ? 'magical' : 'physical')
+        : null
     );
+  }
+
+  private showFloatingMessage(
+    worldPos: THREE.Vector3,
+    text: string,
+    variant: FloatingDamageVariant = 'dodge'
+  ): void {
+    if (!this.damageNumbersEnabled()) return;
+    const pos = worldPos.clone();
+    pos.y += 1.6;
+    const screenPos = pos.project(this.cameraController.camera);
+    const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-screenPos.y * 0.5 + 0.5) * window.innerHeight;
+    this.hud.spawnFloatingDamage(x, y, text, variant);
   }
 
   private updateCombatEntities(delta: number): void {
@@ -3272,7 +3327,12 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       isRangedAttack,
       this.profile.selectedClass === 'mage' ? 'mage' : 'warrior'
     );
-    const deliveredDamage = this.resolveIncomingDamage(archerAdjustedDamage);
+    const dodgeResult = { dodged: false };
+    const deliveredDamage = this.resolveIncomingDamage(archerAdjustedDamage, dodgeResult);
+    if (dodgeResult.dodged) {
+      this.showFloatingMessage(this.player.root.position, 'Esquivou!', 'dodge');
+      return;
+    }
     if (deliveredDamage <= 0) return;
     const hpBeforeHit = this.player.hp;
     this.player.takeDamage(deliveredDamage);
@@ -3281,7 +3341,12 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
   }
 
   private onBossSkillHitPlayer(damage: number): void {
-    const deliveredDamage = this.resolveIncomingDamage(damage);
+    const dodgeResult = { dodged: false };
+    const deliveredDamage = this.resolveIncomingDamage(damage, dodgeResult);
+    if (dodgeResult.dodged) {
+      this.showFloatingMessage(this.player.root.position, 'Esquivou!', 'dodge');
+      return;
+    }
     if (deliveredDamage <= 0) return;
     const hpBeforeHit = this.player.hp;
     this.player.takeBossSkillDamage(deliveredDamage);
@@ -3290,7 +3355,12 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
   }
 
   private onMiniBossSkillHitPlayer(damage: number): void {
-    const deliveredDamage = this.resolveIncomingDamage(damage);
+    const dodgeResult = { dodged: false };
+    const deliveredDamage = this.resolveIncomingDamage(damage, dodgeResult);
+    if (dodgeResult.dodged) {
+      this.showFloatingMessage(this.player.root.position, 'Esquivou!', 'dodge');
+      return;
+    }
     if (deliveredDamage <= 0) return;
     const hpBeforeHit = this.player.hp;
     this.player.takeBossSkillDamage(deliveredDamage);

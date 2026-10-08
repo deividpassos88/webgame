@@ -22,13 +22,12 @@ export const MAGE_SHOCK_LIFT_METERS = 3.2;
 export const MAGE_BASIC_SPLASH_RADIUS_METERS = BASIC_ATTACK_AREA_RADIUS_METERS;
 export const MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER = BASIC_ATTACK_AREA_DAMAGE_MULTIPLIER;
 /**
- * As skills 1 (água) e 2 (gelo) da Maga estouram no ponto de impacto: TODO
- * monstro vivo cuja raiz esteja a até 3 m do impacto leva o feitiço, com as
- * mesmas regras do alvo principal (falloff por distância da Maga, elemento,
- * lifesteal, contador de vida). É RAIO, não diâmetro: um monstro a 2,9 m do
- * impacto entra; a 3,1 m fica fora. O alvo que o feitiço acertou em cheio leva
- * o dano UMA vez (ele é excluído da varredura). Skills 3/4/5 (choque, laser e
- * lava) mantêm exatamente as regras que já tinham.
+ * Todas as skills da Maga (1–5) causam dano em área no ponto de impacto: todo
+ * monstro vivo cuja raiz esteja a até 3 m leva o dano da skill, com as mesmas
+ * regras do alvo principal (falloff pela distância da Maga, elemento e
+ * lifesteal). É RAIO, não diâmetro: a 2,9 m entra; a 3,1 m fica fora. O alvo
+ * atingido diretamente é excluído da varredura para não receber dano duplicado.
+ * Os controles e os visuais de chão continuam específicos de cada skill.
  */
 export const MAGE_SKILL_AREA_RADIUS_METERS = 3;
 

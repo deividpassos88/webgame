@@ -22,7 +22,7 @@ function record(id: string, x: number, z: number, dead = false, y = 0): CombatRe
 
 const IMPACT = new THREE.Vector3(0, 0.95, 0);
 
-describe('explosão em área das skills 1 e 2 da Maga', () => {
+describe('seleção de alvos para dano em área das skills da Maga', () => {
   it('o raio é 3 metros de verdade (não 3 de diâmetro)', () => {
     expect(MAGE_SKILL_AREA_RADIUS_METERS).toBe(3);
     const records = [

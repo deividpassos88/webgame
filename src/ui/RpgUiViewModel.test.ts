@@ -69,14 +69,32 @@ describe('RpgUiViewModel', () => {
           { label: 'Ataque', value: 8 },
           { label: 'Defesa', value: 7 },
           { label: 'Agilidade', value: 6 },
-          { label: 'Crítico físico', value: 5 },
-          { label: 'Dano crítico', value: 4 },
+          { label: 'Ataque Crítico', value: 5 },
+          { label: 'Dano crítico', value: 3 },
           { label: 'Roubo de vida', value: 3 },
-          { label: 'Crítico mágico', value: 2 },
+          { label: 'Ataque Mágico', value: 2 },
           { label: 'Esquiva', value: 1 },
         ],
       },
     });
+  });
+
+  it('exposes the class-specific chance values and fixed critical multiplier', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.selectedClass = 'mage';
+    profile.attributes = {
+      ...createDefaultCharacterAttributes(),
+      criticalAttack: 8,
+      criticalMagic: 12,
+      criticalDamage: 4,
+    };
+    const view = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot());
+
+    expect(view.currentStatus.selectedClass).toBe('mage');
+    expect(view.currentStatus.derived.criticalAttackChance).toBeCloseTo(0.04);
+    expect(view.currentStatus.derived.magicCriticalChance).toBeCloseTo(0.06);
+    expect(view.currentStatus.derived.criticalMultiplier).toBe(3);
+    expect(view.currentStatus.attributes.find(({ key }) => key === 'criticalDamage')?.value).toBe(3);
   });
 
   it('resolves the derived combat numbers from the equipped weapon and armor', () => {

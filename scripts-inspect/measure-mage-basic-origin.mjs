@@ -99,7 +99,8 @@ action.play();
 
 const root = new THREE.Group();
 model.scale.setScalar(2.25);   // CharacterCatalog: gameScale da Maga
-model.position.y = 0.9;        // gameYOffset
+// O modelo é alinhado automaticamente ao piso, sem gameYOffset extra.
+model.position.y = 0;
 root.add(model);
 root.updateMatrixWorld(true);
 

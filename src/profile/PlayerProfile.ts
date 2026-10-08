@@ -38,7 +38,9 @@ import {
 
 /** The key stays stable so existing browser saves can be upgraded in place. */
 export const PROFILE_STORAGE_KEY = 'dragon-miner.profile.v1';
-export const PROFILE_SCHEMA_VERSION = 12 as const;
+export const PROFILE_SCHEMA_VERSION = 13 as const;
+/** Schema twelve is migrated to the fixed 3× critical multiplier. */
+export const PREVIOUS_CRITICAL_PROFILE_SCHEMA_VERSION = 12 as const;
 /**
  * Schema eleven is the last one written before the lobby Settings menu: it has
  * no `settings` block, so those saves gain the defaults on load.
@@ -233,66 +235,76 @@ export function loadPlayerProfile(storage = browserStorage()): ProfileLoadResult
 
   try {
     const parsed: unknown = JSON.parse(stored);
-    if (isPlayerProfile(parsed)) return { kind: 'loaded', profile: parsed };
-    if (isVersionElevenProfile(parsed)) {
-      const migrated = migrateVersionElevenProfile(parsed);
-      savePlayerProfile(migrated, storage);
+    if (isPlayerProfile(parsed)) {
+      const migrated = migrateCriticalDamagePoints(parsed);
+      if (migrated !== parsed) savePlayerProfile(migrated, storage);
       return { kind: 'loaded', profile: migrated };
+    }
+    if (isVersionTwelveProfile(parsed)) {
+      return persistMigratedProfile({ ...parsed, schemaVersion: PROFILE_SCHEMA_VERSION }, storage);
+    }
+    if (isVersionElevenProfile(parsed)) {
+      return persistMigratedProfile(migrateVersionElevenProfile(parsed), storage);
     }
     if (isStrengthAttributeProfile(parsed)) {
-      const migrated = migrateStrengthAttributeProfile(parsed);
-      savePlayerProfile(migrated, storage);
-      return { kind: 'loaded', profile: migrated };
+      return persistMigratedProfile(migrateStrengthAttributeProfile(parsed), storage);
     }
     if (isVersionNineProfile(parsed)) {
-      const migrated = migrateVersionNineProfile(parsed);
-      savePlayerProfile(migrated, storage);
-      return { kind: 'loaded', profile: migrated };
+      return persistMigratedProfile(migrateVersionNineProfile(parsed), storage);
     }
     if (isVersionEightProfile(parsed)) {
-      const migrated = migrateVersionEightProfile(parsed);
-      savePlayerProfile(migrated, storage);
-      return { kind: 'loaded', profile: migrated };
+      return persistMigratedProfile(migrateVersionEightProfile(parsed), storage);
     }
     if (isVersionSevenProfile(parsed)) {
-      const migrated = migrateVersionSevenProfile(parsed);
-      savePlayerProfile(migrated, storage);
-      return { kind: 'loaded', profile: migrated };
+      return persistMigratedProfile(migrateVersionSevenProfile(parsed), storage);
     }
     if (isVersionSixProfile(parsed)) {
-      const migrated = migrateVersionSixProfile(parsed);
-      savePlayerProfile(migrated, storage);
-      return { kind: 'loaded', profile: migrated };
+      return persistMigratedProfile(migrateVersionSixProfile(parsed), storage);
     }
     if (isVersionFiveProfile(parsed)) {
-      const migrated = migrateVersionFiveProfile(parsed);
-      savePlayerProfile(migrated, storage);
-      return { kind: 'loaded', profile: migrated };
+      return persistMigratedProfile(migrateVersionFiveProfile(parsed), storage);
     }
     if (isVersionFourProfile(parsed)) {
-      const migrated = migrateVersionFourProfile(parsed);
-      savePlayerProfile(migrated, storage);
-      return { kind: 'loaded', profile: migrated };
+      return persistMigratedProfile(migrateVersionFourProfile(parsed), storage);
     }
     if (isVersionThreeProfile(parsed)) {
-      const migrated = migrateVersionThreeProfile(parsed);
-      savePlayerProfile(migrated, storage);
-      return { kind: 'loaded', profile: migrated };
+      return persistMigratedProfile(migrateVersionThreeProfile(parsed), storage);
     }
     if (isVersionTwoProfile(parsed)) {
-      const migrated = migrateVersionTwoProfile(parsed);
-      savePlayerProfile(migrated, storage);
-      return { kind: 'loaded', profile: migrated };
+      return persistMigratedProfile(migrateVersionTwoProfile(parsed), storage);
     }
     if (isLegacyPlayerProfile(parsed)) {
-      const migrated = migrateLegacyProfile(parsed);
-      savePlayerProfile(migrated, storage);
-      return { kind: 'loaded', profile: migrated };
+      return persistMigratedProfile(migrateLegacyProfile(parsed), storage);
     }
     throw new Error('invalid profile');
   } catch {
     return { kind: 'recovered', profile: createDefaultPlayerProfile() };
   }
+}
+
+/** Persiste a migração sem perder a pontuação distribuída do perfil antigo. */
+function persistMigratedProfile(profile: PlayerProfile, storage: StoragePort): ProfileLoadResult {
+  const migrated = migrateCriticalDamagePoints(profile);
+  savePlayerProfile(migrated, storage);
+  return { kind: 'loaded', profile: migrated };
+}
+
+/**
+ * Pontos do antigo atributo Dano Crítico viram chance da classe atualmente
+ * selecionada, ponto por ponto. O multiplicador crítico agora é fixo em 3×.
+ */
+function migrateCriticalDamagePoints(profile: PlayerProfile): PlayerProfile {
+  const points = profile.attributes.criticalDamage;
+  if (points <= 0) return profile;
+  const chanceAttribute = profile.selectedClass === 'mage' ? 'criticalMagic' : 'criticalAttack';
+  return {
+    ...profile,
+    attributes: {
+      ...profile.attributes,
+      [chanceAttribute]: profile.attributes[chanceAttribute] + points,
+      criticalDamage: 0,
+    },
+  };
 }
 
 export function savePlayerProfile(
@@ -464,8 +476,16 @@ export function syncStarterWeaponToClass(profile: PlayerProfile): PlayerProfile 
 }
 
 function isPlayerProfile(value: unknown): value is PlayerProfile {
+  return isCurrentPlayerProfileShape(value, PROFILE_SCHEMA_VERSION);
+}
+
+function isVersionTwelveProfile(value: unknown): value is VersionTwelvePlayerProfile {
+  return isCurrentPlayerProfileShape(value, PREVIOUS_CRITICAL_PROFILE_SCHEMA_VERSION);
+}
+
+function isCurrentPlayerProfileShape(value: unknown, schemaVersion: number): value is Record<string, unknown> {
   if (!isRecord(value)) return false;
-  if (value.schemaVersion !== PROFILE_SCHEMA_VERSION) return false;
+  if (value.schemaVersion !== schemaVersion) return false;
   if (!isPlayableCharacterId(value.selectedClass)) return false;
   if (!isCanonicalEquipment(value.equipment)) return false;
   const backpackCapacity = value.backpackCapacity;
@@ -1165,6 +1185,10 @@ interface VersionSevenPlayerProfile extends Omit<PlayerProfile, 'schemaVersion' 
 
 interface VersionEightPlayerProfile extends Omit<PlayerProfile, 'schemaVersion' | 'blacksmith'> {
   schemaVersion: typeof PREVIOUS_PROFILE_SCHEMA_VERSION;
+}
+
+interface VersionTwelvePlayerProfile extends Omit<PlayerProfile, 'schemaVersion'> {
+  schemaVersion: typeof PREVIOUS_CRITICAL_PROFILE_SCHEMA_VERSION;
 }
 
 interface VersionElevenPlayerProfile extends Omit<PlayerProfile, 'schemaVersion' | 'settings'> {

@@ -3,6 +3,7 @@ import {
   ATTRIBUTE_INITIAL_CAP,
   ATTRIBUTE_GATE_STEP,
   ATTRIBUTE_SOLO_CAP,
+  ALLOCATABLE_ATTRIBUTE_KEYS,
   ATTRIBUTE_KEYS,
   attributeAllocationAllowance,
   getAttributeAllocationCap,
@@ -25,8 +26,11 @@ describe('CharacterAttributes', () => {
       lifeSteal: 0,
       dodge: 0,
     });
-    // Nine attributes since the Força -> Vitalidade rework.
+    // Oito atributos recebem pontos; Dano crítico permanece só para migrar saves.
     expect(ATTRIBUTE_KEYS).toHaveLength(9);
+    expect(ALLOCATABLE_ATTRIBUTE_KEYS).toHaveLength(8);
+    expect(ALLOCATABLE_ATTRIBUTE_KEYS).not.toContain('criticalDamage');
+    expect(attributeAllocationAllowance(createDefaultCharacterAttributes(), 'criticalDamage', 1, 1)).toBe(0);
     expect(ATTRIBUTE_KEYS).toContain('vitality');
     expect(ATTRIBUTE_KEYS).not.toContain('strength');
   });
@@ -75,14 +79,21 @@ describe('CharacterAttributes', () => {
     expect(stats.attackSpeedMultiplier).toBeCloseTo(1.35);
     expect(stats.criticalAttackChance).toBeCloseTo(0.50);
     expect(stats.magicCriticalChance).toBeCloseTo(0.25);
-    // Critical Damage: 1.5x base + 1.5% per point, capped at +150% (3.0x total).
-    expect(stats.criticalMultiplier).toBeCloseTo(3.0);
+    // Critical Damage is fixed at 3×, independent of legacy allocated points.
+    expect(stats.criticalMultiplier).toBe(3);
     // Life Steal: 0.20% per point, capped at 20%.
     expect(stats.lifeStealFraction).toBeCloseTo(0.20);
     expect(stats.dodgeChance).toBeCloseTo(0.35);
   });
 
-  it('caps life steal and critical damage below their maximum allocations', () => {
+  it('increases dodge chance by 0.35 percentage points per invested point', () => {
+    const base = createDefaultCharacterAttributes();
+    expect(deriveCharacterStats({ ...base, dodge: 1 }).dodgeChance).toBeCloseTo(0.0035);
+    expect(deriveCharacterStats({ ...base, dodge: 10 }).dodgeChance).toBeCloseTo(0.035);
+    expect(deriveCharacterStats({ ...base, dodge: 100 }).dodgeChance).toBeCloseTo(0.35);
+  });
+
+  it('keeps the 3× critical multiplier fixed while capping life steal', () => {
     const base = createDefaultCharacterAttributes();
     const stats = deriveCharacterStats({ ...base, criticalDamage: 250, lifeSteal: 400 });
 

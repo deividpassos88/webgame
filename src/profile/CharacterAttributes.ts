@@ -3,8 +3,9 @@
  *
  * Strength was replaced by Vitality: damage already belongs to Attack, and the
  * old Strength mixed a flat health bonus with a physical damage multiplier,
- * which made it overlap both Attack and Vitality. Critical Damage and Life
- * Steal were added so gear can differ beyond flat attack/defense values.
+ * which made it overlap both Attack and Vitality. Critical Damage remains in
+ * the persisted shape only to migrate old point allocations into the active
+ * class's critical chance; new builds use a fixed 3× critical multiplier.
  */
 export const ATTRIBUTE_KEYS = [
   'vitality',
@@ -19,6 +20,20 @@ export const ATTRIBUTE_KEYS = [
 ] as const;
 
 export type CharacterAttributeKey = (typeof ATTRIBUTE_KEYS)[number];
+
+/** criticalDamage is a fixed effect now, so it is kept only for save migration. */
+export const ALLOCATABLE_ATTRIBUTE_KEYS = [
+  'vitality',
+  'attack',
+  'defense',
+  'agility',
+  'criticalAttack',
+  'criticalMagic',
+  'lifeSteal',
+  'dodge',
+] as const satisfies readonly CharacterAttributeKey[];
+
+export type AllocatableCharacterAttributeKey = (typeof ALLOCATABLE_ATTRIBUTE_KEYS)[number];
 
 export type CharacterAttributes = Record<CharacterAttributeKey, number>;
 
@@ -45,8 +60,7 @@ const HEALTH_PER_VITALITY = 3;
 const DAMAGE_PER_ATTACK = 1;
 /** Defense points needed to reach 50% damage reduction. */
 const DEFENSE_REDUCTION_DENOMINATOR = 40;
-const BASE_CRITICAL_MULTIPLIER = 1.5;
-const MAX_CRITICAL_DAMAGE_BONUS = 1.5;
+const CRITICAL_HIT_MULTIPLIER = 3;
 const MAX_LIFE_STEAL = 0.20;
 /** Maximum bonus fatigue granted by Agility. */
 export const MAX_FATIGUE_BONUS = 200;
@@ -93,7 +107,7 @@ export interface DerivedCharacterStats {
   /** Chance values are represented as fractions (0.35 = 35%). */
   readonly criticalAttackChance: number;
   readonly magicCriticalChance: number;
-  /** Damage multiplier applied on a critical hit (1.5x plus Critical Damage). */
+  /** Fixed damage multiplier applied when the class-appropriate critical hits (3×). */
   readonly criticalMultiplier: number;
   readonly dodgeChance: number;
   /** Fraction of the damage dealt that is returned as health (0.15 = 15%). */
@@ -146,9 +160,10 @@ export function getAttributeAllocationCap(
   attributes: CharacterAttributes,
   attribute: CharacterAttributeKey
 ): number {
+  if (!ALLOCATABLE_ATTRIBUTE_KEYS.includes(attribute as AllocatableCharacterAttributeKey)) return 0;
   const normalized = normalizeCharacterAttributes(attributes);
   let maxOther = 0;
-  for (const key of ATTRIBUTE_KEYS) {
+  for (const key of ALLOCATABLE_ATTRIBUTE_KEYS) {
     if (key !== attribute && normalized[key] > maxOther) {
       maxOther = normalized[key];
     }
@@ -205,8 +220,9 @@ export function deriveCharacterStats(
   const criticalAttackChance = Math.min(MAX_CRITICAL_CHANCE, safe.criticalAttack * 0.005);
   const magicCriticalChance = Math.min(MAX_CRITICAL_CHANCE, safe.criticalMagic * 0.005);
   const dodgeChance = Math.min(MAX_DODGE_CHANCE, safe.dodge * 0.0035);
-  const criticalMultiplier = BASE_CRITICAL_MULTIPLIER
-    + Math.min(MAX_CRITICAL_DAMAGE_BONUS, safe.criticalDamage * 0.015);
+  // Todo acerto crítico multiplica por 3×; pontos antigos de Dano crítico
+  // são convertidos na migração para chance da classe selecionada.
+  const criticalMultiplier = CRITICAL_HIT_MULTIPLIER;
   const lifeStealFraction = Math.min(MAX_LIFE_STEAL, safe.lifeSteal * 0.002);
 
   const maxHealth = safeBase(base.maxHealth, 100) + maxHealthBonus;

@@ -208,9 +208,9 @@ const ATTRIBUTE_LABELS: Readonly<Record<string, string>> = {
   attack: 'Ataque',
   defense: 'Defesa',
   agility: 'Agilidade',
-  criticalAttack: 'Crítico',
+  criticalAttack: 'Ataque Crítico',
   criticalDamage: 'Dano crítico',
-  criticalMagic: 'Crítico mágico',
+  criticalMagic: 'Ataque Mágico',
   lifeSteal: 'Roubo de vida',
   dodge: 'Esquiva',
 };
@@ -339,9 +339,8 @@ export function renderLobbyHotkeys(
  * The reference hall shows a seven-metric sheet: the six attributes that answer
  * for the build plus the life total that moves with gear. Ataque includes the
  * equipped weapon damage, so wearing a sword shows its bonus right away.
- * Crítico físico is surfaced simply as "Crítico"; the dedicated Critical Damage
- * and Life Steal readings stay on the full sheet in the character overlay. The
- * view model keeps its full nine-attribute contract for other surfaces.
+ * A chance ativa aparece como Ataque Crítico para o Guerreiro/Arqueiro ou
+ * Ataque Mágico para a Maga. Dano crítico e Roubo de vida ficam na ficha cheia.
  */
 const LOBBY_STATUS_METRICS: readonly {
   readonly key: string;
@@ -351,7 +350,7 @@ const LOBBY_STATUS_METRICS: readonly {
   { key: 'attack', label: 'Ataque' },
   { key: 'defense', label: 'Defesa' },
   { key: 'agility', label: 'Agilidade' },
-  { key: 'criticalAttack', label: 'Crítico' },
+  { key: 'criticalAttack', label: 'Ataque Crítico' },
   { key: 'dodge', label: 'Esquiva' },
 ];
 
@@ -370,13 +369,16 @@ function lobbyStatusHints(
 ): Readonly<Record<string, string>> {
   const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
   const derived = status.derived;
+  const activeCriticalChance = status.selectedClass === 'mage'
+    ? derived.magicCriticalChance
+    : derived.criticalAttackChance;
   return {
     vitality: `+${Math.round(derived.maxHealthBonus)} vida`,
     attack: 'dano do golpe',
     defense: `-${percent(derived.damageReduction)} do dano`,
     agility: `+${((derived.movementSpeedMultiplier - 1) * 100).toFixed(1)}% velocidade`,
-    criticalAttack: `${percent(derived.criticalAttackChance)} de chance`,
-    dodge: `${percent(derived.dodgeChance)} de anular`,
+    criticalAttack: `${percent(activeCriticalChance)} de chance`,
+    dodge: `${percent(derived.dodgeChance)} de chance de esquivar`,
   };
 }
 
@@ -385,11 +387,18 @@ function lobbyStatusMetrics(
 ): readonly { readonly label: string; readonly value: string | number; readonly hint: string }[] {
   const byKey = new Map(status.attributes.map(({ key, value }) => [key as string, value]));
   const hints = lobbyStatusHints(status);
-  const attributes = LOBBY_STATUS_METRICS.map(({ key, label }) => ({
-    label,
-    value: byKey.get(key) ?? 0,
-    hint: hints[key] ?? '',
-  }));
+  const criticalKey = status.selectedClass === 'mage' ? 'criticalMagic' : 'criticalAttack';
+  const criticalLabel = status.selectedClass === 'mage' ? 'Ataque Mágico' : 'Ataque Crítico';
+  const attributes = LOBBY_STATUS_METRICS.map(({ key, label }) => {
+    if (key === 'criticalAttack') {
+      return {
+        label: criticalLabel,
+        value: byKey.get(criticalKey) ?? 0,
+        hint: hints.criticalAttack ?? '',
+      };
+    }
+    return { label, value: byKey.get(key) ?? 0, hint: hints[key] ?? '' };
+  });
   // The attack reading already carries the equipped weapon damage, so the
   // sheet only adds the life total next to the six attributes.
   return [

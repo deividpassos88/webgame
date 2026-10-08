@@ -247,6 +247,40 @@ describe('InventoryOverlay', () => {
     expect(persisted).toBe(1);
   });
 
+  it('separa Ataque Crítico/Ataque Mágico por classe e mantém o multiplicador em 3×', () => {
+    const root = mountInventoryMarkup();
+    const profile = createDefaultPlayerProfile();
+    profile.attributePointsRemaining = 5;
+    profile.selectedClass = 'mage';
+    const overlay = new InventoryOverlay(profile, InventoryStore.fromProfile(profile), {
+      onClose: () => undefined,
+      onInventoryChanged: () => undefined,
+      onStatusChanged: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+    });
+
+    overlay.show('status');
+    const physicalRow = root.querySelector<HTMLElement>('[data-attribute-row="criticalAttack"]')!;
+    const magicalRow = root.querySelector<HTMLElement>('[data-attribute-row="criticalMagic"]')!;
+    expect(physicalRow.textContent).toContain('Ataque Crítico');
+    expect(physicalRow.textContent).toContain('Inativo para a classe selecionada');
+    expect(physicalRow.querySelector<HTMLButtonElement>('[data-attribute-delta="1"]')?.disabled).toBe(true);
+    expect(magicalRow.textContent).toContain('Ataque Mágico');
+    expect(magicalRow.querySelector<HTMLButtonElement>('[data-attribute-delta="1"]')?.disabled).toBe(false);
+    expect(root.querySelector('#attribute-criticalDamage')?.textContent).toBe('3×');
+    expect(root.querySelector('[data-attribute="criticalDamage"]')).toBeNull();
+    expect(document.getElementById('status-derived-stats')?.textContent).toContain('Ataque Mágico0.0%');
+    expect(document.getElementById('status-derived-stats')?.textContent).toContain('Dano crítico3×');
+
+    profile.selectedClass = 'paladin';
+    overlay.show('status');
+    expect(root.querySelector<HTMLElement>('[data-attribute-row="criticalAttack"]')
+      ?.querySelector<HTMLButtonElement>('[data-attribute-delta="1"]')?.disabled).toBe(false);
+    expect(root.querySelector<HTMLElement>('[data-attribute-row="criticalMagic"]')
+      ?.querySelector<HTMLButtonElement>('[data-attribute-delta="1"]')?.disabled).toBe(true);
+    expect(document.getElementById('status-derived-stats')?.textContent).toContain('Ataque Crítico0.0%');
+  });
+
   it('reads the current loadout in the Impacto atual panel instead of a fixed base', () => {
     const root = mountInventoryMarkup();
     const profile = createDefaultPlayerProfile();

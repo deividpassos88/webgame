@@ -56,7 +56,7 @@ describe('Mage skill impact control', () => {
     expect(MAGE_FIRE_RADIUS_METERS).toBe(2);
   });
 
-  it('a explosão das skills 1 e 2 é um raio de 3 m, e só elas desenham o chão', () => {
+  it('todas as skills usam raio de dano de 3 m, mas só água e gelo marcam o chão', () => {
     expect(MAGE_SKILL_AREA_RADIUS_METERS).toBe(3);
     expect(mageGroundImpactDecalStyle('water')).toBe('cracked');
     expect(mageGroundImpactDecalStyle('ice')).toBe('frozen');

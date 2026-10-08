@@ -849,11 +849,32 @@ describe('lobby character preparation', () => {
     expect(markup).toContain('Ataque');
     expect(markup).toContain('Defesa');
     expect(markup).toContain('Agilidade');
-    expect(markup).toContain('Crítico');
+    expect(markup).toContain('Ataque Crítico');
+    expect(markup).not.toContain('Ataque Mágico');
     expect(markup).not.toContain('Crítico físico');
     expect(markup).not.toContain('Crítico mágico');
-    // Esquiva joined the sheet; Crítico mágico deliberately stayed out.
     expect(markup).toContain('Esquiva');
+  });
+
+  it('mostra Ataque Mágico na ficha da Maga, sem exibir Ataque Crítico', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.selectedClass = 'mage';
+    profile.attributes.criticalAttack = 8;
+    profile.attributes.criticalMagic = 12;
+    const status = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot()).currentStatus;
+    const renderStatus = (LobbyScreenModule as unknown as {
+      renderLobbyCurrentStatus?: (currentStatus: unknown) => string;
+    }).renderLobbyCurrentStatus;
+
+    if (typeof renderStatus !== 'function') {
+      expect(typeof renderStatus).toBe('function');
+      return;
+    }
+
+    const markup = renderStatus(status);
+    expect(markup).toContain('Ataque Mágico');
+    expect(markup).not.toContain('Ataque Crítico');
+    expect(markup).toContain('6% de chance');
   });
 
   it('prints the strike damage the fight uses, not a decorative attack number', () => {
