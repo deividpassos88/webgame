@@ -616,7 +616,12 @@ describe('lobby character preparation', () => {
 
     void lobby.show(options);
     const start = document.getElementById('start-game') as HTMLButtonElement;
-    expect(start.disabled).toBe(true);
+    // O gate da arma não usa `disabled`: o botão continua clicável para que o
+    // clique mostre o aviso central explicando o que falta. O bloqueio é
+    // anunciado por aria-disabled, title e pela aparência travada.
+    expect(start.disabled).toBe(false);
+    expect(start.getAttribute('aria-disabled')).toBe('true');
+    expect(start.classList.contains('is-weapon-locked')).toBe(true);
     expect(start.title).toContain('Equipe uma arma');
 
     equipStarterSword(profile);
@@ -624,6 +629,8 @@ describe('lobby character preparation', () => {
     void lobby.show(options);
 
     expect(start.disabled).toBe(false);
+    expect(start.getAttribute('aria-disabled')).toBe('false');
+    expect(start.classList.contains('is-weapon-locked')).toBe(false);
     expect(start.title).toBe('');
     lobby.dispose();
   });
@@ -722,6 +729,65 @@ describe('lobby character preparation', () => {
     lobby.dispose();
   });
 
+  it('opens the settings menu from the lobby gear and scales the drag by the saved sensitivity', () => {
+    mountLobbyRouteMarkup();
+    // A engrenagem vive no index.html; aqui ela é injetada antes do construtor,
+    // que resolve o elemento no primeiro acesso.
+    document.getElementById('lobby-screen')!.insertAdjacentHTML(
+      'afterbegin',
+      '<button class="arena-settings" data-open-settings type="button">Ajustes</button>'
+    );
+    const frameCallbacks: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frameCallbacks.push(callback);
+      return frameCallbacks.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture());
+    const profile = createDefaultPlayerProfile();
+    equipStarterSword(profile);
+    profile.settings = { ...profile.settings, cameraSensitivity: 2 };
+    const lobby = new LobbyScreen(
+      createLobbyRenderer(),
+      document.createElement('canvas'),
+      createLobbyAssets(),
+      profile,
+      InventoryStore.fromProfile(profile)
+    );
+    const opened: number[] = [];
+    const frames: number[] = [];
+    void lobby.show({
+      firstRun: false,
+      onClassConfirmed: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+      onHotkeysChanged: () => undefined,
+      onAutoBasicAttackChanged: () => undefined,
+      onBlacksmithLicensePurchase: () => ({ message: '' }),
+      onBlacksmithCraft: () => ({ message: '' }),
+      onOpenSettings: () => opened.push(1),
+      onFrameSample: (nowMs) => frames.push(nowMs),
+    });
+
+    document.querySelector<HTMLButtonElement>('.arena-settings')!.click();
+    expect(opened).toHaveLength(1);
+
+    const holder = (lobby as unknown as { modelHolder: THREE.Group }).modelHolder;
+    const stage = document.querySelector('.lobby-hero-stage')!;
+    stage.dispatchEvent(new PointerEvent('pointerdown', { clientX: 0, bubbles: true }));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 50 }));
+    // 50 px * 0.008 * sensibilidade 2 = 0,8 rad; sem a sensibilidade seria 0,4.
+    expect(holder.rotation.y).toBeCloseTo(0.8);
+    window.dispatchEvent(new PointerEvent('pointerup'));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 200 }));
+    expect(holder.rotation.y).toBeCloseTo(0.8);
+
+    // O contador de FPS é alimentado pelo loop do lobby (não só pelo Game).
+    expect(frames).toHaveLength(0);
+    frameCallbacks.splice(0).forEach((callback) => callback(0));
+    expect(frames.length).toBeGreaterThan(0);
+    lobby.dispose();
+  });
+
   it('names the Mage first shortcut Dragão das Marés without changing the Warrior shortcut', () => {
     const hotkeys = createDefaultPlayerProfile().hotkeys;
     expect(renderLobbyHotkeys(hotkeys, null, '', false, 'mage')).toContain('Dragão das Marés');
@@ -783,11 +849,32 @@ describe('lobby character preparation', () => {
     expect(markup).toContain('Ataque');
     expect(markup).toContain('Defesa');
     expect(markup).toContain('Agilidade');
-    expect(markup).toContain('Crítico');
+    expect(markup).toContain('Ataque Crítico');
+    expect(markup).not.toContain('Ataque Mágico');
     expect(markup).not.toContain('Crítico físico');
     expect(markup).not.toContain('Crítico mágico');
-    // Esquiva joined the sheet; Crítico mágico deliberately stayed out.
     expect(markup).toContain('Esquiva');
+  });
+
+  it('mostra Ataque Mágico na ficha da Maga, sem exibir Ataque Crítico', () => {
+    const profile = createDefaultPlayerProfile();
+    profile.selectedClass = 'mage';
+    profile.attributes.criticalAttack = 8;
+    profile.attributes.criticalMagic = 12;
+    const status = buildRpgUiViewModel(profile, InventoryStore.fromProfile(profile).snapshot()).currentStatus;
+    const renderStatus = (LobbyScreenModule as unknown as {
+      renderLobbyCurrentStatus?: (currentStatus: unknown) => string;
+    }).renderLobbyCurrentStatus;
+
+    if (typeof renderStatus !== 'function') {
+      expect(typeof renderStatus).toBe('function');
+      return;
+    }
+
+    const markup = renderStatus(status);
+    expect(markup).toContain('Ataque Mágico');
+    expect(markup).not.toContain('Ataque Crítico');
+    expect(markup).toContain('6% de chance');
   });
 
   it('prints the strike damage the fight uses, not a decorative attack number', () => {

@@ -138,6 +138,62 @@ describe('PlayerProfile progression', () => {
     expect(JSON.parse(storage.value!).schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
   });
 
+  it('migrates a schema-eleven save by adding the default settings block', () => {
+    const { settings: _settings, ...withoutSettings } = createDefaultPlayerProfile();
+    const schemaEleven = {
+      ...withoutSettings,
+      schemaVersion: 11,
+      backpack: [{ itemId: 'runic-crystal', quantity: 7 }],
+    };
+    const storage = memoryStorage(JSON.stringify(schemaEleven));
+    const result = loadPlayerProfile(storage);
+
+    expect(result.kind).toBe('loaded');
+    expect(result.profile.schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
+    expect(result.profile.backpack).toEqual([{ itemId: 'runic-crystal', quantity: 7 }]);
+    expect(result.profile.settings).toEqual({
+      graphicsQuality: 'alta',
+      showFps: false,
+      showDamageNumbers: true,
+      cameraSensitivity: 1,
+    });
+    expect(JSON.parse(storage.value!).schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
+  });
+
+  it('converte pontos legados de Dano crítico em chance da classe ao migrar o schema 12', () => {
+    const mageProfile = {
+      ...createDefaultPlayerProfile(),
+      schemaVersion: 12,
+      selectedClass: 'mage' as const,
+      progression: { level: 3, experience: 160 },
+      attributes: { ...createDefaultPlayerProfile().attributes, criticalDamage: 2, criticalMagic: 2 },
+      attributePointsRemaining: 0,
+    };
+    const mageStorage = memoryStorage(JSON.stringify(mageProfile));
+
+    const mageResult = loadPlayerProfile(mageStorage);
+    expect(mageResult.kind).toBe('loaded');
+    expect(mageResult.profile.attributes.criticalDamage).toBe(0);
+    expect(mageResult.profile.attributes.criticalMagic).toBe(4);
+    expect(mageResult.profile.attributePointsRemaining).toBe(0);
+    expect(mageResult.profile.schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
+    expect(JSON.parse(mageStorage.value!).schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
+
+    const warriorProfile = {
+      ...createDefaultPlayerProfile(),
+      schemaVersion: 12,
+      progression: { level: 2, experience: 60 },
+      attributes: { ...createDefaultPlayerProfile().attributes, criticalDamage: 2 },
+      attributePointsRemaining: 0,
+    };
+    const warriorResult = loadPlayerProfile(memoryStorage(JSON.stringify(warriorProfile)));
+    expect(warriorResult.kind).toBe('loaded');
+    expect(warriorResult.profile.attributes.criticalDamage).toBe(0);
+    expect(warriorResult.profile.attributes.criticalAttack).toBe(2);
+    expect(warriorResult.profile.attributes.criticalMagic).toBe(0);
+    expect(warriorResult.profile.attributePointsRemaining).toBe(0);
+  });
+
   it('migrates a schema-ten save from strength into vitality without losing its build', () => {
     // Level five earns eight points, so a fully spent schema-ten build has
     // exactly the same budget the current schema expects.

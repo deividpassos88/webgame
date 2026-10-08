@@ -121,10 +121,14 @@ describe('administrator debug-log placement', () => {
 });
 
 describe('floating combat numbers', () => {
-  it('styles the damage taken apart from the damage dealt and the heals', () => {
-    // The number that reaches the health bar is printed over the player, so the
-    // Defense reduction is readable during the fight.
-    expect(styles).toMatch(/\.floating-damage\.taken\s*\{[^}]*color:\s*#ffa14a;/s);
-    expect(styles).toMatch(/\.floating-damage\.heal\s*\{[^}]*color:\s*#4ade80;/s);
+  it('usa vermelho legível e destaca Critical, Magical, dano recebido, cura e esquiva', () => {
+    expect(styles).toMatch(/\.floating-damage\s*\{[^}]*font-family:\s*Impact,/s);
+    expect(styles).toMatch(/\.floating-damage\s*\{[^}]*color:\s*#ff3636;/s);
+    expect(styles).toMatch(/\.floating-damage\.taken\s*\{[^}]*color:\s*#ff718b;/s);
+    expect(styles).toMatch(/\.floating-damage\.heal\s*\{[^}]*color:\s*#76ffa4;/s);
+    expect(styles).toMatch(/\.floating-damage\.critical\s*\{[^}]*font-size:\s*22px;[^}]*animation:\s*criticalFloatUp/s);
+    expect(styles).toContain('.floating-damage__label');
+    expect(styles).toContain('.floating-damage.critical-magical .floating-damage__label');
+    expect(styles).toMatch(/\.floating-damage\.dodge\s*\{[^}]*color:\s*#78edff;/s);
   });
 });

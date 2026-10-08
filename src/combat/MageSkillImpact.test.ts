@@ -8,9 +8,11 @@ import {
   MAGE_ICE_FREEZE_SECONDS,
   MAGE_SHOCK_LEVITATE_SECONDS,
   MAGE_SHOCK_RADIUS_METERS,
+  MAGE_SKILL_AREA_RADIUS_METERS,
   MAGE_WATER_SLOW_MULTIPLIER,
   MAGE_WATER_SLOW_SECONDS,
   isInsideMageSkillRadius,
+  mageGroundImpactDecalStyle,
   mageSkillImpactEffect,
 } from './MageSkillImpact';
 
@@ -52,6 +54,17 @@ describe('Mage skill impact control', () => {
     expect(MAGE_FIRE_BURN_SECONDS).toBe(4);
     expect(MAGE_FIRE_BURN_DAMAGE_PER_SECOND).toBe(2);
     expect(MAGE_FIRE_RADIUS_METERS).toBe(2);
+  });
+
+  it('todas as skills usam raio de dano de 3 m, mas só água e gelo marcam o chão', () => {
+    expect(MAGE_SKILL_AREA_RADIUS_METERS).toBe(3);
+    expect(mageGroundImpactDecalStyle('water')).toBe('cracked');
+    expect(mageGroundImpactDecalStyle('ice')).toBe('frozen');
+    // Nada de chão rachado/congelado nas outras skills nem no básico.
+    expect(mageGroundImpactDecalStyle('basic')).toBeNull();
+    expect(mageGroundImpactDecalStyle('lightning')).toBeNull();
+    expect(mageGroundImpactDecalStyle('lava')).toBeNull();
+    expect(mageGroundImpactDecalStyle('laser')).toBeNull();
   });
 
   it('does not invent control effects for the basic attack or laser', () => {

@@ -41,7 +41,7 @@ describe('playable character policy', () => {
         modelPath: '/models/Maga/Maga-optimized.glb',
         lobbyModelPath: '/models/Maga/Maga_Lobby.glb',
         gameScale: 2.25,
-        gameYOffset: 0.9,
+        gameYOffset: undefined,
         previewScale: 1.66,
         previewYOffset: -0.12,
         previewZOffset: -0.42,

@@ -21,6 +21,7 @@ import {
 import type { InventorySnapshot, InventoryStore } from '../inventory/InventoryStore';
 import type { PlayerProfile, RpgEquipmentSlot, InventoryStack } from '../profile/PlayerProfile';
 import { getPrimaryWeaponId } from '../profile/PlayerProfile';
+import { clampCameraSensitivity } from '../profile/PlayerSettings';
 import { getInventoryItem, type InventoryItemDefinition } from '../inventory/InventoryCatalog';
 import {
   displayPlayerHotkey,
@@ -79,6 +80,10 @@ export interface LobbyScreenOptions {
   readonly onBlacksmithCraft: (recipeId: BlacksmithRecipeId) => BlacksmithLobbyActionResult;
   readonly adminTrainingEnabled?: boolean;
   readonly onRunModeSelected?: (mode: LobbyRunMode) => void;
+  /** Abre o menu de Configuracoes (botao de engrenagem do lobby). */
+  readonly onOpenSettings?: () => void;
+  /** Amostra de quadro para o contador de FPS do menu de Configuracoes. */
+  readonly onFrameSample?: (nowMs: number) => void;
 }
 
 export type BlacksmithLobbyActionResult = BlacksmithScreenActionResult;
@@ -203,9 +208,9 @@ const ATTRIBUTE_LABELS: Readonly<Record<string, string>> = {
   attack: 'Ataque',
   defense: 'Defesa',
   agility: 'Agilidade',
-  criticalAttack: 'Crítico',
+  criticalAttack: 'Ataque Crítico',
   criticalDamage: 'Dano crítico',
-  criticalMagic: 'Crítico mágico',
+  criticalMagic: 'Ataque Mágico',
   lifeSteal: 'Roubo de vida',
   dodge: 'Esquiva',
 };
@@ -334,9 +339,8 @@ export function renderLobbyHotkeys(
  * The reference hall shows a seven-metric sheet: the six attributes that answer
  * for the build plus the life total that moves with gear. Ataque includes the
  * equipped weapon damage, so wearing a sword shows its bonus right away.
- * Crítico físico is surfaced simply as "Crítico"; the dedicated Critical Damage
- * and Life Steal readings stay on the full sheet in the character overlay. The
- * view model keeps its full nine-attribute contract for other surfaces.
+ * A chance ativa aparece como Ataque Crítico para o Guerreiro/Arqueiro ou
+ * Ataque Mágico para a Maga. Dano crítico e Roubo de vida ficam na ficha cheia.
  */
 const LOBBY_STATUS_METRICS: readonly {
   readonly key: string;
@@ -346,7 +350,7 @@ const LOBBY_STATUS_METRICS: readonly {
   { key: 'attack', label: 'Ataque' },
   { key: 'defense', label: 'Defesa' },
   { key: 'agility', label: 'Agilidade' },
-  { key: 'criticalAttack', label: 'Crítico' },
+  { key: 'criticalAttack', label: 'Ataque Crítico' },
   { key: 'dodge', label: 'Esquiva' },
 ];
 
@@ -365,13 +369,16 @@ function lobbyStatusHints(
 ): Readonly<Record<string, string>> {
   const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
   const derived = status.derived;
+  const activeCriticalChance = status.selectedClass === 'mage'
+    ? derived.magicCriticalChance
+    : derived.criticalAttackChance;
   return {
     vitality: `+${Math.round(derived.maxHealthBonus)} vida`,
     attack: 'dano do golpe',
     defense: `-${percent(derived.damageReduction)} do dano`,
     agility: `+${((derived.movementSpeedMultiplier - 1) * 100).toFixed(1)}% velocidade`,
-    criticalAttack: `${percent(derived.criticalAttackChance)} de chance`,
-    dodge: `${percent(derived.dodgeChance)} de anular`,
+    criticalAttack: `${percent(activeCriticalChance)} de chance`,
+    dodge: `${percent(derived.dodgeChance)} de chance de esquivar`,
   };
 }
 
@@ -380,11 +387,18 @@ function lobbyStatusMetrics(
 ): readonly { readonly label: string; readonly value: string | number; readonly hint: string }[] {
   const byKey = new Map(status.attributes.map(({ key, value }) => [key as string, value]));
   const hints = lobbyStatusHints(status);
-  const attributes = LOBBY_STATUS_METRICS.map(({ key, label }) => ({
-    label,
-    value: byKey.get(key) ?? 0,
-    hint: hints[key] ?? '',
-  }));
+  const criticalKey = status.selectedClass === 'mage' ? 'criticalMagic' : 'criticalAttack';
+  const criticalLabel = status.selectedClass === 'mage' ? 'Ataque Mágico' : 'Ataque Crítico';
+  const attributes = LOBBY_STATUS_METRICS.map(({ key, label }) => {
+    if (key === 'criticalAttack') {
+      return {
+        label: criticalLabel,
+        value: byKey.get(criticalKey) ?? 0,
+        hint: hints.criticalAttack ?? '',
+      };
+    }
+    return { label, value: byKey.get(key) ?? 0, hint: hints[key] ?? '' };
+  });
   // The attack reading already carries the equipped weapon damage, so the
   // sheet only adds the life total next to the six attributes.
   return [
@@ -591,6 +605,10 @@ export class LobbyScreen {
   private readonly destroyConfirmDialog = document.getElementById('lobby-item-destroy-confirm')!;
   private readonly destroyConfirmName = document.getElementById('lobby-item-destroy-name')!;
   private lobbyInventoryChanged: (() => void) | null = null;
+  private openSettings: (() => void) | null = null;
+  private frameSample: ((nowMs: number) => void) | null = null;
+  /** Engrenagem do topo (existe no index.html, nao no markup dos testes). */
+  private readonly settingsButton = document.querySelector<HTMLButtonElement>('[data-open-settings]');
   /** "Iniciar partida" fica bloqueado até o jogador equipar uma arma. */
   private startBlockedByWeapon = true;
   private startActionsDisabled = false;
@@ -664,6 +682,8 @@ export class LobbyScreen {
     this.hotkeysChanged = options.onHotkeysChanged;
     this.autoBasicAttackChanged = options.onAutoBasicAttackChanged;
     this.lobbyInventoryChanged = options.onLobbyInventoryChanged ?? null;
+    this.openSettings = options.onOpenSettings ?? null;
+    this.frameSample = options.onFrameSample ?? null;
     this.blacksmithLicensePurchase = options.onBlacksmithLicensePurchase;
     this.blacksmithCraft = options.onBlacksmithCraft;
     this.blacksmithScreen.hide();
@@ -1250,12 +1270,10 @@ export class LobbyScreen {
   /**
    * "Iniciar partida" stays locked until the hero has a weapon equipped.
    * The button stays clickable so the click can explain why (center notice).
+   * O estado clicável/travado é aplicado por `applyStartButtonState`.
    */
   private syncStartButtonWeaponState(): void {
-    const armed = Boolean(getPrimaryWeaponId(this.inventory.snapshot().equipment));
-    this.startButton.classList.toggle('is-weapon-locked', !armed);
-    this.startButton.setAttribute('aria-disabled', String(!armed));
-    if (armed) this.hideStartWeaponNotice();
+    this.syncStartGate();
   }
 
   private showStartWeaponNotice(): void {
@@ -1285,6 +1303,7 @@ export class LobbyScreen {
     this.classChoiceButtons.forEach((button) => button.addEventListener('click', this.confirmClass));
     this.startButton.addEventListener('click', this.startGame);
     this.adminTrainingButton.addEventListener('click', this.toggleAdminMode);
+    this.settingsButton?.addEventListener('click', this.settingsClick);
     this.heroStage.addEventListener('pointerdown', this.pointerDown);
     window.addEventListener('pointermove', this.pointerMove);
     window.addEventListener('pointerup', this.pointerUp);
@@ -1314,6 +1333,7 @@ export class LobbyScreen {
     this.classChoiceButtons.forEach((button) => button.removeEventListener('click', this.confirmClass));
     this.startButton.removeEventListener('click', this.startGame);
     this.adminTrainingButton.removeEventListener('click', this.toggleAdminMode);
+    this.settingsButton?.removeEventListener('click', this.settingsClick);
     this.heroStage.removeEventListener('pointerdown', this.pointerDown);
     window.removeEventListener('pointermove', this.pointerMove);
     window.removeEventListener('pointerup', this.pointerUp);
@@ -1508,19 +1528,30 @@ export class LobbyScreen {
     this.applyStartButtonState();
   }
 
-  /** Reconciles the blacksmith lock with the equipped-weapon gate. */
+  /**
+   * Reconciles the blacksmith lock with the equipped-weapon gate.
+   *
+   * Somente a Oficina em tela cheia desabilita de verdade o botão (`disabled`),
+   * porque ali o lobby está fora de cena. O gate da arma deixa o botão
+   * clicável de propósito: o clique é o que explica o que falta ("Equipe sua
+   * arma antes de iniciar a partida."). O bloqueio aparece na aparência
+   * (`.is-weapon-locked`), no `title` e no `aria-disabled` — antes o botão era
+   * desabilitado de fato e o aviso central nunca chegava a ser exibido.
+   */
   private applyStartButtonState(): void {
     const blocked = this.startActionsDisabled || this.startBlockedByWeapon;
-    this.startButton.disabled = blocked;
+    this.startButton.disabled = this.startActionsDisabled;
+    this.startButton.classList.toggle('is-weapon-locked', this.startBlockedByWeapon);
     this.startButton.title = this.startBlockedByWeapon
       ? 'Equipe uma arma na aba Equipamentos antes de iniciar a partida.'
       : '';
-    this.startButton.setAttribute('aria-disabled', String(this.startBlockedByWeapon));
+    this.startButton.setAttribute('aria-disabled', String(blocked));
   }
 
   private syncStartGate(): void {
-    this.startBlockedByWeapon = this.inventory.snapshot().equipment.primaryWeapon === null;
+    this.startBlockedByWeapon = getPrimaryWeaponId(this.inventory.snapshot().equipment) === null;
     this.applyStartButtonState();
+    if (!this.startBlockedByWeapon) this.hideStartWeaponNotice();
   }
 
   private createSkillTip(): HTMLElement {
@@ -2012,6 +2043,15 @@ export class LobbyScreen {
     document.getElementById('lobby-status')!.textContent = message;
   }
 
+  private settingsClick = (): void => {
+    this.openSettings?.();
+  };
+
+  /** Sensibilidade do arrasto vinda do menu de Configuracoes (1x por padrao). */
+  private dragSensitivity(): number {
+    return clampCameraSensitivity(this.profile?.settings?.cameraSensitivity ?? 1);
+  }
+
   private pointerDown = (event: PointerEvent): void => {
     this.dragging = true;
     this.lastPointerX = event.clientX;
@@ -2021,7 +2061,7 @@ export class LobbyScreen {
     if (!this.dragging) return;
     const delta = event.clientX - this.lastPointerX;
     this.lastPointerX = event.clientX;
-    this.modelHolder.rotation.y += delta * 0.008;
+    this.modelHolder.rotation.y += delta * 0.008 * this.dragSensitivity();
     this.requestFrame();
   };
 
@@ -2074,6 +2114,7 @@ export class LobbyScreen {
 
   private render = (): void => {
     this.frameId = 0;
+    this.frameSample?.(performance.now());
     const delta = Math.min(this.clock.getDelta(), 0.1);
     const motion = lobbyMotionPolicy(this.reducedMotionQuery.matches);
     this.mixer?.update(motion.animateIdle ? delta : 0);

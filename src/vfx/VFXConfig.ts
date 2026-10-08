@@ -11,6 +11,8 @@ export const MAGE_VFX_LIMITS = Object.freeze({
   maxLightning: 8,
   maxLasers: 4,
   maxBarriers: 3,
+  /** Impactos de chão simultâneos das skills 1 e 2 da Maga. */
+  maxGroundDecals: 6,
 });
 
 export interface MageVFXQualityProfile {

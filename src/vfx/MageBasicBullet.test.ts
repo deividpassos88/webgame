@@ -152,12 +152,16 @@ describe('Mage basic attack bullet', () => {
         const bolt = scene.getObjectByName('MageProjectileVFX')!;
         const comet = bolt.getObjectByName('MageFrostBulletComet') as THREE.Mesh;
         const material = comet.material as THREE.ShaderMaterial;
-        expect(comet.scale.x).toBeCloseTo(4.104);
+        // A seda nasce curta (0,6 m) e estica conforme o tiro caminha, para não
+        // cobrir o corpo de quem atirou na câmera do jogo (ver
+        // MageBasicCometTail.test.ts); o desenho cheio continua sendo 4,104 m.
+        expect(comet.scale.x).toBeCloseTo(0.6);
         expect(comet.scale.y).toBeCloseTo(1.368);
         expect(material.uniforms.uIntensity.value).toBe(1.7);
         expect(material.uniforms.uFilament.value).toBe(1.25);
         expect(bolt.getObjectByName('MageProjectileRibbonTrail')!.visible).toBe(false);
         projectiles.update(0.05);
+        expect(comet.scale.x).toBeCloseTo(0.6 + 25 * 0.05);
         expect(bolt.position.z).toBeCloseTo(25 * 0.05);
         expect(queryBodyHit).toHaveBeenCalledTimes(1);
         expect(queryBodyHit.mock.calls[0][2]).toBe(0.38);
@@ -271,8 +275,11 @@ describe('Mage basic attack bullet', () => {
     expect(comet?.material).toBeInstanceOf(THREE.ShaderMaterial);
 
     const { radius, comet: config, haloScale } = MAGE_SPELL_PRESETS.basic.projectile;
-    // Comprimento no eixo do voo, largura no eixo transversal.
-    expect(comet?.scale.x).toBeCloseTo(radius * (config?.lengthScale ?? 0), 3);
+    // Comprimento no eixo do voo (cresce com o voo: nasce em 0,6 m e chega aos
+    // 4,104 m da referência ~3,5 m depois — ver MageBasicCometTail.test.ts),
+    // largura no eixo transversal.
+    expect(comet?.scale.x).toBeGreaterThan(0.6);
+    expect(comet?.scale.x).toBeLessThanOrEqual(radius * (config?.lengthScale ?? 0));
     expect(comet?.scale.y).toBeCloseTo(radius * (config?.widthScale ?? 0), 3);
     // A ponta do sprite fica no ponto de colisão: o sprite recua metade dele.
     expect(comet?.position.z).toBeCloseTo(-(comet?.scale.x ?? 0) * 0.5, 5);

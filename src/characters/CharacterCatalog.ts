@@ -122,9 +122,8 @@ export const CHARACTERS: readonly CharacterDefinition[] = [
     // The Mage rig is authored in different units, so this smaller scale keeps
     // her apparent in-dungeon height close to the Warrior instead of giant.
     gameScale: 2.25,
-    // Same placement policy as Guerreiro, with only the proportional Mage boot
-    // lift needed after body-grounding so the feet sit clearly on the stone floor.
-    gameYOffset: 0.9,
+    // Igual ao Guerreiro: groundModelToRootPlane já encosta a base do corpo no
+    // piso; não aplique um segundo offset vertical que deixe os pés suspensos.
     previewScale: 1.66,
     // Lobby-only framing/rotation uses the same bounds-centered pivot as Guerreiro;
     // keep her framed lower than the warrior, but a little higher/smaller and

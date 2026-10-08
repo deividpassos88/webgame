@@ -11,7 +11,7 @@ import { TrainingDummy } from '../entities/TrainingDummy';
 import { createBoss } from '../entities/Boss';
 import { Level } from '../world/Level';
 import { HUD } from '../ui/HUD';
-import type { FloatingDamageVariant } from '../ui/HUD';
+import type { FloatingDamageCriticalType, FloatingDamageVariant } from '../ui/HUD';
 import { Logger } from '../utils/Logger';
 import { resolveGroundClickCombatAction } from './GroundClickCombatPolicy';
 import { CharacterAssetStore } from '../characters/CharacterAssetStore';
@@ -86,6 +86,15 @@ import { GameLightingRig } from './GameLightingRig';
 import { AdminCommandGate, type AdminSpawnRole } from '../admin/AdminCommandGate';
 import { AdminGameActions } from '../admin/AdminGameActions';
 import { AdminPanel } from '../admin/AdminPanel';
+import { FpsBadge } from '../ui/FpsBadge';
+import { SettingsPanel } from '../ui/SettingsPanel';
+import {
+  clampCameraSensitivity,
+  normalizePlayerSettings,
+  resolveGraphicsProfile,
+  resolvePixelRatio,
+  type PlayerSettings,
+} from '../profile/PlayerSettings';
 import {
   awardPlayerExperience,
   getPrimaryWeaponId,
@@ -126,11 +135,15 @@ import { HitCounterView } from '../ui/HitCounterView';
 import { FatigueMeter, MAX_FATIGUE, DASH_FATIGUE_COST } from '../combat/FatigueMeter';
 import { mageBasicAttackManaCost, mageSkillFatiguePercent } from '../combat/MageSkillCost';
 import { firstColumnHit, mageSkillAttackId } from '../combat/MageSpellFlight';
+import type { ElementalType } from '../combat/ElementalStatus';
 import {
   isInsideMageSkillRadius,
+  mageGroundImpactDecalStyle,
   mageSkillImpactEffect,
   MAGE_BASIC_SPLASH_RADIUS_METERS,
+  MAGE_SKILL_AREA_RADIUS_METERS,
 } from '../combat/MageSkillImpact';
+import { resolveMageSkillAreaTargets } from './MageAreaDamage';
 import {
   basicAttackAreaDamage,
   isInsideBasicAttackArea,
@@ -344,6 +357,8 @@ export class Game {
   private readonly adminGate: AdminCommandGate;
   private adminActions!: AdminGameActions;
   private adminPanel: AdminPanel | null = null;
+  private settingsPanel: SettingsPanel | null = null;
+  private fpsBadge: FpsBadge | null = null;
 
   constructor(private canvas: HTMLCanvasElement, options: GameOptions = {}) {
     this.adminEnabled = options.adminEnabled === true;
@@ -386,6 +401,8 @@ export class Game {
       Object.assign(this.profile, resetRunProgression(this.profile));
       this.persistProfileState();
       this.inventory = InventoryStore.fromProfile(this.profile);
+      // O menu de Configuracoes do lobby escreve no mesmo perfil (schema 12).
+      this.setupPlayerSettings();
       // The administrator can add inventory items before entering the dungeon.
       this.setupAdminTools();
       this.flow = new GameFlowController(
@@ -467,7 +484,9 @@ export class Game {
             onAutoBasicAttackChanged: () => this.persistProfileState(),
             onLobbyInventoryChanged: () => this.persistInventory(),
             onBlacksmithLicensePurchase: () => this.purchaseBlacksmithWorkshopLicense(),
-            onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+            onOpenSettings: () => this.settingsPanel?.show(),
+            onFrameSample: (nowMs) => this.fpsBadge?.frame(nowMs),
             adminTrainingEnabled: this.adminEnabled,
             onRunModeSelected: (mode) => { this.pendingRunMode = mode; },
           });
@@ -641,6 +660,68 @@ export class Game {
       this.hud.showLoadingError(Logger.formatError(err));
       throw err;
     }
+  }
+
+  /**
+   * Menu de Configuracoes do lobby (engrenagem) e do HUD.
+   *
+   * O painel so devolve o objeto completo; quem aplica e persiste e o Game,
+   * para que a qualidade grafica, o contador de FPS e os numeros de dano
+   * valham tanto no lobby quanto na masmorra.
+   */
+  private setupPlayerSettings(): void {
+    // Saves antigos chegam migrados com os padroes; aqui so garantimos que o
+    // objeto esta completo antes de o painel ler os controles.
+    this.profile.settings = normalizePlayerSettings(this.profile.settings);
+    this.fpsBadge = FpsBadge.mount(document.body);
+    this.settingsPanel = SettingsPanel.mount(
+      document.body,
+      this.profile.settings,
+      (settings) => this.updatePlayerSettings(settings)
+    );
+    document.querySelectorAll<HTMLElement>('[data-open-settings]').forEach((button) => {
+      button.addEventListener('click', () => this.settingsPanel?.show());
+    });
+    this.applyPlayerSettings();
+  }
+
+  private updatePlayerSettings(settings: PlayerSettings): void {
+    this.profile.settings = settings;
+    this.applyPlayerSettings();
+    this.persistProfileState();
+    Logger.info(
+      'Game:Settings',
+      `Configuracoes atualizadas (graficos ${settings.graphicsQuality}, FPS ${settings.showFps ? 'on' : 'off'}, dano ${settings.showDamageNumbers ? 'on' : 'off'}, giro ${settings.cameraSensitivity}x).`
+    );
+  }
+
+  /** Aplica no renderer/HUD os ajustes que valem para lobby e partida. */
+  private applyPlayerSettings(): void {
+    const settings = this.profile.settings;
+    const graphics = resolveGraphicsProfile(settings.graphicsQuality);
+    this.renderer.setPixelRatio(resolvePixelRatio(settings.graphicsQuality, window.devicePixelRatio));
+    if (this.renderer.shadowMap.enabled !== graphics.shadows) {
+      this.renderer.shadowMap.enabled = graphics.shadows;
+      // Three.js recompila os materiais no proximo desenho quando as sombras
+      // mudam de estado; sem isso a luz continuaria projetando a antiga.
+      this.scene.traverse((object) => {
+        const material = (object as THREE.Mesh).material;
+        if (!material) return;
+        if (Array.isArray(material)) material.forEach((entry) => { entry.needsUpdate = true; });
+        else material.needsUpdate = true;
+      });
+    }
+    this.fpsBadge?.setVisible(settings.showFps);
+  }
+
+  /** Leitura defensiva: perfis antigos sem o bloco de configuracoes mostram dano. */
+  private damageNumbersEnabled(): boolean {
+    return this.profile?.settings?.showDamageNumbers !== false;
+  }
+
+  /** Sensibilidade do arrasto usada pela previa 3D do lobby. */
+  private cameraSensitivity(): number {
+    return clampCameraSensitivity(this.profile?.settings?.cameraSensitivity ?? 1);
   }
 
   private setupAdminTools(): void {
@@ -983,17 +1064,26 @@ export class Game {
     }
   }
 
-  private resolveOutgoingDamage(baseDamage: number, elemental: boolean): number {
+  private resolveOutgoingDamage(
+    baseDamage: number,
+    _elemental: boolean,
+    criticalHit?: { isCritical: boolean }
+  ): number {
     const stats = this.getCharacterStats();
-    const chance = elemental ? stats.magicCriticalChance : stats.criticalAttackChance;
-    return quantizeCombatDamage(
-      baseDamage * (Math.random() < chance ? stats.criticalMultiplier : 1)
-    );
+    // O atributo crítico acompanha a classe: físico para Guerreiro/Arqueiro,
+    // mágico para Maga, inclusive no básico sem elemento explícito.
+    const isMagicalCritical = this.profile.selectedClass === 'mage';
+    const chance = isMagicalCritical ? stats.magicCriticalChance : stats.criticalAttackChance;
+    const isCritical = Math.random() < chance;
+    if (criticalHit) criticalHit.isCritical = isCritical;
+    return quantizeCombatDamage(baseDamage * (isCritical ? stats.criticalMultiplier : 1));
   }
 
-  private resolveIncomingDamage(damage: number): number {
+  private resolveIncomingDamage(damage: number, dodgeResult?: { dodged: boolean }): number {
     const stats = this.getCharacterStats();
-    if (Math.random() < stats.dodgeChance) return 0;
+    const dodged = Math.random() < stats.dodgeChance;
+    if (dodgeResult) dodgeResult.dodged = dodged;
+    if (dodged) return 0;
     return quantizeCombatDamage(damage * (1 - stats.damageReduction));
   }
 
@@ -1073,7 +1163,10 @@ export class Game {
     const activation = this.warriorSkills.tryActivate(id, {
       paused: false,
       dead: this.player.isDead,
-      busy: this.player.isAttackInSwing() && !chaining,
+      // Prioridade do comando na Maga: durante o ataque básico (inclusive no
+      // automático) a skill ainda entra, cortando o básico. Nas outras classes
+      // o golpe em andamento continua bloqueando a skill.
+      busy: this.player.isAttackInSwing() && !chaining && !this.player.canInterruptBasicWithSkill,
       // Admin training is a true preview: no energy, fatigue, or cooldown cost.
       free: adminPreview,
       cooldownOverrideSeconds: warriorSkillCooldown(id, mage ? 'mage' : 'paladin'),
@@ -1953,7 +2046,9 @@ export class Game {
         onAutoBasicAttackChanged: () => this.persistProfileState(),
         onLobbyInventoryChanged: () => this.persistInventory(),
         onBlacksmithLicensePurchase: () => this.purchaseBlacksmithWorkshopLicense(),
-        onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+        onOpenSettings: () => this.settingsPanel?.show(),
+        onFrameSample: (nowMs) => this.fpsBadge?.frame(nowMs),
         adminTrainingEnabled: this.adminEnabled,
         onRunModeSelected: (mode) => { this.pendingRunMode = mode; },
       });
@@ -2007,7 +2102,9 @@ export class Game {
         onAutoBasicAttackChanged: () => this.persistProfileState(),
         onLobbyInventoryChanged: () => this.persistInventory(),
         onBlacksmithLicensePurchase: () => this.purchaseBlacksmithWorkshopLicense(),
-        onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
+        onOpenSettings: () => this.settingsPanel?.show(),
+        onFrameSample: (nowMs) => this.fpsBadge?.frame(nowMs),
         adminTrainingEnabled: this.adminEnabled,
         onRunModeSelected: (mode) => { this.pendingRunMode = mode; },
       });
@@ -2229,11 +2326,12 @@ export class Game {
       )) {
         continue;
       }
-      const damage = this.resolveOutgoingDamage(splashBase, false);
+      const criticalHit = { isCritical: false };
+      const damage = this.resolveOutgoingDamage(splashBase, false, criticalHit);
       if (damage <= 0) continue;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
       this.healFromLifeSteal(damage);
-      this.showFloatingDamage(record.enemy.root.position, damage);
+      this.showFloatingDamage(record.enemy.root.position, damage, 'damage', criticalHit.isCritical);
       this.syncCombatHealthBars(record);
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
@@ -2249,10 +2347,11 @@ export class Game {
         position.z,
         MAGE_BASIC_SPLASH_RADIUS_METERS
       )) {
-        const damage = this.resolveOutgoingDamage(splashBase, false);
+        const criticalHit = { isCritical: false };
+        const damage = this.resolveOutgoingDamage(splashBase, false, criticalHit);
         if (damage > 0) {
           dummy.takeDamage(damage);
-          this.showFloatingDamage(position, damage);
+          this.showFloatingDamage(position, damage, 'damage', criticalHit.isCritical);
         }
       }
     }
@@ -2277,40 +2376,141 @@ export class Game {
       elemental
     );
     const body = this.resolveLivingEnemyRoot(target) ?? target;
+    // Ponto do impacto: é a posição que o dano em área e o desenho de chão usam.
     const center = body.getWorldPosition(new THREE.Vector3());
-    const bodyRadius = this.isTrainingDummyTarget(body)
-      ? 0.45
-      : (this.combatRegistry.findByRoot(body)?.enemy.collisionRadius ?? 0.45);
+
+    // Alvo principal: o feitiço acertou em cheio — dano, status e lifesteal.
+    if (this.isTrainingDummyTarget(body) && this.trainingDummy) {
+      const criticalHit = { isCritical: false };
+      const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, center, 0.45, criticalHit);
+      if (damage > 0) {
+        this.trainingDummy.takeDamage(damage);
+        this.showFloatingDamage(this.trainingDummy.root.position, damage, 'damage', criticalHit.isCritical);
+      }
+    } else {
+      const record = this.combatRegistry.findByRoot(body);
+      if (record) {
+        const bodyRadius = record.enemy.collisionRadius ?? 0.45;
+        const criticalHit = { isCritical: false };
+        const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, center, bodyRadius, criticalHit);
+        if (!record.enemy.isDead && damage > 0) {
+          this.damageEnemyWithMageSkill(spellId, skillElement, record, damage, center, {
+            isCritical: criticalHit.isCritical,
+          });
+        }
+      }
+    }
+
+    // Todas as skills 1–5 da Maga acertam os monstros vivos num raio de 3 m
+    // do impacto. O alvo direto fica fora da varredura porque já recebeu o
+    // golpe cheio. Só água e gelo desenham decalque no chão; as outras skills
+    // mantêm seus próprios visuais e controles.
+    const areaStyle = mageGroundImpactDecalStyle(spellId);
+    if (areaStyle) {
+      this.mageVFX.playGroundImpactDecal({
+        position: center,
+        radius: MAGE_SKILL_AREA_RADIUS_METERS,
+        style: areaStyle,
+      });
+    }
+    const areaRecords = this.combatRegistry.activeRoots()
+      .map((root) => this.combatRegistry.findByRoot(root))
+      .filter((record): record is CombatRecord => record !== null && !record.enemy.isDead);
+    for (const record of resolveMageSkillAreaTargets(areaRecords, center, body)) {
+      const bodyRadius = record.enemy.collisionRadius ?? 0.45;
+      const criticalHit = { isCritical: false };
+      const damage = this.mageSkillDamageAtDistance(
+        baseDamage,
+        elemental,
+        record.enemy.root.position,
+        bodyRadius,
+        criticalHit
+      );
+      if (damage <= 0) continue;
+      // Cada inimigo rola o próprio crítico; controle e status existentes não
+      // passam ao redor junto com o dano da explosão.
+      this.damageEnemyWithMageSkill(spellId, skillElement, record, damage, center, {
+        control: false,
+        isCritical: criticalHit.isCritical,
+        applyElementalStatus: false,
+      });
+    }
+
+    // Boneco de treino: fora do registro de combate, mas precisa contar a
+    // explosão quando o feitiço acertou outra coisa por perto.
+    const dummy = this.trainingDummy;
+    if (dummy && !this.isTrainingDummyTarget(body)) {
+      const position = dummy.root.position;
+      if (isInsideMageSkillRadius(
+        center.x,
+        center.z,
+        position.x,
+        position.z,
+        MAGE_SKILL_AREA_RADIUS_METERS
+      )) {
+        const criticalHit = { isCritical: false };
+        const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, position, 0.45, criticalHit);
+        if (damage > 0) {
+          dummy.takeDamage(damage);
+          this.showFloatingDamage(position, damage, 'damage', criticalHit.isCritical);
+        }
+      }
+    }
+  }
+
+  /**
+   * Dano do feitiço da Maga numa vítima. É a MESMA conta para o alvo que o
+   * feitiço acertou em cheio e para os vizinhos do impacto: falloff pela
+   * distância até a Maga (descontando o raio do corpo) e corte no alcance —
+   * uma bola que passa alguns centímetros do cone ainda acerta, um erro bem
+   * além dos 12 m não.
+   */
+  private mageSkillDamageAtDistance(
+    baseDamage: number,
+    elemental: boolean,
+    center: THREE.Vector3,
+    bodyRadius: number,
+    criticalHit?: { isCritical: boolean }
+  ): number {
     const rawDistance = getEffectiveTargetDistance(
       this.player.root.position.distanceTo(center),
       bodyRadius
     );
-    // A bolt that connects a few centimeters past the cone still hits. A miss
-    // well beyond 12m does not.
     const distance = rawDistance <= MAGE_MAX_RANGE_METERS + 0.45
       ? Math.min(rawDistance, MAGE_MAX_RANGE_METERS)
       : rawDistance;
-    const damage = this.resolveOutgoingDamage(
+    return this.resolveOutgoingDamage(
       applyDistanceFalloff(baseDamage, distance, 'mage'),
-      elemental
+      elemental,
+      criticalHit
     );
-    if (damage <= 0) return;
+  }
 
-    if (this.isTrainingDummyTarget(body) && this.trainingDummy) {
-      this.trainingDummy.takeDamage(damage);
-      this.showFloatingDamage(this.trainingDummy.root.position, damage);
-      return;
-    }
-
-    const record = this.combatRegistry.findByRoot(body);
-    if (!record || record.enemy.isDead) return;
+  /**
+   * Aplica num inimigo o dano de skill da Maga que já foi calculado: status de
+   * fogo quando o elemento é fogo, lifesteal, número de dano, barra de vida e
+   * morte. O controle (congelar/desacelerar/erguer) fica ligado só no alvo
+   * principal — `control: false` é o que os vizinhos da explosão levam.
+   */
+  private damageEnemyWithMageSkill(
+    spellId: MageSpellId,
+    skillElement: ElementalType | null,
+    record: CombatRecord,
+    damage: number,
+    impact: THREE.Vector3,
+    options: {
+      readonly control?: boolean;
+      readonly isCritical?: boolean;
+      readonly applyElementalStatus?: boolean;
+    } = {}
+  ): void {
     record.enemy.receivePlayerHit(damage, this.player.root.position);
-    if (skillElement === 'fire' && !record.enemy.isDead) {
+    if (skillElement === 'fire' && options.applyElementalStatus !== false && !record.enemy.isDead) {
       record.enemy.applyElementalHit(skillElement, Math.max(1, damage * 0.12));
     }
-    this.applyMageSkillControl(spellId, record.enemy, center);
+    if (options.control !== false) this.applyMageSkillControl(spellId, record.enemy, impact);
     this.healFromLifeSteal(damage);
-    this.showFloatingDamage(record.enemy.root.position, damage);
+    this.showFloatingDamage(record.enemy.root.position, damage, 'damage', options.isCritical ?? false);
     this.syncCombatHealthBars(record);
     if (record.enemy.isDead) this.handleEnemyDeath(record);
   }
@@ -2372,11 +2572,14 @@ export class Game {
       let obj: THREE.Object3D | null = target;
       while (obj && !obj.userData.isTrainingDummy) obj = obj.parent;
       if (obj === this.trainingDummy.root || target === this.trainingDummy.root) {
-        const damage = this.player.attackDamage;
+        const criticalHit = { isCritical: false };
+        const damage = this.resolveOutgoingDamage(this.player.attackDamage, false, criticalHit);
         this.trainingDummy.takeDamage(damage);
         this.showFloatingDamage(
           this.trainingDummy.root.position,
-          damage
+          damage,
+          'damage',
+          criticalHit.isCritical
         );
         return;
       }
@@ -2401,11 +2604,12 @@ export class Game {
       distance,
       this.playerDistanceFalloffProfile()
     );
-    const damage = this.resolveOutgoingDamage(rangedDamage, false);
+    const criticalHit = { isCritical: false };
+    const damage = this.resolveOutgoingDamage(rangedDamage, false, criticalHit);
     if (damage <= 0) return;
     record.enemy.receivePlayerHit(damage, this.player.root.position);
     this.healFromLifeSteal(damage);
-    this.showFloatingDamage(target.position, damage);
+    this.showFloatingDamage(target.position, damage, 'damage', criticalHit.isCritical);
     this.syncCombatHealthBars(record);
 
     if (record.enemy.isDead) this.handleEnemyDeath(record);
@@ -2608,7 +2812,8 @@ export class Game {
         false
       );
       const primaryDamage = applyDistanceFalloff(baseDamage, closestDist, 'warrior-wave');
-      const damage = this.resolveOutgoingDamage(primaryDamage, false);
+      const primaryCritical = { isCritical: false };
+      const damage = this.resolveOutgoingDamage(primaryDamage, false, primaryCritical);
       const primaryRecord = selection.index < records.length ? records[selection.index] : null;
 
       if (damage > 0) {
@@ -2619,12 +2824,12 @@ export class Game {
           // Recuo curto: o monstro é nervoso e apenas recua um pouco no corte.
           const impulseStrength = slashType === 'combo3' ? 0.22 : slashType === 'combo2' ? 0.16 : isAuto ? 0.17 : 0.12;
           primaryRecord.enemy.applyImpulse(forward, impulseStrength);
-          this.showFloatingDamage(primaryRecord.enemy.root.position, damage);
+          this.showFloatingDamage(primaryRecord.enemy.root.position, damage, 'damage', primaryCritical.isCritical);
           this.syncCombatHealthBars(primaryRecord);
           if (primaryRecord.enemy.isDead) this.handleEnemyDeath(primaryRecord);
         } else if (this.trainingDummy) {
           this.trainingDummy.takeDamage(damage);
-          this.showFloatingDamage(this.trainingDummy.root.position, damage);
+          this.showFloatingDamage(this.trainingDummy.root.position, damage, 'damage', primaryCritical.isCritical);
         }
         this.warriorSlashVFX.playImpact(primaryTargetPos, 1);
       }
@@ -2642,12 +2847,13 @@ export class Game {
         )) {
           continue;
         }
-        const splashDamage = this.resolveOutgoingDamage(splashBase, false);
+        const splashCritical = { isCritical: false };
+        const splashDamage = this.resolveOutgoingDamage(splashBase, false, splashCritical);
         if (splashDamage <= 0) continue;
         lifeStealDamage += splashDamage;
         record.enemy.receivePlayerHit(splashDamage, this.player.root.position);
         record.enemy.applyImpulse(forward, 0.06);
-        this.showFloatingDamage(position, splashDamage);
+        this.showFloatingDamage(position, splashDamage, 'damage', splashCritical.isCritical);
         this.syncCombatHealthBars(record);
         if (record.enemy.isDead) this.handleEnemyDeath(record);
       }
@@ -2660,10 +2866,11 @@ export class Game {
           position.x,
           position.z
         )) {
-          const splashDamage = this.resolveOutgoingDamage(splashBase, false);
+          const splashCritical = { isCritical: false };
+          const splashDamage = this.resolveOutgoingDamage(splashBase, false, splashCritical);
           if (splashDamage > 0) {
             dummy.takeDamage(splashDamage);
-            this.showFloatingDamage(position, splashDamage);
+            this.showFloatingDamage(position, splashDamage, 'damage', splashCritical.isCritical);
           }
         }
       }
@@ -2740,7 +2947,8 @@ export class Game {
         distance,
         this.warriorSkillDistanceFalloffProfile(event.attackId)
       );
-      const damage = this.resolveOutgoingDamage(rangedDamage, elemental);
+      const criticalHit = { isCritical: false };
+      const damage = this.resolveOutgoingDamage(rangedDamage, elemental, criticalHit);
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       record.enemy.receivePlayerHit(damage, this.player.root.position);
@@ -2758,7 +2966,7 @@ export class Game {
       }
       // Cada skill deixa seu próprio efeito de controle no monstro.
       if (!record.enemy.isDead) this.applyWarriorSkillEffectToEnemy(record.enemy, event.attackId);
-      this.showFloatingDamage(record.enemy.root.position, damage);
+      this.showFloatingDamage(record.enemy.root.position, damage, 'damage', criticalHit.isCritical);
       this.syncCombatHealthBars(record);
       if (record.enemy.isDead) this.handleEnemyDeath(record);
     }
@@ -2853,19 +3061,21 @@ export class Game {
       if (!enemyRecord || enemyRecord.enemy.isDead) continue;
       const distance = center.distanceTo(enemyRecord.enemy.root.position);
       if (distance > BLADE_STORM_RADIUS_METERS) continue;
+      const criticalHit = { isCritical: false };
       const damage = this.resolveOutgoingDamage(
         applyDistanceFalloff(
           context.baseDamage * BLADE_STORM_DAMAGE_RATIO,
           distance,
           context.falloff
         ),
-        context.elemental
+        context.elemental,
+        criticalHit
       );
       if (damage <= 0) continue;
       lifeStealDamage += damage;
       enemyRecord.enemy.receivePlayerHit(damage, center);
       this.warriorSlashVFX.playImpact(enemyRecord.enemy.root.position, 0.7);
-      this.showFloatingDamage(enemyRecord.enemy.root.position, damage);
+      this.showFloatingDamage(enemyRecord.enemy.root.position, damage, 'damage', criticalHit.isCritical);
       this.syncCombatHealthBars(enemyRecord);
       if (enemyRecord.enemy.isDead) this.handleEnemyDeath(enemyRecord);
     }
@@ -3009,11 +3219,15 @@ export class Game {
   private showFloatingDamage(
     worldPos: THREE.Vector3,
     amount: number,
-    variant: FloatingDamageVariant = 'damage'
+    variant: FloatingDamageVariant = 'damage',
+    isCritical = false
   ) {
     // Só o combo de skills alimenta o contador HITS: dano de ataque básico
-    // (inclusive o respingo de área) não conta hit.
+    // (inclusive o respingo de área) não conta hit. O contador é regra de jogo
+    // e continua rodando mesmo com os números de dano desligados.
     if (variant === 'damage' && this.comboHitWindowActive()) this.hitCounter.registerHit();
+    // Desligar os números de dano corta só o texto flutuante.
+    if (!this.damageNumbersEnabled()) return;
     const pos = worldPos.clone();
     pos.y += 1.6;
     const screenPos = pos.project(this.cameraController.camera);
@@ -3023,8 +3237,25 @@ export class Game {
       x,
       y,
       variant === 'heal' ? formatHealingAmount(amount) : `-${quantizeCombatDamage(amount)}`,
-      variant
+      variant,
+      isCritical && variant === 'damage'
+        ? (this.profile.selectedClass === 'mage' ? 'magical' : 'physical')
+        : null
     );
+  }
+
+  private showFloatingMessage(
+    worldPos: THREE.Vector3,
+    text: string,
+    variant: FloatingDamageVariant = 'dodge'
+  ): void {
+    if (!this.damageNumbersEnabled()) return;
+    const pos = worldPos.clone();
+    pos.y += 1.6;
+    const screenPos = pos.project(this.cameraController.camera);
+    const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-screenPos.y * 0.5 + 0.5) * window.innerHeight;
+    this.hud.spawnFloatingDamage(x, y, text, variant);
   }
 
   private updateCombatEntities(delta: number): void {
@@ -3096,7 +3327,12 @@ export class Game {
       isRangedAttack,
       this.profile.selectedClass === 'mage' ? 'mage' : 'warrior'
     );
-    const deliveredDamage = this.resolveIncomingDamage(archerAdjustedDamage);
+    const dodgeResult = { dodged: false };
+    const deliveredDamage = this.resolveIncomingDamage(archerAdjustedDamage, dodgeResult);
+    if (dodgeResult.dodged) {
+      this.showFloatingMessage(this.player.root.position, 'Esquivou!', 'dodge');
+      return;
+    }
     if (deliveredDamage <= 0) return;
     const hpBeforeHit = this.player.hp;
     this.player.takeDamage(deliveredDamage);
@@ -3105,7 +3341,12 @@ export class Game {
   }
 
   private onBossSkillHitPlayer(damage: number): void {
-    const deliveredDamage = this.resolveIncomingDamage(damage);
+    const dodgeResult = { dodged: false };
+    const deliveredDamage = this.resolveIncomingDamage(damage, dodgeResult);
+    if (dodgeResult.dodged) {
+      this.showFloatingMessage(this.player.root.position, 'Esquivou!', 'dodge');
+      return;
+    }
     if (deliveredDamage <= 0) return;
     const hpBeforeHit = this.player.hp;
     this.player.takeBossSkillDamage(deliveredDamage);
@@ -3114,7 +3355,12 @@ export class Game {
   }
 
   private onMiniBossSkillHitPlayer(damage: number): void {
-    const deliveredDamage = this.resolveIncomingDamage(damage);
+    const dodgeResult = { dodged: false };
+    const deliveredDamage = this.resolveIncomingDamage(damage, dodgeResult);
+    if (dodgeResult.dodged) {
+      this.showFloatingMessage(this.player.root.position, 'Esquivou!', 'dodge');
+      return;
+    }
     if (deliveredDamage <= 0) return;
     const hpBeforeHit = this.player.hp;
     this.player.takeBossSkillDamage(deliveredDamage);
@@ -3392,6 +3638,7 @@ export class Game {
   private loop = () => {
     if (!this.running) return;
     requestAnimationFrame(this.loop);
+    this.fpsBadge?.frame(performance.now());
 
     try {
       const rawDelta = this.clock.getDelta();
@@ -3475,7 +3722,9 @@ export class Game {
           ? 'unavailable'
           : !this.hasAdminFreeSkills() && !this.fatigue.canUseSkills
             ? 'fatigue-exhausted'
-            : this.player.isAttackInSwing() && this.skillCombo.snapshot().phase !== 'linked'
+            : this.player.isAttackInSwing()
+              && !this.player.canInterruptBasicWithSkill
+              && this.skillCombo.snapshot().phase !== 'linked'
               ? 'busy'
               : this.profile.selectedClass === 'mage' && this.player.blocksSkillsWhileMoving
                 ? 'moving'

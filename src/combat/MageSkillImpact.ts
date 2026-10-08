@@ -21,6 +21,16 @@ export const MAGE_SHOCK_LIFT_METERS = 3.2;
  */
 export const MAGE_BASIC_SPLASH_RADIUS_METERS = BASIC_ATTACK_AREA_RADIUS_METERS;
 export const MAGE_BASIC_SPLASH_DAMAGE_MULTIPLIER = BASIC_ATTACK_AREA_DAMAGE_MULTIPLIER;
+/**
+ * Todas as skills da Maga (1–5) causam dano em área no ponto de impacto: todo
+ * monstro vivo cuja raiz esteja a até 3 m leva o dano da skill, com as mesmas
+ * regras do alvo principal (falloff pela distância da Maga, elemento e
+ * lifesteal). É RAIO, não diâmetro: a 2,9 m entra; a 3,1 m fica fora. O alvo
+ * atingido diretamente é excluído da varredura para não receber dano duplicado.
+ * Os controles e os visuais de chão continuam específicos de cada skill.
+ */
+export const MAGE_SKILL_AREA_RADIUS_METERS = 3;
+
 /** Mage fire burns every living monster inside this radius of the impact. */
 export const MAGE_FIRE_BURN_SECONDS = 4;
 export const MAGE_FIRE_BURN_DAMAGE_PER_SECOND = 2;
@@ -63,6 +73,17 @@ export function mageSkillImpactEffect(spellId: MageSpellId): MageSkillImpactEffe
       radius: MAGE_FIRE_RADIUS_METERS,
     };
   }
+  return null;
+}
+
+/**
+ * As skills 1 e 2 da Maga desenham o impacto no CHÃO: a água racha o piso, o
+ * gelo deixa a poça congelada. As outras skills não mexem no chão — a lava tem
+ * o próprio efeito e o choque/laser não quebram o piso.
+ */
+export function mageGroundImpactDecalStyle(spellId: MageSpellId): 'cracked' | 'frozen' | null {
+  if (spellId === 'water') return 'cracked';
+  if (spellId === 'ice') return 'frozen';
   return null;
 }
 

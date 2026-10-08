@@ -49,7 +49,8 @@ import { formatSkillCooldown } from './SkillCooldownText';
  * Floating combat text styles: damage dealt, health recovered and damage taken
  * (already reduced by Defense, block rolls and dodge checks).
  */
-export type FloatingDamageVariant = 'damage' | 'heal' | 'taken';
+export type FloatingDamageVariant = 'damage' | 'heal' | 'taken' | 'dodge';
+export type FloatingDamageCriticalType = 'physical' | 'magical';
 
 /** Keyboard-initiated button clicks have `detail === 0` and are not attacks. */
 export function isPrimaryMouseClick(event: Pick<MouseEvent, 'button' | 'detail'>): boolean {
@@ -659,11 +660,25 @@ export class HUD {
     screenX: number,
     screenY: number,
     text: string,
-    variant: FloatingDamageVariant = 'damage'
+    variant: FloatingDamageVariant = 'damage',
+    criticalType: FloatingDamageCriticalType | null = null
   ) {
     const el = document.createElement('div');
     el.className = 'floating-damage' + (variant === 'damage' ? '' : ` ${variant}`);
-    el.textContent = text;
+    if (criticalType && variant === 'damage') {
+      const label = criticalType === 'magical' ? 'Magical' : 'Critical';
+      el.classList.add('critical', `critical-${criticalType}`);
+      const labelElement = document.createElement('span');
+      labelElement.className = 'floating-damage__label';
+      labelElement.textContent = label;
+      const valueElement = document.createElement('span');
+      valueElement.className = 'floating-damage__value';
+      valueElement.textContent = text;
+      el.append(labelElement, valueElement);
+      el.setAttribute('aria-label', `${label} ${text}`);
+    } else {
+      el.textContent = text;
+    }
     el.style.left = `${screenX}px`;
     el.style.top = `${screenY}px`;
     this.damageLog.appendChild(el);

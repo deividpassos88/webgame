@@ -8,7 +8,7 @@ import {
 } from '../profile/PlayerProfile';
 import type { PlayableCharacterId } from '../characters/CharacterCatalog';
 import {
-  ATTRIBUTE_KEYS,
+  ALLOCATABLE_ATTRIBUTE_KEYS,
   attributeAllocationAllowance,
   deriveCharacterStats,
   getAttributeAllocationCap,
@@ -163,18 +163,33 @@ export class InventoryOverlay {
       ? 'Nível máximo'
       : `${progress.current} / ${progress.required} XP`;
     remaining.textContent = String(this.profile.attributePointsRemaining);
-    controls.innerHTML = ATTRIBUTE_KEYS.map((key) => {
+    const activeCriticalAttribute = this.profile.selectedClass === 'mage' ? 'criticalMagic' : 'criticalAttack';
+    const allocatableRows = ALLOCATABLE_ATTRIBUTE_KEYS.map((key) => {
       const content = ATTRIBUTE_CONTENT[key];
       const value = this.profile.attributes[key];
-      const onePoint = attributeAllocationAllowance(this.profile.attributes, key, 1, this.profile.attributePointsRemaining);
-      const fivePoints = attributeAllocationAllowance(this.profile.attributes, key, 5, this.profile.attributePointsRemaining);
-      return `<div class="attribute-row">
-        <span><strong>${content.label}</strong><small>${content.help}</small></span>
+      const inactiveCritical = (key === 'criticalAttack' || key === 'criticalMagic')
+        && key !== activeCriticalAttribute;
+      const help = inactiveCritical
+        ? `${content.help} Inativo para a classe selecionada.`
+        : content.help;
+      const onePoint = inactiveCritical
+        ? 0
+        : attributeAllocationAllowance(this.profile.attributes, key, 1, this.profile.attributePointsRemaining);
+      const fivePoints = inactiveCritical
+        ? 0
+        : attributeAllocationAllowance(this.profile.attributes, key, 5, this.profile.attributePointsRemaining);
+      return `<div class="attribute-row${inactiveCritical ? ' is-inactive' : ''}" data-attribute-row="${key}">
+        <span><strong>${content.label}</strong><small>${help}</small></span>
         <output id="attribute-${key}">${value}</output>
         <button type="button" data-attribute="${key}" data-attribute-delta="1" ${onePoint === 0 ? 'disabled' : ''} aria-label="Adicionar 1 em ${content.label}">+1</button>
         <button type="button" data-attribute="${key}" data-attribute-delta="5" ${fivePoints === 0 ? 'disabled' : ''} aria-label="Adicionar até 5 em ${content.label}">+5</button>
       </div>`;
     }).join('');
+    const fixedCriticalRow = `<div class="attribute-row is-fixed" data-attribute-row="criticalDamage">
+      <span><strong>Dano crítico</strong><small>Todo acerto Critical ou Magical causa 3× dano. Multiplicador fixo; não precisa de pontos.</small></span>
+      <output id="attribute-criticalDamage">3×</output>
+    </div>`;
+    controls.innerHTML = `${allocatableRows}${fixedCriticalRow}`;
 
     // The panel describes the loadout, so it must read the same equipped
     // attributes and weapon damage the fight uses instead of bare attributes.
@@ -185,20 +200,25 @@ export class InventoryOverlay {
       movementSpeed: 4.5,
       attackCooldown: 0.67,
     });
+    const activeCriticalChance = this.profile.selectedClass === 'mage'
+      ? derived.magicCriticalChance
+      : derived.criticalAttackChance;
+    const activeCriticalLabel = this.profile.selectedClass === 'mage'
+      ? 'Ataque Mágico'
+      : 'Ataque Crítico';
     derivedHost.innerHTML = [
       ['Vida máxima', derived.maxHealth.toFixed(1)],
       ['Dano físico', (derived.attackDamage * derived.physicalDamageMultiplier).toFixed(1)],
       ['Redução de dano', `${(derived.damageReduction * 100).toFixed(1)}%`],
       ['Velocidade', `${derived.movementSpeed.toFixed(2)} m/s`],
       ['Recarga do ataque', `${derived.attackCooldown.toFixed(2)} s`],
-      ['Crítico físico', `${(derived.criticalAttackChance * 100).toFixed(1)}%`],
-      ['Dano do crítico', `${derived.criticalMultiplier.toFixed(2)}×`],
-      ['Crítico elemental', `${(derived.magicCriticalChance * 100).toFixed(1)}%`],
+      [activeCriticalLabel, `${(activeCriticalChance * 100).toFixed(1)}%`],
+      ['Dano crítico', `${derived.criticalMultiplier.toFixed(0)}×`],
       ['Roubo de vida', `${(derived.lifeStealFraction * 100).toFixed(1)}%`],
       ['Esquiva', `${(derived.dodgeChance * 100).toFixed(1)}%`],
     ].map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('');
 
-    const gateLocked = ATTRIBUTE_KEYS.some(
+    const gateLocked = ALLOCATABLE_ATTRIBUTE_KEYS.some(
       (key) => this.profile.attributes[key] >= getAttributeAllocationCap(this.profile.attributes, key)
     );
     gateMessage.textContent = this.profile.attributePointsRemaining === 0
@@ -425,11 +445,11 @@ const ATTRIBUTE_CONTENT: Readonly<Record<CharacterAttributeKey, { label: string;
   attack: { label: 'Ataque', help: 'Cada ponto soma 1 de dano no golpe.' },
   defense: { label: 'Defesa', help: 'Reduz o dano recebido; 40 pontos já cortam metade (limite 70%).' },
   agility: { label: 'Agilidade', help: 'Aumenta movimento, velocidade de ataque e reserva de fadiga máxima (+2 por ponto, até +200).' },
-  criticalAttack: { label: 'Crítico de ataque', help: 'Chance de crítico físico (até 50%).' },
-  criticalDamage: { label: 'Dano crítico', help: 'Aumenta o multiplicador do crítico (1,5× + 1,5% por ponto, até 3,0×).' },
-  criticalMagic: { label: 'Crítico mágico', help: 'Chance de crítico de fogo e gelo (até 50%).' },
+  criticalAttack: { label: 'Ataque Crítico', help: 'Cada ponto adiciona 0,5% de chance; só funciona para Guerreiro/Arqueiro. O acerto crítico causa 3× dano.' },
+  criticalDamage: { label: 'Dano crítico', help: 'Efeito fixo: cada acerto Critical ou Magical causa 3× dano.' },
+  criticalMagic: { label: 'Ataque Mágico', help: 'Cada ponto adiciona 0,5% de chance; só funciona para a Maga. O acerto mágico causa 3× dano.' },
   lifeSteal: { label: 'Roubo de vida', help: 'Recupera vida igual a 0,20% do dano causado por ponto (até 20%).' },
-  dodge: { label: 'Esquiva', help: 'Chance de ignorar completamente um golpe (até 35%).' },
+  dodge: { label: 'Esquiva', help: 'Cada ponto adiciona 0,35% de chance de esquivar (até 35%); ao conseguir, o golpe não causa dano.' },
 };
 
 export function trapFocus(root: HTMLElement, event: KeyboardEvent): void {

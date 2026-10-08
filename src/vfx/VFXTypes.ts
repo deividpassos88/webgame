@@ -179,6 +179,12 @@ export interface MageCastContext {
   readonly action: THREE.AnimationAction;
   readonly rightHand: THREE.Object3D | null;
   readonly leftHand: THREE.Object3D | null;
+  /**
+   * Soquete da arma da conjuradora (ponta do cajado da Maga) na pose animada do
+   * momento. O ataque básico nasce daqui; devolve `false` quando o modelo não
+   * tem cajado e aí o feitiço volta para o soquete de mão.
+   */
+  readonly resolveWeaponSocket?: (output: THREE.Vector3) => boolean;
   readonly target: THREE.Object3D | null;
   /** Used for empty-space animation tests or when the target dies before launch. */
   readonly fallbackDirection: THREE.Vector3;
@@ -229,4 +235,7 @@ export interface MageVFXDiagnostics {
   readonly pooledWaterCharges: number;
   readonly activeWaterStrikes: number;
   readonly pooledWaterStrikes: number;
+  /** Impactos de chão (chão rachado / gelo) vivos no momento. */
+  readonly activeGroundDecals: number;
+  readonly pooledGroundDecals: number;
 }

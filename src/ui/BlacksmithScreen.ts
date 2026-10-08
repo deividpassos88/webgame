@@ -363,8 +363,8 @@ export class BlacksmithScreen {
     if (!item) return '';
     const labels: Readonly<Record<string, string>> = {
       vitality: 'Vitalidade', attack: 'Ataque', defense: 'Defesa', agility: 'Agilidade',
-      criticalAttack: 'Crítico', criticalDamage: 'Dano crítico', lifeSteal: 'Roubo de vida',
-      criticalMagic: 'Crítico mágico', dodge: 'Esquiva',
+      criticalAttack: 'Ataque Crítico', criticalDamage: 'Dano crítico', lifeSteal: 'Roubo de vida',
+      criticalMagic: 'Ataque Mágico', dodge: 'Esquiva',
     };
     // Flat weapon damage reads as "Dano"; "Ataque" is the attribute.
     const values = item.baseDamage ? [`Dano +${item.baseDamage}`] : [];
