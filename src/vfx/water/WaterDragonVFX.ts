@@ -8,7 +8,7 @@ import { animateWaterMaterial, bindWaterFlowTexture, createWaterSurfaceMaterial 
 import {
   createWaterColumnBody, createWaterColumnVeil, createWaterCrownPetal, createWaterDragonBody,
   createWaterDragonFin, createWaterDragonHead, createWaterDragonJaw, createWaterOrbit,
-  WATER_DRAGON_SHAPE, waterDragonSpine, createWaterWakeFin,
+  WATER_DRAGON_SHAPE, waterDragonSpine, createWaterWakeFin, createWaterRippleDisc,
 } from './WaterDragonGeometry';
 
 import { sampleWaterDragonStrike, WATER_DRAGON_FALL_SECONDS } from './WaterDragonMotion';
@@ -205,6 +205,7 @@ class WaterDragonStrike implements PoolableVFX {
   private readonly columnGlow = createWaterSurfaceMaterial('column', 'glow', 4);
   private readonly splashMaterial = createWaterSurfaceMaterial('splash', false, 6);
   private readonly splashFoam = createWaterSurfaceMaterial('splash', true, 6);
+  private readonly rippleMaterial = createWaterSurfaceMaterial('ripple', false, 7);
   private readonly hazeMaterial: THREE.MeshBasicMaterial;
   private readonly particles: PooledParticleCloud;
   private readonly fallingDrops: THREE.InstancedMesh;
@@ -245,6 +246,10 @@ class WaterDragonStrike implements PoolableVFX {
       sheet(this.rings, geometry, this.splashMaterial, 'WaterDragonSlicedGroundWave');
       sheet(this.rings, geometry, this.splashFoam, 'WaterDragonGroundWaveRim', 6);
     }
+    // Concentric floor ripples: the clearest "water hit the ground" cue.
+    const ripples = sheet(this.rings, createWaterRippleDisc(24, 72), this.rippleMaterial, 'WaterDragonRippleRings', 5);
+    ripples.position.y = 0.03;
+    ripples.scale.setScalar(2.35);
     this.hazeMaterial = new THREE.MeshBasicMaterial({ map: resources.softGlow, color: 0x009cfa, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
     const mist = sheet(this.impact, new THREE.PlaneGeometry(7.2, 7.2), this.hazeMaterial, 'WaterDragonImpactMist', 3);
     mist.rotation.x = -Math.PI / 2;
@@ -307,6 +312,7 @@ class WaterDragonStrike implements PoolableVFX {
     animateWaterMaterial(this.veilMaterial, this.age, columnOpacity * 0.66, 1, topCut);
     animateWaterMaterial(this.splashMaterial, this.age, splashOpacity * 0.96);
     animateWaterMaterial(this.splashFoam, this.age, splashOpacity * 0.88);
+    animateWaterMaterial(this.rippleMaterial, impactAge, splashOpacity * 0.9);
     // OUTWARD radius increases, vertical extent decreases from first contact.
     this.crown.scale.set(frame.crownRadius, frame.crownHeight, frame.crownRadius);
     this.crown.rotation.y = 0.10;

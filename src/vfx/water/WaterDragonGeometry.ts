@@ -214,3 +214,33 @@ export function createWaterWakeFin(at: number, side: number): THREE.BufferGeomet
     24
   );
 }
+
+/**
+ * Flat polar disc for the floor ripples. uv.x = radius (0 centre → 1 edge),
+ * uv.y = angle / TAU, so the shader can draw concentric rings that expand from the strike.
+ */
+export function createWaterRippleDisc(radialSegments = 24, angularSegments = 72): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const uv: number[] = [];
+  const indices: number[] = [];
+  for (let ring = 0; ring <= radialSegments; ring += 1) {
+    const r = ring / radialSegments;
+    for (let slice = 0; slice <= angularSegments; slice += 1) {
+      const theta = slice / angularSegments * TAU;
+      positions.push(Math.cos(theta) * r, 0, Math.sin(theta) * r);
+      uv.push(r, slice / angularSegments);
+      if (ring === radialSegments || slice === angularSegments) continue;
+      const a = ring * (angularSegments + 1) + slice;
+      const b = a + angularSegments + 1;
+      indices.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geometry.setAttribute('aFlowCross', new THREE.Float32BufferAttribute(new Float32Array(positions.length), 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
