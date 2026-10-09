@@ -235,6 +235,10 @@ export interface MageVFXDiagnostics {
   readonly pooledWaterCharges: number;
   readonly activeWaterStrikes: number;
   readonly pooledWaterStrikes: number;
+  readonly activeThunderCharges: number;
+  readonly pooledThunderCharges: number;
+  readonly activeThunderStrikes: number;
+  readonly pooledThunderStrikes: number;
   /** Impactos de chão (chão rachado / gelo) vivos no momento. */
   readonly activeGroundDecals: number;
   readonly pooledGroundDecals: number;
