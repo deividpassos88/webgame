@@ -302,7 +302,7 @@ class WaterDragonStrike implements PoolableVFX {
     }
     const { impactAge, columnOpacity, splashOpacity, topCut } = frame;
     animateWaterMaterial(this.columnMaterial, this.age, columnOpacity * 0.94, 1, topCut);
-    animateWaterMaterial(this.columnFoam, this.age, columnOpacity * 0.48, 1, topCut);
+    animateWaterMaterial(this.columnFoam, this.age, columnOpacity * 0.36, 1, topCut);
     animateWaterMaterial(this.columnGlow, this.age, columnOpacity, 1, topCut);
     animateWaterMaterial(this.veilMaterial, this.age, columnOpacity * 0.66, 1, topCut);
     animateWaterMaterial(this.splashMaterial, this.age, splashOpacity * 0.96);

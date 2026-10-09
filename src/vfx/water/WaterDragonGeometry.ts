@@ -154,16 +154,19 @@ export function createWaterDragonFin(side: number): THREE.BufferGeometry {
 
 /** Low, outward impact sheets. Never build the old rising "flower"/dome. */
 export function createWaterCrownPetal(angle: number, seed: number): THREE.BufferGeometry {
-  const height = 0.24 + (Math.sin(seed * 2.71) * 0.5 + 0.5) * 0.38;
+  // Low, rolling lip that spreads across the floor. Taller arcs read as a rising
+  // dome/flame, which is exactly what the impact must avoid.
+  const height = 0.10 + (Math.sin(seed * 2.71) * 0.5 + 0.5) * 0.14;
   const reach = 1.4 + (Math.sin(seed * 4.31) * 0.5 + 0.5) * 0.55;
   return createWaterRibbon(
     (t) => {
-      const a = angle + Math.sin(t * Math.PI) * 0.14;
-      const radius = 0.48 + t * reach;
-      return new THREE.Vector3(Math.cos(a) * radius, 0.08 + Math.sin(t * Math.PI * 0.88) * height, Math.sin(a) * radius);
+      const a = angle + Math.sin(t * Math.PI) * 0.10;
+      const radius = 0.42 + t * reach;
+      return new THREE.Vector3(Math.cos(a) * radius, 0.05 + Math.sin(t * Math.PI * 0.9) * height, Math.sin(a) * radius);
     },
-    () => new THREE.Vector3(-Math.sin(angle), 0.08, Math.cos(angle)),
-    (t) => Math.pow(Math.sin(t * Math.PI), 0.55) * (0.88 - t * 0.42),
+    () => new THREE.Vector3(-Math.sin(angle), 0.04, Math.cos(angle)),
+    // Rounded, broader body with blunt tips (sqrt-like), not needle-thin points.
+    (t) => Math.pow(Math.sin(t * Math.PI), 0.32) * (1.02 - t * 0.30),
     32
   );
 }

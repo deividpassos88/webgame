@@ -73,7 +73,9 @@ export function createWaterSurfaceMaterial(
             float fringe = pow(abs(uv.y * 2.0 - 1.0), 5.0);
             float tooth = pow(max(0.0, sin(uv.x * 112.0 - uTime * 9.0 + uSeed)), 5.0);
             float scallop = sin(uv.x * 43.0 - uTime * 5.0 + uSeed) * 0.055;
-            p += aFlowCross * sign(uv.y - 0.5) * fringe * (tooth * 0.055 + scallop * 0.45);
+            // Impact splash (kind 3) keeps a soft, rolling edge: no sawtooth "flame" teeth.
+            if (uKind < 2.5) p += aFlowCross * sign(uv.y - 0.5) * fringe * (tooth * 0.055 + scallop * 0.45);
+            else p += aFlowCross * sign(uv.y - 0.5) * fringe * sin(uv.x * 9.0 - uTime * 3.2 + uSeed) * 0.05;
           }
         }
         if (uFoamOnly > 1.5) {
@@ -133,6 +135,39 @@ export function createWaterSurfaceMaterial(
           reveal = 1.0;
         }
 
+        if (splash) {
+          // Ground splash = a rolling wave lip, not a flame: soft edges that thin out
+          // toward the tips, concentric-looking bands, and foam only on the crests.
+          float edgeMask = 1.0 - pow(abs(across * 2.0 - 1.0), 2.2);
+          float tipMask = 1.0 - smoothstep(0.55, 1.0, along);
+          float rootMask = smoothstep(0.0, 0.14, along);
+          float roll = sin(along * 13.0 - uTime * 4.6 + uSeed * 1.7 + warp * 3.2) * 0.5 + 0.5;
+          float crest = smoothstep(0.62, 0.98, roll);
+          float body = edgeMask * tipMask * rootMask * reveal;
+          vec3 deep = vec3(0.02, 0.32, 0.74);
+          vec3 shallow = vec3(0.10, 0.74, 0.98);
+          vec3 waterColor = mix(deep, shallow, 0.30 + 0.45 * roll);
+          float foamMask = crest * smoothstep(0.30, 0.85, along) * smoothstep(0.20, 0.75, edgeMask + warp * 0.25);
+          if (uFoamOnly > 1.5) {
+            // Local contour glow: a faint blue halo, never a white plate.
+            float a = body * 0.10 * uOpacity;
+            if (a < 0.008) discard;
+            gl_FragColor = vec4(vec3(0.0, 0.52, 1.0), a);
+            return;
+          }
+          if (uFoamOnly > 0.5) {
+            // Foam is additive, kept dim so it reads as spray over water.
+            float a = foamMask * edgeMask * 0.26 * uOpacity;
+            if (a < 0.008) discard;
+            gl_FragColor = vec4(mix(vec3(0.42, 0.90, 1.0), vec3(0.86, 1.0, 1.0), crest), a);
+            return;
+          }
+          float bodyAlpha = body * 0.80 * uOpacity;
+          if (bodyAlpha < 0.008) discard;
+          gl_FragColor = vec4(waterColor + vec3(0.10, 0.12, 0.14) * crest, bodyAlpha);
+          return;
+        }
+
         vec3 color;
         float alpha;
         if (uTextured > 0.5) {
@@ -144,7 +179,8 @@ export function createWaterSurfaceMaterial(
           transverse += warp * (column ? 0.035 : 0.055);
           vec4 water = texture2D(uFlowMap, vec2(along * repeats + scroll + uSeed * 0.13, transverse));
           float paintedFoam = smoothstep(0.16, 0.62, water.r) * smoothstep(0.55, 0.9, water.g);
-          color = water.rgb * vec3(0.90, 1.14, 1.15);
+          // Column water reads as deep, translucent sea-blue; no neon, no light-beam cast.
+          color = water.rgb * (column ? vec3(0.74, 1.00, 1.10) : vec3(0.90, 1.14, 1.15));
           // Keep the core connected; only the outer veil has torn alpha edges.
           color = max(color, vec3(0.012, 0.38, 0.76) * uColumnFill);
           if (column) color += vec3(0.0, 0.065, 0.095);
@@ -155,7 +191,7 @@ export function createWaterSurfaceMaterial(
             color = vec3(0.015, 0.7, 1.0);
           } else if (uFoamOnly > 0.5) {
             alpha = paintedFoam * water.a * 0.58;
-            color = mix(vec3(0.06, 0.86, 1.0), vec3(0.82, 1.0, 1.0), paintedFoam);
+            color = mix(vec3(0.06, 0.82, 1.0), column ? vec3(0.62, 0.94, 1.0) : vec3(0.82, 1.0, 1.0), paintedFoam);
           }
         } else {
           // Standalone/material-test fallback; not evaluated by the textured path.
