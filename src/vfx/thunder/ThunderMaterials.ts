@@ -211,9 +211,10 @@ export function createThunderSmokeTexture(size = 128): THREE.DataTexture {
     return best;
   };
   const mix = (a: number[], b: number[], t: number): number[] => a.map((v, i) => v + (b[i] - v) * t);
-  const body = [58, 42, 94];
-  const highlight = [112, 90, 166];
-  const outline = [22, 14, 40];
+  // Roxo-escuro cartunesco: corpo escuro, topo levemente iluminado, contorno quase preto.
+  const body = [44, 28, 78];
+  const highlight = [98, 66, 150];
+  const outline = [12, 7, 24];
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
       const u = (x + 0.5) / size;
@@ -229,6 +230,32 @@ export function createThunderSmokeTexture(size = 128): THREE.DataTexture {
       data[i + 1] = Math.round(color[1]);
       data[i + 2] = Math.round(color[2]);
       data[i + 3] = Math.round(Math.max(inside, edge * 0.9) * 255);
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+/**
+ * Radial soft shadow for the ground under the strike: dark centre, fading out
+ * to nothing at the rim. Generated in code, no assets.
+ */
+export function createThunderShadowTexture(size = 128): THREE.DataTexture {
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const u = (x + 0.5) / size * 2 - 1;
+      const v = (y + 0.5) / size * 2 - 1;
+      const r = Math.min(1, Math.hypot(u, v));
+      const alpha = THREE.MathUtils.smoothstep(1 - r, 0, 0.55) * (r < 1 ? 1 : 0);
+      const i = (y * size + x) * 4;
+      data[i] = 8;
+      data[i + 1] = 4;
+      data[i + 2] = 14;
+      data[i + 3] = Math.round(alpha * 255);
     }
   }
   const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);

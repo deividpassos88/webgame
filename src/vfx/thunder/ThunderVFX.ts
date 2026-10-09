@@ -6,7 +6,7 @@ import { VFXLightPool, type VFXLightHandle } from '../VFXLightPool';
 import type { MageVFXQuality } from '../VFXTypes';
 import {
   createThunderBeamMaterial, createThunderBoltMaterial, createThunderDomeMaterial,
-  createThunderRingMaterial, createThunderSmokeTexture,
+  createThunderRingMaterial, createThunderShadowTexture, createThunderSmokeTexture,
 } from './ThunderMaterials';
 import {
   createThunderBladeGeometry, createThunderDiscGeometry, jaggedBoltPath, ThunderBolt,
@@ -18,7 +18,9 @@ export const THUNDER_DESCENT_SECONDS = 0.22;
 export const THUNDER_LIFETIME_SECONDS = 1.6;
 /** Larguras fixas (lista de um item repete o valor em todo o caminho). */
 const BRANCH_HALF_WIDTH: readonly number[] = [0.16];
-const ARC_HALF_WIDTH: readonly number[] = [0.12];
+const ARC_HALF_WIDTH: readonly number[] = [0.16];
+/** Corpo grosso do raio (magenta com núcleo branco), sob o filete fino. */
+const BODY_HALF_WIDTH = 0.82;
 
 const BUBBLE_RADIUS = 2.1;
 const BOLT_TOP = 8.5;
@@ -276,13 +278,18 @@ class ThunderStrike implements PoolableVFX {
   private readonly branches: ThunderBolt[] = [];
   private readonly groundArcs: ThunderBolt[] = [];
   private readonly arcPaths: THREE.Vector3[][] = [];
+  private readonly body: ThunderBolt;
+  private readonly bodyMaterial = createThunderBoltMaterial(0xff2bd6);
+  private readonly bodyPath: THREE.Vector3[] = [];
   private readonly boltMaterial = createThunderBoltMaterial(0xff2bd6);
   private readonly branchMaterial = createThunderBoltMaterial(0xff2bd6);
-  private readonly arcMaterial = createThunderBoltMaterial(0xff2bd6);
+  private readonly arcMaterial = createThunderBoltMaterial(0x9b4dff);
   private readonly underglow: THREE.Sprite;
   private readonly underglowMaterial: THREE.SpriteMaterial;
   private readonly flash: THREE.Sprite;
   private readonly flashMaterial: THREE.SpriteMaterial;
+  private readonly burst: THREE.Sprite;
+  private readonly burstMaterial: THREE.SpriteMaterial;
   private readonly shock: THREE.Mesh;
   private readonly shockMaterial = createThunderRingMaterial();
   private readonly crater: THREE.Mesh;
@@ -312,6 +319,8 @@ class ThunderStrike implements PoolableVFX {
     this.group.visible = false;
     const high = quality !== 'low';
 
+    this.body = new ThunderBolt(high ? 14 : 10, this.bodyMaterial, 'ThunderBodyBolt');
+    this.group.add(this.body.mesh);
     this.bolt = new ThunderBolt(high ? 16 : 12, this.boltMaterial, 'ThunderMainBolt');
     this.group.add(this.bolt.mesh);
     for (let index = 0; index < 3; index += 1) {
@@ -320,8 +329,8 @@ class ThunderStrike implements PoolableVFX {
       this.branchPaths.push([]);
       this.group.add(branch.mesh);
     }
-    for (let index = 0; index < 4; index += 1) {
-      const arc = new ThunderBolt(6, this.arcMaterial, 'ThunderGroundArc');
+    for (let index = 0; index < 6; index += 1) {
+      const arc = new ThunderBolt(7, this.arcMaterial, 'ThunderGroundArc');
       this.groundArcs.push(arc);
       this.arcPaths.push([]);
       this.group.add(arc.mesh);
@@ -345,25 +354,36 @@ class ThunderStrike implements PoolableVFX {
     this.flash.name = 'ThunderImpactFlash';
     this.group.add(this.flash);
 
+    // Estouro branco na base: sobe forte no contato e some em instantes.
+    this.burstMaterial = new THREE.SpriteMaterial({
+      map: resources.softGlow, color: 0xffffff, transparent: true, opacity: 0, depthWrite: false,
+      blending: THREE.AdditiveBlending, toneMapped: false,
+    });
+    this.burst = new THREE.Sprite(this.burstMaterial);
+    this.burst.position.y = 0.35;
+    this.burst.name = 'ThunderBaseBurst';
+    this.group.add(this.burst);
+
     this.shock = new THREE.Mesh(createThunderDiscGeometry(24, 72), this.shockMaterial);
     this.shock.rotation.x = 0;
     this.shock.position.y = 0.04;
     this.shock.name = 'ThunderShockRing';
     this.group.add(this.shock);
 
-    this.crater = new THREE.Mesh(new THREE.CircleGeometry(1.7, 48), new THREE.MeshBasicMaterial({
-      color: 0x140c1e, transparent: true, opacity: 0, depthWrite: false,
+    // Sombra escura no chão: gradiente radial suave, maior que a área do raio.
+    this.crater = new THREE.Mesh(new THREE.CircleGeometry(2.9, 48), new THREE.MeshBasicMaterial({
+      color: 0xffffff, map: createThunderShadowTexture(128), transparent: true, opacity: 0, depthWrite: false,
     }));
     this.crater.rotation.x = -Math.PI / 2;
     this.crater.position.y = 0.02;
-    this.crater.name = 'ThunderCrater';
+    this.crater.name = 'ThunderGroundShadow';
     this.group.add(this.crater);
 
     // Three swept grey-violet blades orbit the bolt (fill + darker outline, as in the reference).
     const bladeSpecs = [
-      { phase: 0.2, sweep: 2.6, radius: 1.5, height: 2.4, width: 0.85 },
-      { phase: 2.5, sweep: 2.3, radius: 1.7, height: 3.1, width: 0.72 },
-      { phase: 4.4, sweep: 2.8, radius: 1.3, height: 3.7, width: 0.62 },
+      { phase: 0.2, sweep: 2.6, radius: 1.45, height: 2.4, width: 1.2 },
+      { phase: 2.5, sweep: 2.3, radius: 1.6, height: 3.1, width: 1.05 },
+      { phase: 4.4, sweep: 2.8, radius: 1.25, height: 3.7, width: 0.95 },
     ];
     for (const spec of bladeSpecs) {
       const fill = new THREE.MeshBasicMaterial({ color: 0x8c85b2, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
@@ -382,25 +402,25 @@ class ThunderStrike implements PoolableVFX {
 
     // Cartoon storm smoke: dark violet puffs around the base, with a magenta light underneath.
     const smokeTexture = createThunderSmokeTexture(128);
-    const smokeCount = high ? 10 : 6;
+    const smokeCount = high ? 14 : 8;
     for (let index = 0; index < smokeCount; index += 1) {
       const material = new THREE.SpriteMaterial({
-        map: smokeTexture, color: 0x4d3c76, transparent: true, opacity: 0, depthWrite: false,
+        map: smokeTexture, color: 0x3a2868, transparent: true, opacity: 0, depthWrite: false,
       });
       this.smokeMaterials.push(material);
       const sprite = new THREE.Sprite(material);
       const angle = (index / smokeCount) * TAU + (index % 2) * 0.25;
-      const radius = 0.7 + (index % 4) * 0.28;
-      sprite.position.set(Math.cos(angle) * radius, 0.5 + (index % 3) * 0.25, Math.sin(angle) * radius);
+      const radius = 0.8 + (index % 4) * 0.34;
+      sprite.position.set(Math.cos(angle) * radius, 0.6 + (index % 3) * 0.3, Math.sin(angle) * radius);
       sprite.name = 'ThunderSmokePuff';
       this.smokes.push({ sprite, delay: index * 0.02, angle, radius, height: sprite.position.y });
       this.group.add(sprite);
     }
 
     // Flying dark-violet shards, ballistic.
-    const shardCount = high ? 14 : 8;
-    this.shards = new THREE.InstancedMesh(new THREE.ConeGeometry(0.05, 0.22, 3), new THREE.MeshBasicMaterial({
-      color: 0x9d91d6, transparent: true, opacity: 0.95,
+    const shardCount = high ? 22 : 12;
+    this.shards = new THREE.InstancedMesh(new THREE.ConeGeometry(0.07, 0.3, 3), new THREE.MeshBasicMaterial({
+      color: 0xb9a8ff, transparent: true, opacity: 0.95,
     }), shardCount);
     this.shards.name = 'ThunderFlyingShards';
     this.shards.frustumCulled = false;
@@ -462,9 +482,16 @@ class ThunderStrike implements PoolableVFX {
     }
 
     // Main bolt: falls from the sky, then flickers in place until it fades.
-    jaggedBoltPath(new THREE.Vector3(0, BOLT_TOP, 0), head, 12, 0.5 * (1 - 0.6 * (impactAge > 0 ? 1 : 0)), boltRandom, this.topPath);
-    this.bolt.setPath(this.topPath, this.topPath.map((_, i) => 0.34 + 0.12 * Math.sin(i * 1.3 + this.age * 20)));
     const boltFade = 1 - THREE.MathUtils.smoothstep(impactAge, 0.5, 0.95);
+    // Corpo grosso: quase reto, com leve oscilação; mais grosso perto do chão.
+    jaggedBoltPath(new THREE.Vector3(0, BOLT_TOP, 0), head, 10, 0.12, boltRandom, this.bodyPath);
+    this.body.setPath(this.bodyPath, this.bodyPath.map((_, i) => BODY_HALF_WIDTH * (1 + 0.12 * i / Math.max(1, this.bodyPath.length - 1)) + 0.05 * Math.sin(i * 1.7 + this.age * 16)));
+    this.bodyMaterial.uniforms.uTime.value = this.age;
+    this.bodyMaterial.uniforms.uOpacity.value = boltFade;
+    this.bodyMaterial.uniforms.uSeed.value = this.seed + 3;
+    // Filete fino e irregular por cima do corpo.
+    jaggedBoltPath(new THREE.Vector3(0, BOLT_TOP, 0), head, 12, 0.5 * (1 - 0.6 * (impactAge > 0 ? 1 : 0)), boltRandom, this.topPath);
+    this.bolt.setPath(this.topPath, this.topPath.map((_, i) => 0.22 + 0.08 * Math.sin(i * 1.3 + this.age * 20)));
     this.boltMaterial.uniforms.uTime.value = this.age;
     this.boltMaterial.uniforms.uOpacity.value = boltFade;
     this.boltMaterial.uniforms.uSeed.value = this.seed;
@@ -483,24 +510,28 @@ class ThunderStrike implements PoolableVFX {
     // Ground arcs crawling out from the base after landing.
     this.groundArcs.forEach((arc, index) => {
       const angle = (index / this.groundArcs.length) * TAU + 0.4;
-      const reach = 0.9 + (index % 2) * 0.7;
+      const crawl = THREE.MathUtils.smoothstep(impactAge, 0, 0.4);
+      const reach = (1.6 + (index % 2) * 1.1) * (0.25 + 0.75 * crawl);
       const from = new THREE.Vector3(0, 0.05, 0);
       const to = new THREE.Vector3(Math.cos(angle) * reach, 0.05, Math.sin(angle) * reach);
       const path = jaggedBoltPath(from, to, 5, 0.9, boltRandom, this.arcPaths[index]);
       arc.setPath(path, ARC_HALF_WIDTH);
     });
-    this.arcMaterial.uniforms.uOpacity.value = impactAge > 0 ? (1 - THREE.MathUtils.smoothstep(impactAge, 0.2, 0.6)) : 0;
+    this.arcMaterial.uniforms.uOpacity.value = impactAge > 0 ? (1 - THREE.MathUtils.smoothstep(impactAge, 0.45, 1.0)) : 0;
     this.arcMaterial.uniforms.uTime.value = this.age;
 
     // Flash, shock ring and crater after contact.
     const flash = 1 - THREE.MathUtils.smoothstep(impactAge, 0, 0.45);
     this.flash.scale.setScalar(1.8 + 3.8 * THREE.MathUtils.smoothstep(impactAge, 0, 0.22));
     this.flashMaterial.opacity = flash;
+    const burstAge = THREE.MathUtils.smoothstep(impactAge, 0, 0.12);
+    this.burst.scale.setScalar(0.9 + 2.6 * THREE.MathUtils.smoothstep(impactAge, 0, 0.28));
+    this.burstMaterial.opacity = burstAge * (1 - THREE.MathUtils.smoothstep(impactAge, 0.12, 0.5));
     const shockR = 0.4 + 2.4 * THREE.MathUtils.smoothstep(impactAge, 0, 0.6);
     this.shock.scale.setScalar(shockR);
     this.shockMaterial.uniforms.uTime.value = impactAge;
     this.shockMaterial.uniforms.uOpacity.value = 1 - THREE.MathUtils.smoothstep(impactAge, 0.3, 0.9);
-    (this.crater.material as THREE.MeshBasicMaterial).opacity = 0.65 * (1 - THREE.MathUtils.smoothstep(impactAge, 0.9, 1.5));
+    (this.crater.material as THREE.MeshBasicMaterial).opacity = 0.9 * THREE.MathUtils.smoothstep(impactAge, 0, 0.08) * (1 - THREE.MathUtils.smoothstep(impactAge, 1.0, 1.5));
 
     // Blades: appear after the first flash, orbit and spin, then fade.
     const bladeLive = THREE.MathUtils.smoothstep(impactAge, 0.05, 0.25) * (1 - THREE.MathUtils.smoothstep(impactAge, 1.0, 1.5));
@@ -515,13 +546,13 @@ class ThunderStrike implements PoolableVFX {
     // Smoke: puffs pop out, grow, then dissolve.
     const smokeLive = 1 - THREE.MathUtils.smoothstep(impactAge, 0.9, 1.5);
     const glowGrow = THREE.MathUtils.smoothstep(impactAge, 0, 0.35);
-    this.underglow.scale.setScalar(1.5 + 2.6 * glowGrow);
-    this.underglowMaterial.opacity = 0.75 * smokeLive * glowGrow;
+    this.underglow.scale.setScalar(2.4 + 3.2 * glowGrow);
+    this.underglowMaterial.opacity = 0.9 * smokeLive * glowGrow;
     this.smokes.forEach((smoke, index) => {
       const grow = THREE.MathUtils.smoothstep(impactAge, smoke.delay, 0.5 + smoke.delay);
-      smoke.sprite.scale.setScalar(0.35 + 1.25 * grow);
-      smoke.sprite.position.y = smoke.height + 0.25 * grow;
-      this.smokeMaterials[index].opacity = 0.92 * smokeLive * grow;
+      smoke.sprite.scale.setScalar(0.6 + 1.9 * grow);
+      smoke.sprite.position.y = smoke.height + 0.35 * grow;
+      this.smokeMaterials[index].opacity = 0.96 * smokeLive * grow;
     });
 
     // Shards: ballistic arcs with spin, hidden after the cloud dissipates.
@@ -562,6 +593,8 @@ class ThunderStrike implements PoolableVFX {
     this.sparks.dispose();
     disposeTree(this.group);
     this.boltMaterial.dispose();
+    this.bodyMaterial.dispose();
+    this.burstMaterial.dispose();
     this.branchMaterial.dispose();
     this.arcMaterial.dispose();
     this.shockMaterial.dispose();
