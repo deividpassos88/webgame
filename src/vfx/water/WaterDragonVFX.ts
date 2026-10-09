@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createWaterfallMaterial } from './WaterfallMaterial';
 import type { MageVFXResources } from '../MageVFXResources';
 import { PooledParticleCloud } from '../ParticleManager';
 import { VFXPool, type PoolableVFX } from '../VFXPool';
@@ -199,16 +200,16 @@ class WaterDragonStrike implements PoolableVFX {
   private readonly impact = new THREE.Group();
   private readonly crown = new THREE.Group();
   private readonly rings = new THREE.Group();
-  private readonly columnMaterial = createWaterSurfaceMaterial('column', false, 4);
-  private readonly columnFoam = createWaterSurfaceMaterial('column', true, 4);
-  private readonly veilMaterial = createWaterSurfaceMaterial('veil', false, 5);
-  private readonly columnGlow = createWaterSurfaceMaterial('column', 'glow', 4);
+  private readonly columnMaterial = createWaterfallMaterial('column', false, 4);
+  private readonly columnFoam = createWaterfallMaterial('column', true, 4);
+  private readonly veilMaterials: ReturnType<typeof createWaterfallMaterial>[] = [];
+  private readonly columnGlow = createWaterfallMaterial('column', 'glow', 4);
   private readonly splashMaterial = createWaterSurfaceMaterial('splash', false, 6);
   private readonly splashFoam = createWaterSurfaceMaterial('splash', true, 6);
   private readonly hazeMaterial: THREE.MeshBasicMaterial;
   private readonly particles: PooledParticleCloud;
   private readonly fallingDrops: THREE.InstancedMesh;
-  private readonly fallingMaterial = new THREE.MeshBasicMaterial({ color: 0x87faff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+  private readonly fallingMaterial = new THREE.MeshBasicMaterial({ color: 0xc0dce3, transparent: true, blending: THREE.NormalBlending, depthWrite: false, toneMapped: false });
   private readonly fallingTransform = new THREE.Object3D();
   private light: VFXLightHandle | null = null;
   private options: WaterDragonStrikeOptions | null = null;
@@ -216,7 +217,7 @@ class WaterDragonStrike implements PoolableVFX {
   public impacted = false;
 
   public constructor(resources: MageVFXResources, private readonly lights: VFXLightPool, private readonly quality: MageVFXQuality) {
-    for (const material of [this.columnMaterial, this.columnFoam, this.columnGlow, this.veilMaterial, this.splashMaterial, this.splashFoam]) {
+    for (const material of [this.columnMaterial, this.columnFoam, this.columnGlow, this.splashMaterial, this.splashFoam]) {
       bindWaterFlowTexture(material, resources.waterFlow);
     }
     this.group.name = 'MageWaterDragonSkyStrikeVFX';
@@ -233,7 +234,10 @@ class WaterDragonStrike implements PoolableVFX {
     sheet(this.column, tube, this.columnMaterial, 'WaterDragonWaterfallBody');
     sheet(this.column, tube, this.columnFoam, 'WaterDragonWaterfallFoam', 6);
     for (let index = 0; index < 6; index += 1) {
-      sheet(this.column, createWaterColumnVeil(index / 6 * TAU), this.veilMaterial, 'WaterDragonFallingSheet');
+      const veil = createWaterfallMaterial('veil', false, 5 + index * 1.37);
+      bindWaterFlowTexture(veil, resources.waterFlow);
+      this.veilMaterials.push(veil);
+      sheet(this.column, createWaterColumnVeil(index / 6 * TAU), veil, 'WaterDragonFallingSheet');
     }
     for (let index = 0; index < 7; index += 1) {
       const geometry = createWaterCrownPetal(index / 7 * TAU + Math.sin(index * 4) * 0.18, index);
@@ -252,7 +256,7 @@ class WaterDragonStrike implements PoolableVFX {
     this.particles = new PooledParticleCloud(36, resources.softGlow);
     this.particles.points.name = 'WaterDragonImpactDroplets';
     this.impact.add(this.particles.points);
-    this.fallingDrops = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 4, 3), this.fallingMaterial, quality === 'low' ? 10 : 22);
+    this.fallingDrops = new THREE.InstancedMesh(new THREE.SphereGeometry(1, quality === 'low' ? 6 : 8, 6), this.fallingMaterial, quality === 'low' ? 10 : 22);
     this.fallingDrops.name = 'WaterDragonDownwardDroplets';
     this.fallingDrops.frustumCulled = false;
     this.fallingDrops.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -304,7 +308,9 @@ class WaterDragonStrike implements PoolableVFX {
     animateWaterMaterial(this.columnMaterial, this.age, columnOpacity * 0.94, 1, topCut);
     animateWaterMaterial(this.columnFoam, this.age, columnOpacity * 0.48, 1, topCut);
     animateWaterMaterial(this.columnGlow, this.age, columnOpacity, 1, topCut);
-    animateWaterMaterial(this.veilMaterial, this.age, columnOpacity * 0.66, 1, topCut);
+    for (const material of this.veilMaterials) {
+      animateWaterMaterial(material, this.age, columnOpacity * 0.66, 1, topCut);
+    }
     animateWaterMaterial(this.splashMaterial, this.age, splashOpacity * 0.96);
     animateWaterMaterial(this.splashFoam, this.age, splashOpacity * 0.88);
     // OUTWARD radius increases, vertical extent decreases from first contact.
@@ -316,13 +322,14 @@ class WaterDragonStrike implements PoolableVFX {
     this.particles.update(elapsed);
     this.fallingMaterial.opacity = columnOpacity * 0.56;
     for (let index = 0; index < this.fallingDrops.count; index += 1) {
-      const phase = (this.age * 1.9 + index * 0.127) % 1;
-      const height = 1 - phase;
+      const phase = (this.age * (1.5 + (index % 5) * 0.13) + index * 0.127) % 1;
+      const height = 1 - phase * phase;
       const angle = index * 2.399;
-      const radius = 0.77 + Math.sin(index * 3.7) * 0.2;
+      const radius = 0.77 + Math.sin(index * 3.7) * 0.2 + phase * phase * 0.12;
       this.fallingTransform.position.set(Math.cos(angle) * radius, height * WATER_DRAGON_SHAPE.columnHeight, Math.sin(angle) * radius);
       const visible = height < topCut ? 1 : 0;
-      this.fallingTransform.scale.set(0.018 * visible, (0.12 + (index % 4) * 0.04) * visible, 0.018 * visible);
+      const breadth = 0.014 + (index % 3) * 0.007;
+      this.fallingTransform.scale.set(breadth * visible, (0.035 + phase * 0.16) * visible, breadth * visible);
       this.fallingTransform.updateMatrix();
       this.fallingDrops.setMatrixAt(index, this.fallingTransform.matrix);
     }

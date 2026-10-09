@@ -287,6 +287,32 @@ describe('Dragão das Marés pooled water effects', () => {
     expect(resources.softGlow.generateMipmaps).toBe(false);
   });
 
+  it('reuses and disposes the individually animated falling sheets without owning the flow texture', () => {
+    const { scene, water, target, resources } = setup();
+    const cast = () => water.strike({ position: target.position, target, onImpact: vi.fn() });
+    cast();
+    const strike = scene.getObjectByName('MageWaterDragonSkyStrikeVFX')!;
+    const materials: THREE.ShaderMaterial[] = [];
+    strike.traverse((object) => {
+      if (object.name === 'WaterDragonFallingSheet') materials.push((object as THREE.Mesh).material as THREE.ShaderMaterial);
+    });
+    expect(new Set(materials).size).toBe(6);
+    const disposers = materials.map((material) => vi.spyOn(material, 'dispose'));
+    const textureDispose = vi.spyOn(resources.waterFlow, 'dispose');
+    water.update(0.4);
+    for (const material of materials) {
+      expect(material.uniforms.uTime.value).toBeCloseTo(0.4);
+      expect(material.uniforms.uOpacity.value).toBeGreaterThan(0);
+    }
+    water.update(1);
+    cast();
+    expect(scene.getObjectByName('MageWaterDragonSkyStrikeVFX')).toBe(strike);
+    for (const material of materials) expect(material.uniforms.uTime.value).toBe(0);
+    water.dispose();
+    for (const dispose of disposers) expect(dispose).toHaveBeenCalledTimes(1);
+    expect(textureDispose).not.toHaveBeenCalled();
+  });
+
   it('disposes shared body geometry exactly once while leaving the shared texture owner intact', () => {
     const { scene, water, caster, resources } = setup();
     water.charge(caster);
