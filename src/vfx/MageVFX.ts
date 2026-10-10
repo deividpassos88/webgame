@@ -4,7 +4,9 @@ import { CameraShake } from './CameraShake';
 import { DEFAULT_MAGE_VFX_QUALITY, MAGE_SPELL_PRESETS, MAGE_VFX_LIMITS, mageQualityProfile } from './VFXConfig';
 import { ImpactVFX } from './ImpactVFX';
 import { LaserVFX } from './LaserVFX';
+import { LightningVFX } from './LightningVFX';
 import { WaterDragonVFX, type WaterDragonChargeHandle } from './water/WaterDragonVFX';
+import { ThunderVFX, type ThunderChargeHandle } from './thunder/ThunderVFX';
 import { IceCrystalWaveVFX } from './ice/IceCrystalWaveVFX';
 import {
   GroundImpactDecalVFX,
@@ -527,6 +529,7 @@ interface ActiveMageCast {
   readonly timeline: VFXTimeline<MageTimelineEvent>;
   charge: ChargeOrbEffect | null;
   waterCharge: WaterDragonChargeHandle | null;
+  thunderCharge: ThunderChargeHandle | null;
   launched: boolean;
   impactDelivered: boolean;
 }
@@ -555,7 +558,9 @@ export class MageVFX {
   private readonly activeBarriers: BarrierAuraEffect[] = [];
   private readonly activeCasts: ActiveMageCast[] = [];
   private readonly projectiles: ProjectileManager;
+  private readonly lightning: LightningVFX;
   private readonly waterDragon: WaterDragonVFX;
+  private readonly thunder: ThunderVFX;
   private readonly lasers: LaserVFX;
   private readonly impacts: ImpactVFX;
   private readonly magicCircles: MagicCircleVFX;
@@ -590,7 +595,9 @@ export class MageVFX {
       this.lightPool,
       options.getCamera ?? (() => null)
     );
+    this.lightning = new LightningVFX(scene, this.resources, this.quality);
     this.waterDragon = new WaterDragonVFX(scene, this.resources, this.lightPool, this.quality);
+    this.thunder = new ThunderVFX(scene, this.resources, this.lightPool, this.quality);
     this.lasers = new LaserVFX(scene, this.resources, this.quality, this.lightPool);
     this.impacts = new ImpactVFX(scene, this.resources, this.quality, this.lightPool);
     this.magicCircles = new MagicCircleVFX(this.resources);
@@ -626,6 +633,7 @@ export class MageVFX {
       timeline,
       charge: null,
       waterCharge: null,
+      thunderCharge: null,
       launched: false,
       impactDelivered: false,
     });
@@ -654,7 +662,9 @@ export class MageVFX {
     }
     this.updateBarriers(elapsed);
     this.projectiles.update(elapsed);
+    this.lightning.update(elapsed);
     this.waterDragon.update(elapsed);
+    this.thunder.update(elapsed);
     this.lasers.update(elapsed);
     this.impacts.update(elapsed);
     this.magicCircles.update(elapsed);
@@ -672,7 +682,9 @@ export class MageVFX {
     for (const barrier of this.activeBarriers) this.barriers.release(barrier);
     this.activeBarriers.length = 0;
     this.projectiles.clear();
+    this.lightning.clear();
     this.waterDragon.clear();
+    this.thunder.clear();
     this.lasers.clear();
     this.impacts.clear();
     this.magicCircles.clear();
@@ -686,7 +698,9 @@ export class MageVFX {
     this.charges.dispose();
     this.barriers.dispose();
     this.projectiles.dispose();
+    this.lightning.dispose();
     this.waterDragon.dispose();
+    this.thunder.dispose();
     this.lasers.dispose();
     this.impacts.dispose();
     this.magicCircles.dispose();
@@ -769,6 +783,7 @@ export class MageVFX {
           }
           const deliveryActive = diagnostics.activeProjectiles
             + diagnostics.activeLasers
+            + diagnostics.activeLightning
             + diagnostics.activeWaterStrikes;
           if (!compiledStage.delivery && deliveryActive > 0) {
             compile();
@@ -855,6 +870,8 @@ export class MageVFX {
       pooledImpacts: this.impacts.pooledCount,
       activeMagicCircles: this.magicCircles.activeCount,
       pooledMagicCircles: this.magicCircles.pooledCount,
+      activeLightning: this.lightning.activeCount,
+      pooledLightning: this.lightning.pooledCount,
       activeLasers: this.lasers.activeCount,
       pooledLasers: this.lasers.pooledCount,
       activeBarriers: this.activeBarriers.length,
@@ -865,6 +882,10 @@ export class MageVFX {
       activeGroundDecals: this.groundDecals.activeCount,
       pooledGroundDecals: this.groundDecals.pooledCount,
       pooledWaterStrikes: this.waterDragon.pooledStrikes,
+      activeThunderCharges: this.thunder.activeCharges,
+      pooledThunderCharges: this.thunder.pooledCharges,
+      activeThunderStrikes: this.thunder.activeStrikes,
+      pooledThunderStrikes: this.thunder.pooledStrikes,
     };
   }
 
@@ -914,7 +935,7 @@ export class MageVFX {
   }
 
   private startCharge(cast: ActiveMageCast): void {
-    if (cast.charge || cast.waterCharge) return;
+    if (cast.charge || cast.waterCharge || cast.thunderCharge) return;
     // Cast que já lançou não volta a carregar: quando o ataque é reiniciado no
     // meio (andar e atacar de novo), a timeline refaz os eventos deste cast e a
     // carga ficava pendurada na mão — sem isso o brilho nunca saía de lá.
@@ -923,8 +944,11 @@ export class MageVFX {
       cast.waterCharge = this.waterDragon.charge(cast.context.caster);
       return;
     }
-    // Juízo do Trovão (Maga): sem efeito visual por enquanto (só gameplay e som).
-    if (cast.preset.id === 'lightning') return;
+    // Pulo Atacando (Maga): a bolha de invocação envolve a Maga enquanto ela conjura.
+    if (cast.preset.id === 'lightning') {
+      cast.thunderCharge = this.thunder.charge(cast.context.caster);
+      return;
+    }
     const charge = this.charges.acquire();
     if (!charge) return;
     charge.play(cast.preset);
@@ -981,7 +1005,7 @@ export class MageVFX {
     }
     if (cast.preset.id === 'lightning') {
       this.emitAudio(cast.context, cast.preset, 'cast', origin);
-      this.launchLightningHit(cast, origin, direction);
+      this.launchThunder(cast, direction);
       return;
     }
     const bullet = cast.preset.projectile.shape === 'bullet';
@@ -1030,6 +1054,20 @@ export class MageVFX {
       }
     }
 
+    if (cast.preset.delivery === 'instant-lightning') {
+      const aimed = this.resolveTargetPoint(cast, origin, direction, MAGE_SPELL_TRAVEL_METERS);
+      const stopped = this.stopOnBody(cast, origin, aimed);
+      this.lightning.strike({
+        start: origin,
+        end: stopped.point,
+        preset: cast.preset,
+        onImpact: () => {
+          this.handleDirectImpact(stopped.point, cast, stopped.target, direction);
+        },
+      });
+      return;
+    }
+
     if (cast.preset.delivery === 'beam') {
       const aimed = this.resolveTargetPoint(cast, origin, direction, MAGE_SPELL_TRAVEL_METERS);
       const stopped = this.stopOnBody(cast, origin, aimed);
@@ -1070,14 +1108,30 @@ export class MageVFX {
     }
   }
 
-  /**
-   * Juízo do Trovão: sem efeito visual. O alvo e o dano são os mesmos do raio
-   * original: ponto de parada no primeiro corpo, entregue já no lançamento.
-   */
-  private launchLightningHit(cast: ActiveMageCast, origin: THREE.Vector3, direction: THREE.Vector3): void {
-    const aimed = this.resolveTargetPoint(cast, origin, direction, MAGE_SPELL_TRAVEL_METERS);
-    const stopped = this.stopOnBody(cast, origin, aimed);
-    this.handleDirectImpact(stopped.point, cast, stopped.target, direction);
+  private launchThunder(cast: ActiveMageCast, direction: THREE.Vector3): void {
+    const caster = cast.context.caster.getWorldPosition(new THREE.Vector3());
+    let target = cast.context.target;
+    if (target && cast.context.isTargetAlive && !cast.context.isTargetAlive(target)) target = null;
+    const ground = target
+      ? target.getWorldPosition(new THREE.Vector3())
+      : caster.clone().addScaledVector(new THREE.Vector3(direction.x, 0, direction.z).normalize(), MAGE_SPELL_TRAVEL_METERS);
+    const planar = new THREE.Vector3(ground.x - caster.x, 0, ground.z - caster.z);
+    if (planar.length() > MAGE_SPELL_TRAVEL_METERS) {
+      planar.setLength(MAGE_SPELL_TRAVEL_METERS);
+      ground.copy(caster).add(planar);
+      target = null;
+    }
+    // O raio cai do céu sobre o inimigo marcado; sem marcação usa a consulta vertical do ponto de pouso.
+    if (!target && cast.context.queryBodyHit) {
+      const top = ground.clone().add(new THREE.Vector3(0, 8.5, 0));
+      target = cast.context.queryBodyHit(top, ground, 0.65);
+    }
+    this.thunder.strike({
+      position: ground,
+      target,
+      isTargetAlive: cast.context.isTargetAlive,
+      onImpact: (point, hit) => this.handleDirectImpact(point, cast, hit, direction),
+    });
   }
 
   private launchWaterDragon(cast: ActiveMageCast, direction: THREE.Vector3): void {
@@ -1181,7 +1235,8 @@ export class MageVFX {
   }
 
   public playShockImpact(_position: THREE.Vector3): void {
-    // Juízo do Trovão (Maga): sem efeito visual. O choque segue só na lógica de jogo.
+    // Pulo Atacando (Maga): o impacto é só o raio pintado (ThunderVFX). O círculo
+    // ciano antigo no chão foi removido; o efeito de choque segue na lógica de jogo.
   }
 
   /**
@@ -1206,6 +1261,8 @@ export class MageVFX {
   private releaseCharge(cast: ActiveMageCast): void {
     cast.waterCharge?.release();
     cast.waterCharge = null;
+    cast.thunderCharge?.release();
+    cast.thunderCharge = null;
     if (!cast.charge) return;
     this.charges.release(cast.charge);
     cast.charge = null;

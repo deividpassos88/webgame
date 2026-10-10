@@ -84,6 +84,8 @@ describe('MageVFX full spell architecture', () => {
     expect(diagnostics.activeProjectiles).toBe(0);
     expect(diagnostics.activeImpacts).toBe(0);
     expect(diagnostics.activeMagicCircles).toBe(0);
+    expect(diagnostics.activeThunderCharges).toBe(0);
+    expect(diagnostics.activeThunderStrikes).toBe(0);
     expect(diagnostics.activeLasers).toBe(0);
     expect(diagnostics.activeBarriers).toBe(0);
     expect(diagnostics.activeWaterCharges).toBe(0);
@@ -92,6 +94,10 @@ describe('MageVFX full spell architecture', () => {
     expect(diagnostics.pooledProjectiles).toBeGreaterThan(0);
     expect(diagnostics.pooledImpacts).toBeGreaterThan(0);
     expect(diagnostics.pooledMagicCircles).toBeGreaterThan(0);
+    expect(diagnostics.pooledThunderCharges).toBeGreaterThan(0);
+    expect(diagnostics.pooledThunderStrikes).toBeGreaterThan(0);
+    expect(diagnostics.activeThunderCharges).toBe(0);
+    expect(diagnostics.activeThunderStrikes).toBe(0);
     expect(diagnostics.pooledLasers).toBeGreaterThan(0);
     expect(diagnostics.pooledBarriers).toBeGreaterThan(0);
     expect(diagnostics.pooledWaterCharges).toBeGreaterThan(0);
@@ -251,6 +257,7 @@ describe('MageVFX full spell architecture', () => {
 
       const diagnostics = vfx.diagnostics();
       if (spellId === 'lightning') {
+        expect(diagnostics.activeThunderStrikes + diagnostics.pooledThunderStrikes).toBeGreaterThan(0);
         expect(impacts).toBeGreaterThan(0);
       } else if (spellId === 'water') {
         expect(diagnostics.activeWaterCharges + diagnostics.pooledWaterCharges).toBeGreaterThan(0);
@@ -306,6 +313,8 @@ describe('MageVFX full spell architecture', () => {
     expect(diagnostics.activeProjectiles).toBe(0);
     expect(diagnostics.activeImpacts).toBe(0);
     expect(diagnostics.activeMagicCircles).toBe(0);
+    expect(diagnostics.activeThunderCharges).toBe(0);
+    expect(diagnostics.activeThunderStrikes).toBe(0);
     expect(diagnostics.activeLasers).toBe(0);
     expect(diagnostics.activeBarriers).toBe(0);
     expect(diagnostics.activeWaterCharges).toBe(0);

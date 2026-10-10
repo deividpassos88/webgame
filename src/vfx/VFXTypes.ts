@@ -225,6 +225,8 @@ export interface MageVFXDiagnostics {
   readonly pooledImpacts: number;
   readonly activeMagicCircles: number;
   readonly pooledMagicCircles: number;
+  readonly activeLightning: number;
+  readonly pooledLightning: number;
   readonly activeLasers: number;
   readonly pooledLasers: number;
   readonly activeBarriers: number;
@@ -233,6 +235,10 @@ export interface MageVFXDiagnostics {
   readonly pooledWaterCharges: number;
   readonly activeWaterStrikes: number;
   readonly pooledWaterStrikes: number;
+  readonly activeThunderCharges: number;
+  readonly pooledThunderCharges: number;
+  readonly activeThunderStrikes: number;
+  readonly pooledThunderStrikes: number;
   /** Impactos de chão (chão rachado / gelo) vivos no momento. */
   readonly activeGroundDecals: number;
   readonly pooledGroundDecals: number;
