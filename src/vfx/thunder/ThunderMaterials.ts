@@ -482,3 +482,59 @@ export function createThunderCrackCanvasTexture(seed = 5, size = 512): THREE.Tex
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
+
+/**
+ * Cúpula da barreira que se fecha de cima para baixo: fragmentos abaixo de
+ * `uCutY` (coordenada local) somem e a frente de corte ganha uma borda clara.
+ */
+export function createThunderBarrierMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uOpacity: { value: 0 },
+      uCutY: { value: 0 },
+      uBody: { value: new THREE.Color(0x4a22a8) },
+      uRim: { value: new THREE.Color(0xff5cf2) },
+    },
+    vertexShader: /* glsl */`
+      varying vec3 vNormalView;
+      varying vec3 vViewDir;
+      varying vec3 vLocal;
+      void main() {
+        vNormalView = normalize(normalMatrix * normal);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vViewDir = normalize(-mv.xyz);
+        vLocal = position;
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: /* glsl */`
+      uniform float uTime;
+      uniform float uOpacity;
+      uniform float uCutY;
+      uniform vec3 uBody;
+      uniform vec3 uRim;
+      varying vec3 vNormalView;
+      varying vec3 vViewDir;
+      varying vec3 vLocal;
+      ${NOISE_GLSL}
+      void main() {
+        float cut = vLocal.y - uCutY;
+        if (cut < -0.02) discard;
+        float fres = pow(1.0 - abs(dot(normalize(vNormalView), normalize(vViewDir))), 2.2);
+        float swirl = thNoise(vec2(atan(vLocal.z, vLocal.x) * 3.0 + uTime * 0.9, vLocal.y * 1.2 - uTime * 0.6));
+        vec3 color = mix(uBody, uRim, clamp(pow(fres, 2.6) * 1.1 + swirl * 0.06, 0.0, 1.0));
+        float lip = 1.0 - smoothstep(0.0, 0.5, cut);
+        color = mix(color, vec3(1.0, 0.85, 1.0), lip * 0.7);
+        float alpha = (0.16 + 0.16 * swirl + 0.62 * pow(fres, 1.6)) * uOpacity + lip * 0.55 * uOpacity;
+        if (alpha < 0.005) discard;
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  });
+}

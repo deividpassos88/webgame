@@ -6,7 +6,7 @@ import { ImpactVFX } from './ImpactVFX';
 import { LaserVFX } from './LaserVFX';
 import { LightningVFX } from './LightningVFX';
 import { WaterDragonVFX, type WaterDragonChargeHandle } from './water/WaterDragonVFX';
-import { ThunderVFX, type ThunderChargeHandle } from './thunder/ThunderVFX';
+import { BARRIER_LIGHTNING_SECONDS, ThunderVFX, type ThunderChargeHandle } from './thunder/ThunderVFX';
 import { IceCrystalWaveVFX } from './ice/IceCrystalWaveVFX';
 import {
   GroundImpactDecalVFX,
@@ -1130,12 +1130,13 @@ export class MageVFX {
       const top = ground.clone().add(new THREE.Vector3(0, 8.5, 0));
       target = cast.context.queryBodyHit(top, ground, 0.65);
     }
+    // O raio cai aos 3 s da conjuração (a barreira fica até 5 s). Dano e área não mudam.
     this.thunder.strike({
       position: ground,
       target,
       isTargetAlive: cast.context.isTargetAlive,
       onImpact: (point, hit) => this.handleDirectImpact(point, cast, hit, direction),
-    });
+    }, BARRIER_LIGHTNING_SECONDS);
   }
 
   private launchWaterDragon(cast: ActiveMageCast, direction: THREE.Vector3): void {

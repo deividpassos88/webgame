@@ -5,7 +5,7 @@ import { VFXPool, type PoolableVFX } from '../VFXPool';
 import { VFXLightPool, type VFXLightHandle } from '../VFXLightPool';
 import type { MageVFXQuality } from '../VFXTypes';
 import {
-  createThunderBeamMaterial, createThunderBoltMaterial, createThunderDomeMaterial,
+  createThunderBarrierMaterial, createThunderBeamMaterial, createThunderBoltMaterial,
   createThunderBurstCanvasTexture, createThunderCrackCanvasTexture, createThunderRingMaterial, createThunderShadowTexture, createThunderSmokeCanvasTexture,
 } from './ThunderMaterials';
 import {
@@ -63,27 +63,30 @@ function disposeTree(root: THREE.Object3D): void {
 // ─────────────────────────────── Invocation bubble ───────────────────────────────
 
 // ───────────────────────────── Juízo do Trovão: barreira da conjuração ─────────────────────────────
-// Sequência, em segundos desde o início da conjuração (tempo real):
-//  0.00–0.42  a magia sobe da ponta do cajado até o alto (rastro magenta + núcleo branco);
-//  0.42–0.56  no topo a magia floresce numa cúpula roxa que cresce;
-//  0.50–1.05  a cúpula desce em queda acelerada até o chão;
-//  1.05       contato: o chão racha (fendas, cratera, pedras, fumaça escura, clarão);
-//  1.05–1.9   a barreira segura, com colunas de luz dentro dela;
-//  depois     a barreira se dissolve. Não depende do lançamento: o raio segue a própria linha do tempo.
+// Linha do tempo da conjuração, em segundos desde o início (tempo real):
+//  0.0–1.0   a magia sobe reta da ponta do cajado até o topo da barreira;
+//  0.9–3.5   a cúpula se fecha de cima para baixo, descendo até encostar no chão;
+//  3.0       o raio cai no inimigo (agendado por ThunderVFX.strike);
+//  3.5       contato: o chão racha (fendas, cratera, pedras, fumaça escura, clarão);
+//  3.5–4.7   a barreira fica fixa;
+//  4.7–5.0   a barreira se dissolve. Liberar a conjuração não encurta esse tempo.
 
-const CHARGE_RISE_END = 0.42;
-const CHARGE_BLOOM_END = 0.56;
-const CHARGE_DESCENT_START = 0.5;
-const CHARGE_TOUCH = 1.05;
-const CHARGE_HOLD_END = 1.9;
-const CHARGE_FADE = 0.45;
-const CHARGE_MIN_HOLD_AFTER_TOUCH = 0.35;
-const CHARGE_APEX_Y = 3.4;
+/** Tamanho da barreira: 3× a cúpula anterior. */
+const BARRIER_SCALE = 3;
+const BARRIER_RADIUS = BUBBLE_RADIUS * BARRIER_SCALE;
+/** Duração total da conjuração visual. */
+export const BARRIER_TOTAL_SECONDS = 5;
+/** Quando o raio atinge o inimigo, contado a partir do início da conjuração. */
+export const BARRIER_LIGHTNING_SECONDS = 3;
+const BARRIER_RISE_END = 1.0;
+const BARRIER_FORM_START = 0.9;
+const BARRIER_FORM_END = 3.5;
+const BARRIER_FADE_START = 4.7;
+const BARRIER_FADE_END = BARRIER_TOTAL_SECONDS;
 const CHARGE_GRAVITY = 9.8;
 const CHARGE_DEFAULT_TIP = new THREE.Vector3(0, 1.45, 0);
 const TMP_CHARGE_HEAD = new THREE.Vector3();
 const TMP_CHARGE_MID = new THREE.Vector3();
-const TMP_CHARGE_LIGHT = new THREE.Vector3();
 
 const clamp01 = (value: number): number => THREE.MathUtils.clamp(value, 0, 1);
 
@@ -105,10 +108,9 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
   public readonly group = new THREE.Group();
   private readonly origin = new THREE.Vector3();
   private readonly tip = new THREE.Vector3();
-  private readonly domeMaterial = createThunderDomeMaterial();
+  private readonly domeMaterial = createThunderBarrierMaterial();
   private readonly ringMaterial = createThunderRingMaterial();
   private readonly textures: THREE.Texture[] = [];
-  private readonly domeGroup = new THREE.Group();
   private readonly dome: THREE.Mesh;
   private readonly beams: THREE.Mesh[] = [];
   private readonly beamMaterials: THREE.ShaderMaterial[] = [];
@@ -129,47 +131,49 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
   private light: VFXLightHandle | null = null;
   private played = false;
   private age = 0;
-  private releasedAt: number | null = null;
 
   public constructor(resources: MageVFXResources, private readonly lights: VFXLightPool, private readonly quality: MageVFXQuality) {
+    const R = BARRIER_RADIUS;
     this.group.name = 'MageThunderBarrierVFX';
     this.group.visible = false;
-    this.group.add(this.domeGroup);
 
-    // Cúpula roxa com borda magenta (fresnel). A base fica em y=0 do grupo.
-    this.dome = new THREE.Mesh(new THREE.SphereGeometry(BUBBLE_RADIUS, 48, 24, 0, TAU, 0, Math.PI / 2), this.domeMaterial);
+    // Cúpula: começa como uma calota no topo e fecha até o chão (ver createThunderBarrierMaterial).
+    this.dome = new THREE.Mesh(new THREE.SphereGeometry(R, 64, 32, 0, TAU, 0, Math.PI / 2), this.domeMaterial);
     this.dome.name = 'ThunderBarrierDome';
     this.dome.renderOrder = 6;
-    this.domeGroup.add(this.dome);
+    this.group.add(this.dome);
 
-    // Fios de luz verticais dentro da cúpula, como na referência.
-    const beamCount = quality === 'low' ? 12 : 18;
+    // Fios de luz verticais dentro da cúpula; crescem da base junto com o fechamento.
+    const beamCount = quality === 'low' ? 14 : 22;
     for (let index = 0; index < beamCount; index += 1) {
       const material = createThunderBeamMaterial();
       material.side = THREE.DoubleSide;
       material.uniforms.uSeed.value = index * 1.7;
       this.beamMaterials.push(material);
-      const beam = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 1.6), material);
       const angle = (index / beamCount) * TAU + (index % 3) * 0.17;
-      const radius = 0.35 + (index % 4) * 0.22;
-      beam.position.set(Math.cos(angle) * radius, 0.8, Math.sin(angle) * radius);
+      const radius = R * (0.2 + (index % 5) * 0.12);
+      const height = Math.sqrt(Math.max(0, R * R - radius * radius)) * 0.9;
+      const geometry = new THREE.PlaneGeometry(0.9, height);
+      geometry.translate(0, height / 2, 0);
+      const beam = new THREE.Mesh(geometry, material);
+      beam.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
       beam.rotation.y = angle;
       beam.name = 'ThunderBarrierBeam';
       beam.renderOrder = 7;
       this.beams.push(beam);
-      this.domeGroup.add(beam);
+      this.group.add(beam);
     }
 
-    // Cacos cinza-brancos pontudos na base, saindo do chão quebrado.
+    // Cacos cinza-brancos pontudos na borda da base, saindo do chão quebrado.
     const shardCount = quality === 'low' ? 10 : 14;
     for (let index = 0; index < shardCount; index += 1) {
       const angle = (index / shardCount) * TAU + 0.12;
-      const height = 1.2 + (index % 3) * 0.35;
-      const shard = new THREE.Mesh(new THREE.ConeGeometry(0.16, height, 4), new THREE.MeshBasicMaterial({
+      const height = 3.0 + (index % 3) * 0.9;
+      const shard = new THREE.Mesh(new THREE.ConeGeometry(0.5, height, 4), new THREE.MeshBasicMaterial({
         color: 0xe4e0f4, transparent: true, opacity: 0, depthWrite: false,
       }));
-      shard.position.set(Math.cos(angle) * 1.55, 0, Math.sin(angle) * 1.55);
-      shard.rotation.set(-Math.sin(angle) * 0.35, 0, Math.cos(angle) * 0.35);
+      shard.position.set(Math.cos(angle) * R * 0.92, 0, Math.sin(angle) * R * 0.92);
+      shard.rotation.set(-Math.sin(angle) * 0.3, 0, Math.cos(angle) * 0.3);
       shard.userData.height = height;
       shard.name = 'ThunderBarrierShard';
       this.shards.push(shard);
@@ -179,7 +183,7 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
     // Pedras escuras que saltam do chão no contato.
     const rockCount = quality === 'low' ? 8 : 12;
     for (let index = 0; index < rockCount; index += 1) {
-      const mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(0.1 + (index % 3) * 0.04, 0), new THREE.MeshBasicMaterial({
+      const mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(0.25 + (index % 3) * 0.1, 0), new THREE.MeshBasicMaterial({
         color: 0x241a2a, transparent: true, opacity: 0, depthWrite: false,
       }));
       mesh.name = 'ThunderBarrierRock';
@@ -187,8 +191,8 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
       this.rocks.push({
         mesh,
         angle: (index / rockCount) * TAU + 0.3,
-        radius: 1.2 + (index % 4) * 0.16,
-        lift: 2.2 + (index % 4) * 0.45,
+        radius: R * (0.35 + (index % 4) * 0.08),
+        lift: 4.0 + (index % 4) * 0.9,
         spin: 1.5 + (index % 3) * 0.7,
       });
       this.group.add(mesh);
@@ -213,15 +217,15 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
       this.smokes.push({
         sprite, material,
         angle: (index / smokeCount) * TAU + 0.5,
-        radius: 0.5 + (index % 3) * 0.25,
-        delay: (index % 4) * 0.05,
+        radius: R * (0.3 + (index % 3) * 0.15),
+        delay: (index % 4) * 0.08,
       });
       this.group.add(sprite);
     }
 
     // Cratera escura e fendas radiais no chão.
     this.craterMaterial = new THREE.MeshBasicMaterial({ color: 0x0d0710, transparent: true, opacity: 0, depthWrite: false });
-    this.crater = new THREE.Mesh(new THREE.CircleGeometry(BUBBLE_RADIUS * 1.02, 48), this.craterMaterial);
+    this.crater = new THREE.Mesh(new THREE.CircleGeometry(R * 1.02, 64), this.craterMaterial);
     this.crater.rotation.x = -Math.PI / 2;
     this.crater.position.y = 0.02;
     this.crater.name = 'ThunderCraterDisc';
@@ -230,7 +234,7 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
     const crackTexture = createThunderCrackCanvasTexture(5);
     this.textures.push(crackTexture);
     this.crackMaterial = new THREE.MeshBasicMaterial({ map: crackTexture, transparent: true, opacity: 0, depthWrite: false });
-    this.cracks = new THREE.Mesh(new THREE.PlaneGeometry(BUBBLE_RADIUS * 2.6, BUBBLE_RADIUS * 2.6), this.crackMaterial);
+    this.cracks = new THREE.Mesh(new THREE.PlaneGeometry(R * 3.2, R * 3.2), this.crackMaterial);
     this.cracks.rotation.x = -Math.PI / 2;
     this.cracks.position.y = 0.035;
     this.cracks.name = 'ThunderGroundCracks';
@@ -247,7 +251,7 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
     this.textures.push(burstTexture);
     this.burst = additiveSprite(burstTexture, 0xffffff, 'ThunderBarrierBurst');
     this.burstMaterial = this.burst.material as THREE.SpriteMaterial;
-    this.burst.position.y = 0.7;
+    this.burst.position.y = 1.5;
     this.group.add(this.burst);
 
     // Magia que sobe do cajado: núcleo branco + halo magenta + rastro.
@@ -270,86 +274,75 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
       this.tip.copy(CHARGE_DEFAULT_TIP);
     }
     this.age = 0;
-    this.releasedAt = null;
     this.played = true;
     this.group.visible = true;
     this.light = this.quality === 'low' ? null : this.lights.acquire();
     if (this.light) {
       this.light.light.color.set(0xb84dff);
-      this.light.light.distance = 8;
+      this.light.light.distance = BARRIER_RADIUS * 3;
       this.light.light.intensity = 0;
     }
     this.update(0);
   }
 
-  public release(): void {
-    if (this.active && this.releasedAt === null) this.releasedAt = this.age;
-  }
+  /** A barreira segue a própria linha do tempo: liberar a conjuração não a encurta. */
+  public release(): void {}
 
   public update(delta: number): boolean {
     if (!this.played) return false;
     this.age += Math.max(0, delta);
     const a = this.age;
-    // Liberar cedo não corta a descida nem o contato: a barreira fica no mínimo até depois da queda.
-    const dissolveAt = this.releasedAt === null
-      ? CHARGE_HOLD_END
-      : Math.max(this.releasedAt, CHARGE_TOUCH + CHARGE_MIN_HOLD_AFTER_TOUCH);
-    const fade = clamp01((a - dissolveAt) / CHARGE_FADE);
-    if (fade >= 1) return false;
+    const R = BARRIER_RADIUS;
+    const fade = THREE.MathUtils.smoothstep(a, BARRIER_FADE_START, BARRIER_FADE_END);
+    if (a >= BARRIER_FADE_END) return false;
     const alive = 1 - fade;
-
-    const rise = clamp01(a / CHARGE_RISE_END);
-    const bloom = THREE.MathUtils.smoothstep(a, CHARGE_RISE_END, CHARGE_BLOOM_END);
-    const descent = clamp01((a - CHARGE_DESCENT_START) / (CHARGE_TOUCH - CHARGE_DESCENT_START));
-    const landed = a >= CHARGE_TOUCH;
-    const touchAge = a - CHARGE_TOUCH;
     const flicker = 0.92 + 0.08 * Math.sin(a * 22);
 
-    // Magia do cajado: sobe rápido, desacelera no topo e se centraliza sobre a Maga.
-    const eased = 1 - (1 - rise) * (1 - rise);
+    // Magia do cajado: sobe reta até o topo (y = R) e se centraliza sobre a Maga.
+    const rise = clamp01(a / BARRIER_RISE_END);
+    const eased = 1 - (1 - rise) * (1 - rise) * (1 - rise);
     const head = TMP_CHARGE_HEAD.set(
-      this.tip.x * (1 - rise),
-      THREE.MathUtils.lerp(this.tip.y, CHARGE_APEX_Y, eased),
-      this.tip.z * (1 - rise),
+      this.tip.x * (1 - eased),
+      THREE.MathUtils.lerp(this.tip.y, R, eased),
+      this.tip.z * (1 - eased),
     );
+    const bloom = THREE.MathUtils.smoothstep(a, BARRIER_RISE_END - 0.05, BARRIER_RISE_END + 0.45);
     const orbAlive = (1 - bloom) * alive;
     this.orbGlow.position.copy(head);
-    this.orbGlow.scale.setScalar((0.9 + 0.2 * flicker) * 1.1);
+    this.orbGlow.scale.setScalar(2.4 + 0.4 * flicker);
     (this.orbGlow.material as THREE.SpriteMaterial).opacity = 0.9 * orbAlive;
     this.orbCore.position.copy(head);
-    this.orbCore.scale.setScalar(0.45 * flicker);
+    this.orbCore.scale.setScalar(1.1 * flicker);
     (this.orbCore.material as THREE.SpriteMaterial).opacity = orbAlive;
     const trailLength = Math.max(0.01, head.distanceTo(this.tip));
     TMP_CHARGE_MID.addVectors(this.tip, head).multiplyScalar(0.5);
     this.trailWide.position.copy(TMP_CHARGE_MID);
-    this.trailWide.scale.set(0.7, trailLength, 1);
+    this.trailWide.scale.set(1.8, trailLength, 1);
     (this.trailWide.material as THREE.SpriteMaterial).opacity = 0.75 * orbAlive;
     this.trailCore.position.copy(TMP_CHARGE_MID);
-    this.trailCore.scale.set(0.16, trailLength, 1);
+    this.trailCore.scale.set(0.45, trailLength, 1);
     (this.trailCore.material as THREE.SpriteMaterial).opacity = 0.95 * orbAlive;
 
-    // Cúpula: cresce no topo e desce em queda acelerada até o chão.
-    const domeY = THREE.MathUtils.lerp(CHARGE_APEX_Y, 0, descent * descent);
-    const grow = 0.22 + 0.78 * bloom;
-    const squash = landed ? Math.max(0, 1 - touchAge / 0.28) * 0.14 : 0;
-    this.domeGroup.position.set(0, domeY, 0);
-    this.domeGroup.scale.set(grow, grow * (1 - squash), grow);
+    // Fechamento de cima para baixo: a cúpula visível desce de y = R até y = 0.
+    const reveal = THREE.MathUtils.smoothstep(a, BARRIER_FORM_START, BARRIER_FORM_END);
     this.domeMaterial.uniforms.uTime.value = a;
-    this.domeMaterial.uniforms.uOpacity.value = bloom * alive * 0.95;
+    this.domeMaterial.uniforms.uCutY.value = R * (1 - reveal);
+    this.domeMaterial.uniforms.uOpacity.value = 0.95 * alive;
 
     this.beams.forEach((beam, index) => {
       const material = this.beamMaterials[index];
       const pulse = 0.78 + 0.22 * Math.sin(a * 9 + index * 1.3);
       material.uniforms.uTime.value = a;
-      material.uniforms.uGrow.value = clamp01(bloom * pulse);
-      material.uniforms.uOpacity.value = bloom * alive;
-      beam.scale.y = 0.5 + 0.5 * bloom * pulse;
+      material.uniforms.uGrow.value = clamp01(reveal * pulse);
+      material.uniforms.uOpacity.value = reveal * alive;
+      beam.scale.y = Math.max(0.001, reveal * pulse);
     });
 
+    const landed = a >= BARRIER_FORM_END;
+    const touchAge = a - BARRIER_FORM_END;
+
     this.shards.forEach((shard, index) => {
-      const appear = landed
-        ? THREE.MathUtils.smoothstep(touchAge, index * 0.012, 0.2 + index * 0.012)
-        : 0;
+      const appear = landed ? THREE.MathUtils.smoothstep(touchAge, index * 0.02, 0.4 + index * 0.02) : 0;
       const height = shard.userData.height as number;
       shard.scale.setScalar(Math.max(0.001, appear));
       shard.position.y = (height * 0.5) * appear;
@@ -360,8 +353,8 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
       rock.mesh.visible = landed;
       if (!landed) continue;
       const t = Math.max(0, touchAge);
-      const dist = rock.radius + 0.9 * Math.min(t, 0.55);
-      const y = Math.max(0.05, 0.05 + rock.lift * t - 0.5 * CHARGE_GRAVITY * t * t);
+      const dist = rock.radius + 2.0 * Math.min(t, 0.6);
+      const y = Math.max(0.1, 0.1 + rock.lift * t - 0.5 * CHARGE_GRAVITY * t * t);
       rock.mesh.position.set(Math.cos(rock.angle) * dist, y, Math.sin(rock.angle) * dist);
       rock.mesh.rotation.set(t * rock.spin, t * rock.spin * 0.6, 0);
       (rock.mesh.material as THREE.MeshBasicMaterial).opacity = alive * clamp01(touchAge / 0.05);
@@ -371,31 +364,32 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
       const st = touchAge - smoke.delay;
       smoke.sprite.visible = landed && st > 0;
       if (!smoke.sprite.visible) continue;
-      const p = clamp01(st / 1.5);
-      const r = smoke.radius + 1.6 * p;
-      smoke.sprite.position.set(Math.cos(smoke.angle) * r, 0.4 + 1.1 * p, Math.sin(smoke.angle) * r);
-      smoke.sprite.scale.setScalar(1.5 + 3.0 * p);
-      const envelope = THREE.MathUtils.smoothstep(st, 0, 0.25) * (1 - THREE.MathUtils.smoothstep(p, 0.45, 1));
-      smoke.material.opacity = 0.92 * envelope * alive;
-      smoke.material.rotation = st * 0.3;
+      const p = clamp01(st / 2.2);
+      const r = smoke.radius + 3.5 * p;
+      smoke.sprite.position.set(Math.cos(smoke.angle) * r, 1.0 + 2.5 * p, Math.sin(smoke.angle) * r);
+      smoke.sprite.scale.setScalar(4.5 + 6.0 * p);
+      const envelope = THREE.MathUtils.smoothstep(st, 0, 0.35) * (1 - THREE.MathUtils.smoothstep(p, 0.5, 1));
+      smoke.material.opacity = 0.9 * envelope * alive;
+      smoke.material.rotation = st * 0.25;
     }
 
-    const pop = landed ? THREE.MathUtils.smoothstep(touchAge, 0, 0.12) : 0;
+    const pop = landed ? THREE.MathUtils.smoothstep(touchAge, 0, 0.15) : 0;
     this.craterMaterial.opacity = 0.85 * pop * alive;
-    this.cracks.scale.setScalar(0.55 + 0.45 * THREE.MathUtils.smoothstep(touchAge, 0, 0.2));
+    this.cracks.scale.setScalar(0.6 + 0.4 * THREE.MathUtils.smoothstep(touchAge, 0, 0.25));
     this.crackMaterial.opacity = 0.7 * pop * alive;
-    const shockP = landed ? THREE.MathUtils.smoothstep(touchAge, 0, 0.45) : 0;
-    this.shock.scale.setScalar(BUBBLE_RADIUS * (0.35 + 0.95 * shockP));
+    const shockP = landed ? THREE.MathUtils.smoothstep(touchAge, 0, 0.6) : 0;
+    this.shock.scale.setScalar(R * (0.4 + 1.0 * shockP));
     this.ringMaterial.uniforms.uTime.value = a;
     this.ringMaterial.uniforms.uOpacity.value = landed ? 0.8 * (1 - shockP) * alive : 0;
-    this.burstMaterial.opacity = landed ? (1 - THREE.MathUtils.smoothstep(touchAge, 0, 0.35)) * alive : 0;
-    this.burst.scale.setScalar(3.6 + 1.2 * shockP);
+    this.burstMaterial.opacity = landed ? (1 - THREE.MathUtils.smoothstep(touchAge, 0, 0.45)) * alive : 0;
+    this.burst.scale.setScalar(9 + 3 * shockP);
 
     if (this.light) {
-      const lightY = Math.max(0.9, a < CHARGE_BLOOM_END ? head.y : domeY + 0.9);
+      const lightY = a < BARRIER_RISE_END ? Math.max(0.9, head.y) : R * 0.5;
       this.light.light.position.set(this.origin.x, this.origin.y + lightY, this.origin.z);
-      const flash = landed ? 2.4 * (1 - THREE.MathUtils.smoothstep(touchAge, 0, 0.35)) : 0;
-      this.light.light.intensity = (0.9 * bloom + 0.5 * (1 - bloom) * rise + flash) * alive * flicker;
+      const flash = landed ? 2.4 * (1 - THREE.MathUtils.smoothstep(touchAge, 0, 0.45)) : 0;
+      const topFlash = 1.2 * (1 - THREE.MathUtils.smoothstep(a, BARRIER_RISE_END, BARRIER_RISE_END + 0.4));
+      this.light.light.intensity = (0.8 * reveal + topFlash + flash) * alive * flicker;
     }
     return true;
   }
@@ -406,7 +400,6 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
     this.played = false;
     this.light?.release();
     this.light = null;
-    this.releasedAt = null;
     this.age = 0;
   }
 
@@ -773,6 +766,10 @@ export class ThunderVFX {
   private readonly charges: ThunderCharge[] = [];
   private readonly strikes: ThunderStrike[] = [];
   /** Logical hits wait for the fall when every GPU slot is busy; damage is never dropped. */
+  /** Tempo decorrido desde o início da conjuração atual (segundos). */
+  private castClock = 0;
+  /** Raios agendados para um instante da conjuração (ex.: aos 3 s). */
+  private readonly scheduledStrikes: Array<{ options: ThunderStrikeOptions; at: number }> = [];
   private readonly pendingStrikes: Array<{ options: ThunderStrikeOptions; position: THREE.Vector3; elapsed: number }> = [];
 
   public constructor(private readonly scene: THREE.Scene, resources: MageVFXResources, lights: VFXLightPool, quality: MageVFXQuality) {
@@ -781,6 +778,8 @@ export class ThunderVFX {
   }
 
   public charge(caster: THREE.Object3D, staffTip?: THREE.Vector3 | null): ThunderChargeHandle | null {
+    // Nova conjuração: o relógio da conjuração recomeça para agendar o raio.
+    this.castClock = 0;
     const effect = this.chargePool.acquire();
     if (!effect) return null;
     effect.play(caster, staffTip);
@@ -789,7 +788,15 @@ export class ThunderVFX {
     return effect;
   }
 
-  public strike(options: ThunderStrikeOptions): void {
+  /**
+   * Dispara o raio. Com `atCastSeconds`, a queda é agendada para esse instante
+   * da conjuração (contado desde o `charge`), e não de imediato.
+   */
+  public strike(options: ThunderStrikeOptions, atCastSeconds?: number): void {
+    if (atCastSeconds !== undefined && atCastSeconds > this.castClock) {
+      this.scheduledStrikes.push({ options, at: atCastSeconds });
+      return;
+    }
     const effect = this.strikePool.acquire();
     if (!effect) {
       this.pendingStrikes.push({ options, position: options.position.clone(), elapsed: 0 });
@@ -802,6 +809,13 @@ export class ThunderVFX {
 
   public update(delta: number): void {
     const elapsed = Number.isFinite(delta) ? Math.max(0, delta) : 0;
+    this.castClock += elapsed;
+    for (let index = this.scheduledStrikes.length - 1; index >= 0; index -= 1) {
+      const scheduled = this.scheduledStrikes[index];
+      if (!scheduled || this.castClock < scheduled.at) continue;
+      this.scheduledStrikes.splice(index, 1);
+      this.strike(scheduled.options);
+    }
     for (let index = this.pendingStrikes.length - 1; index >= 0; index -= 1) {
       const pending = this.pendingStrikes[index];
       if (!pending) continue;
@@ -834,6 +848,7 @@ export class ThunderVFX {
     this.charges.length = 0;
     this.strikes.length = 0;
     this.pendingStrikes.length = 0;
+    this.scheduledStrikes.length = 0;
   }
 
   public dispose(): void {

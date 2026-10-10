@@ -107,27 +107,34 @@ describe('Mage faster skill presentation', () => {
     }
   });
 
-  it('drops thunder onto the marked enemy once, with the damage on contact and no explosion on the caster', () => {
+  it('drops thunder onto the marked enemy once at 3 s, with the damage on contact and no explosion on the caster', () => {
     const { scene, vfx, step, onLaunch, onImpact } = setupCast('lightning', 2.1);
     try {
-      // Lançamento no gesto autoral (≈0,6 s reais com 2,1x); o dano só chega no contato da queda.
+      // Lançamento no gesto autoral (≈0,6 s reais com 2,1x). O raio ainda não caiu: está agendado para os 3 s da conjuração.
       for (let frame = 0; frame < 32; frame += 1) step(0.02);
       expect(onLaunch).toHaveBeenCalledTimes(1);
       expect(onImpact).toHaveBeenCalledTimes(0);
       expect(vfx.diagnostics().activeMagicCircles).toBe(0);
-      expect(vfx.diagnostics().activeThunderStrikes).toBe(1);
+      expect(vfx.diagnostics().activeThunderStrikes).toBe(0);
+      // Avança até o raio aparecer: deve ser perto dos 3 s da conjuração.
+      let elapsed = 0.64;
+      while (vfx.diagnostics().activeThunderStrikes === 0 && elapsed < 6) { step(0.02); elapsed += 0.02; }
+      expect(elapsed).toBeGreaterThan(2.9);
+      expect(elapsed).toBeLessThan(3.4);
+      expect(onImpact).toHaveBeenCalledTimes(0);
       // O raio é desenhado pelo próprio efeito de queda: nenhuma explosão de impacto na Maga.
       const impacts = scene.children.filter((child) => child.name === 'MageImpactVFX');
       expect(impacts).toHaveLength(0);
       expect(scene.getObjectByName('MageThunderStrikeVFX')).toBeDefined();
-      for (let frame = 0; frame < 30; frame += 1) step(0.02);
+      while (!onImpact.mock.calls.length && elapsed < 6) { step(0.02); elapsed += 0.02; }
       expect(onImpact).toHaveBeenCalledTimes(1);
       for (let frame = 0; frame < 120; frame += 1) step(0.02);
       expect(onImpact).toHaveBeenCalledTimes(1);
       expect(onLaunch).toHaveBeenCalledTimes(1);
-      expect(vfx.diagnostics().activeThunderCharges).toBe(0);
       expect(vfx.diagnostics().activeThunderStrikes).toBe(0);
       expect(vfx.diagnostics().activeImpacts).toBe(0);
+      // A barreira fica até os 5 s e depois some.
+      expect(vfx.diagnostics().activeThunderCharges).toBe(0);
     } finally {
       vfx.dispose();
     }
@@ -136,6 +143,7 @@ describe('Mage faster skill presentation', () => {
   it('does not leave charges behind when one slow frame crosses the entire fast cast', () => {
     const { vfx, step, onLaunch, onImpact } = setupCast('lightning', 2.1 * 1.3);
     try {
+      for (let frame = 0; frame < 160; frame += 1) step(0.02);
       step(1.5);
       expect(onLaunch).toHaveBeenCalledTimes(1);
       expect(onImpact).toHaveBeenCalledTimes(1);

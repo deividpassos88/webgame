@@ -42,31 +42,44 @@ describe('Pulo Atacando thunder effects', () => {
     expect(thunder.activeStrikes).toBe(0);
   });
 
-  it('raises from the staff, drops to the ground at 1.05 s and cracks the floor on contact', () => {
+  it('raises from the staff, closes top-down to the ground at 3.5 s and cracks the floor on contact', () => {
     const { scene, thunder, caster } = setup();
     const staffTip = new THREE.Vector3(caster.position.x + 0.4, 1.5, caster.position.z + 0.2);
     thunder.charge(caster, staffTip);
     const barrier = scene.getObjectByName('MageThunderBarrierVFX')!;
-    const dome = barrier.getObjectByName('ThunderBarrierDome')!;
-    const domeGroup = dome.parent!;
-    const cracks = barrier.getObjectByName('ThunderGroundCracks')! as THREE.Mesh;
+    const dome = barrier.getObjectByName('ThunderBarrierDome') as THREE.Mesh;
+    const cutY = () => (dome.material as THREE.ShaderMaterial).uniforms.uCutY.value as number;
+    const cracks = barrier.getObjectByName('ThunderGroundCracks') as THREE.Mesh;
     const crackOpacity = () => (cracks.material as THREE.MeshBasicMaterial).opacity;
+    // Tempo absoluto desde o charge: cada chamada avança até `seconds`.
+    let clock = 0;
     const advanceTo = (seconds: number) => {
-      let now = 0;
-      while (now < seconds - 1e-6) { const step = Math.min(1 / 60, seconds - now); thunder.update(step); now += step; }
+      while (clock < seconds - 1e-6) { const step = Math.min(1 / 60, seconds - clock); thunder.update(step); clock += step; }
     };
 
-    advanceTo(0.2);
-    const highAt0_2 = domeGroup.position.y;
-    advanceTo(0.8);
-    const midAt0_8 = domeGroup.position.y;
-    expect(highAt0_2).toBeGreaterThan(midAt0_8);
-    expect(midAt0_8).toBeGreaterThan(0);
+    advanceTo(0.5);
+    const topRim = cutY();
+    advanceTo(2.0);
+    const midway = cutY();
+    expect(topRim).toBeGreaterThan(midway);
+    expect(midway).toBeGreaterThan(0);
     expect(crackOpacity()).toBe(0);
 
-    advanceTo(1.1);
-    expect(domeGroup.position.y).toBeCloseTo(0, 5);
+    advanceTo(3.6);
+    expect(cutY()).toBeCloseTo(0, 5);
     expect(crackOpacity()).toBeGreaterThan(0);
+  });
+
+  it('schedules the lightning to fall at 3 s of the cast, not when it is called', () => {
+    const { thunder, caster, target } = setup();
+    thunder.charge(caster);
+    const onImpact = vi.fn();
+    thunder.strike({ position: target.position.clone(), target: null, onImpact }, 3);
+    thunder.update(2.9);
+    expect(thunder.activeStrikes).toBe(0);
+    expect(onImpact).not.toHaveBeenCalled();
+    thunder.update(0.2);
+    expect(thunder.activeStrikes).toBe(1);
   });
 
   it('builds the barrier at the caster and releases it back to the pool', () => {
@@ -80,7 +93,7 @@ describe('Pulo Atacando thunder effects', () => {
     expect(thunder.activeCharges).toBe(1);
 
     handle!.release();
-    for (let i = 0; i < 200 && thunder.activeCharges > 0; i += 1) thunder.update(0.02);
+    for (let i = 0; i < 400 && thunder.activeCharges > 0; i += 1) thunder.update(0.02);
     expect(thunder.activeCharges).toBe(0);
     expect(thunder.pooledCharges).toBe(1);
     expect(scene.getObjectByName('MageThunderBarrierVFX')).toBeUndefined();

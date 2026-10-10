@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Juízo do Trovão · laboratório da Maga</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #07050b; font-family: sans-serif; }
+  canvas#lab { display: block; width: 100vw; height: 100vh; }
+  #panel { position: fixed; top: 12px; right: 12px; width: 250px; padding: 12px; color: #eee;
+    background: rgba(24, 12, 36, 0.9); border: 1px solid #6b3fa0; border-radius: 10px; }
+  #panel h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: 1px; }
+  #panel button { display: block; width: 100%; margin: 6px 0; padding: 8px; border-radius: 8px; cursor: pointer;
+    background: #3a1d5c; color: #fff; border: 1px solid #6b3fa0; }
+  #panel .info { font-size: 12px; color: #c9b8dd; }
+</style>
+</head>
+<body>
+<canvas id="lab"></canvas>
+<aside id="panel">
+  <h3>JUÍZO DO TROVÃO · MAGA</h3>
+  <button id="charge">Invocar barreira (5 s)</button>
+  <button id="strike">Disparar raio no inimigo</button>
+  <button id="view">Ver de lado</button>
+  <div class="info" id="state">ocioso</div>
+</aside>
+<script type="module">
+import * as THREE from 'three';
+import { MageVFXResources } from './src/vfx/MageVFXResources.ts';
+import { VFXLightPool } from './src/vfx/VFXLightPool.ts';
+import { ThunderVFX } from './src/vfx/thunder/ThunderVFX.ts';
+
+const canvas = document.getElementById('lab');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(1);
+renderer.setSize(window.innerWidth, window.innerHeight, false);
+renderer.setClearColor(0x0a0712, 1);
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0712);
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+// Barreira com 6,3 m de raio: a câmera de teste recua para enxergar a cúpula inteira.
+const GAME_CAMERA = { position: new THREE.Vector3(0, 9.5, -19.0), target: new THREE.Vector3(0, 3.0, 0.5) };
+const SIDE_CAMERA = { position: new THREE.Vector3(7.5, 2.4, 3.0), target: new THREE.Vector3(0, 2.4, 3.0) };
+let sideView = false;
+function applyCamera(view) { camera.position.copy(view.position); camera.lookAt(view.target); }
+applyCamera(GAME_CAMERA);
+
+scene.add(new THREE.HemisphereLight(0x8070a0, 0x101010, 0.6));
+const ground = new THREE.Mesh(new THREE.CircleGeometry(30, 64),
+  new THREE.MeshStandardMaterial({ color: 0x2a2730, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+// Bonecos de referência: a Maga (cilindro) e o inimigo marcado a 6 m.
+const caster = new THREE.Group();
+caster.name = 'MagaLab';
+const casterBody = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 1.7, 16),
+  new THREE.MeshStandardMaterial({ color: 0x3b2a4a }));
+casterBody.position.y = 0.85;
+caster.add(casterBody);
+scene.add(caster);
+const target = new THREE.Group();
+target.name = 'InimigoLab';
+target.position.set(0, 0, 6);
+const targetBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.0, 6, 14),
+  new THREE.MeshStandardMaterial({ color: 0x5a2a2a }));
+targetBody.position.y = 1.0;
+target.add(targetBody);
+scene.add(target);
+
+const resources = new MageVFXResources();
+const lights = new VFXLightPool(scene, 4);
+const thunder = new ThunderVFX(scene, resources, lights, 'high');
+
+let chargeHandle = null;
+// Ponta do cajado da Maga de teste (1,45 m acima do chão, à frente dela).
+const CAST_TIP = new THREE.Vector3(0.35, 1.45, 0.25);
+let state = 'ocioso';
+const stateEl = document.getElementById('state');
+document.getElementById('charge').addEventListener('click', () => {
+  // A barreira segue a própria linha do tempo (5 s); não há como liberá-la antes.
+  chargeHandle = thunder.charge(caster, CAST_TIP);
+  state = chargeHandle ? 'invocando (5 s)' : 'sem vaga no pool';
+  stateEl.textContent = state;
+});
+document.getElementById('strike').addEventListener('click', () => {
+  if (chargeHandle) { chargeHandle.release(); chargeHandle = null; }
+  const position = target.getWorldPosition(new THREE.Vector3());
+  thunder.strike({
+    position, target, isTargetAlive: () => true,
+    onImpact: () => { state = 'impacto no alvo'; stateEl.textContent = state; },
+  });
+  state = 'raio caindo';
+  stateEl.textContent = state;
+});
+document.getElementById('view').addEventListener('click', () => {
+  sideView = !sideView;
+  applyCamera(sideView ? SIDE_CAMERA : GAME_CAMERA);
+});
+
+window.__thunder = { thunder, getState: () => ({ charges: thunder.activeCharges, strikes: thunder.activeStrikes }) };
+
+// Modo manual: a captura avança o tempo em passos fixos de 1/60 s.
+const clock = new THREE.Clock();
+let manual = false;
+window.__setManual = (on) => { manual = on; clock.getDelta(); };
+window.__advance = (seconds) => {
+  let left = seconds;
+  while (left > 1e-6) { const step = Math.min(1 / 60, left); thunder.update(step); left -= step; }
+  renderer.render(scene, camera);
+};
+function frame() {
+  if (!manual) thunder.update(Math.min(0.05, clock.getDelta()));
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>

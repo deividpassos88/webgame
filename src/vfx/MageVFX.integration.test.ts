@@ -250,7 +250,8 @@ describe('MageVFX full spell architecture', () => {
         onImpact: () => { impacts += 1; },
       });
 
-      for (let step = 0; step < 20; step += 1) {
+      // Conjuração longa (raio aos 3 s): roda o suficiente para o raio cair.
+      for (let step = 0; step < 70; step += 1) {
         mixer.update(0.08);
         vfx.update(0.08);
       }
@@ -348,7 +349,7 @@ describe('MageVFX full spell architecture', () => {
       onImpact: () => { impacts += 1; },
     });
 
-    for (let step = 0; step < 30; step += 1) {
+    for (let step = 0; step < 70; step += 1) {
       mixer.update(0.08);
       vfx.update(0.08);
     }
