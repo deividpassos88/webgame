@@ -30,6 +30,7 @@ import type {
 const HAND_OFFSET = new THREE.Vector3(0, 0.04, 0.02);
 const TMP_WORLD = new THREE.Vector3();
 const TMP_WORLD_2 = new THREE.Vector3();
+const TMP_STAFF_TIP = new THREE.Vector3();
 const TMP_DIRECTION = new THREE.Vector3();
 const TMP_CASTER = new THREE.Vector3();
 const TMP_RIGHT = new THREE.Vector3();
@@ -637,7 +638,8 @@ export class MageVFX {
       launched: false,
       impactDelivered: false,
     });
-    if (spellId !== 'basic' && spellId !== 'water') this.startSkillBarrier(context, preset);
+    // Pulo Atacando (Maga): sem aura em volta da Maga; a barreira nasce do cajado (ThunderVFX).
+    if (spellId !== 'basic' && spellId !== 'water' && spellId !== 'lightning') this.startSkillBarrier(context, preset);
     this.emitAudio(context, preset, 'charge');
   }
 
@@ -946,7 +948,9 @@ export class MageVFX {
     }
     // Pulo Atacando (Maga): a bolha de invocação envolve a Maga enquanto ela conjura.
     if (cast.preset.id === 'lightning') {
-      cast.thunderCharge = this.thunder.charge(cast.context.caster);
+      // A ponta do cajado é o ponto de partida da magia que sobe e forma a barreira.
+      const hasStaffTip = this.resolveWeaponSocketWorldPosition(cast, TMP_STAFF_TIP);
+      cast.thunderCharge = this.thunder.charge(cast.context.caster, hasStaffTip ? TMP_STAFF_TIP : null);
       return;
     }
     const charge = this.charges.acquire();

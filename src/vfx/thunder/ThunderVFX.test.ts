@@ -42,20 +42,48 @@ describe('Pulo Atacando thunder effects', () => {
     expect(thunder.activeStrikes).toBe(0);
   });
 
-  it('builds the invocation bubble around the caster and releases it back to the pool', () => {
+  it('raises from the staff, drops to the ground at 1.05 s and cracks the floor on contact', () => {
+    const { scene, thunder, caster } = setup();
+    const staffTip = new THREE.Vector3(caster.position.x + 0.4, 1.5, caster.position.z + 0.2);
+    thunder.charge(caster, staffTip);
+    const barrier = scene.getObjectByName('MageThunderBarrierVFX')!;
+    const dome = barrier.getObjectByName('ThunderBarrierDome')!;
+    const domeGroup = dome.parent!;
+    const cracks = barrier.getObjectByName('ThunderGroundCracks')! as THREE.Mesh;
+    const crackOpacity = () => (cracks.material as THREE.MeshBasicMaterial).opacity;
+    const advanceTo = (seconds: number) => {
+      let now = 0;
+      while (now < seconds - 1e-6) { const step = Math.min(1 / 60, seconds - now); thunder.update(step); now += step; }
+    };
+
+    advanceTo(0.2);
+    const highAt0_2 = domeGroup.position.y;
+    advanceTo(0.8);
+    const midAt0_8 = domeGroup.position.y;
+    expect(highAt0_2).toBeGreaterThan(midAt0_8);
+    expect(midAt0_8).toBeGreaterThan(0);
+    expect(crackOpacity()).toBe(0);
+
+    advanceTo(1.1);
+    expect(domeGroup.position.y).toBeCloseTo(0, 5);
+    expect(crackOpacity()).toBeGreaterThan(0);
+  });
+
+  it('builds the barrier at the caster and releases it back to the pool', () => {
     const { scene, thunder, caster } = setup();
     const handle = thunder.charge(caster);
     expect(handle).not.toBeNull();
     thunder.update(0.3);
-    const bubble = scene.getObjectByName('MageThunderBubbleVFX')!;
-    expect(bubble.position.toArray()).toEqual(caster.position.toArray());
+    const barrier = scene.getObjectByName('MageThunderBarrierVFX')!;
+    expect(barrier.position.x).toBeCloseTo(caster.position.x, 5);
+    expect(barrier.position.z).toBeCloseTo(caster.position.z, 5);
     expect(thunder.activeCharges).toBe(1);
 
     handle!.release();
     for (let i = 0; i < 200 && thunder.activeCharges > 0; i += 1) thunder.update(0.02);
     expect(thunder.activeCharges).toBe(0);
     expect(thunder.pooledCharges).toBe(1);
-    expect(scene.getObjectByName('MageThunderBubbleVFX')).toBeUndefined();
+    expect(scene.getObjectByName('MageThunderBarrierVFX')).toBeUndefined();
 
     // O mesmo objeto é reaproveitado na próxima conjuração.
     const again = thunder.charge(caster);

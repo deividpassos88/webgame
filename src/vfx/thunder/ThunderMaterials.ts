@@ -412,3 +412,73 @@ export function createThunderBurstCanvasTexture(seed = 3, size = 256): THREE.Tex
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
+
+/**
+ * Fendas radiais no chão da conjuração: linhas escuras com borda magenta,
+ * em canvas transparente que some pelas bordas. Usada no contato da barreira.
+ */
+export function createThunderCrackCanvasTexture(seed = 5, size = 512): THREE.Texture {
+  const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+  const ctx = canvas?.getContext?.('2d') ?? null;
+  if (!canvas || !ctx) return new THREE.Texture();
+  canvas.width = size;
+  canvas.height = size;
+  const rnd = paintRandom(seed);
+  const c = size / 2;
+  type Point = [number, number];
+  const fissures: Point[][] = [];
+  const walk = (start: Point, angle: number, length: number, depth: number): void => {
+    const points: Point[] = [start];
+    let [x, y] = start;
+    let heading = angle;
+    const steps = 5 + Math.floor(rnd() * 4);
+    for (let index = 0; index < steps; index += 1) {
+      heading += (rnd() - 0.5) * 0.8;
+      x += Math.cos(heading) * (length / steps);
+      y += Math.sin(heading) * (length / steps);
+      points.push([x, y]);
+      if (depth > 0 && index > 0 && rnd() < 0.45) {
+        walk([x, y], heading + (rnd() < 0.5 ? -1 : 1) * (0.5 + rnd() * 0.7), length * 0.5, depth - 1);
+      }
+    }
+    fissures.push(points);
+  };
+  const mainCount = 10;
+  for (let index = 0; index < mainCount; index += 1) {
+    const angle = (index / mainCount) * Math.PI * 2 + rnd() * 0.3;
+    const start: Point = [c + Math.cos(angle) * c * 0.05, c + Math.sin(angle) * c * 0.05];
+    walk(start, angle, c * (0.55 + 0.2 * rnd()), 2);
+  }
+  const paint = (width: number, color: string): void => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (const points of fissures) {
+      ctx.beginPath();
+      points.forEach(([x, y], index) => { if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+      ctx.stroke();
+    }
+  };
+  // Buraco escuro no centro, onde a fenda começou.
+  const pit = ctx.createRadialGradient(c, c, 0, c, c, c * 0.24);
+  pit.addColorStop(0, 'rgba(10, 4, 16, 0.95)');
+  pit.addColorStop(1, 'rgba(10, 4, 16, 0)');
+  ctx.fillStyle = pit;
+  ctx.beginPath();
+  ctx.arc(c, c, c * 0.24, 0, Math.PI * 2);
+  ctx.fill();
+  paint(7, 'rgba(255, 80, 245, 0.14)');
+  paint(2.2, 'rgba(255, 170, 255, 0.4)');
+  paint(3.6, 'rgba(6, 2, 10, 0.97)');
+  // Some pelas bordas do quadrado para não aparecer um retângulo.
+  ctx.globalCompositeOperation = 'destination-in';
+  const fade = ctx.createRadialGradient(c, c, c * 0.35, c, c, c * 0.9);
+  fade.addColorStop(0, 'rgba(0, 0, 0, 1)');
+  fade.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = fade;
+  ctx.fillRect(0, 0, size, size);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}

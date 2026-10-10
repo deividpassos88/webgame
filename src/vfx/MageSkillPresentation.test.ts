@@ -72,32 +72,36 @@ describe('Mage faster skill presentation', () => {
     }
   );
 
-  it('wraps the Maga in an invocation bubble while she casts, with no hand orb or magic seal', () => {
+  it('raises the barrier from the staff without an aura around the Maga or a hand orb', () => {
     const { scene, root, vfx, step } = setupCast('lightning', 2.1);
     try {
       step(0.4);
       step(0.04);
-      const bubble = scene.getObjectByName('MageThunderBubbleVFX')!;
-      expect(bubble).toBeDefined();
+      const barrier = scene.getObjectByName('MageThunderBarrierVFX')!;
+      expect(barrier).toBeDefined();
       expect(scene.getObjectByName('MageChargeOrbVFX')).toBeUndefined();
+      expect(scene.getObjectByName('MageThunderBubbleVFX')).toBeUndefined();
       expect(vfx.diagnostics().activeThunderCharges).toBe(1);
       expect(vfx.diagnostics().activeMagicCircles).toBe(0);
-      // A bolha acompanha a Maga, não a mão.
+      // Sem aura: o raio não cria a barreira de escudo que envolvia a Maga.
+      expect(vfx.diagnostics().activeBarriers).toBe(0);
+      // A barreira fica onde a conjuração começou; não é arrastada pelo movimento depois.
+      const startX = root.position.x;
       root.position.x += 0.6;
       step(0.04);
-      expect(bubble.position.x).toBeCloseTo(root.position.x, 3);
+      expect(barrier.position.x).toBeCloseTo(startX, 3);
     } finally {
       vfx.dispose();
     }
   });
 
-  it('keeps the invocation bubble finite and centred on the caster when no hand is available', () => {
+  it('keeps the barrier finite and centred on the caster when no hand is available', () => {
     const { scene, vfx, step } = setupCast('lightning', 2.1, false);
     try {
       step(0.4);
-      const bubble = scene.getObjectByName('MageThunderBubbleVFX')!;
-      expect(bubble).toBeDefined();
-      expect([bubble.position.x, bubble.position.y, bubble.position.z].every(Number.isFinite)).toBe(true);
+      const barrier = scene.getObjectByName('MageThunderBarrierVFX')!;
+      expect(barrier).toBeDefined();
+      expect([barrier.position.x, barrier.position.y, barrier.position.z].every(Number.isFinite)).toBe(true);
     } finally {
       vfx.dispose();
     }

@@ -6,7 +6,7 @@ import { VFXLightPool, type VFXLightHandle } from '../VFXLightPool';
 import type { MageVFXQuality } from '../VFXTypes';
 import {
   createThunderBeamMaterial, createThunderBoltMaterial, createThunderDomeMaterial,
-  createThunderBurstCanvasTexture, createThunderRingMaterial, createThunderShadowTexture, createThunderSmokeCanvasTexture,
+  createThunderBurstCanvasTexture, createThunderCrackCanvasTexture, createThunderRingMaterial, createThunderShadowTexture, createThunderSmokeCanvasTexture,
 } from './ThunderMaterials';
 import {
   createThunderBladeGeometry, createThunderDiscGeometry, jaggedBoltPath, ThunderBolt,
@@ -62,127 +62,221 @@ function disposeTree(root: THREE.Object3D): void {
 
 // ─────────────────────────────── Invocation bubble ───────────────────────────────
 
+// ───────────────────────────── Juízo do Trovão: barreira da conjuração ─────────────────────────────
+// Sequência, em segundos desde o início da conjuração (tempo real):
+//  0.00–0.42  a magia sobe da ponta do cajado até o alto (rastro magenta + núcleo branco);
+//  0.42–0.56  no topo a magia floresce numa cúpula roxa que cresce;
+//  0.50–1.05  a cúpula desce em queda acelerada até o chão;
+//  1.05       contato: o chão racha (fendas, cratera, pedras, fumaça escura, clarão);
+//  1.05–1.9   a barreira segura, com colunas de luz dentro dela;
+//  depois     a barreira se dissolve. Não depende do lançamento: o raio segue a própria linha do tempo.
+
+const CHARGE_RISE_END = 0.42;
+const CHARGE_BLOOM_END = 0.56;
+const CHARGE_DESCENT_START = 0.5;
+const CHARGE_TOUCH = 1.05;
+const CHARGE_HOLD_END = 1.9;
+const CHARGE_FADE = 0.45;
+const CHARGE_MIN_HOLD_AFTER_TOUCH = 0.35;
+const CHARGE_APEX_Y = 3.4;
+const CHARGE_GRAVITY = 9.8;
+const CHARGE_DEFAULT_TIP = new THREE.Vector3(0, 1.45, 0);
+const TMP_CHARGE_HEAD = new THREE.Vector3();
+const TMP_CHARGE_MID = new THREE.Vector3();
+const TMP_CHARGE_LIGHT = new THREE.Vector3();
+
+const clamp01 = (value: number): number => THREE.MathUtils.clamp(value, 0, 1);
+
+function additiveSprite(texture: THREE.Texture, color: number, name: string): THREE.Sprite {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: texture, color, transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending, toneMapped: false,
+  }));
+  sprite.name = name;
+  sprite.renderOrder = 8;
+  return sprite;
+}
+
+interface ChargeRock { mesh: THREE.Mesh; angle: number; radius: number; lift: number; spin: number }
+interface ChargeSmoke { sprite: THREE.Sprite; material: THREE.SpriteMaterial; angle: number; radius: number; delay: number }
+
 class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
   public active = false;
   public readonly group = new THREE.Group();
+  private readonly origin = new THREE.Vector3();
+  private readonly tip = new THREE.Vector3();
   private readonly domeMaterial = createThunderDomeMaterial();
   private readonly ringMaterial = createThunderRingMaterial();
-  private readonly beamMaterials: THREE.ShaderMaterial[] = [];
-  private readonly beams: THREE.Mesh[] = [];
-  private readonly shards: THREE.Mesh[] = [];
-  private readonly rocks: THREE.Mesh[] = [];
-  private readonly rings: THREE.Mesh[] = [];
-  private readonly crater: THREE.Mesh;
-  private readonly core: THREE.Sprite;
-  private readonly coreMaterial: THREE.SpriteMaterial;
+  private readonly textures: THREE.Texture[] = [];
+  private readonly domeGroup = new THREE.Group();
   private readonly dome: THREE.Mesh;
+  private readonly beams: THREE.Mesh[] = [];
+  private readonly beamMaterials: THREE.ShaderMaterial[] = [];
+  private readonly shards: THREE.Mesh[] = [];
+  private readonly rocks: ChargeRock[] = [];
+  private readonly smokes: ChargeSmoke[] = [];
+  private readonly crater: THREE.Mesh;
+  private readonly craterMaterial: THREE.MeshBasicMaterial;
+  private readonly cracks: THREE.Mesh;
+  private readonly crackMaterial: THREE.MeshBasicMaterial;
+  private readonly shock: THREE.Mesh;
+  private readonly burst: THREE.Sprite;
+  private readonly burstMaterial: THREE.SpriteMaterial;
+  private readonly orbGlow: THREE.Sprite;
+  private readonly orbCore: THREE.Sprite;
+  private readonly trailWide: THREE.Sprite;
+  private readonly trailCore: THREE.Sprite;
   private light: VFXLightHandle | null = null;
-  private caster: THREE.Object3D | null = null;
+  private played = false;
   private age = 0;
   private releasedAt: number | null = null;
 
   public constructor(resources: MageVFXResources, private readonly lights: VFXLightPool, private readonly quality: MageVFXQuality) {
-    this.group.name = 'MageThunderBubbleVFX';
+    this.group.name = 'MageThunderBarrierVFX';
     this.group.visible = false;
+    this.group.add(this.domeGroup);
 
+    // Cúpula roxa com borda magenta (fresnel). A base fica em y=0 do grupo.
     this.dome = new THREE.Mesh(new THREE.SphereGeometry(BUBBLE_RADIUS, 48, 24, 0, TAU, 0, Math.PI / 2), this.domeMaterial);
-    this.dome.name = 'ThunderBubbleDome';
+    this.dome.name = 'ThunderBarrierDome';
     this.dome.renderOrder = 6;
-    this.group.add(this.dome);
+    this.domeGroup.add(this.dome);
 
-    // Dark crater disc under the bubble, with a magenta shock rim on the ground.
-    this.crater = new THREE.Mesh(new THREE.CircleGeometry(BUBBLE_RADIUS * 1.02, 48), new THREE.MeshBasicMaterial({
-      color: 0x120a18, transparent: true, opacity: 0, depthWrite: false,
-    }));
-    this.crater.rotation.x = -Math.PI / 2;
-    this.crater.position.y = 0.02;
-    this.crater.name = 'ThunderCraterDisc';
-    this.group.add(this.crater);
-    const rim = new THREE.Mesh(createThunderDiscGeometry(24, 72), this.ringMaterial);
-    rim.position.y = 0.03;
-    rim.scale.setScalar(BUBBLE_RADIUS * 1.04);
-    rim.name = 'ThunderGroundRim';
-    this.rings.push(rim);
-    this.group.add(rim);
-
-    // Two orbit rings floating around the waist, like the reference's halo lines.
-    for (let index = 0; index < 2; index += 1) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(1.55 + index * 0.3, 0.018, 6, 72), new THREE.MeshBasicMaterial({
-        color: 0xff6cff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
-      }));
-      ring.rotation.x = Math.PI / 2;
-      ring.position.y = 1.0 + index * 0.4;
-      (ring.material as THREE.MeshBasicMaterial).color.set(0xc98cff);
-      ring.name = 'ThunderOrbitRing';
-      ring.userData.spin = true;
-      this.rings.push(ring);
-      this.group.add(ring);
-    }
-
-    // Light columns inside the bubble: thick, white-hot core, magenta halo, rising and flickering.
+    // Fios de luz verticais dentro da cúpula, como na referência.
     const beamCount = quality === 'low' ? 12 : 18;
     for (let index = 0; index < beamCount; index += 1) {
       const material = createThunderBeamMaterial();
+      material.side = THREE.DoubleSide;
       material.uniforms.uSeed.value = index * 1.7;
       this.beamMaterials.push(material);
-      const beam = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 2.9), material);
+      const beam = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 1.6), material);
       const angle = (index / beamCount) * TAU + (index % 3) * 0.17;
-      const radius = 0.5 + (index % 4) * 0.22;
-      beam.position.set(Math.cos(angle) * radius, 1.45, Math.sin(angle) * radius);
-      beam.name = 'ThunderBubbleBeam';
+      const radius = 0.35 + (index % 4) * 0.22;
+      beam.position.set(Math.cos(angle) * radius, 0.8, Math.sin(angle) * radius);
+      beam.rotation.y = angle;
+      beam.name = 'ThunderBarrierBeam';
       beam.renderOrder = 7;
       this.beams.push(beam);
-      this.group.add(beam);
+      this.domeGroup.add(beam);
     }
 
-    // Jagged, grey-white crystal fangs around the base (the ground crown of the reference).
+    // Cacos cinza-brancos pontudos na base, saindo do chão quebrado.
     const shardCount = quality === 'low' ? 10 : 14;
     for (let index = 0; index < shardCount; index += 1) {
-      const angle = (index / shardCount) * TAU;
-      const height = 1.5 + (index % 3) * 0.35;
-      const shard = new THREE.Mesh(new THREE.ConeGeometry(0.2, height, 4), new THREE.MeshBasicMaterial({
-        color: 0xdcd8f2, transparent: true, opacity: 0, depthWrite: false,
+      const angle = (index / shardCount) * TAU + 0.12;
+      const height = 1.2 + (index % 3) * 0.35;
+      const shard = new THREE.Mesh(new THREE.ConeGeometry(0.16, height, 4), new THREE.MeshBasicMaterial({
+        color: 0xe4e0f4, transparent: true, opacity: 0, depthWrite: false,
       }));
-      shard.position.set(Math.cos(angle) * 1.35, height * 0.42, Math.sin(angle) * 1.35);
-      shard.rotation.set(-Math.sin(angle) * 0.38, 0, Math.cos(angle) * 0.38);
-      shard.name = 'ThunderBubbleShard';
+      shard.position.set(Math.cos(angle) * 1.55, 0, Math.sin(angle) * 1.55);
+      shard.rotation.set(-Math.sin(angle) * 0.35, 0, Math.cos(angle) * 0.35);
+      shard.userData.height = height;
+      shard.name = 'ThunderBarrierShard';
       this.shards.push(shard);
       this.group.add(shard);
     }
 
-    // Dark rocks lifted out of the crater.
-    for (let index = 0; index < 10; index += 1) {
-      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.09 + (index % 3) * 0.03, 0), new THREE.MeshBasicMaterial({
-        color: 0x2a2026, transparent: true, opacity: 0, depthWrite: false,
+    // Pedras escuras que saltam do chão no contato.
+    const rockCount = quality === 'low' ? 8 : 12;
+    for (let index = 0; index < rockCount; index += 1) {
+      const mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(0.1 + (index % 3) * 0.04, 0), new THREE.MeshBasicMaterial({
+        color: 0x241a2a, transparent: true, opacity: 0, depthWrite: false,
       }));
-      const angle = (index / 10) * TAU + 0.3;
-      rock.userData.angle = angle;
-      rock.userData.radius = 1.5 + (index % 4) * 0.13;
-      rock.name = 'ThunderCraterRock';
-      this.rocks.push(rock);
-      this.group.add(rock);
+      mesh.name = 'ThunderBarrierRock';
+      mesh.visible = false;
+      this.rocks.push({
+        mesh,
+        angle: (index / rockCount) * TAU + 0.3,
+        radius: 1.2 + (index % 4) * 0.16,
+        lift: 2.2 + (index % 4) * 0.45,
+        spin: 1.5 + (index % 3) * 0.7,
+      });
+      this.group.add(mesh);
     }
 
-    this.coreMaterial = new THREE.SpriteMaterial({
-      map: resources.softGlow, color: 0xff8cff, transparent: true, opacity: 0, depthWrite: false,
-      blending: THREE.AdditiveBlending, toneMapped: false,
+    // Fumaça escura e densa que sobe da base rachada.
+    const smokeTextures = [2, 5, 8, 11].map((seed) => {
+      const texture = createThunderSmokeCanvasTexture(seed);
+      this.textures.push(texture);
+      return texture;
     });
-    this.core = new THREE.Sprite(this.coreMaterial);
-    this.core.position.set(0, 1.1, 0);
-    this.core.scale.setScalar(1.6);
-    this.core.name = 'ThunderBubbleCore';
-    this.group.add(this.core);
+    const smokeCount = quality === 'low' ? 6 : 9;
+    for (let index = 0; index < smokeCount; index += 1) {
+      const material = new THREE.SpriteMaterial({
+        map: smokeTextures[index % smokeTextures.length], color: 0x1d1426,
+        transparent: true, opacity: 0, depthWrite: false,
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.name = 'ThunderBarrierSmoke';
+      sprite.renderOrder = 5;
+      sprite.visible = false;
+      this.smokes.push({
+        sprite, material,
+        angle: (index / smokeCount) * TAU + 0.5,
+        radius: 0.5 + (index % 3) * 0.25,
+        delay: (index % 4) * 0.05,
+      });
+      this.group.add(sprite);
+    }
+
+    // Cratera escura e fendas radiais no chão.
+    this.craterMaterial = new THREE.MeshBasicMaterial({ color: 0x0d0710, transparent: true, opacity: 0, depthWrite: false });
+    this.crater = new THREE.Mesh(new THREE.CircleGeometry(BUBBLE_RADIUS * 1.02, 48), this.craterMaterial);
+    this.crater.rotation.x = -Math.PI / 2;
+    this.crater.position.y = 0.02;
+    this.crater.name = 'ThunderCraterDisc';
+    this.group.add(this.crater);
+
+    const crackTexture = createThunderCrackCanvasTexture(5);
+    this.textures.push(crackTexture);
+    this.crackMaterial = new THREE.MeshBasicMaterial({ map: crackTexture, transparent: true, opacity: 0, depthWrite: false });
+    this.cracks = new THREE.Mesh(new THREE.PlaneGeometry(BUBBLE_RADIUS * 2.6, BUBBLE_RADIUS * 2.6), this.crackMaterial);
+    this.cracks.rotation.x = -Math.PI / 2;
+    this.cracks.position.y = 0.035;
+    this.cracks.name = 'ThunderGroundCracks';
+    this.group.add(this.cracks);
+
+    // Onda de choque no chão, no contato.
+    this.shock = new THREE.Mesh(createThunderDiscGeometry(24, 72), this.ringMaterial);
+    this.shock.position.y = 0.04;
+    this.shock.name = 'ThunderShockRing';
+    this.group.add(this.shock);
+
+    // Clarão no contato.
+    const burstTexture = createThunderBurstCanvasTexture(3);
+    this.textures.push(burstTexture);
+    this.burst = additiveSprite(burstTexture, 0xffffff, 'ThunderBarrierBurst');
+    this.burstMaterial = this.burst.material as THREE.SpriteMaterial;
+    this.burst.position.y = 0.7;
+    this.group.add(this.burst);
+
+    // Magia que sobe do cajado: núcleo branco + halo magenta + rastro.
+    this.orbGlow = additiveSprite(resources.softGlow, 0xc23cff, 'ThunderBarrierOrbGlow');
+    this.orbCore = additiveSprite(resources.softGlow, 0xffffff, 'ThunderBarrierOrbCore');
+    this.trailWide = additiveSprite(resources.softGlow, 0xb84dff, 'ThunderBarrierTrailWide');
+    this.trailCore = additiveSprite(resources.softGlow, 0xffe6ff, 'ThunderBarrierTrailCore');
+    this.group.add(this.orbGlow, this.orbCore, this.trailWide, this.trailCore);
   }
 
-  public play(caster: THREE.Object3D): void {
-    this.caster = caster;
+  public play(caster: THREE.Object3D, staffTip?: THREE.Vector3 | null): void {
+    caster.getWorldPosition(this.origin);
+    this.group.position.copy(this.origin);
+    if (staffTip && Number.isFinite(staffTip.x) && Number.isFinite(staffTip.y) && Number.isFinite(staffTip.z)) {
+      this.tip.copy(staffTip).sub(this.origin);
+      this.tip.y = THREE.MathUtils.clamp(this.tip.y, 0.9, 2.4);
+      const reach = Math.hypot(this.tip.x, this.tip.z);
+      if (reach > 1.2) { this.tip.x *= 1.2 / reach; this.tip.z *= 1.2 / reach; }
+    } else {
+      this.tip.copy(CHARGE_DEFAULT_TIP);
+    }
     this.age = 0;
     this.releasedAt = null;
+    this.played = true;
     this.group.visible = true;
     this.light = this.quality === 'low' ? null : this.lights.acquire();
     if (this.light) {
       this.light.light.color.set(0xb84dff);
-      this.light.light.distance = 7;
+      this.light.light.distance = 8;
       this.light.light.intensity = 0;
     }
     this.update(0);
@@ -193,69 +287,123 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
   }
 
   public update(delta: number): boolean {
-    if (!this.caster) return false;
+    if (!this.played) return false;
     this.age += Math.max(0, delta);
-    const ending = this.releasedAt === null ? 0 : THREE.MathUtils.clamp((this.age - this.releasedAt) / 0.35, 0, 1);
-    const grow = THREE.MathUtils.smoothstep(this.age, 0, 0.32);
-    const live = grow * (1 - ending);
-    this.caster.getWorldPosition(this.group.position);
+    const a = this.age;
+    // Liberar cedo não corta a descida nem o contato: a barreira fica no mínimo até depois da queda.
+    const dissolveAt = this.releasedAt === null
+      ? CHARGE_HOLD_END
+      : Math.max(this.releasedAt, CHARGE_TOUCH + CHARGE_MIN_HOLD_AFTER_TOUCH);
+    const fade = clamp01((a - dissolveAt) / CHARGE_FADE);
+    if (fade >= 1) return false;
+    const alive = 1 - fade;
 
-    const scale = (0.45 + 0.55 * grow) * (1 - 0.12 * ending);
-    this.dome.scale.set(scale, scale * 0.95, scale);
-    this.domeMaterial.uniforms.uTime.value = this.age;
-    this.domeMaterial.uniforms.uOpacity.value = live;
+    const rise = clamp01(a / CHARGE_RISE_END);
+    const bloom = THREE.MathUtils.smoothstep(a, CHARGE_RISE_END, CHARGE_BLOOM_END);
+    const descent = clamp01((a - CHARGE_DESCENT_START) / (CHARGE_TOUCH - CHARGE_DESCENT_START));
+    const landed = a >= CHARGE_TOUCH;
+    const touchAge = a - CHARGE_TOUCH;
+    const flicker = 0.92 + 0.08 * Math.sin(a * 22);
+
+    // Magia do cajado: sobe rápido, desacelera no topo e se centraliza sobre a Maga.
+    const eased = 1 - (1 - rise) * (1 - rise);
+    const head = TMP_CHARGE_HEAD.set(
+      this.tip.x * (1 - rise),
+      THREE.MathUtils.lerp(this.tip.y, CHARGE_APEX_Y, eased),
+      this.tip.z * (1 - rise),
+    );
+    const orbAlive = (1 - bloom) * alive;
+    this.orbGlow.position.copy(head);
+    this.orbGlow.scale.setScalar((0.9 + 0.2 * flicker) * 1.1);
+    (this.orbGlow.material as THREE.SpriteMaterial).opacity = 0.9 * orbAlive;
+    this.orbCore.position.copy(head);
+    this.orbCore.scale.setScalar(0.45 * flicker);
+    (this.orbCore.material as THREE.SpriteMaterial).opacity = orbAlive;
+    const trailLength = Math.max(0.01, head.distanceTo(this.tip));
+    TMP_CHARGE_MID.addVectors(this.tip, head).multiplyScalar(0.5);
+    this.trailWide.position.copy(TMP_CHARGE_MID);
+    this.trailWide.scale.set(0.7, trailLength, 1);
+    (this.trailWide.material as THREE.SpriteMaterial).opacity = 0.75 * orbAlive;
+    this.trailCore.position.copy(TMP_CHARGE_MID);
+    this.trailCore.scale.set(0.16, trailLength, 1);
+    (this.trailCore.material as THREE.SpriteMaterial).opacity = 0.95 * orbAlive;
+
+    // Cúpula: cresce no topo e desce em queda acelerada até o chão.
+    const domeY = THREE.MathUtils.lerp(CHARGE_APEX_Y, 0, descent * descent);
+    const grow = 0.22 + 0.78 * bloom;
+    const squash = landed ? Math.max(0, 1 - touchAge / 0.28) * 0.14 : 0;
+    this.domeGroup.position.set(0, domeY, 0);
+    this.domeGroup.scale.set(grow, grow * (1 - squash), grow);
+    this.domeMaterial.uniforms.uTime.value = a;
+    this.domeMaterial.uniforms.uOpacity.value = bloom * alive * 0.95;
 
     this.beams.forEach((beam, index) => {
       const material = this.beamMaterials[index];
-      const pulse = 0.78 + 0.22 * Math.sin(this.age * 9 + index * 1.3);
-      material.uniforms.uTime.value = this.age;
-      material.uniforms.uGrow.value = THREE.MathUtils.clamp(grow * pulse, 0, 1);
-      material.uniforms.uOpacity.value = live;
-      beam.scale.set(1, 0.5 + 0.5 * grow * pulse, 1);
-      beam.lookAt(0, beam.position.y, 0);
+      const pulse = 0.78 + 0.22 * Math.sin(a * 9 + index * 1.3);
+      material.uniforms.uTime.value = a;
+      material.uniforms.uGrow.value = clamp01(bloom * pulse);
+      material.uniforms.uOpacity.value = bloom * alive;
+      beam.scale.y = 0.5 + 0.5 * bloom * pulse;
     });
-
-    for (const ring of this.rings) {
-      if (ring.userData.spin === true) {
-        ring.rotation.z += 0.9 * Math.max(0, delta) * (ring.position.y > 1.2 ? 1 : -1);
-        (ring.material as THREE.MeshBasicMaterial).opacity = 0.55 * live;
-      } else {
-        (ring.material as THREE.ShaderMaterial).uniforms.uTime.value = this.age;
-        (ring.material as THREE.ShaderMaterial).uniforms.uOpacity.value = 0.45 * live;
-      }
-    }
-    (this.crater.material as THREE.MeshBasicMaterial).opacity = 0.7 * live;
 
     this.shards.forEach((shard, index) => {
-      const appear = THREE.MathUtils.smoothstep(this.age, 0.04 + index * 0.012, 0.34 + index * 0.012);
-      shard.scale.setScalar(Math.max(0.001, appear * (1 - 0.25 * ending)));
-      shard.position.y = 0.45 * appear;
-      (shard.material as THREE.MeshBasicMaterial).opacity = live * appear;
-    });
-    this.rocks.forEach((rock, index) => {
-      const lift = THREE.MathUtils.smoothstep(this.age, 0.1 + index * 0.02, 0.5);
-      const angle = rock.userData.angle as number;
-      const radius = rock.userData.radius as number;
-      rock.position.set(Math.cos(angle) * radius, 0.05 + Math.sin(lift * Math.PI) * 0.35 * (1 + (index % 2) * 0.4), Math.sin(angle) * radius);
-      rock.rotation.set(this.age * (1 + index * 0.1), this.age * 0.7, 0);
-      (rock.material as THREE.MeshBasicMaterial).opacity = live * lift;
+      const appear = landed
+        ? THREE.MathUtils.smoothstep(touchAge, index * 0.012, 0.2 + index * 0.012)
+        : 0;
+      const height = shard.userData.height as number;
+      shard.scale.setScalar(Math.max(0.001, appear));
+      shard.position.y = (height * 0.5) * appear;
+      (shard.material as THREE.MeshBasicMaterial).opacity = 0.95 * appear * alive;
     });
 
-    const flicker = 0.9 + 0.1 * Math.sin(this.age * 14);
-    this.core.scale.setScalar((1.2 + 0.5 * grow) * flicker);
-    this.coreMaterial.opacity = live * 0.95;
-    if (this.light) {
-      this.light.light.position.copy(this.group.position).y += 1.2;
-      this.light.light.intensity = live * 1.4 * flicker;
+    for (const rock of this.rocks) {
+      rock.mesh.visible = landed;
+      if (!landed) continue;
+      const t = Math.max(0, touchAge);
+      const dist = rock.radius + 0.9 * Math.min(t, 0.55);
+      const y = Math.max(0.05, 0.05 + rock.lift * t - 0.5 * CHARGE_GRAVITY * t * t);
+      rock.mesh.position.set(Math.cos(rock.angle) * dist, y, Math.sin(rock.angle) * dist);
+      rock.mesh.rotation.set(t * rock.spin, t * rock.spin * 0.6, 0);
+      (rock.mesh.material as THREE.MeshBasicMaterial).opacity = alive * clamp01(touchAge / 0.05);
     }
-    // Finished releases end the bubble; the dome and beams are fully hidden before pooling.
-    return ending < 1;
+
+    for (const smoke of this.smokes) {
+      const st = touchAge - smoke.delay;
+      smoke.sprite.visible = landed && st > 0;
+      if (!smoke.sprite.visible) continue;
+      const p = clamp01(st / 1.5);
+      const r = smoke.radius + 1.6 * p;
+      smoke.sprite.position.set(Math.cos(smoke.angle) * r, 0.4 + 1.1 * p, Math.sin(smoke.angle) * r);
+      smoke.sprite.scale.setScalar(1.5 + 3.0 * p);
+      const envelope = THREE.MathUtils.smoothstep(st, 0, 0.25) * (1 - THREE.MathUtils.smoothstep(p, 0.45, 1));
+      smoke.material.opacity = 0.92 * envelope * alive;
+      smoke.material.rotation = st * 0.3;
+    }
+
+    const pop = landed ? THREE.MathUtils.smoothstep(touchAge, 0, 0.12) : 0;
+    this.craterMaterial.opacity = 0.85 * pop * alive;
+    this.cracks.scale.setScalar(0.55 + 0.45 * THREE.MathUtils.smoothstep(touchAge, 0, 0.2));
+    this.crackMaterial.opacity = 0.7 * pop * alive;
+    const shockP = landed ? THREE.MathUtils.smoothstep(touchAge, 0, 0.45) : 0;
+    this.shock.scale.setScalar(BUBBLE_RADIUS * (0.35 + 0.95 * shockP));
+    this.ringMaterial.uniforms.uTime.value = a;
+    this.ringMaterial.uniforms.uOpacity.value = landed ? 0.8 * (1 - shockP) * alive : 0;
+    this.burstMaterial.opacity = landed ? (1 - THREE.MathUtils.smoothstep(touchAge, 0, 0.35)) * alive : 0;
+    this.burst.scale.setScalar(3.6 + 1.2 * shockP);
+
+    if (this.light) {
+      const lightY = Math.max(0.9, a < CHARGE_BLOOM_END ? head.y : domeY + 0.9);
+      this.light.light.position.set(this.origin.x, this.origin.y + lightY, this.origin.z);
+      const flash = landed ? 2.4 * (1 - THREE.MathUtils.smoothstep(touchAge, 0, 0.35)) : 0;
+      this.light.light.intensity = (0.9 * bloom + 0.5 * (1 - bloom) * rise + flash) * alive * flicker;
+    }
+    return true;
   }
 
   public reset(): void {
     this.group.visible = false;
     this.group.removeFromParent();
-    this.caster = null;
+    this.played = false;
     this.light?.release();
     this.light = null;
     this.releasedAt = null;
@@ -267,6 +415,7 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
     disposeTree(this.group);
     this.domeMaterial.dispose();
     this.ringMaterial.dispose();
+    this.textures.forEach((texture) => texture.dispose());
   }
 }
 
@@ -631,10 +780,10 @@ export class ThunderVFX {
     this.strikePool = new VFXPool(() => new ThunderStrike(resources, lights, quality), THUNDER_POOL_LIMITS.strikes);
   }
 
-  public charge(caster: THREE.Object3D): ThunderChargeHandle | null {
+  public charge(caster: THREE.Object3D, staffTip?: THREE.Vector3 | null): ThunderChargeHandle | null {
     const effect = this.chargePool.acquire();
     if (!effect) return null;
-    effect.play(caster);
+    effect.play(caster, staffTip);
     this.scene.add(effect.group);
     this.charges.push(effect);
     return effect;

@@ -271,7 +271,8 @@ describe('MageVFX full spell architecture', () => {
       } else {
         expect(diagnostics.activeProjectiles + diagnostics.pooledProjectiles).toBeGreaterThan(0);
       }
-      if (spellId !== 'basic' && spellId !== 'water') {
+      // O raio não usa a aura de escudo: a barreira dele é o ThunderVFX.
+      if (spellId !== 'basic' && spellId !== 'water' && spellId !== 'lightning') {
         expect(diagnostics.activeBarriers + diagnostics.pooledBarriers).toBeGreaterThan(0);
       }
       expect(diagnostics.activeCharges).toBeLessThanOrEqual(1);
