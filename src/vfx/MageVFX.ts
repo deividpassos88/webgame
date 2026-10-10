@@ -1234,16 +1234,9 @@ export class MageVFX {
     this.groundDecals.play(options);
   }
 
-  public playShockImpact(position: THREE.Vector3): void {
-    const preset = MAGE_SPELL_PRESETS.lightning;
-    this.magicCircles.play({
-      parent: this.scene,
-      position: position.clone().setY(position.y + 0.05),
-      color: preset.colors.glow,
-      radius: 2,
-      duration: 0.7,
-      groundAligned: true,
-    });
+  public playShockImpact(_position: THREE.Vector3): void {
+    // Pulo Atacando (Maga): o impacto é só o raio pintado (ThunderVFX). O círculo
+    // ciano antigo no chão foi removido; o efeito de choque segue na lógica de jogo.
   }
 
   /**

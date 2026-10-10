@@ -295,3 +295,111 @@ export function createThunderBurstTexture(size = 128): THREE.DataTexture {
   texture.needsUpdate = true;
   return texture;
 }
+
+/** Pequeno gerador determinístico para as texturas pintadas (mesmo visual em todo carregamento). */
+function paintRandom(seed: number): () => number {
+  let state = seed * 9301 + 49297;
+  return () => {
+    state = (state * 16807) % 2147483647;
+    return (state % 100000) / 100000;
+  };
+}
+
+/**
+ * Nuvem de fumaça pintada em canvas, no estilo cartunesco da referência:
+ * blobs arredondados com contorno quase preto, corpo roxo-escuro, topo com
+ * brilho lilás e luz magenta vazando por baixo. Cada `seed` dá um arranjo
+ * diferente. Sem canvas (ambiente de teste), cai na textura procedural.
+ */
+export function createThunderSmokeCanvasTexture(seed = 1, width = 512, height = 300): THREE.Texture {
+  const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+  const ctx = canvas?.getContext?.('2d') ?? null;
+  if (!canvas || !ctx) return createThunderSmokeTexture(128);
+  canvas.width = width;
+  canvas.height = height;
+  const rnd = paintRandom(seed);
+  const lobes: Array<{ x: number; y: number; r: number }> = [];
+  const count = 9;
+  for (let i = 0; i < count; i += 1) {
+    const t = i / (count - 1);
+    const x = 0.1 + 0.8 * t + (rnd() - 0.5) * 0.06;
+    const bulge = Math.sin(Math.PI * Math.min(1, Math.max(0, t))) * (0.7 + rnd() * 0.3);
+    lobes.push({ x, y: 0.7 - 0.26 * bulge, r: 0.09 + rnd() * 0.07 });
+  }
+  // Lobos de base, achatados, que assentam a nuvem no chão.
+  lobes.push({ x: 0.3, y: 0.82, r: 0.13 }, { x: 0.7, y: 0.82, r: 0.13 }, { x: 0.5, y: 0.86, r: 0.16 });
+
+  const w = width;
+  const h = height;
+  // 1) contorno escuro (todos juntos, para não aparecer costura entre os lobos)
+  ctx.fillStyle = '#0b0616';
+  for (const lobe of lobes) {
+    ctx.beginPath();
+    ctx.ellipse(lobe.x * w, lobe.y * h, (lobe.r + 0.014) * w, (lobe.r + 0.014) * w * 0.92, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 2) corpo roxo-escuro com degradê vertical
+  const body = ctx.createLinearGradient(0, h * 0.35, 0, h);
+  body.addColorStop(0, '#3a2870');
+  body.addColorStop(1, '#170d2e');
+  ctx.fillStyle = body;
+  for (const lobe of lobes) {
+    ctx.beginPath();
+    ctx.ellipse(lobe.x * w, lobe.y * h, lobe.r * w, lobe.r * w * 0.92, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 3) brilho lilás no topo de cada lobo
+  ctx.fillStyle = 'rgba(140, 108, 214, 0.45)';
+  for (const lobe of lobes) {
+    ctx.beginPath();
+    ctx.ellipse((lobe.x - lobe.r * 0.22) * w, (lobe.y - lobe.r * 0.35) * h, lobe.r * 0.5 * w, lobe.r * 0.42 * w, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 4) luz magenta vazando por baixo da nuvem
+  ctx.globalCompositeOperation = 'lighter';
+  const glow = ctx.createRadialGradient(w * 0.5, h * 0.92, 0, w * 0.5, h * 0.92, w * 0.3);
+  glow.addColorStop(0, 'rgba(255, 60, 240, 0.45)');
+  glow.addColorStop(1, 'rgba(255, 60, 240, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'source-over';
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+/**
+ * Estrela de estouro pintada em canvas: pontas serrilhadas, núcleo branco
+ * e borda magenta, como o clarão da base na referência.
+ */
+export function createThunderBurstCanvasTexture(seed = 3, size = 256): THREE.Texture {
+  const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+  const ctx = canvas?.getContext?.('2d') ?? null;
+  if (!canvas || !ctx) return createThunderBurstTexture(128);
+  canvas.width = size;
+  canvas.height = size;
+  const rnd = paintRandom(seed);
+  const c = size / 2;
+  const points = 22;
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i += 1) {
+    const a = (i / (points * 2)) * Math.PI * 2;
+    const outer = i % 2 === 0;
+    const radius = outer ? c * (0.62 + 0.36 * rnd()) : c * (0.22 + 0.1 * rnd());
+    const x = c + Math.cos(a) * radius;
+    const y = c + Math.sin(a) * radius;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  const fill = ctx.createRadialGradient(c, c, 0, c, c, c);
+  fill.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  fill.addColorStop(0.3, 'rgba(255, 236, 255, 0.95)');
+  fill.addColorStop(0.65, 'rgba(255, 70, 245, 0.85)');
+  fill.addColorStop(1, 'rgba(255, 40, 220, 0)');
+  ctx.fillStyle = fill;
+  ctx.fill();
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}

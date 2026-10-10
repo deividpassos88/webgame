@@ -6,7 +6,7 @@ import { VFXLightPool, type VFXLightHandle } from '../VFXLightPool';
 import type { MageVFXQuality } from '../VFXTypes';
 import {
   createThunderBeamMaterial, createThunderBoltMaterial, createThunderDomeMaterial,
-  createThunderBurstTexture, createThunderRingMaterial, createThunderShadowTexture, createThunderSmokeTexture,
+  createThunderBurstCanvasTexture, createThunderRingMaterial, createThunderShadowTexture, createThunderSmokeCanvasTexture,
 } from './ThunderMaterials';
 import {
   createThunderBladeGeometry, createThunderDiscGeometry, jaggedBoltPath, ThunderBolt,
@@ -298,6 +298,7 @@ class ThunderStrike implements PoolableVFX {
   private readonly bladeMaterials: THREE.MeshBasicMaterial[] = [];
   private readonly smokes: Array<{ sprite: THREE.Sprite; delay: number; angle: number; radius: number; height: number }> = [];
   private readonly smokeMaterials: THREE.SpriteMaterial[] = [];
+  private readonly smokeTextures: THREE.Texture[] = [];
   private readonly shards: THREE.InstancedMesh;
   private readonly shardData: Array<{ vx: number; vy: number; vz: number; spin: number }> = [];
   private readonly shardMatrix = new THREE.Matrix4();
@@ -357,7 +358,7 @@ class ThunderStrike implements PoolableVFX {
 
     // Estouro branco na base: sobe forte no contato e some em instantes.
     this.burstMaterial = new THREE.SpriteMaterial({
-      map: createThunderBurstTexture(128), color: 0xffffff, transparent: true, opacity: 0, depthWrite: false,
+      map: createThunderBurstCanvasTexture(3), color: 0xffffff, transparent: true, opacity: 0, depthWrite: false,
       blending: THREE.AdditiveBlending, toneMapped: false,
     });
     this.burst = new THREE.Sprite(this.burstMaterial);
@@ -401,20 +402,20 @@ class ThunderStrike implements PoolableVFX {
       this.blades.push({ group, phase: spec.phase, height: spec.height });
     }
 
-    // Cartoon storm smoke: dark violet puffs around the base, with a magenta light underneath.
-    const smokeTexture = createThunderSmokeTexture(128);
-    const smokeCount = high ? 16 : 9;
-    for (let index = 0; index < smokeCount; index += 1) {
+    // Nuvens cartunescas pintadas (blobs com contorno e luz magenta por baixo).
+    const cloudCount = high ? 3 : 2;
+    for (let index = 0; index < cloudCount; index += 1) {
+      const texture = createThunderSmokeCanvasTexture(index + 2);
+      this.smokeTextures.push(texture);
       const material = new THREE.SpriteMaterial({
-        map: smokeTexture, color: 0x2e2056, transparent: true, opacity: 0, depthWrite: false,
+        map: texture, color: 0xffffff, transparent: true, opacity: 0, depthWrite: false,
       });
       this.smokeMaterials.push(material);
       const sprite = new THREE.Sprite(material);
-      const angle = (index / smokeCount) * TAU + (index % 2) * 0.25;
-      const radius = 0.9 + (index % 4) * 0.45;
-      sprite.position.set(Math.cos(angle) * radius, 0.5 + (index % 3) * 0.35, Math.sin(angle) * radius);
-      sprite.name = 'ThunderSmokePuff';
-      this.smokes.push({ sprite, delay: index * 0.02, angle, radius, height: sprite.position.y });
+      const offset = (index - (cloudCount - 1) / 2) * 0.9;
+      sprite.position.set(offset, 1.2, index % 2 === 0 ? 0.2 : -0.2);
+      sprite.name = 'ThunderSmokeCloud';
+      this.smokes.push({ sprite, delay: index * 0.04, angle: offset, radius: 0, height: sprite.position.y });
       this.group.add(sprite);
     }
 
@@ -551,9 +552,10 @@ class ThunderStrike implements PoolableVFX {
     this.underglowMaterial.opacity = 0.95 * smokeLive * glowGrow;
     this.smokes.forEach((smoke, index) => {
       const grow = THREE.MathUtils.smoothstep(impactAge, smoke.delay, 0.5 + smoke.delay);
-      smoke.sprite.scale.setScalar(0.9 + 2.2 * grow);
-      smoke.sprite.position.y = smoke.height + 0.35 * grow;
-      this.smokeMaterials[index].opacity = 0.96 * smokeLive * grow;
+      const size = 0.55 + 0.45 * grow;
+      smoke.sprite.scale.set(6.0 * size, 3.4 * size, 1);
+      smoke.sprite.position.y = smoke.height * 0.6 + 0.2 * grow;
+      this.smokeMaterials[index].opacity = 0.98 * smokeLive * grow;
     });
 
     // Shards: ballistic arcs with spin, hidden after the cloud dissipates.
@@ -599,6 +601,7 @@ class ThunderStrike implements PoolableVFX {
     this.branchMaterial.dispose();
     this.arcMaterial.dispose();
     this.shockMaterial.dispose();
+    for (const texture of this.smokeTextures) texture.dispose();
   }
 }
 
