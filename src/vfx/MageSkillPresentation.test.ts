@@ -72,58 +72,20 @@ describe('Mage faster skill presentation', () => {
     }
   );
 
-  it('wraps the Maga in an invocation bubble while she casts, with no hand orb or magic seal', () => {
-    const { scene, root, vfx, step } = setupCast('lightning', 2.1);
-    try {
-      step(0.4);
-      step(0.04);
-      const bubble = scene.getObjectByName('MageThunderBubbleVFX')!;
-      expect(bubble).toBeDefined();
-      expect(scene.getObjectByName('MageChargeOrbVFX')).toBeUndefined();
-      expect(vfx.diagnostics().activeThunderCharges).toBe(1);
-      expect(vfx.diagnostics().activeMagicCircles).toBe(0);
-      // A bolha acompanha a Maga, não a mão.
-      root.position.x += 0.6;
-      step(0.04);
-      expect(bubble.position.x).toBeCloseTo(root.position.x, 3);
-    } finally {
-      vfx.dispose();
-    }
-  });
-
-  it('keeps the invocation bubble finite and centred on the caster when no hand is available', () => {
-    const { scene, vfx, step } = setupCast('lightning', 2.1, false);
-    try {
-      step(0.4);
-      const bubble = scene.getObjectByName('MageThunderBubbleVFX')!;
-      expect(bubble).toBeDefined();
-      expect([bubble.position.x, bubble.position.y, bubble.position.z].every(Number.isFinite)).toBe(true);
-    } finally {
-      vfx.dispose();
-    }
-  });
-
-  it('drops thunder onto the marked enemy once, with the damage on contact and no explosion on the caster', () => {
+  it('keeps Juízo do Trovão gameplay with no visual effect objects', () => {
     const { scene, vfx, step, onLaunch, onImpact } = setupCast('lightning', 2.1);
     try {
-      // Lançamento no gesto autoral (≈0,6 s reais com 2,1x); o dano só chega no contato da queda.
+      step(0.4);
+      step(0.04);
+      for (const name of ['MageChargeOrbVFX', 'MageThunderBubbleVFX', 'MageThunderStrikeVFX', 'MageImpactVFX']) {
+        expect(scene.getObjectByName(name)).toBeUndefined();
+      }
       for (let frame = 0; frame < 32; frame += 1) step(0.02);
       expect(onLaunch).toHaveBeenCalledTimes(1);
-      expect(onImpact).toHaveBeenCalledTimes(0);
-      expect(vfx.diagnostics().activeMagicCircles).toBe(0);
-      expect(vfx.diagnostics().activeThunderStrikes).toBe(1);
-      // O raio é desenhado pelo próprio efeito de queda: nenhuma explosão de impacto na Maga.
-      const impacts = scene.children.filter((child) => child.name === 'MageImpactVFX');
-      expect(impacts).toHaveLength(0);
-      expect(scene.getObjectByName('MageThunderStrikeVFX')).toBeDefined();
-      for (let frame = 0; frame < 30; frame += 1) step(0.02);
       expect(onImpact).toHaveBeenCalledTimes(1);
-      for (let frame = 0; frame < 120; frame += 1) step(0.02);
+      for (let frame = 0; frame < 60; frame += 1) step(0.02);
       expect(onImpact).toHaveBeenCalledTimes(1);
-      expect(onLaunch).toHaveBeenCalledTimes(1);
-      expect(vfx.diagnostics().activeThunderCharges).toBe(0);
-      expect(vfx.diagnostics().activeThunderStrikes).toBe(0);
-      expect(vfx.diagnostics().activeImpacts).toBe(0);
+      expect(vfx.diagnostics().activeCharges).toBe(0);
     } finally {
       vfx.dispose();
     }
@@ -142,7 +104,7 @@ describe('Mage faster skill presentation', () => {
       vfx.clear();
       expect(vfx.diagnostics()).toMatchObject({
         activeCasts: 0, activeCharges: 0, activeMagicCircles: 0,
-        activeThunderStrikes: 0, activeThunderCharges: 0, activeImpacts: 0, activeBarriers: 0,
+        activeImpacts: 0, activeBarriers: 0,
       });
     } finally {
       vfx.dispose();
