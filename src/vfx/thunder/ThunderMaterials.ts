@@ -201,9 +201,11 @@ export function createThunderRingMaterial(): THREE.ShaderMaterial {
  */
 export function createThunderSmokeTexture(size = 128): THREE.DataTexture {
   const data = new Uint8Array(size * size * 4);
+  // Lobos irregulares e achatados, como as nuvens cartunescas da referência.
   const lobes = [
-    [0.50, 0.56, 0.30], [0.30, 0.60, 0.22], [0.70, 0.60, 0.22],
-    [0.42, 0.38, 0.20], [0.62, 0.36, 0.19], [0.52, 0.72, 0.18],
+    [0.50, 0.52, 0.27], [0.27, 0.58, 0.20], [0.73, 0.58, 0.20],
+    [0.38, 0.38, 0.19], [0.63, 0.36, 0.18], [0.50, 0.70, 0.17],
+    [0.14, 0.66, 0.13], [0.86, 0.66, 0.13], [0.22, 0.40, 0.14], [0.79, 0.42, 0.14],
   ] as const;
   const sdf = (x: number, y: number): number => {
     let best = Infinity;
@@ -212,9 +214,9 @@ export function createThunderSmokeTexture(size = 128): THREE.DataTexture {
   };
   const mix = (a: number[], b: number[], t: number): number[] => a.map((v, i) => v + (b[i] - v) * t);
   // Roxo-escuro cartunesco: corpo escuro, topo levemente iluminado, contorno quase preto.
-  const body = [44, 28, 78];
-  const highlight = [98, 66, 150];
-  const outline = [12, 7, 24];
+  const body = [46, 30, 86];
+  const highlight = [124, 86, 196];
+  const outline = [10, 6, 22];
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
       const u = (x + 0.5) / size;
@@ -255,6 +257,35 @@ export function createThunderShadowTexture(size = 128): THREE.DataTexture {
       data[i] = 8;
       data[i + 1] = 4;
       data[i + 2] = 14;
+      data[i + 3] = Math.round(alpha * 255);
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+/**
+ * Estrela de estouro (base do impacto): núcleo branco, bordas magenta e pontas
+ * irregulares, como o clarão serrilhado da referência. Gerada em código.
+ */
+export function createThunderBurstTexture(size = 128): THREE.DataTexture {
+  const data = new Uint8Array(size * size * 4);
+  const white = [255, 252, 255];
+  const magenta = [255, 70, 245];
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const u = (x + 0.5) / size * 2 - 1;
+      const v = (y + 0.5) / size * 2 - 1;
+      const r = Math.hypot(u, v);
+      const a = Math.atan2(v, u);
+      const spikes = 0.52 + 0.48 * Math.pow(Math.abs(Math.cos(a * 4 + 0.6 + 0.4 * Math.sin(a * 9))), 2.5);
+      const alpha = THREE.MathUtils.smoothstep(spikes - r, -0.02, 0.06);
+      const core = THREE.MathUtils.smoothstep(0.55 * spikes - r, -0.05, 0.25);
+      const i = (y * size + x) * 4;
+      for (let c = 0; c < 3; c += 1) data[i + c] = Math.round(magenta[c] + (white[c] - magenta[c]) * core);
       data[i + 3] = Math.round(alpha * 255);
     }
   }

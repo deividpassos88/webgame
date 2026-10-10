@@ -60,6 +60,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
   {
     id: 'pulo_atacando',
     label: 'Pulo Atacando',
+    mageLabel: 'Juízo do Trovão',
     input: '3',
     unlockLevel: 9,
     damageMultiplier: 1.18,

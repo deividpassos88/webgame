@@ -6,7 +6,7 @@ import { VFXLightPool, type VFXLightHandle } from '../VFXLightPool';
 import type { MageVFXQuality } from '../VFXTypes';
 import {
   createThunderBeamMaterial, createThunderBoltMaterial, createThunderDomeMaterial,
-  createThunderRingMaterial, createThunderShadowTexture, createThunderSmokeTexture,
+  createThunderBurstTexture, createThunderRingMaterial, createThunderShadowTexture, createThunderSmokeTexture,
 } from './ThunderMaterials';
 import {
   createThunderBladeGeometry, createThunderDiscGeometry, jaggedBoltPath, ThunderBolt,
@@ -20,7 +20,7 @@ export const THUNDER_LIFETIME_SECONDS = 1.6;
 const BRANCH_HALF_WIDTH: readonly number[] = [0.16];
 const ARC_HALF_WIDTH: readonly number[] = [0.16];
 /** Corpo grosso do raio (magenta com núcleo branco), sob o filete fino. */
-const BODY_HALF_WIDTH = 0.82;
+const BODY_HALF_WIDTH = 0.62;
 
 const BUBBLE_RADIUS = 2.1;
 const BOLT_TOP = 8.5;
@@ -120,12 +120,12 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
     }
 
     // Light columns inside the bubble: thick, white-hot core, magenta halo, rising and flickering.
-    const beamCount = quality === 'low' ? 10 : 16;
+    const beamCount = quality === 'low' ? 12 : 18;
     for (let index = 0; index < beamCount; index += 1) {
       const material = createThunderBeamMaterial();
       material.uniforms.uSeed.value = index * 1.7;
       this.beamMaterials.push(material);
-      const beam = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 2.9), material);
+      const beam = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 2.9), material);
       const angle = (index / beamCount) * TAU + (index % 3) * 0.17;
       const radius = 0.5 + (index % 4) * 0.22;
       beam.position.set(Math.cos(angle) * radius, 1.45, Math.sin(angle) * radius);
@@ -136,14 +136,15 @@ class ThunderCharge implements PoolableVFX, ThunderChargeHandle {
     }
 
     // Jagged, grey-white crystal fangs around the base (the ground crown of the reference).
-    const shardCount = quality === 'low' ? 8 : 12;
+    const shardCount = quality === 'low' ? 10 : 14;
     for (let index = 0; index < shardCount; index += 1) {
       const angle = (index / shardCount) * TAU;
-      const shard = new THREE.Mesh(new THREE.ConeGeometry(0.13, 1.1, 4), new THREE.MeshBasicMaterial({
-        color: 0xe2def5, transparent: true, opacity: 0, depthWrite: false,
+      const height = 1.5 + (index % 3) * 0.35;
+      const shard = new THREE.Mesh(new THREE.ConeGeometry(0.2, height, 4), new THREE.MeshBasicMaterial({
+        color: 0xdcd8f2, transparent: true, opacity: 0, depthWrite: false,
       }));
-      shard.position.set(Math.cos(angle) * 1.25, 0.45, Math.sin(angle) * 1.25);
-      shard.rotation.set(-Math.sin(angle) * 0.42, 0, Math.cos(angle) * 0.42);
+      shard.position.set(Math.cos(angle) * 1.35, height * 0.42, Math.sin(angle) * 1.35);
+      shard.rotation.set(-Math.sin(angle) * 0.38, 0, Math.cos(angle) * 0.38);
       shard.name = 'ThunderBubbleShard';
       this.shards.push(shard);
       this.group.add(shard);
@@ -356,7 +357,7 @@ class ThunderStrike implements PoolableVFX {
 
     // Estouro branco na base: sobe forte no contato e some em instantes.
     this.burstMaterial = new THREE.SpriteMaterial({
-      map: resources.softGlow, color: 0xffffff, transparent: true, opacity: 0, depthWrite: false,
+      map: createThunderBurstTexture(128), color: 0xffffff, transparent: true, opacity: 0, depthWrite: false,
       blending: THREE.AdditiveBlending, toneMapped: false,
     });
     this.burst = new THREE.Sprite(this.burstMaterial);
@@ -381,13 +382,13 @@ class ThunderStrike implements PoolableVFX {
 
     // Three swept grey-violet blades orbit the bolt (fill + darker outline, as in the reference).
     const bladeSpecs = [
-      { phase: 0.2, sweep: 2.6, radius: 1.45, height: 2.4, width: 1.2 },
-      { phase: 2.5, sweep: 2.3, radius: 1.6, height: 3.1, width: 1.05 },
-      { phase: 4.4, sweep: 2.8, radius: 1.25, height: 3.7, width: 0.95 },
+      { phase: 0.2, sweep: 3.1, radius: 1.25, height: 2.2, width: 0.72 },
+      { phase: 2.5, sweep: 2.9, radius: 1.45, height: 2.9, width: 0.62 },
+      { phase: 4.4, sweep: 3.3, radius: 1.1, height: 3.5, width: 0.56 },
     ];
     for (const spec of bladeSpecs) {
-      const fill = new THREE.MeshBasicMaterial({ color: 0x8c85b2, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
-      const outline = new THREE.MeshBasicMaterial({ color: 0x30264a, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
+      const fill = new THREE.MeshBasicMaterial({ color: 0x7d78a8, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
+      const outline = new THREE.MeshBasicMaterial({ color: 0x2a2140, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
       this.bladeMaterials.push(fill, outline);
       const geometry = createThunderBladeGeometry(spec.phase, spec.sweep, spec.radius, spec.height, spec.width);
       const group = new THREE.Group();
@@ -402,25 +403,25 @@ class ThunderStrike implements PoolableVFX {
 
     // Cartoon storm smoke: dark violet puffs around the base, with a magenta light underneath.
     const smokeTexture = createThunderSmokeTexture(128);
-    const smokeCount = high ? 14 : 8;
+    const smokeCount = high ? 16 : 9;
     for (let index = 0; index < smokeCount; index += 1) {
       const material = new THREE.SpriteMaterial({
-        map: smokeTexture, color: 0x3a2868, transparent: true, opacity: 0, depthWrite: false,
+        map: smokeTexture, color: 0x2e2056, transparent: true, opacity: 0, depthWrite: false,
       });
       this.smokeMaterials.push(material);
       const sprite = new THREE.Sprite(material);
       const angle = (index / smokeCount) * TAU + (index % 2) * 0.25;
-      const radius = 0.8 + (index % 4) * 0.34;
-      sprite.position.set(Math.cos(angle) * radius, 0.6 + (index % 3) * 0.3, Math.sin(angle) * radius);
+      const radius = 0.9 + (index % 4) * 0.45;
+      sprite.position.set(Math.cos(angle) * radius, 0.5 + (index % 3) * 0.35, Math.sin(angle) * radius);
       sprite.name = 'ThunderSmokePuff';
       this.smokes.push({ sprite, delay: index * 0.02, angle, radius, height: sprite.position.y });
       this.group.add(sprite);
     }
 
     // Flying dark-violet shards, ballistic.
-    const shardCount = high ? 22 : 12;
-    this.shards = new THREE.InstancedMesh(new THREE.ConeGeometry(0.07, 0.3, 3), new THREE.MeshBasicMaterial({
-      color: 0xb9a8ff, transparent: true, opacity: 0.95,
+    const shardCount = high ? 14 : 8;
+    this.shards = new THREE.InstancedMesh(new THREE.TetrahedronGeometry(0.24, 0), new THREE.MeshBasicMaterial({
+      color: 0x4a3a80, transparent: true, opacity: 0.95,
     }), shardCount);
     this.shards.name = 'ThunderFlyingShards';
     this.shards.frustumCulled = false;
@@ -546,11 +547,11 @@ class ThunderStrike implements PoolableVFX {
     // Smoke: puffs pop out, grow, then dissolve.
     const smokeLive = 1 - THREE.MathUtils.smoothstep(impactAge, 0.9, 1.5);
     const glowGrow = THREE.MathUtils.smoothstep(impactAge, 0, 0.35);
-    this.underglow.scale.setScalar(2.4 + 3.2 * glowGrow);
-    this.underglowMaterial.opacity = 0.9 * smokeLive * glowGrow;
+    this.underglow.scale.setScalar(3.0 + 3.6 * glowGrow);
+    this.underglowMaterial.opacity = 0.95 * smokeLive * glowGrow;
     this.smokes.forEach((smoke, index) => {
       const grow = THREE.MathUtils.smoothstep(impactAge, smoke.delay, 0.5 + smoke.delay);
-      smoke.sprite.scale.setScalar(0.6 + 1.9 * grow);
+      smoke.sprite.scale.setScalar(0.9 + 2.2 * grow);
       smoke.sprite.position.y = smoke.height + 0.35 * grow;
       this.smokeMaterials[index].opacity = 0.96 * smokeLive * grow;
     });
@@ -563,7 +564,7 @@ class ThunderStrike implements PoolableVFX {
       this.shardPos.set(data.vx * t, 0.3 + data.vy * t - 4.9 * t * t, data.vz * t);
       this.shardQuat.setFromAxisAngle(this.shardAxis, data.spin * impactAge);
       const size = Math.max(0.0001, shardLive * (impactAge > 0 ? 1 : 0));
-      this.shardScale.set(size, size, size);
+      this.shardScale.set(size, size * 0.3, size * 0.6);
       this.shardMatrix.compose(this.shardPos, this.shardQuat, this.shardScale);
       this.shards.setMatrixAt(index, this.shardMatrix);
     }

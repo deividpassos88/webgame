@@ -121,7 +121,7 @@ export function createThunderBladeGeometry(phase: number, sweep: number, radius:
       const angle = phase + sweep * t;
       return new THREE.Vector3(-Math.sin(angle), 0.25, Math.cos(angle));
     },
-    (t) => width * Math.pow(Math.sin(Math.min(1, t * 1.05) * Math.PI), 0.45) * (1 - t * 0.35),
+    (t) => width * Math.pow(Math.sin(Math.min(1, t * 1.05) * Math.PI), 0.9) * (1 - t * 0.35),
     segments
   );
 }
