@@ -319,6 +319,8 @@ export class Game {
   /** Combo skill requested while the previous one still has damage to deliver. */
   private queuedComboSkill: { ids: WarriorSkillId[]; until: number } | null = null;
   private inventoryOverlay!: InventoryOverlay;
+  /** Non-modal Status window: tracked apart from the locking RPG overlays. */
+  private statusWindowOpen = false;
   private rpgOverlayOpen = false;
   private finalBossRewards: FinalBossRewardCoordinator | null = null;
   private lastBossMinionTier: 1 | 2 | 3 = 1;
@@ -861,7 +863,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     });
     this.hud.onOpenEquipment(() => this.openRpgOverlay('equipment'));
     this.hud.onOpenBackpack(() => this.openRpgOverlay('backpack'));
-    this.hud.onOpenStatus(() => this.openRpgOverlay('status'));
+    this.hud.onOpenStatus(() => this.toggleStatusWindow());
     this.hud.updateProgression(this.profile.progression, this.profile.attributePointsRemaining);
     this.hud.onBasicAttack(() => this.triggerBasicAttack());
     // The Maga's basic cast spends MP (mana) — 1% da barra por ataque (treino
@@ -1108,14 +1110,35 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
 
   private openRpgOverlay(mode: RpgOverlayMode): void {
     if (!this.canAcceptGameplayInput()) return;
+    this.statusWindowOpen = false;
     this.flow.transition({ type: 'open-inventory' });
     this.inventoryOverlay.show(mode);
   }
 
   private closeRpgOverlay(): void {
+    if (this.statusWindowOpen) {
+      this.closeStatusWindow();
+      return;
+    }
     if (!this.rpgOverlayOpen) return;
     this.inventoryOverlay.hide();
     this.flow.transition({ type: 'close-overlay' });
+  }
+
+  /** Status never locks movement, input, or the flow: it floats while the player keeps playing. */
+  private toggleStatusWindow(): void {
+    if (this.statusWindowOpen) {
+      this.closeStatusWindow();
+      return;
+    }
+    if (!this.canAcceptGameplayInput()) return;
+    this.statusWindowOpen = true;
+    this.inventoryOverlay.showFloating('status', document.querySelector<HTMLElement>('#gameplay-utility-dock'));
+  }
+
+  private closeStatusWindow(): void {
+    this.statusWindowOpen = false;
+    this.inventoryOverlay.hide();
   }
 
   private activateRpgOverlay(): void {
@@ -1130,6 +1153,10 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
   }
 
   private dismissRpgOverlay(): void {
+    if (this.statusWindowOpen) {
+      this.closeStatusWindow();
+      return;
+    }
     if (!this.rpgOverlayOpen) return;
     this.inventoryOverlay.hide();
   }

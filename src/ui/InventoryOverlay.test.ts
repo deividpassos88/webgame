@@ -13,7 +13,7 @@ function mountInventoryMarkup(): HTMLElement {
       <header><p id="character-eyebrow"></p><h2 id="character-title"></h2><button type="button" data-close-overlay>Fechar</button></header>
       <section data-character-panel="equipment"><div id="inventory-equipment"></div></section>
       <section data-character-panel="backpack" class="hidden"><span id="inventory-capacity" tabindex="-1"></span><div id="inventory-backpack"></div></section>
-      <section data-character-panel="status" class="hidden"><nav class="status-book-tabs"><button type="button" data-status-tab="progress" aria-selected="true">Progresso</button><button type="button" data-status-tab="attributes" aria-selected="false">Atributos</button><button type="button" data-status-tab="combat" aria-selected="false">Combate</button></nav><div data-status-section="progress"><output id="status-level"></output><output id="status-experience"></output><output id="status-attribute-points"></output></div><div data-status-section="attributes" hidden><div id="status-controls"></div><p id="status-gate-message"></p></div><div data-status-section="combat" hidden><dl id="status-derived-stats"></dl></div></section>
+      <section data-character-panel="status" class="hidden"><div><output id="status-level"></output><output id="status-experience"></output><output id="status-attribute-points"></output></div><div><div id="status-controls"></div><p id="status-gate-message"></p></div><div><dl id="status-derived-stats"></dl></div></section>
       <p id="inventory-message"></p>
       <section id="craft-item-inspector" class="hidden" role="dialog" aria-labelledby="craft-item-inspector-name">
         <button type="button" data-close-craft-inspector>Voltar</button>
@@ -52,7 +52,7 @@ describe('InventoryOverlay', () => {
     expect(markup).not.toContain('Cofre da Guilda');
   });
 
-  it('switches the status book tabs without reloading the panel', () => {
+  it('shows every status section on one page without tabs', () => {
     const root = mountInventoryMarkup();
     const profile = createDefaultPlayerProfile();
     const store = InventoryStore.fromProfile(profile);
@@ -65,17 +65,45 @@ describe('InventoryOverlay', () => {
 
     overlay.show('status');
 
-    // Página padrão: Progresso.
-    expect(root.querySelector<HTMLElement>('[data-status-section="progress"]')?.hidden).toBe(false);
-    expect(root.querySelector<HTMLElement>('[data-status-section="combat"]')?.hidden).toBe(true);
+    // Janela única: atributos, progresso e impacto aparecem juntos, sem abas.
+    expect(root.querySelector('[data-status-tab]')).toBeNull();
+    expect(root.querySelector<HTMLElement>('#status-controls')?.closest('[hidden]')).toBeNull();
+    expect(root.querySelector('#status-derived-stats')).not.toBeNull();
+  });
 
-    const combatTab = root.querySelector<HTMLButtonElement>('[data-status-tab="combat"]')!;
-    combatTab.click();
+  it('keeps the Status window non-modal: no gameplay lock, no focus steal, and modal opens still lock', () => {
+    const root = mountInventoryMarkup();
+    const profile = createDefaultPlayerProfile();
+    const store = InventoryStore.fromProfile(profile);
+    const calls: string[] = [];
+    const overlay = new InventoryOverlay(profile, store, {
+      onClose: () => undefined,
+      onInventoryChanged: () => undefined,
+      onStatusChanged: () => undefined,
+      onGuildTokenBackpackExpansion: () => '',
+      onShown: () => calls.push('shown'),
+      onHidden: () => calls.push('hidden'),
+    });
+    const anchor = document.createElement('button');
+    anchor.className = 'hud-status-link';
+    document.body.appendChild(anchor);
 
-    expect(root.querySelector<HTMLElement>('[data-status-section="progress"]')?.hidden).toBe(true);
-    expect(root.querySelector<HTMLElement>('[data-status-section="combat"]')?.hidden).toBe(false);
-    expect(combatTab.getAttribute('aria-selected')).toBe('true');
-    expect(root.querySelector('[data-status-tab="progress"]')?.getAttribute('aria-selected')).toBe('false');
+    overlay.showFloating('status', anchor);
+    expect(calls).toEqual([]);
+    expect(root.dataset.floating).toBe('true');
+    expect(root.getAttribute('aria-modal')).toBe('false');
+    expect(root.querySelector('#status-controls')?.closest('.hidden')).toBeNull();
+    overlay.hide();
+    expect(calls).toEqual([]);
+    expect(root.classList.contains('hidden')).toBe(true);
+
+    overlay.showFloating('status', anchor);
+    overlay.show('backpack');
+    expect(calls).toEqual(['shown']);
+    expect(root.dataset.floating).toBe('false');
+    expect(root.getAttribute('aria-modal')).toBe('true');
+    overlay.hide();
+    expect(calls).toEqual(['shown', 'hidden']);
   });
 
   it('renders the dungeon backpack grid with capacity and no purchase actions', () => {

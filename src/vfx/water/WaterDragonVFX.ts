@@ -8,7 +8,7 @@ import { animateWaterMaterial, bindWaterFlowTexture, createWaterSurfaceMaterial 
 import {
   createWaterColumnBody, createWaterColumnVeil, createWaterCrownPetal, createWaterDragonBody,
   createWaterDragonFin, createWaterDragonHead, createWaterDragonJaw, createWaterOrbit,
-  WATER_DRAGON_SHAPE, waterDragonSpine, createWaterWakeFin,
+  WATER_DRAGON_SHAPE, waterDragonSpine, createWaterWakeFin, createWaterRippleDisc,
 } from './WaterDragonGeometry';
 
 import { sampleWaterDragonStrike, WATER_DRAGON_FALL_SECONDS } from './WaterDragonMotion';
@@ -205,6 +205,7 @@ class WaterDragonStrike implements PoolableVFX {
   private readonly columnGlow = createWaterSurfaceMaterial('column', 'glow', 4);
   private readonly splashMaterial = createWaterSurfaceMaterial('splash', false, 6);
   private readonly splashFoam = createWaterSurfaceMaterial('splash', true, 6);
+  private readonly rippleMaterial = createWaterSurfaceMaterial('ripple', false, 7);
   private readonly hazeMaterial: THREE.MeshBasicMaterial;
   private readonly particles: PooledParticleCloud;
   private readonly fallingDrops: THREE.InstancedMesh;
@@ -214,6 +215,8 @@ class WaterDragonStrike implements PoolableVFX {
   private options: WaterDragonStrikeOptions | null = null;
   private age = 0;
   public impacted = false;
+  /** Falling veil sheets: hidden at contact so their dark lower edge never draws a black line on the enemy. */
+  private readonly veils: THREE.Object3D[] = [];
 
   public constructor(resources: MageVFXResources, private readonly lights: VFXLightPool, private readonly quality: MageVFXQuality) {
     for (const material of [this.columnMaterial, this.columnFoam, this.columnGlow, this.veilMaterial, this.splashMaterial, this.splashFoam]) {
@@ -233,7 +236,7 @@ class WaterDragonStrike implements PoolableVFX {
     sheet(this.column, tube, this.columnMaterial, 'WaterDragonWaterfallBody');
     sheet(this.column, tube, this.columnFoam, 'WaterDragonWaterfallFoam', 6);
     for (let index = 0; index < 6; index += 1) {
-      sheet(this.column, createWaterColumnVeil(index / 6 * TAU), this.veilMaterial, 'WaterDragonFallingSheet');
+      this.veils.push(sheet(this.column, createWaterColumnVeil(index / 6 * TAU), this.veilMaterial, 'WaterDragonFallingSheet'));
     }
     for (let index = 0; index < 7; index += 1) {
       const geometry = createWaterCrownPetal(index / 7 * TAU + Math.sin(index * 4) * 0.18, index);
@@ -245,6 +248,10 @@ class WaterDragonStrike implements PoolableVFX {
       sheet(this.rings, geometry, this.splashMaterial, 'WaterDragonSlicedGroundWave');
       sheet(this.rings, geometry, this.splashFoam, 'WaterDragonGroundWaveRim', 6);
     }
+    // Concentric floor ripples: the clearest "water hit the ground" cue.
+    const ripples = sheet(this.rings, createWaterRippleDisc(24, 72), this.rippleMaterial, 'WaterDragonRippleRings', 5);
+    ripples.position.y = 0.03;
+    ripples.scale.setScalar(2.35);
     this.hazeMaterial = new THREE.MeshBasicMaterial({ map: resources.softGlow, color: 0x009cfa, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
     const mist = sheet(this.impact, new THREE.PlaneGeometry(7.2, 7.2), this.hazeMaterial, 'WaterDragonImpactMist', 3);
     mist.rotation.x = -Math.PI / 2;
@@ -268,6 +275,7 @@ class WaterDragonStrike implements PoolableVFX {
     this.group.visible = true;
     this.impact.visible = false;
     this.column.visible = true;
+    for (const veil of this.veils) veil.visible = true;
     this.particles.reset();
     this.light = this.quality === 'low' ? null : this.lights.acquire();
     if (this.light) {
@@ -291,6 +299,7 @@ class WaterDragonStrike implements PoolableVFX {
     this.column.rotation.y = 0;
     if (!this.impacted && frame.landed) {
       this.impacted = true;
+      for (const veil of this.veils) veil.visible = false;
       this.impact.visible = true;
       this.particles.emit(new THREE.Vector3(0, 0.28, 0), {
         color: 0xa2f7ff, count: this.quality === 'low' ? 12 : 30,
@@ -302,11 +311,12 @@ class WaterDragonStrike implements PoolableVFX {
     }
     const { impactAge, columnOpacity, splashOpacity, topCut } = frame;
     animateWaterMaterial(this.columnMaterial, this.age, columnOpacity * 0.94, 1, topCut);
-    animateWaterMaterial(this.columnFoam, this.age, columnOpacity * 0.48, 1, topCut);
+    animateWaterMaterial(this.columnFoam, this.age, columnOpacity * 0.36, 1, topCut);
     animateWaterMaterial(this.columnGlow, this.age, columnOpacity, 1, topCut);
     animateWaterMaterial(this.veilMaterial, this.age, columnOpacity * 0.66, 1, topCut);
     animateWaterMaterial(this.splashMaterial, this.age, splashOpacity * 0.96);
     animateWaterMaterial(this.splashFoam, this.age, splashOpacity * 0.88);
+    animateWaterMaterial(this.rippleMaterial, impactAge, splashOpacity * 0.9);
     // OUTWARD radius increases, vertical extent decreases from first contact.
     this.crown.scale.set(frame.crownRadius, frame.crownHeight, frame.crownRadius);
     this.crown.rotation.y = 0.10;

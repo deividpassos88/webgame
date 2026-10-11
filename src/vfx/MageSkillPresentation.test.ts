@@ -72,97 +72,69 @@ describe('Mage faster skill presentation', () => {
     }
   );
 
-  it('keeps lightning charge compact, attached to one hand and free of overlapping seals', () => {
-    const { scene, hand, vfx, step } = setupCast('lightning', 2.1);
+  it('raises the barrier from the staff without an aura around the Maga or a hand orb', () => {
+    const { scene, root, vfx, step } = setupCast('lightning', 2.1);
     try {
       step(0.4);
       step(0.04);
-      const charge = scene.getObjectByName('MageChargeOrbVFX')!;
-      expect(charge).toBeDefined();
-      const glow = charge.getObjectByName('MageChargeOrbGlow') as THREE.Sprite;
-      expect(glow.scale.x * charge.scale.x).toBeLessThan(1.3);
+      const barrier = scene.getObjectByName('MageThunderBarrierVFX')!;
+      expect(barrier).toBeDefined();
+      expect(scene.getObjectByName('MageChargeOrbVFX')).toBeUndefined();
+      expect(scene.getObjectByName('MageThunderBubbleVFX')).toBeUndefined();
+      expect(vfx.diagnostics().activeThunderCharges).toBe(1);
       expect(vfx.diagnostics().activeMagicCircles).toBe(0);
-      expect(MAGE_SPELL_PRESETS.lightning.charge.twoHanded).toBe(false);
-      expect(MAGE_SPELL_PRESETS.lightning.charge.particleCount).toBe(0);
-
-      const previousPosition = charge.position.clone();
-      hand.position.x += 0.3;
+      // Sem aura: o raio não cria a barreira de escudo que envolvia a Maga.
+      expect(vfx.diagnostics().activeBarriers).toBe(0);
+      // A barreira fica onde a conjuração começou; não é arrastada pelo movimento depois.
+      const startX = root.position.x;
+      root.position.x += 0.6;
       step(0.04);
-      expect(charge.position.x - previousPosition.x).toBeGreaterThan(0.25);
-      expect(charge.position.distanceTo(hand.getWorldPosition(new THREE.Vector3()))).toBeLessThan(0.3);
+      expect(barrier.position.x).toBeCloseTo(startX, 3);
     } finally {
       vfx.dispose();
     }
   });
 
-  it('follows the real shock gesture instead of clamping a retracted palm in front of the legs', () => {
-    const { scene, hand, vfx, step } = setupCast('lightning', 2.1);
-    try {
-      hand.position.set(0.25, 0.9, -0.3);
-      step(0.4);
-      step(0.04);
-      const charge = scene.getObjectByName('MageChargeOrbVFX')!;
-      const palm = hand.getWorldPosition(new THREE.Vector3());
-      expect(charge.position.distanceTo(palm)).toBeLessThan(0.12);
-      const glow = charge.getObjectByName('MageChargeOrbGlow') as THREE.Sprite;
-      expect(glow.material.depthTest).toBe(true);
-
-      hand.position.set(NaN, 1, 0);
-      step(0.04);
-      expect([charge.position.x, charge.position.y, charge.position.z].every(Number.isFinite)).toBe(true);
-      expect(charge.position.z).toBeGreaterThan(0.7);
-    } finally {
-      vfx.dispose();
-    }
-  });
-
-  it.each(['mixamorig:RightHand', 'mixamorigRightHand'])(
-    'attaches lightning to the animated fingers under %s', (handName) => {
-      const { scene, hand, vfx, step } = setupCast('lightning', 2.1);
-      try {
-        hand.name = handName;
-        const finger = new THREE.Object3D();
-        finger.name = `${handName}Index2`;
-        finger.position.set(0.18, 0.05, 0.08);
-        hand.add(finger);
-        step(0.4);
-        const charge = scene.getObjectByName('MageChargeOrbVFX')!;
-        const expected = finger.getWorldPosition(new THREE.Vector3());
-        expect(charge.position.distanceTo(expected)).toBeLessThan(0.12);
-      } finally {
-        vfx.dispose();
-      }
-    }
-  );
-
-  it('uses a safe chest-height socket when neither hand is available', () => {
+  it('keeps the barrier finite and centred on the caster when no hand is available', () => {
     const { scene, vfx, step } = setupCast('lightning', 2.1, false);
     try {
       step(0.4);
-      const charge = scene.getObjectByName('MageChargeOrbVFX')!;
-      expect(charge.position.y).toBeGreaterThan(1);
-      expect(charge.position.z).toBeGreaterThan(0.7);
-      expect([charge.position.x, charge.position.y, charge.position.z].every(Number.isFinite)).toBe(true);
+      const barrier = scene.getObjectByName('MageThunderBarrierVFX')!;
+      expect(barrier).toBeDefined();
+      expect([barrier.position.x, barrier.position.y, barrier.position.z].every(Number.isFinite)).toBe(true);
     } finally {
       vfx.dispose();
     }
   });
 
-  it('releases lightning in under 0.65 s with one target impact and no explosion on the caster', () => {
-    const { scene, root, vfx, step, onLaunch, onImpact } = setupCast('lightning', 2.1);
+  it('drops thunder onto the marked enemy once, at 3x speed, with the damage on contact and no explosion on the caster', () => {
+    const { scene, vfx, step, onLaunch, onImpact } = setupCast('lightning', 2.1);
     try {
+      // Lançamento no gesto autoral (≈0,6 s reais com 2,1x). O raio ainda não caiu: está agendado para 1,9 s lógicos após a carga (0,63 s reais, em 3x); a medição inclui o início da carga.
       for (let frame = 0; frame < 32; frame += 1) step(0.02);
       expect(onLaunch).toHaveBeenCalledTimes(1);
-      expect(onImpact).toHaveBeenCalledTimes(1);
-      expect(vfx.diagnostics().activeCharges).toBe(0);
+      expect(onImpact).toHaveBeenCalledTimes(0);
       expect(vfx.diagnostics().activeMagicCircles).toBe(0);
+      expect(vfx.diagnostics().activeThunderStrikes).toBe(0);
+      // Avança até o raio aparecer: deve ser perto dos 3 s da conjuração.
+      let elapsed = 0.64;
+      while (vfx.diagnostics().activeThunderStrikes === 0 && elapsed < 6) { step(0.02); elapsed += 0.02; }
+      expect(elapsed).toBeGreaterThan(0.7);
+      expect(elapsed).toBeLessThan(1.3);
+      expect(onImpact).toHaveBeenCalledTimes(0);
+      // O raio é desenhado pelo próprio efeito de queda: nenhuma explosão de impacto na Maga.
       const impacts = scene.children.filter((child) => child.name === 'MageImpactVFX');
-      expect(impacts).toHaveLength(1);
-      expect(impacts[0].position.distanceTo(root.position)).toBeGreaterThan(4);
-      for (let frame = 0; frame < 60; frame += 1) step(0.02);
+      expect(impacts).toHaveLength(0);
+      expect(scene.getObjectByName('MageThunderStrikeVFX')).toBeDefined();
+      while (!onImpact.mock.calls.length && elapsed < 6) { step(0.02); elapsed += 0.02; }
       expect(onImpact).toHaveBeenCalledTimes(1);
-      expect(vfx.diagnostics().activeLightning).toBe(0);
+      for (let frame = 0; frame < 120; frame += 1) step(0.02);
+      expect(onImpact).toHaveBeenCalledTimes(1);
+      expect(onLaunch).toHaveBeenCalledTimes(1);
+      expect(vfx.diagnostics().activeThunderStrikes).toBe(0);
       expect(vfx.diagnostics().activeImpacts).toBe(0);
+      // A barreira fica até os 5 s e depois some.
+      expect(vfx.diagnostics().activeThunderCharges).toBe(0);
     } finally {
       vfx.dispose();
     }
@@ -171,6 +143,7 @@ describe('Mage faster skill presentation', () => {
   it('does not leave charges behind when one slow frame crosses the entire fast cast', () => {
     const { vfx, step, onLaunch, onImpact } = setupCast('lightning', 2.1 * 1.3);
     try {
+      for (let frame = 0; frame < 160; frame += 1) step(0.02);
       step(1.5);
       expect(onLaunch).toHaveBeenCalledTimes(1);
       expect(onImpact).toHaveBeenCalledTimes(1);
@@ -181,7 +154,7 @@ describe('Mage faster skill presentation', () => {
       vfx.clear();
       expect(vfx.diagnostics()).toMatchObject({
         activeCasts: 0, activeCharges: 0, activeMagicCircles: 0,
-        activeLightning: 0, activeImpacts: 0, activeBarriers: 0,
+        activeThunderStrikes: 0, activeThunderCharges: 0, activeImpacts: 0, activeBarriers: 0,
       });
     } finally {
       vfx.dispose();

@@ -84,7 +84,8 @@ describe('MageVFX full spell architecture', () => {
     expect(diagnostics.activeProjectiles).toBe(0);
     expect(diagnostics.activeImpacts).toBe(0);
     expect(diagnostics.activeMagicCircles).toBe(0);
-    expect(diagnostics.activeLightning).toBe(0);
+    expect(diagnostics.activeThunderCharges).toBe(0);
+    expect(diagnostics.activeThunderStrikes).toBe(0);
     expect(diagnostics.activeLasers).toBe(0);
     expect(diagnostics.activeBarriers).toBe(0);
     expect(diagnostics.activeWaterCharges).toBe(0);
@@ -93,7 +94,10 @@ describe('MageVFX full spell architecture', () => {
     expect(diagnostics.pooledProjectiles).toBeGreaterThan(0);
     expect(diagnostics.pooledImpacts).toBeGreaterThan(0);
     expect(diagnostics.pooledMagicCircles).toBeGreaterThan(0);
-    expect(diagnostics.pooledLightning).toBeGreaterThan(0);
+    expect(diagnostics.pooledThunderCharges).toBeGreaterThan(0);
+    expect(diagnostics.pooledThunderStrikes).toBeGreaterThan(0);
+    expect(diagnostics.activeThunderCharges).toBe(0);
+    expect(diagnostics.activeThunderStrikes).toBe(0);
     expect(diagnostics.pooledLasers).toBeGreaterThan(0);
     expect(diagnostics.pooledBarriers).toBeGreaterThan(0);
     expect(diagnostics.pooledWaterCharges).toBeGreaterThan(0);
@@ -246,14 +250,15 @@ describe('MageVFX full spell architecture', () => {
         onImpact: () => { impacts += 1; },
       });
 
-      for (let step = 0; step < 20; step += 1) {
+      // Conjuração longa (raio aos 3 s): roda o suficiente para o raio cair.
+      for (let step = 0; step < 70; step += 1) {
         mixer.update(0.08);
         vfx.update(0.08);
       }
 
       const diagnostics = vfx.diagnostics();
       if (spellId === 'lightning') {
-        expect(diagnostics.activeLightning + diagnostics.pooledLightning).toBeGreaterThan(0);
+        expect(diagnostics.activeThunderStrikes + diagnostics.pooledThunderStrikes).toBeGreaterThan(0);
         expect(impacts).toBeGreaterThan(0);
       } else if (spellId === 'water') {
         expect(diagnostics.activeWaterCharges + diagnostics.pooledWaterCharges).toBeGreaterThan(0);
@@ -267,7 +272,8 @@ describe('MageVFX full spell architecture', () => {
       } else {
         expect(diagnostics.activeProjectiles + diagnostics.pooledProjectiles).toBeGreaterThan(0);
       }
-      if (spellId !== 'basic' && spellId !== 'water') {
+      // O raio não usa a aura de escudo: a barreira dele é o ThunderVFX.
+      if (spellId !== 'basic' && spellId !== 'water' && spellId !== 'lightning') {
         expect(diagnostics.activeBarriers + diagnostics.pooledBarriers).toBeGreaterThan(0);
       }
       expect(diagnostics.activeCharges).toBeLessThanOrEqual(1);
@@ -309,7 +315,8 @@ describe('MageVFX full spell architecture', () => {
     expect(diagnostics.activeProjectiles).toBe(0);
     expect(diagnostics.activeImpacts).toBe(0);
     expect(diagnostics.activeMagicCircles).toBe(0);
-    expect(diagnostics.activeLightning).toBe(0);
+    expect(diagnostics.activeThunderCharges).toBe(0);
+    expect(diagnostics.activeThunderStrikes).toBe(0);
     expect(diagnostics.activeLasers).toBe(0);
     expect(diagnostics.activeBarriers).toBe(0);
     expect(diagnostics.activeWaterCharges).toBe(0);
@@ -342,7 +349,7 @@ describe('MageVFX full spell architecture', () => {
       onImpact: () => { impacts += 1; },
     });
 
-    for (let step = 0; step < 30; step += 1) {
+    for (let step = 0; step < 70; step += 1) {
       mixer.update(0.08);
       vfx.update(0.08);
     }

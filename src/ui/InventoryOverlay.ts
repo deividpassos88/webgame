@@ -96,20 +96,44 @@ export class InventoryOverlay {
   }
 
   public show(mode: RpgOverlayMode = 'equipment'): void {
-    if (this.root.classList.contains('hidden')) {
-      this.lastFocus = document.activeElement as HTMLElement | null;
-      this.options.onShown?.();
-    }
+    this.present(mode, false);
+  }
+
+  /**
+   * Non-modal window (Status): no backdrop, no focus steal, and no onShown
+   * hook, so gameplay keeps running while it stays open.
+   */
+  public showFloating(mode: RpgOverlayMode, anchor: HTMLElement | null): void {
+    this.present(mode, true, anchor);
+  }
+
+  private present(mode: RpgOverlayMode, floating: boolean, anchor: HTMLElement | null = null): void {
+    const wasHidden = this.root.classList.contains('hidden');
+    const wasFloating = this.root.dataset.floating === 'true';
+    if (wasHidden) this.lastFocus = document.activeElement as HTMLElement | null;
+    // A modal window takes gameplay ownership once, including when it replaces a floating one.
+    if (!floating && (wasHidden || wasFloating)) this.options.onShown?.();
     this.craftInspector.classList.add('hidden');
     this.inspectorLastFocus = null;
     this.activeMode = mode;
+    this.root.dataset.floating = String(floating);
+    this.root.setAttribute('aria-modal', String(!floating));
     this.render();
     this.root.classList.remove('hidden');
+    if (floating) {
+      const rect = anchor?.getBoundingClientRect();
+      this.root.style.left = `${Math.round((rect?.left ?? 18) - 4)}px`;
+      this.root.style.top = `${Math.round((rect?.bottom ?? 234) + 18)}px`;
+      return;
+    }
+    this.root.style.left = '';
+    this.root.style.top = '';
     this.root.querySelector<HTMLButtonElement>('[data-close-overlay]')?.focus();
   }
 
   public hide(): void {
     if (this.root.classList.contains('hidden')) return;
+    const wasFloating = this.root.dataset.floating === 'true';
     this.hideCraftInspector(false);
     const tooltip = this.root.ownerDocument.querySelector<HTMLElement>('[data-item-tooltip]');
     if (tooltip) {
@@ -117,9 +141,10 @@ export class InventoryOverlay {
       tooltip.setAttribute('aria-hidden', 'true');
     }
     this.root.classList.add('hidden');
+    this.root.dataset.floating = 'false';
     if (this.lastFocus?.isConnected) this.lastFocus.focus();
     this.lastFocus = null;
-    this.options.onHidden?.();
+    if (!wasFloating) this.options.onHidden?.();
   }
 
   private render(): void {
@@ -237,7 +262,6 @@ export class InventoryOverlay {
     this.root.querySelectorAll<HTMLElement>('[data-character-panel]').forEach((panel) => {
       panel.classList.toggle('hidden', panel.dataset.characterPanel !== mode);
     });
-    if (mode === 'status') this.selectStatusSection('progress');
     this.syncClassCrest();
   }
 
@@ -253,18 +277,6 @@ export class InventoryOverlay {
       : 'Vanguarda de Cinzafogo';
   }
 
-  /** Switches the status book to the requested horizontal tab page. */
-  private selectStatusSection(section: StatusSectionId): void {
-    this.root.querySelectorAll<HTMLButtonElement>('[data-status-tab]').forEach((tab) => {
-      const selected = tab.dataset.statusTab === section;
-      tab.setAttribute('aria-selected', String(selected));
-      tab.tabIndex = selected ? 0 : -1;
-    });
-    this.root.querySelectorAll<HTMLElement>('[data-status-section]').forEach((page) => {
-      page.hidden = page.dataset.statusSection !== section;
-    });
-  }
-
   private click = (event: Event): void => {
     const target = event.target as HTMLElement;
     if (target.closest('[data-close-craft-inspector]')) {
@@ -273,11 +285,6 @@ export class InventoryOverlay {
     }
     if (target.closest('[data-close-overlay]')) {
       this.options.onClose();
-      return;
-    }
-    const bookTab = target.closest<HTMLButtonElement>('[data-status-tab]');
-    if (bookTab?.dataset.statusTab) {
-      this.selectStatusSection(bookTab.dataset.statusTab as StatusSectionId);
       return;
     }
     const expansionButton = target.closest<HTMLButtonElement>('[data-expand-backpack]');
@@ -419,7 +426,6 @@ export class InventoryOverlay {
   };
 }
 
-type StatusSectionId = 'progress' | 'attributes' | 'combat';
 
 const CLASS_LABEL: Readonly<Record<PlayableCharacterId, string>> = {
   paladin: 'do Guerreiro',

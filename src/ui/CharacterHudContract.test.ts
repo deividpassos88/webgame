@@ -12,7 +12,6 @@ describe('character build HUD contract', () => {
     expect(html).toContain('data-open-backpack');
     expect(html).toContain('data-open-status');
     expect(html).toContain('/assets/ui/backpack-icon.png');
-    expect(html).toContain('/assets/ui/status-icon.png');
     expect(html).not.toContain('id="hud-backpack"');
     expect(html).toContain('id="character-overlay"');
     expect(html).toContain('data-character-panel="equipment"');
@@ -23,11 +22,12 @@ describe('character build HUD contract', () => {
     expect(html).toContain('id="player-xp-text"');
     expect(html.indexOf('id="gameplay-utility-dock"')).toBeLessThan(html.indexOf('id="bottom-hud"'));
     // Sem barra de abas compartilhada no topo: Mochila e Status são janelas
-    // próprias. O Status usa abas de livro horizontais internas.
+    // próprias. O Status é uma janela única: atributos, progresso e impacto juntos.
     expect(html).not.toContain('data-character-tab=');
-    expect(html).toContain('data-status-tab="progress"');
-    expect(html).toContain('data-status-tab="attributes"');
-    expect(html).toContain('data-status-tab="combat"');
+    expect(html).not.toContain('data-status-tab=');
+    // O rótulo Status fica fixo logo abaixo do botão da Mochila.
+    expect(html).toContain('class="hud-status-link"');
+    expect(html.indexOf('data-open-backpack')).toBeLessThan(html.indexOf('class="hud-status-link"'));
     expect(html).toContain('class="overlay-close"');
   });
 

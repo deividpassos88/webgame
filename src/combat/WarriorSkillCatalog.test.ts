@@ -9,11 +9,14 @@ import {
 } from './WarriorSkillCatalog';
 
 describe('WarriorSkillCatalog', () => {
-  it('names only the Mage first skill Dragão das Marés and preserves the other labels', () => {
+  it('names the Mage first skill Dragão das Marés and Pulo Atacando Juízo do Trovão, preserving the other labels', () => {
     expect(warriorSkillLabel('ataque_giratorio', 'mage')).toBe('Dragão das Marés');
     expect(warriorSkillLabel('ataque_giratorio', 'paladin')).toBe('Ataque Giratório');
     expect(warriorSkillLabel('ataque_giratorio')).toBe('Ataque Giratório');
-    for (const skill of WARRIOR_SKILLS.slice(1)) {
+    // Pulo Atacando da Maga: nome próprio "Juízo do Trovão"; o do Guerreiro continua.
+    expect(warriorSkillLabel('pulo_atacando', 'mage')).toBe('Juízo do Trovão');
+    expect(warriorSkillLabel('pulo_atacando')).toBe('Pulo Atacando');
+    for (const skill of WARRIOR_SKILLS.filter((item) => item.id !== 'pulo_atacando').slice(1)) {
       expect(warriorSkillLabel(skill.id, 'mage')).toBe(skill.label);
     }
   });
