@@ -522,11 +522,15 @@ export function createThunderBarrierMaterial(): THREE.ShaderMaterial {
         float cut = vLocal.y - uCutY;
         if (cut < -0.02) discard;
         float fres = pow(1.0 - abs(dot(normalize(vNormalView), normalize(vViewDir))), 2.2);
-        float swirl = thNoise(vec2(atan(vLocal.z, vLocal.x) * 3.0 + uTime * 0.9, vLocal.y * 1.2 - uTime * 0.6));
-        vec3 color = mix(uBody, uRim, clamp(pow(fres, 2.6) * 1.1 + swirl * 0.06, 0.0, 1.0));
-        float lip = 1.0 - smoothstep(0.0, 0.5, cut);
-        color = mix(color, vec3(1.0, 0.85, 1.0), lip * 0.7);
-        float alpha = (0.16 + 0.16 * swirl + 0.62 * pow(fres, 1.6)) * uOpacity + lip * 0.55 * uOpacity;
+        // Sombreamento liso: a face voltada para longe da luz fica roxa escura; a iluminada, mais clara.
+        float lam = dot(normalize(vNormalView), normalize(vec3(-0.45, 0.75, 0.5)));
+        float shade = smoothstep(-0.35, 0.75, lam);
+        vec3 shadowCol = vec3(0.10, 0.02, 0.22);
+        vec3 color = mix(uBody, uRim, clamp(pow(fres, 2.6) * 1.1, 0.0, 1.0));
+        color = mix(shadowCol, color, 0.35 + 0.65 * shade);
+        float lip = 1.0 - smoothstep(0.0, 0.6, cut);
+        color = mix(color, vec3(1.0, 0.85, 1.0), lip * 0.85);
+        float alpha = (0.22 + 0.66 * pow(fres, 1.6)) * uOpacity + lip * 0.8 * uOpacity;
         if (alpha < 0.005) discard;
         gl_FragColor = vec4(color, alpha);
       }

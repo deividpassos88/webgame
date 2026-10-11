@@ -130,3 +130,25 @@ export function createThunderBladeGeometry(phase: number, sweep: number, radius:
 export function createThunderDiscGeometry(radial = 24, angular = 72): THREE.BufferGeometry {
   return createWaterRippleDisc(radial, angular);
 }
+
+/**
+ * Pedra irregular para o estouro do chão: icosaedro deformado com faces chapadas
+ * (sem suavização), base achatada para pousar no chão. Determinística pela semente.
+ */
+export function createThunderRockGeometry(seed: number, radius: number): THREE.BufferGeometry {
+  const geometry = new THREE.IcosahedronGeometry(radius, 1).toNonIndexed();
+  const position = geometry.attributes.position as THREE.BufferAttribute;
+  const phase = seed * 1.37;
+  for (let index = 0; index < position.count; index += 1) {
+    const x = position.getX(index);
+    const y = position.getY(index);
+    const z = position.getZ(index);
+    const wobble = Math.sin(x * 3.1 + phase) * Math.cos(y * 2.3 + phase * 0.7)
+      + 0.6 * Math.sin(z * 2.7 + y * 1.3 + phase);
+    const scale = 1 + 0.2 * wobble;
+    const flatY = Math.max(y * scale * 0.72, -radius * 0.35);
+    position.setXYZ(index, x * scale, flatY, z * scale);
+  }
+  geometry.computeVertexNormals();
+  return geometry;
+}

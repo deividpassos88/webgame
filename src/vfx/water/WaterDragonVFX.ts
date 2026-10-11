@@ -215,6 +215,8 @@ class WaterDragonStrike implements PoolableVFX {
   private options: WaterDragonStrikeOptions | null = null;
   private age = 0;
   public impacted = false;
+  /** Falling veil sheets: hidden at contact so their dark lower edge never draws a black line on the enemy. */
+  private readonly veils: THREE.Object3D[] = [];
 
   public constructor(resources: MageVFXResources, private readonly lights: VFXLightPool, private readonly quality: MageVFXQuality) {
     for (const material of [this.columnMaterial, this.columnFoam, this.columnGlow, this.veilMaterial, this.splashMaterial, this.splashFoam]) {
@@ -234,7 +236,7 @@ class WaterDragonStrike implements PoolableVFX {
     sheet(this.column, tube, this.columnMaterial, 'WaterDragonWaterfallBody');
     sheet(this.column, tube, this.columnFoam, 'WaterDragonWaterfallFoam', 6);
     for (let index = 0; index < 6; index += 1) {
-      sheet(this.column, createWaterColumnVeil(index / 6 * TAU), this.veilMaterial, 'WaterDragonFallingSheet');
+      this.veils.push(sheet(this.column, createWaterColumnVeil(index / 6 * TAU), this.veilMaterial, 'WaterDragonFallingSheet'));
     }
     for (let index = 0; index < 7; index += 1) {
       const geometry = createWaterCrownPetal(index / 7 * TAU + Math.sin(index * 4) * 0.18, index);
@@ -273,6 +275,7 @@ class WaterDragonStrike implements PoolableVFX {
     this.group.visible = true;
     this.impact.visible = false;
     this.column.visible = true;
+    for (const veil of this.veils) veil.visible = true;
     this.particles.reset();
     this.light = this.quality === 'low' ? null : this.lights.acquire();
     if (this.light) {
@@ -296,6 +299,7 @@ class WaterDragonStrike implements PoolableVFX {
     this.column.rotation.y = 0;
     if (!this.impacted && frame.landed) {
       this.impacted = true;
+      for (const veil of this.veils) veil.visible = false;
       this.impact.visible = true;
       this.particles.emit(new THREE.Vector3(0, 0.28, 0), {
         color: 0xa2f7ff, count: this.quality === 'low' ? 12 : 30,

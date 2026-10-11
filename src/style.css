@@ -4677,3 +4677,225 @@ body #lobby-screen .equipment-slot.is-equipped,
   .character-overlay .overlay-header .overlay-close span { display: none; }
   .character-overlay .overlay-header .overlay-close { padding: 10px; }
 }
+
+/* Status: botão cinza e minimizado, logo abaixo de Mochila e Ajustes no dock. */
+#gameplay-utility-dock .hud-status-link {
+  grid-column: 1 / -1;
+  justify-self: start;
+  width: 80px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(160, 170, 182, .62);
+  border-radius: 4px;
+  color: #cfd6de;
+  background: linear-gradient(145deg, rgba(52, 60, 70, .94), rgba(12, 15, 20, .96));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06);
+  font: 700 10px Consolas, monospace;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+#gameplay-utility-dock .hud-status-link:hover {
+  border-color: #e4e9ef;
+  color: #ffffff;
+}
+
+#gameplay-utility-dock .hud-status-link:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 2px;
+}
+
+/* Janela Status: flutuante e não modal, 324 × 594 px, com a distribuição de pontos em coluna.
+   Não escurece a tela e não bloqueia o jogo (o clique passa através do fundo). */
+#character-overlay[data-floating="true"] {
+  position: fixed;
+  inset: auto;
+  width: 324px;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  background: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  border: 0;
+  display: block;
+  pointer-events: none;
+  z-index: 60;
+}
+
+#character-overlay[data-floating="true"]::before,
+#character-overlay[data-floating="true"]::after {
+  content: none;
+  display: none;
+}
+
+#character-overlay[data-floating="true"] > .overlay-header,
+#character-overlay[data-floating="true"] > .overlay-message {
+  display: none;
+}
+
+#character-overlay[data-floating="true"] .status-window {
+  pointer-events: auto;
+  box-sizing: border-box;
+  width: 324px;
+  height: 594px;
+  max-height: none;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(214, 168, 58, .78);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(14, 22, 32, .97), rgba(6, 10, 15, .98));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .55);
+}
+
+#character-overlay[data-floating="true"] .status-window-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+#character-overlay[data-floating="true"] .status-window-head .section-label {
+  margin: 0;
+  color: #d6a83a;
+  font: 700 11px Consolas, monospace;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+#character-overlay[data-floating="true"] .status-points-line {
+  margin: 6px 0 0;
+  color: #a9bcc6;
+  font: 13px 'Segoe UI', sans-serif;
+}
+
+#character-overlay[data-floating="true"] .status-points-line output {
+  color: #f1c66c;
+  font: 700 15px Consolas, monospace;
+}
+
+#character-overlay[data-floating="true"] .status-minimize {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(215, 169, 81, .65);
+  border-radius: 4px;
+  background: rgba(8, 14, 20, .94);
+  color: #f1d28a;
+  font: 700 18px/1 Consolas, monospace;
+  cursor: pointer;
+}
+
+#character-overlay[data-floating="true"] .status-minimize:hover {
+  background: #d7a951;
+  color: #111820;
+}
+
+#character-overlay[data-floating="true"] .status-minimize:focus-visible {
+  outline: 2px solid #74d9e8;
+  outline-offset: 2px;
+}
+
+#character-overlay[data-floating="true"] .status-distribution {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 8px;
+}
+
+#character-overlay[data-floating="true"] .attribute-controls {
+  display: grid;
+  gap: 7px;
+  padding: 0;
+}
+
+#character-overlay[data-floating="true"] .attribute-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px 34px 34px;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 6px 10px;
+  border: 1px solid rgba(215, 169, 81, .3);
+  border-radius: 4px;
+  background: rgba(8, 14, 20, .72);
+}
+
+#character-overlay[data-floating="true"] .attribute-row.is-fixed {
+  grid-template-columns: minmax(0, 1fr) 38px;
+}
+
+#character-overlay[data-floating="true"] .attribute-row.is-inactive {
+  opacity: .5;
+}
+
+#character-overlay[data-floating="true"] .attribute-row > span {
+  min-width: 0;
+}
+
+#character-overlay[data-floating="true"] .attribute-row > span strong {
+  display: block;
+  color: #efe2cc;
+  font: 600 13px/1.15 Georgia, serif;
+}
+
+#character-overlay[data-floating="true"] .attribute-row > span small {
+  display: none;
+}
+
+#character-overlay[data-floating="true"] .attribute-row output {
+  color: #f1c66c;
+  font: 700 14px Consolas, monospace;
+  text-align: center;
+}
+
+#character-overlay[data-floating="true"] .attribute-row button {
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(215, 169, 81, .5);
+  background: rgba(8, 14, 20, .94);
+  color: #efe2cc;
+  font: 700 11px Consolas, monospace;
+  cursor: pointer;
+}
+
+#character-overlay[data-floating="true"] .attribute-row button:hover:not(:disabled) {
+  background: #d7a951;
+  color: #111820;
+}
+
+#character-overlay[data-floating="true"] .attribute-row button:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+#character-overlay[data-floating="true"] .status-gate-message {
+  margin: auto 0 0;
+  color: #9fb3bd;
+  font: 11px/1.4 'Segoe UI', sans-serif;
+}
+
+/* Largura fixa da janela Status (324 px), sem herdar limites de painéis antigos. */
+#character-overlay[data-floating="true"] .character-panel[data-character-panel="status"] {
+  width: 324px;
+  max-width: 324px;
+  min-width: 324px;
+  margin: 0;
+  padding: 0;
+}
+
+#character-overlay[data-floating="true"] .status-window {
+  width: 324px !important;
+  min-width: 324px !important;
+  max-width: 324px !important;
+}

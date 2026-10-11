@@ -42,15 +42,14 @@ describe('Pulo Atacando thunder effects', () => {
     expect(thunder.activeStrikes).toBe(0);
   });
 
-  it('raises from the staff, closes top-down to the ground at 3.5 s and cracks the floor on contact', () => {
+  it('raises from the staff, closes top-down to the ground at 2.2 s and breaks the floor with rocks on contact (2.2 s), and draws no crater', () => {
     const { scene, thunder, caster } = setup();
     const staffTip = new THREE.Vector3(caster.position.x + 0.4, 1.5, caster.position.z + 0.2);
     thunder.charge(caster, staffTip);
     const barrier = scene.getObjectByName('MageThunderBarrierVFX')!;
     const dome = barrier.getObjectByName('ThunderBarrierDome') as THREE.Mesh;
     const cutY = () => (dome.material as THREE.ShaderMaterial).uniforms.uCutY.value as number;
-    const cracks = barrier.getObjectByName('ThunderGroundCracks') as THREE.Mesh;
-    const crackOpacity = () => (cracks.material as THREE.MeshBasicMaterial).opacity;
+    const rocksShown = () => barrier.children.filter((child) => child.name === 'ThunderBarrierRock' && child.visible).length;
     // Tempo absoluto desde o charge: cada chamada avança até `seconds`.
     let clock = 0;
     const advanceTo = (seconds: number) => {
@@ -59,23 +58,45 @@ describe('Pulo Atacando thunder effects', () => {
 
     advanceTo(0.5);
     const topRim = cutY();
-    advanceTo(2.0);
+    advanceTo(1.0);
     const midway = cutY();
     expect(topRim).toBeGreaterThan(midway);
     expect(midway).toBeGreaterThan(0);
-    expect(crackOpacity()).toBe(0);
+    expect(rocksShown()).toBe(0);
 
-    advanceTo(3.6);
+    advanceTo(2.25);
     expect(cutY()).toBeCloseTo(0, 5);
-    expect(crackOpacity()).toBeGreaterThan(0);
+    expect(rocksShown()).toBeGreaterThan(0);
+    expect(barrier.children.some((child) => child.name === 'ThunderBarrierSlab' && child.visible)).toBe(true);
+    expect(barrier.getObjectByName('ThunderBarrierBurst')).toBeUndefined();
+    expect(barrier.getObjectByName('ThunderShockRing')).toBeUndefined();
+
+    advanceTo(2.5);
+    expect(scene.getObjectByName('ThunderBarrierDust')).toBeUndefined();
+    expect(barrier.getObjectByName('ThunderCraterDisc')).toBeUndefined();
   });
 
-  it('schedules the lightning to fall at 3 s of the cast, not when it is called', () => {
+  it('draws no smoke for the strike: no clouds and no underglow', () => {
+    const { scene, thunder, caster, target } = setup();
+    thunder.charge(caster);
+    thunder.strike({ position: target.position.clone(), target: null, onImpact: () => undefined }, 1.9);
+    // Passos pequenos: o raio aparece em 1.9 s e a fumaça do impacto cairia nesse trecho.
+    let sawStrike = false;
+    for (let step = 0; step < 160; step += 1) {
+      thunder.update(0.02);
+      if (scene.getObjectByName('MageThunderStrikeVFX')) sawStrike = true;
+      expect(scene.getObjectByName('ThunderSmokeCloud')).toBeUndefined();
+      expect(scene.getObjectByName('ThunderSmokeUnderglow')).toBeUndefined();
+    }
+    expect(sawStrike).toBe(true);
+  });
+
+  it('schedules the lightning to fall at 1.9 s of the cast, not when it is called', () => {
     const { thunder, caster, target } = setup();
     thunder.charge(caster);
     const onImpact = vi.fn();
-    thunder.strike({ position: target.position.clone(), target: null, onImpact }, 3);
-    thunder.update(2.9);
+    thunder.strike({ position: target.position.clone(), target: null, onImpact }, 1.9);
+    thunder.update(1.8);
     expect(thunder.activeStrikes).toBe(0);
     expect(onImpact).not.toHaveBeenCalled();
     thunder.update(0.2);

@@ -35,6 +35,7 @@ import {
 } from '../combat/SwordComboController';
 import { WarriorAttackController } from '../combat/WarriorAttackController';
 import { getWarriorAttackTimeline } from '../combat/WarriorAttackTimeline';
+import { JUIZO_REAL_TOTAL_SECONDS } from '../combat/MageLightningTiming';
 import {
   getWarriorSkill,
   type WarriorSkillId,
@@ -227,6 +228,9 @@ export class Player {
   private dashCooldown = 0;
   /** World position captured when a Mage skill starts. Movement cannot leave it. */
   private skillCastAnchor: THREE.Vector3 | null = null;
+  /** Juízo do Trovão: a Maga fica parada do início ao fim da conjuração (barreira). */
+  private mageRootLock: THREE.Vector3 | null = null;
+  private mageRootLockRemaining = 0;
   /** Combo speed-up of the skill currently running (1 when not empowered). */
   private activeSkillPlaybackScale = 1;
   private onAttackHitCallback: ((target: THREE.Object3D) => void) | null = null;
@@ -1088,6 +1092,8 @@ export class Player {
     this.skillCastAnchor = this.characterId === 'mage'
       ? this.root.position.clone()
       : null;
+    this.mageRootLock = id === 'pulo_atacando' && this.characterId === 'mage' ? this.root.position.clone() : null;
+    this.mageRootLockRemaining = this.mageRootLock ? JUIZO_REAL_TOTAL_SECONDS : 0;
     this.comboController.cancel();
     this.comboHitTargets.clear();
     this.isSwinging = true;
@@ -1229,6 +1235,7 @@ export class Player {
   public update(delta: number) {
     if (!this.loaded) return;
     this.mixer.update(delta);
+    this.tickMageRootLock(delta);
 
     if (this.attackCooldown > 0) this.attackCooldown -= delta;
     this.comboController.minStageInterval = this.basicAttackInterval();
@@ -2106,7 +2113,14 @@ export class Player {
 
   /** Movement stays pinned only until the spell launches. */
   private isMageMovementLocked(): boolean {
-    return this.isMageSkillLocked() && this.skillCastAnchor !== null;
+    return (this.isMageSkillLocked() && this.skillCastAnchor !== null) || this.mageRootLock !== null;
+  }
+
+  /** Conta a trava de Juízo do Trovão; ela também cai se a Maga morrer. */
+  private tickMageRootLock(delta: number): void {
+    if (!this.mageRootLock) return;
+    this.mageRootLockRemaining -= Math.max(0, delta);
+    if (this.isDead || this.mageRootLockRemaining <= 0) this.mageRootLock = null;
   }
 
   /** Walk/click integration while a launched Mage skill still owns the action
@@ -2121,8 +2135,9 @@ export class Player {
   }
 
   private holdMageSkillCastPosition(): void {
-    if (!this.isMageSkillLocked() || !this.skillCastAnchor) return;
-    this.root.position.copy(this.skillCastAnchor);
+    const anchor = this.isMageSkillLocked() && this.skillCastAnchor ? this.skillCastAnchor : this.mageRootLock;
+    if (!anchor) return;
+    this.root.position.copy(anchor);
     this.currentMoveSpeed = 0;
   }
 

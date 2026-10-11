@@ -107,10 +107,10 @@ describe('Mage faster skill presentation', () => {
     }
   });
 
-  it('drops thunder onto the marked enemy once at 3 s, with the damage on contact and no explosion on the caster', () => {
+  it('drops thunder onto the marked enemy once, at 3x speed, with the damage on contact and no explosion on the caster', () => {
     const { scene, vfx, step, onLaunch, onImpact } = setupCast('lightning', 2.1);
     try {
-      // Lançamento no gesto autoral (≈0,6 s reais com 2,1x). O raio ainda não caiu: está agendado para os 3 s da conjuração.
+      // Lançamento no gesto autoral (≈0,6 s reais com 2,1x). O raio ainda não caiu: está agendado para 1,9 s lógicos após a carga (0,63 s reais, em 3x); a medição inclui o início da carga.
       for (let frame = 0; frame < 32; frame += 1) step(0.02);
       expect(onLaunch).toHaveBeenCalledTimes(1);
       expect(onImpact).toHaveBeenCalledTimes(0);
@@ -119,8 +119,8 @@ describe('Mage faster skill presentation', () => {
       // Avança até o raio aparecer: deve ser perto dos 3 s da conjuração.
       let elapsed = 0.64;
       while (vfx.diagnostics().activeThunderStrikes === 0 && elapsed < 6) { step(0.02); elapsed += 0.02; }
-      expect(elapsed).toBeGreaterThan(2.9);
-      expect(elapsed).toBeLessThan(3.4);
+      expect(elapsed).toBeGreaterThan(0.7);
+      expect(elapsed).toBeLessThan(1.3);
       expect(onImpact).toHaveBeenCalledTimes(0);
       // O raio é desenhado pelo próprio efeito de queda: nenhuma explosão de impacto na Maga.
       const impacts = scene.children.filter((child) => child.name === 'MageImpactVFX');

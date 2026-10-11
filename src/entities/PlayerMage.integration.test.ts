@@ -370,7 +370,7 @@ describe('Mage gameplay player', () => {
     expect(player.activeSkillRemainingSeconds).toBe(0);
   });
 
-  it('frees Mage movement at spell launch while recovery still owns the action slot', async () => {
+  it('keeps the Mage rooted from the launch until the Juízo ends, then frees movement', async () => {
     const player = new Player('mage', createMageAssets());
     await player.load();
     player.root.position.set(2, 0, -3);
@@ -379,26 +379,26 @@ describe('Mage gameplay player', () => {
     player.moveByDirection(new THREE.Vector3(1, 0, 0), 0.1);
     expect(player.root.position.x).toBeCloseTo(2);
 
-    // The VFX bridge calls this when the spell launches.
+    // The VFX bridge calls this when the spell launches: the Juízo keeps the Mage parked.
     player.releaseSkillCastAnchor();
     expect(player.isCastingSkill).toBe(true);
-
     player.moveByDirection(new THREE.Vector3(1, 0, 0), 0.1);
-    expect(player.root.position.x).toBeGreaterThan(2);
-    const afterStep = player.root.position.x;
-    player.update(0.1);
-    // The anchor no longer snaps the Mage back while recovery plays out.
-    expect(player.root.position.x).toBeCloseTo(afterStep);
+    expect(player.root.position.x).toBeCloseTo(2);
 
     // The action slot stays owned: clicks cannot queue attacks behind the skill.
     const target = new THREE.Group();
     player.attackEnemy(target, () => undefined);
     expect(player.isCastingSkill).toBe(true);
 
+    // Still parked mid-Juízo (real total 1.07 s at 3x).
     player.moveTo(new THREE.Vector3(6, 0, -3));
-    for (let step = 0; step < 25; step += 1) player.update(0.1);
-    expect(player.isCastingSkill).toBe(false);
-    expect(player.root.position.x).toBeGreaterThan(afterStep);
+    for (let step = 0; step < 4; step += 1) player.update(0.1);
+    expect(player.root.position.x).toBeCloseTo(2);
+
+    // Passed the total (1.2 s real): movement is free again.
+    for (let step = 0; step < 12; step += 1) player.update(0.1);
+    player.moveByDirection(new THREE.Vector3(1, 0, 0), 0.1);
+    expect(player.root.position.x).toBeGreaterThan(2);
   });
 
   it('grants the Mage basic cast no action immunity at all (0 seconds)', async () => {

@@ -1,3 +1,4 @@
+import { JUIZO_SPEED } from '../combat/MageLightningTiming';
 import * as THREE from 'three';
 import { MAGE_SPELL_TRAVEL_METERS } from '../combat/MageSpellFlight';
 import { CameraShake } from './CameraShake';
@@ -666,7 +667,7 @@ export class MageVFX {
     this.projectiles.update(elapsed);
     this.lightning.update(elapsed);
     this.waterDragon.update(elapsed);
-    this.thunder.update(elapsed);
+    this.thunder.update(elapsed * JUIZO_SPEED);
     this.lasers.update(elapsed);
     this.impacts.update(elapsed);
     this.magicCircles.update(elapsed);

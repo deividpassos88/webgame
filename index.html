@@ -238,26 +238,21 @@
       </div>
       <div class="character-panel hidden" data-character-panel="status">
         <section class="overlay-panel status-window">
-          <nav class="status-book-tabs" role="tablist" aria-label="Seções de status">
-            <button type="button" role="tab" data-status-tab="progress" aria-selected="true" tabindex="0">Progresso</button>
-            <button type="button" role="tab" data-status-tab="attributes" aria-selected="false" tabindex="-1">Atributos</button>
-            <button type="button" role="tab" data-status-tab="combat" aria-selected="false" tabindex="-1">Combate</button>
-          </nav>
-          <div class="status-book-page" data-status-section="progress">
-            <p class="section-label">Progresso da campanha</p>
-            <h3>Build do Guerreiro</h3>
-            <div class="status-metrics"><div><strong id="status-level">Nível 1</strong><span id="status-experience">0 / 100 XP</span></div><div class="attribute-budget"><strong id="status-attribute-points">0</strong><span>pontos disponíveis</span></div></div>
-            <p>Todo nível concede 2 pontos (total de 40 pontos no nível 20). Uma especialização pode chegar a 30; para passar disso, outro status também precisa atingir 30.</p>
-          </div>
-          <div class="status-book-page" data-status-section="attributes" hidden>
-            <p class="section-label">Distribuir pontos</p>
+          <header class="status-window-head">
+            <div>
+              <p class="section-label">Distribuir pontos</p>
+              <p class="status-points-line">Pontos disponíveis: <output id="status-attribute-points">0</output></p>
+            </div>
+            <button type="button" class="status-minimize" data-close-overlay aria-label="Minimizar status" title="Minimizar">−</button>
+          </header>
+          <div class="status-book-page status-distribution">
             <div id="status-controls" class="attribute-controls" aria-label="Atributos"></div>
             <p id="status-gate-message" class="status-gate-message" role="status"></p>
           </div>
-          <div class="status-book-page" data-status-section="combat" hidden>
-            <p class="section-label">Impacto atual</p>
+          <div class="status-compat" hidden aria-hidden="true">
+            <output id="status-level">Nível 1</output>
+            <output id="status-experience">0 / 100 XP</output>
             <dl id="status-derived-stats"></dl>
-            <div class="attribute-reset"><strong>Reset futuro</strong><button type="button" disabled>5 USDT · indisponível</button><button type="button" disabled>1000 Guild Tokens · indisponível</button><small>O reset será ativado quando a integração de pagamento existir.</small></div>
           </div>
         </section>
       </div>
@@ -320,9 +315,9 @@
         </div>
         <div class="hud-utility-actions">
           <button class="hud-utility-button" type="button" data-open-backpack aria-label="Abrir mochila"><img src="/assets/ui/backpack-icon.png" alt=""><kbd>I</kbd></button>
-          <button class="hud-utility-button" type="button" data-open-status aria-label="Abrir status"><img src="/assets/ui/status-icon.png" alt=""><span>STATUS</span></button>
           <button class="hud-utility-button" type="button" data-open-settings aria-label="Abrir configurações"><img src="/assets/ui/lobby/arena/icons/settings.svg" alt=""><span>AJUSTES</span></button>
         </div>
+        <button class="hud-status-link" type="button" data-open-status aria-label="Abrir status">Status</button>
       </aside>
 
       <div id="bottom-hud">
