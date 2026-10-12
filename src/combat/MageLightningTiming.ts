@@ -17,3 +17,6 @@ export const JUIZO_LIGHTNING_SECONDS = 1.9;
 
 /** Duração real (relógio de parede) da conjuração: usada pela trava de movimento da Maga. */
 export const JUIZO_REAL_TOTAL_SECONDS = JUIZO_TOTAL_SECONDS / JUIZO_SPEED;
+
+/** Raio da barreira do Juízo (metros). Cúpula visual e bloqueio de monstros usam o mesmo valor. */
+export const JUIZO_BARRIER_RADIUS_METERS = 2.1 * 1.5;

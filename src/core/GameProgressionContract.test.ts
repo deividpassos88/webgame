@@ -15,7 +15,7 @@ describe('Game campaign progression contract', () => {
 
   it('rejects locked skills and applies class-specific catalog damage before distance falloff', () => {
     expect(game).toContain('if (!isWarriorSkillUnlocked(id, this.profile.progression.level)) return false;');
-    expect(game).toContain("warriorSkillDamageMultiplier(attackId, 'mage')");
+    expect(game).toContain("warriorSkillDamageMultiplier(attackId, 'mage', this.mageSkillStars(attackId))");
     expect(game).toContain("warriorSkillDamageMultiplier(event.attackId, 'paladin')");
   });
 

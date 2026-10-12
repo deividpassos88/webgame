@@ -135,6 +135,7 @@ import { HitCounterView } from '../ui/HitCounterView';
 import { FatigueMeter, MAX_FATIGUE, DASH_FATIGUE_COST } from '../combat/FatigueMeter';
 import { mageBasicAttackManaCost, mageSkillFatiguePercent } from '../combat/MageSkillCost';
 import { firstColumnHit, mageSkillAttackId } from '../combat/MageSpellFlight';
+import { juizoBarrierMinDistance, pushOutOfJuizoBarrier } from '../combat/JuizoBarrier';
 import type { ElementalType } from '../combat/ElementalStatus';
 import {
   isInsideMageSkillRadius,
@@ -478,7 +479,8 @@ export class Game {
               // for the Guerreiro, cajado only for the Maga.
               Object.assign(this.profile, syncStarterWeaponToClass(this.profile));
               this.inventory.commitProfile(this.profile);
-              this.flow.transition({ type: 'class-confirmed' });
+              // Trocar a classe pelo lobby não é a primeira escolha: o fluxo já está em lobby.
+              if (this.flow.state === 'class-select') this.flow.transition({ type: 'class-confirmed' });
               savePlayerProfile(this.profile);
             },
             onGuildTokenBackpackExpansion: () => this.purchaseGuildTokenBackpackExpansion(),
@@ -2307,6 +2309,85 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     return firstColumnHit(from, to, columns)?.target ?? null;
   }
 
+  /**
+   * Barreira do Juízo do Trovão: enquanto a conjuração dura, a cúpula em volta
+   * da Maga machuca todo monstro que estiver nela no início e impede que
+   * outros entrem (são empurrados para a borda).
+   */
+  private updateJuizoBarrier(): void {
+    if (!this.player.isMageRootLocked()) {
+      this.juizoBarrierCenter = null;
+      return;
+    }
+    if (!this.juizoBarrierCenter) {
+      this.juizoBarrierCenter = this.player.root.position.clone();
+      this.damageJuizoBarrierTargets(this.juizoBarrierCenter);
+    }
+    const center = this.juizoBarrierCenter;
+    for (const root of this.combatRegistry.activeRoots()) {
+      const record = this.combatRegistry.findByRoot(root);
+      if (!record || record.enemy.isDead) continue;
+      const pushed = pushOutOfJuizoBarrier(
+        center.x,
+        center.z,
+        root.position.x,
+        root.position.z,
+        juizoBarrierMinDistance(record.enemy.collisionRadius ?? 0.45)
+      );
+      if (pushed) {
+        root.position.x = pushed.x;
+        root.position.z = pushed.z;
+      }
+    }
+  }
+
+  /** Dano de entrada da barreira: todo monstro que está dentro da cúpula leva o golpe. */
+  private damageJuizoBarrierTargets(center: THREE.Vector3): void {
+    const attackId: WarriorSkillId = 'pulo_atacando';
+    const skillElement = warriorSkillElement(attackId, 'mage');
+    const elemental = skillElement !== null;
+    const baseDamage = this.mageSkillBaseDamage(attackId, elemental);
+    const records = this.combatRegistry.activeRoots()
+      .map((root) => this.combatRegistry.findByRoot(root))
+      .filter((record): record is CombatRecord => record !== null && !record.enemy.isDead);
+    for (const record of records) {
+      const position = record.enemy.root.position;
+      const bodyRadius = record.enemy.collisionRadius ?? 0.45;
+      const inside = pushOutOfJuizoBarrier(
+        center.x,
+        center.z,
+        position.x,
+        position.z,
+        juizoBarrierMinDistance(bodyRadius)
+      );
+      if (inside === null) continue;
+      const criticalHit = { isCritical: false };
+      const damage = this.mageSkillDamageAtDistance(baseDamage, elemental, position, bodyRadius, criticalHit);
+      if (damage <= 0 || record.enemy.isDead) continue;
+      this.damageEnemyWithMageSkill('lightning', skillElement, record, damage, center, {
+        control: false,
+        isCritical: criticalHit.isCritical,
+      });
+    }
+  }
+
+  /** Estrelas da skill no perfil (1 se o perfil ainda não tiver o dado). */
+  private mageSkillStars(attackId: WarriorSkillId): number {
+    return this.profile.skillStars?.[attackId] ?? 1;
+  }
+
+  /** Dano base de uma skill da Maga: ataque × multiplicador (com estrelas) × combo. */
+  private mageSkillBaseDamage(attackId: WarriorSkillId, elemental: boolean): number {
+    return getTypedAttackBaseDamage(
+      getWarriorSkillDamage(this.player.attackDamage)
+        * warriorSkillDamageMultiplier(attackId, 'mage', this.mageSkillStars(attackId))
+        // Combo empoderado (depois do primeiro link verde): dano dobrado.
+        * this.comboDamageMultiplierFor(attackId),
+      this.getCharacterStats().physicalDamageMultiplier,
+      elemental
+    );
+  }
+
   private onMageSpellImpact(
     spellId: MageSpellId,
     hit: THREE.Object3D,
@@ -2394,14 +2475,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
 
     const skillElement = warriorSkillElement(attackId, 'mage');
     const elemental = skillElement !== null;
-    const baseDamage = getTypedAttackBaseDamage(
-      getWarriorSkillDamage(this.player.attackDamage)
-        * warriorSkillDamageMultiplier(attackId, 'mage')
-        // Combo empoderado (depois do primeiro link verde): dano dobrado.
-        * this.comboDamageMultiplierFor(attackId),
-      this.getCharacterStats().physicalDamageMultiplier,
-      elemental
-    );
+    const baseDamage = this.mageSkillBaseDamage(attackId, elemental);
     const body = this.resolveLivingEnemyRoot(target) ?? target;
     // Ponto do impacto: é a posição que o dano em área e o desenho de chão usam.
     const center = body.getWorldPosition(new THREE.Vector3());
@@ -3243,6 +3317,9 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     });
   }
 
+  /** Centro da barreira do Juízo enquanto ela está de pé (null = sem barreira). */
+  private juizoBarrierCenter: THREE.Vector3 | null = null;
+
   private showFloatingDamage(
     worldPos: THREE.Vector3,
     amount: number,
@@ -3263,7 +3340,8 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     this.hud.spawnFloatingDamage(
       x,
       y,
-      variant === 'heal' ? formatHealingAmount(amount) : `-${quantizeCombatDamage(amount)}`,
+      // Dano aparece só com o número (sem sinal de menos), igual em todas as variantes.
+      variant === 'heal' ? formatHealingAmount(amount) : `${quantizeCombatDamage(amount)}`,
       variant,
       isCritical && variant === 'damage'
         ? (this.profile.selectedClass === 'mage' ? 'magical' : 'physical')
@@ -3298,6 +3376,8 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       (record, damage) => this.showFloatingDamage(record.enemy.root.position, damage),
       (_record, attack) => this.archerProjectiles.fire(attack)
     );
+    // Depois da IA dos monstros: a barreira do Juízo empurra quem tentar entrar.
+    this.updateJuizoBarrier();
     for (const record of this.combatRegistry.unreportedDeaths()) {
       this.handleEnemyDeath(record);
     }

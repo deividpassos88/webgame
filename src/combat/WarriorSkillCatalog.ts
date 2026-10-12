@@ -35,6 +35,8 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     input: '1',
     unlockLevel: 3,
     damageMultiplier: 1.1,
+    // Maga: multiplicador base na estrela 1 (+0,5× por estrela extra, até 5★).
+    mageDamageMultiplier: 1.5,
     icon: 'spin',
     element: null,
     energyCost: 8,
@@ -49,6 +51,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     input: '2',
     unlockLevel: 6,
     damageMultiplier: 1.14,
+    mageDamageMultiplier: 1.7,
     icon: 'arcane-spin',
     element: 'ice',
     energyCost: 10,
@@ -64,6 +67,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     input: '3',
     unlockLevel: 9,
     damageMultiplier: 1.18,
+    mageDamageMultiplier: 2,
     icon: 'jump-impact',
     element: 'fire',
     energyCost: 14,
@@ -78,6 +82,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     input: '4',
     unlockLevel: 12,
     damageMultiplier: 1.22,
+    mageDamageMultiplier: 2.3,
     icon: 'triple-flame',
     element: 'fire',
     energyCost: 18,
@@ -98,7 +103,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     energyCost: 16,
     cooldown: 180,
     mageCooldown: 14,
-    mageDamageMultiplier: 1.26,
+    mageDamageMultiplier: 2.6,
     mageElement: null,
     playbackRate: 1.2,
     magePlaybackRate: 1.9,
@@ -132,14 +137,26 @@ export function isWarriorSkillUnlocked(id: WarriorSkillId, characterLevel: numbe
   return Math.floor(characterLevel) >= getWarriorSkill(id).unlockLevel;
 }
 
+/** Estrelas de uma skill (1 a 5). Cada estrela acima da 1ª soma 0,5× ao dano da Maga. */
+export const MAX_SKILL_STARS = 5;
+export const MAGE_SKILL_STAR_DAMAGE_STEP = 0.5;
+
+export function clampSkillStars(stars: number | undefined): number {
+  if (stars === undefined || !Number.isFinite(stars)) return 1;
+  return Math.min(MAX_SKILL_STARS, Math.max(1, Math.floor(stars)));
+}
+
 export function warriorSkillDamageMultiplier(
   id: WarriorSkillId,
-  playerClass: PlayableCharacterId = 'paladin'
+  playerClass: PlayableCharacterId = 'paladin',
+  stars: number = 1
 ): number {
   const skill = getWarriorSkill(id);
-  return playerClass === 'mage' && skill.mageDamageMultiplier !== undefined
-    ? skill.mageDamageMultiplier
-    : skill.damageMultiplier;
+  if (playerClass !== 'mage') return skill.damageMultiplier;
+  const base = skill.mageDamageMultiplier ?? skill.damageMultiplier;
+  const extraStars = clampSkillStars(stars) - 1;
+  // Arredonda para evitar ruído de ponto flutuante (ex.: 1.7 + 0.5 = 2.2).
+  return Math.round((base + extraStars * MAGE_SKILL_STAR_DAMAGE_STEP) * 100) / 100;
 }
 
 export function warriorSkillElement(

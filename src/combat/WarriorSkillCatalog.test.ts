@@ -52,14 +52,14 @@ describe('WarriorSkillCatalog', () => {
       element: 'fire',
       cooldown: 180,
       mageCooldown: 14,
-      mageDamageMultiplier: 1.26,
+      mageDamageMultiplier: 2.6,
       mageElement: null,
       area: { shape: 'arc', radius: 10, angleDegrees: 125 },
     });
     expect(warriorSkillCooldown('corte_duplo', 'paladin')).toBe(180);
     expect(warriorSkillCooldown('corte_duplo', 'mage')).toBe(14);
     expect(warriorSkillDamageMultiplier('corte_duplo', 'paladin')).toBe(2.52);
-    expect(warriorSkillDamageMultiplier('corte_duplo', 'mage')).toBe(1.26);
+    expect(warriorSkillDamageMultiplier('corte_duplo', 'mage')).toBe(2.6);
     expect(warriorSkillElement('corte_duplo', 'paladin')).toBe('fire');
     expect(warriorSkillElement('corte_duplo', 'mage')).toBeNull();
     expect(WARRIOR_SKILLS.map(({ cooldown }) => cooldown)).toEqual([6, 8, 10, 12, 180]);
@@ -70,7 +70,21 @@ describe('WarriorSkillCatalog', () => {
     expect(WARRIOR_SKILLS.map(({ playbackRate }) => playbackRate)).toEqual([1.1, 1.1, 1, 1.1, 1.2]);
     expect(WARRIOR_SKILLS.map(({ energyCost }) => energyCost)).toEqual([8, 10, 14, 18, 16]);
     expect(WARRIOR_SKILLS.map(({ id }) => warriorSkillCooldown(id, 'mage'))).toEqual([6, 8, 10, 12, 14]);
-    expect(WARRIOR_SKILLS.map(({ id }) => warriorSkillDamageMultiplier(id, 'mage'))).toEqual([1.1, 1.14, 1.18, 1.22, 1.26]);
+    expect(WARRIOR_SKILLS.map(({ id }) => warriorSkillDamageMultiplier(id, 'mage'))).toEqual([1.5, 1.7, 2, 2.3, 2.6]);
+  });
+
+  it('soma 0,5x de dano da Maga a cada estrela acima da primeira, até 5 estrelas', () => {
+    expect(warriorSkillDamageMultiplier('ataque_giratorio', 'mage', 1)).toBe(1.5);
+    expect(warriorSkillDamageMultiplier('ataque_giratorio', 'mage', 2)).toBe(2);
+    expect(warriorSkillDamageMultiplier('ataque_giratorio', 'mage', 3)).toBe(2.5);
+    expect(warriorSkillDamageMultiplier('ataque_giratorio_2', 'mage', 2)).toBe(2.2);
+    expect(warriorSkillDamageMultiplier('pulo_atacando', 'mage', 5)).toBe(4);
+    expect(warriorSkillDamageMultiplier('triplo_ataque', 'mage', 5)).toBe(4.3);
+    expect(warriorSkillDamageMultiplier('corte_duplo', 'mage', 5)).toBe(4.6);
+    // Acima de 5 ou abaixo de 1 é limitado; dano do Guerreiro não muda com estrelas.
+    expect(warriorSkillDamageMultiplier('pulo_atacando', 'mage', 9)).toBe(4);
+    expect(warriorSkillDamageMultiplier('pulo_atacando', 'mage', 0)).toBe(2);
+    expect(warriorSkillDamageMultiplier('pulo_atacando', 'paladin', 5)).toBe(1.18);
   });
 
   it('unlocks skills every three levels with the approved progressive damage bonus', () => {

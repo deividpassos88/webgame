@@ -261,7 +261,8 @@ const SKILL_TIP_DESCRIPTIONS: Readonly<Record<WarriorSkillId, string>> = {
 /** One tooltip card with everything a player needs to understand the skill. */
 function buildLobbySkillTip(
   skillId: WarriorSkillId,
-  playerClass: PlayableCharacterId
+  playerClass: PlayableCharacterId,
+  stars: number = 1
 ): string {
   const skill = getWarriorSkill(skillId);
   const skillElement = warriorSkillElement(skillId, playerClass);
@@ -277,7 +278,7 @@ function buildLobbySkillTip(
           : 'Físico';
   const damageLabel = playerClass === 'paladin' && skillId === 'corte_duplo'
     ? '×2 do dano anterior'
-    : `×${warriorSkillDamageMultiplier(skillId, playerClass).toFixed(2)} do ataque`;
+    : `×${warriorSkillDamageMultiplier(skillId, playerClass, stars).toFixed(2)} do ataque`;
   const areaLabel = waterDragon ? `coluna sobre o alvo · até ${MAGE_MAX_RANGE_METERS} m` : playerClass === 'mage' && skillId === 'corte_duplo'
     ? `projétil até ${MAGE_MAX_RANGE_METERS} m`
     : playerClass === 'paladin' && skillId === 'corte_duplo'
@@ -285,6 +286,8 @@ function buildLobbySkillTip(
       : `raio ${skill.area.radius.toFixed(1)}m`;
   const description = waterDragon
     ? 'Um dragão de água envolve a Maga e invoca uma coluna do céu sobre o alvo. O impacto aplica lentidão.'
+    : playerClass === 'mage' && skillId === 'pulo_atacando'
+    ? 'Barreira de trovão em volta da Maga: quem estiver perto leva dano e nenhum monstro consegue atravessá-la enquanto ela dura.'
     : playerClass === 'mage' && skillId === 'corte_duplo'
     ? 'Magia de lava da Maga: um corte arcano lançado contra o alvo.'
     : SKILL_TIP_DESCRIPTIONS[skillId];
@@ -543,6 +546,12 @@ export class LobbyScreen {
     document.querySelectorAll<HTMLButtonElement>('[data-class-choice]')
   );
   private readonly startButton = document.getElementById('start-game') as HTMLButtonElement;
+  private readonly changeClassButton = document.querySelector<HTMLButtonElement>('[data-lobby-change-class]');
+  private readonly classSelectCancelButton = document.querySelector<HTMLButtonElement>('[data-class-select-cancel]');
+  private readonly classSelectEyebrow = document.getElementById('class-select-eyebrow');
+  private readonly classSelectTitle = document.getElementById('class-select-title');
+  /** True while the class screen is open from the lobby (not the first-run flow). */
+  private classChangeMode = false;
   private readonly adminTrainingButton = this.resolveAdminTrainingButton();
   private startNotice: HTMLElement | null = null;
   private startNoticeTimer: number | null = null;
@@ -677,6 +686,7 @@ export class LobbyScreen {
     this.active = true;
     this.presentation.enter(this.renderer);
     this.classConfirm = options.onClassConfirmed;
+    this.classChangeMode = false;
     this.runModeSelected = options.onRunModeSelected ?? null;
     this.guildTokenBackpackExpansion = options.onGuildTokenBackpackExpansion;
     this.hotkeysChanged = options.onHotkeysChanged;
@@ -1304,6 +1314,8 @@ export class LobbyScreen {
     this.startButton.addEventListener('click', this.startGame);
     this.adminTrainingButton.addEventListener('click', this.toggleAdminMode);
     this.settingsButton?.addEventListener('click', this.settingsClick);
+    this.changeClassButton?.addEventListener('click', this.openClassChange);
+    this.classSelectCancelButton?.addEventListener('click', this.cancelClassChange);
     this.heroStage.addEventListener('pointerdown', this.pointerDown);
     window.addEventListener('pointermove', this.pointerMove);
     window.addEventListener('pointerup', this.pointerUp);
@@ -1334,6 +1346,8 @@ export class LobbyScreen {
     this.startButton.removeEventListener('click', this.startGame);
     this.adminTrainingButton.removeEventListener('click', this.toggleAdminMode);
     this.settingsButton?.removeEventListener('click', this.settingsClick);
+    this.changeClassButton?.removeEventListener('click', this.openClassChange);
+    this.classSelectCancelButton?.removeEventListener('click', this.cancelClassChange);
     this.heroStage.removeEventListener('pointerdown', this.pointerDown);
     window.removeEventListener('pointermove', this.pointerMove);
     window.removeEventListener('pointerup', this.pointerUp);
@@ -1374,11 +1388,49 @@ export class LobbyScreen {
     // The starter weapon is swapped with the class (sword for Guerreiro, cajado
     // for Maga), so the equipment and backpack grids need a fresh render.
     this.renderData();
+    this.leaveClassScreen();
+    this.startButton.focus();
+  };
+
+  /** Abre a escolha de classe a partir do lobby (disponível para todos os jogadores). */
+  private openClassChange = (): void => {
+    this.classChangeMode = true;
+    this.setClassSelectCopy(false);
+    this.classSelectCancelButton?.classList.remove('hidden');
+    this.skillTip.hidden = true;
+    this.lobbyScreen.classList.add('hidden');
+    this.classScreen.classList.remove('hidden');
+    this.requestFrame();
+    const initialFocus = this.classChoiceButtons.find((button) => !button.disabled);
+    initialFocus?.focus();
+  };
+
+  /** Fecha a escolha de classe sem trocar nada e volta ao lobby. */
+  private cancelClassChange = (): void => {
+    if (!this.classChangeMode) return;
+    this.leaveClassScreen();
+    this.changeClassButton?.focus();
+  };
+
+  /** Volta do overlay de classe para o lobby, limpando o estado do modo "trocar". */
+  private leaveClassScreen(): void {
+    this.classChangeMode = false;
+    this.classSelectCancelButton?.classList.add('hidden');
+    this.setClassSelectCopy(true);
     this.classScreen.classList.add('hidden');
     this.lobbyScreen.classList.remove('hidden');
     this.requestFrame();
-    this.startButton.focus();
-  };
+  }
+
+  /** Texto da tela de classe: primeiro acesso ou troca pelo lobby. */
+  private setClassSelectCopy(firstRun: boolean): void {
+    if (this.classSelectEyebrow) {
+      this.classSelectEyebrow.textContent = firstRun ? 'Primeiro acesso' : 'Trocar de classe';
+    }
+    if (this.classSelectTitle) {
+      this.classSelectTitle.textContent = firstRun ? 'Escolha sua classe' : 'Escolha outra classe';
+    }
+  }
 
   private startGame = (): void => {
     // Iniciar partida exige arma equipada: sem arma, avisa no centro da tela
@@ -1571,7 +1623,11 @@ export class LobbyScreen {
     const skillId = trigger?.dataset.skillTip as WarriorSkillId | undefined;
     if (!trigger || !skillId) return;
     this.skillTipTrigger = trigger;
-    this.skillTip.innerHTML = buildLobbySkillTip(skillId, this.profile.selectedClass);
+    this.skillTip.innerHTML = buildLobbySkillTip(
+      skillId,
+      this.profile.selectedClass,
+      this.profile.skillStars[skillId]
+    );
     this.skillTip.hidden = false;
     this.skillTip.setAttribute('aria-hidden', 'false');
     this.positionSkillTip(trigger);

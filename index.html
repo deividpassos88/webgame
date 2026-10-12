@@ -59,9 +59,10 @@
         <span>Seleção de classe</span>
       </header>
       <div class="class-select-copy">
-        <p class="section-label">Primeiro acesso</p>
+        <p class="section-label" id="class-select-eyebrow">Primeiro acesso</p>
         <h1 id="class-select-title">Escolha sua classe</h1>
         <p>Escolha Guerreiro ou Maga. Ao clicar em uma classe, o lobby abre com a prévia 3D ajustada para ela.</p>
+        <button type="button" class="class-select-back hidden" data-class-select-cancel>Voltar ao lobby</button>
       </div>
       <div class="class-choice-list" role="group" aria-label="Classes disponíveis">
         <button id="select-warrior" class="class-choice" type="button" data-class-choice="paladin">
@@ -103,6 +104,9 @@
           </button>
           <button type="button" class="arena-nav__btn" data-lobby-tab="blacksmith" aria-pressed="false">
             <img src="/assets/ui/lobby/arena/icons/workshop.png" alt="" aria-hidden="true"><span>Oficina</span>
+          </button>
+          <button type="button" class="arena-nav__btn arena-class-switch" data-lobby-change-class>
+            <span>Trocar classe</span>
           </button>
         </nav>
 
