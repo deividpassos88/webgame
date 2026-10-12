@@ -17,7 +17,7 @@ describe('getBossHealthHudValues', () => {
 });
 
 describe('resolveBossBarLayer', () => {
-  const maxHp = 7000; // 5 barras de 1400
+  const maxHp = 5600; // 5 barras de 1120
 
   it('comeca na barra verde cheia', () => {
     const layer = resolveBossBarLayer(maxHp, maxHp);
@@ -25,21 +25,21 @@ describe('resolveBossBarLayer', () => {
   });
 
   it('drena a barra atual antes de trocar de cor', () => {
-    const layer = resolveBossBarLayer(6300, maxHp); // 700 de dano = metade da 1a barra
+    const layer = resolveBossBarLayer(5040, maxHp); // 560 de dano = metade da 1a barra
     expect(layer.index).toBe(0);
     expect(layer.fill).toBeCloseTo(0.5, 5);
     expect(layer.barsRemaining).toBe(5);
   });
 
   it('passa pelas cinco cores na ordem pedida', () => {
-    const colors = [400, 1800, 3200, 4600, 6000].map((hpFromBottom) =>
+    const colors = [400, 1600, 2800, 4000, 5400].map((hpFromBottom) =>
       resolveBossBarLayer(maxHp - hpFromBottom, maxHp).color
     );
     expect(colors).toEqual([...BOSS_BAR_LAYER_COLORS]);
   });
 
   it('mostra a ultima barra (vermelho claro) drenando no fim', () => {
-    const layer = resolveBossBarLayer(700, maxHp);
+    const layer = resolveBossBarLayer(560, maxHp);
     expect(layer).toMatchObject({ index: 4, color: BOSS_BAR_LAYER_COLORS[4], barsRemaining: 1 });
     expect(layer.fill).toBeCloseTo(0.5, 5);
   });

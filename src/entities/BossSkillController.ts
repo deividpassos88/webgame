@@ -7,10 +7,24 @@ export const BOSS_SKILL_GEOMETRY = Object.freeze({
   circleRadius: 17.5,
   rectangleLength: 120,
   rectangleWidth: 24,
-  meteorRadius: 1.35,
+  // Alcance dobrado (era 1.35): com 30 meteoros espalhados por 18 m, o raio
+  // antigo cobria só ~17% da área avisada, então quase nunca acertava o player.
+  meteorRadius: 2.7,
   meteorCount: 30,
   meteorSpreadRadius: 18,
 });
+
+/**
+ * Dano base de cada skill do boss, antes do multiplicador de fúria por barra.
+ * O meteoro é o mais fraco por acertar em área ampla; o retângulo é o mais
+ * forte por exigir leitura da faixa.
+ */
+export const BOSS_SKILL_DAMAGE: Readonly<Record<'circle' | 'rectangle' | 'meteors', number>> =
+  Object.freeze({
+    circle: 46,
+    rectangle: 48,
+    meteors: 18,
+  });
 
 export interface BossSkillEvent {
   type: 'telegraph' | 'impact';
@@ -33,7 +47,9 @@ const SKILLS: readonly BossSkillKind[] = [
 ];
 const REST_DURATION = 5;
 const TELEGRAPH_DURATIONS: Readonly<Record<BossSkillKind, number>> = {
-  circle: 4.2,
+  // O círculo explode um pouco mais rápido que os 4.2s originais: o aviso
+  // continua legível, mas o boss puni menos quem já saiu da área.
+  circle: 3.5,
   rectangle: 2.8,
   meteors: 1,
 };
@@ -143,19 +159,19 @@ export class BossSkillController {
     let baseDamage = 0;
     if (skill === 'circle') {
       baseDamage = this.horizontalDistanceSquared(player, this.target)
-        <= BOSS_SKILL_GEOMETRY.circleRadius ** 2 ? 23 : 0;
+        <= BOSS_SKILL_GEOMETRY.circleRadius ** 2 ? BOSS_SKILL_DAMAGE.circle : 0;
     } else if (skill === 'meteors') {
       baseDamage = this.meteorPoints.some(
         (point) => this.horizontalDistanceSquared(player, point)
           <= BOSS_SKILL_GEOMETRY.meteorRadius ** 2
-      ) ? 9 : 0;
+      ) ? BOSS_SKILL_DAMAGE.meteors : 0;
     } else {
       const hit = this.isInsideOrientedRectangle(
         player,
         BOSS_SKILL_GEOMETRY.rectangleLength,
         BOSS_SKILL_GEOMETRY.rectangleWidth
       );
-      baseDamage = hit ? 24 : 0;
+      baseDamage = hit ? BOSS_SKILL_DAMAGE.rectangle : 0;
     }
     return Math.round(baseDamage * Math.max(0, damageMultiplier));
   }

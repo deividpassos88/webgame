@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import type { BossSkillEvent } from '../entities/BossSkillController';
+import { BOSS_SKILL_GEOMETRY, type BossSkillEvent } from '../entities/BossSkillController';
 import { BossSkillEffects } from './BossSkillEffects';
 
 function event(type: BossSkillEvent['type'], skill: BossSkillEvent['skill'] = 'circle'): BossSkillEvent {
@@ -140,7 +140,7 @@ describe('BossSkillEffects', () => {
     expect((lights()[0] as THREE.PointLight).intensity).toBe(0);
   });
 
-  it('renders the expanded circle and triple-width rectangle while preserving meteor size', () => {
+  it('renders the expanded circle and triple-width rectangle, with the meteor ring matching the hit radius', () => {
     const scene = new THREE.Scene();
     const effects = new BossSkillEffects(scene);
 
@@ -157,7 +157,10 @@ describe('BossSkillEffects', () => {
 
     effects.handle(event('telegraph', 'meteors'));
     circle = scene.getObjectByProperty('type', 'Mesh') as THREE.Mesh;
-    expect((circle.geometry as THREE.CircleGeometry).parameters.radius).toBe(1.35);
+    // O anel de aviso usa o mesmo raio do acerto: o que o player vê é o que dói.
+    expect((circle.geometry as THREE.CircleGeometry).parameters.radius)
+      .toBe(BOSS_SKILL_GEOMETRY.meteorRadius);
+    expect(BOSS_SKILL_GEOMETRY.meteorRadius).toBe(2.7);
     expect(scene.getObjectsByProperty('name', 'boss-meteor-core')).toHaveLength(30);
     expect(scene.getObjectByName('boss-meteor-smoke')).toBeTruthy();
   });

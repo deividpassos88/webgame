@@ -42,6 +42,7 @@ import { getBossHealthHudValues, resolveBossBarLayer } from '../ui/BossHealthVie
 import {
   BASE_BOSS_DAMAGE,
   BASE_BOSS_SPEED,
+  FINAL_BOSS_MINION_HP_MULTIPLIER,
   countEquippedArmorPieces,
   equipmentHpMultiplier,
   getBossEnrageStats,
@@ -1711,6 +1712,8 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       const composition = getBossMinionComposition(bars);
       const roster = composition.roster.slice(0, request.regularCount);
       const spawnPoints = this.level.getFinalBattleMinionSpawnPoints(roster.length);
+      // Os lacaios do boss final aguentam o dobro: só eles, não as waves normais.
+      const minionHpMultiplier = request.hpMultiplier * FINAL_BOSS_MINION_HP_MULTIPLIER;
 
       for (let index = 0; index < roster.length; index++) {
         const variant = roster[index];
@@ -1733,7 +1736,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
           const ally = variant === 'archer'
             ? createArcherEnemy(
                 point,
-                request.hpMultiplier,
+                minionHpMultiplier,
                 request.damageMultiplier,
                 request.speedMultiplier,
                 visual,
@@ -1742,7 +1745,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
             : variant === 'guardian'
               ? createGuardianEnemy(
                   point,
-                  request.hpMultiplier,
+                  minionHpMultiplier,
                   request.damageMultiplier,
                   request.speedMultiplier,
                   visual,
@@ -1750,7 +1753,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
                 )
               : createRegularEnemy(
                   point,
-                  request.hpMultiplier,
+                  minionHpMultiplier,
                   request.damageMultiplier,
                   sequence,
                   request.speedMultiplier,

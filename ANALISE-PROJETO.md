@@ -67,6 +67,9 @@ em português explicando decisões de produto.
   lightning/laser/lava, Guerreiro usa slashes, tornado e mergulho.
 - **Waves e boss:** 6 waves com escalonamento por dificuldade e multiplicador de
   equipamento, mini-boss, boss final com múltiplas barras de HP e skills próprias.
+  O Dragonic Overlord alterna três skills — círculo, retângulo e chuva de 30
+  meteoros — com dano/alcance em `BOSS_SKILL_DAMAGE` e `BOSS_SKILL_GEOMETRY`
+  (ver 7.7).
 - **Itens:** catálogo com raridade, bônus de conjunto, aprimoramento, destruição,
   equipar/desequipar sem duplicar, mochila com capacidade expansível (Token de Guilda).
 - **Oficina:** craft de 5 peças do conjunto comum com materiais, apresentação 3D do
@@ -204,7 +207,44 @@ regra (nome sem tier preservado) sem depender desse item.
 - As métricas desta seção 1 foram reconferidas em 12/10/2026 contra o repositório:
   os números antigos (355 arquivos, 42.995 linhas, 1.196 testes) já estavam defasados.
 
-### 7.7 Observações menores
+### 7.7 Balanceamento do boss final (12/10/2026)
+
+Ajustes pedidos pelo design, todos em valores nomeados para não haver número solto:
+
+| Item | Antes | Agora |
+| --- | --- | --- |
+| Dano do meteoro | 9 | **18** (dobro) |
+| Alcance do meteoro (`meteorRadius`) | 1,35 m | **2,7 m** (dobro) |
+| Dano do círculo | 23 | **46** (dobro) |
+| Aviso do círculo (`circle`) | 4,2 s | **3,5 s** (explode mais rápido) |
+| Dano do retângulo | 24 | **48** (dobro; mantém 120 × 24 m) |
+| Vida total do boss | 7000 | **5600** (−20%) |
+| Vida dos lacaios da batalha final | ×1 | **×2** |
+
+Decisões:
+
+- **O meteoro quase nunca acertava.** 30 círculos de 1,35 m sobre um disco avisado
+  de 18 m cobriam só ~17% da área. Um teste novo (`BossSkillController.test.ts`)
+  mede a cobertura em grade e trava a regressão: hoje passa de 45%.
+- **As 5 barras continuam existindo.** O corte de 20% foi feito em
+  `BOSS_BASE_HP` (1400 → 1120), ou seja, no tamanho de *cada* barra; `maxHP`
+  segue sendo `base × 5`. A HUD e `resolveBossBarLayer` não souberam da mudança.
+- **O dobro de vida vale só para os lacaios da batalha final**, aplicado em
+  `spawnFinalBattle` sobre o multiplicador do pedido; as waves normais seguem a
+  escala por wave/equipamento intacta.
+
+#### Pose-T ao soltar o meteoro (corrigido)
+
+O clipe `attack_meteors` é usado em dois lugares: na skill de meteoros **e** como
+metade do rodízio de garras corpo a corpo (`playNextAttack`). Quando os dois
+coincidiam, `activate()` chamava `fadeOut()` e `fadeIn()` na **mesma** ação; o
+`fadeOut` cancelava o `fadeIn` e o peso ia a **0** — bind pose, o "boss em pose-T".
+
+Correção: `activate()` só faz `fadeOut` no clipe anterior quando ele é diferente
+do próximo. O teste `BossAnimationController.test.ts` reproduz o defeito (peso 0)
+e passa a exigir peso 1 — falhava antes da correção.
+
+### 7.8 Observações menores
 
 - `Game.ts` com 3.853 linhas é o maior ponto de acoplamento; mudanças de combate
   costumam exigir leitura extensa. Já há extrações (políticas, controllers), então é
@@ -253,6 +293,16 @@ npm run smoke:admin -- http://127.0.0.1:5173/
 
 Os screenshots das quatro etapas (lobby, mochila, painel ADM em jogo e pós-comandos)
 ficam em `artifacts/` (gitignored) para inspeção visual.
+
+Há também `tools/verify-boss.mjs`, que pula direto para a batalha final pelo painel
+ADM e observa as skills do Dragonic Overlord por N segundos, conferindo a HUD de 5
+barras (rótulo `5x` e cor verde no início), se cada skill dispara e aterra, e se o
+player parado perde vida. Última execução: **7/7 verificações**, com
+`meteors: aviso` e `meteors: impacto` no log e o HP do player caindo de 100% para 34%.
+
+```bash
+node tools/verify-boss.mjs http://127.0.0.1:5173/ 80
+```
 
 ### 8.2 Confirmações de regressão importantes
 
