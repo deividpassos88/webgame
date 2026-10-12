@@ -152,6 +152,9 @@ function mageSpellForSkill(skillId: WarriorSkillId): MageSpellId | null {
 /** Recuperação extra da aterrissagem do Pulo Atacando (segundos). */
 const WARRIOR_SKILL_LANDING_RECOVERY_SECONDS = 0.28;
 
+const FOOT_BONE_NAME_PATTERN = /(left|right)(foot|toe)/i;
+const TMP_FOOT_POSITION = new THREE.Vector3();
+
 export class Player {
   public root = new THREE.Group();
   public mixer!: THREE.AnimationMixer;
@@ -234,6 +237,12 @@ export class Player {
   /** Combo speed-up of the skill currently running (1 when not empowered). */
   private activeSkillPlaybackScale = 1;
   private onAttackHitCallback: ((target: THREE.Object3D) => void) | null = null;
+  /** Ossos dos pés/dedos (só Guerreiro) usados para manter os pés no chão. */
+  private footBones: THREE.Object3D[] = [];
+  private footGroundTargetY: number | null = null;
+  private footGroundLift = 0;
+  private modelBaseY = 0;
+  private gameplayModel: THREE.Object3D | null = null;
   private onWarriorSkillHitCallback: ((event: WarriorSkillHitEvent) => void) | null = null;
   private onWarriorAttackWindowCallback: ((event: WarriorAttackWindowEvent) => void) | null = null;
   private onMageSpellCastCallback: ((event: MageSpellCastEvent) => void) | null = null;
@@ -389,7 +398,52 @@ export class Player {
     this.groundModelToRootPlane(model);
     if (this.characterId === 'mage') this.centerGameplayModelPivotOnRoot(model);
     this.applyGameplayYOffset(model, definition.gameYOffset);
+    this.setupFootGroundTracking(model);
     Logger.info('Player', `${definition.name} pronto para uso.`);
+  }
+
+  /**
+   * Os clipes de movimento (correr) mudam a altura do quadril em relação ao
+   * idle, então com o modelo parado os pés ficam no chão e andando afundam.
+   * Guardamos a altura mais baixa dos pés na pose parada e, a cada frame,
+   * levantamos o modelo só o necessário para os pés não passarem dessa linha.
+   * Nunca abaixa o corpo, então pulos e pés levantados não são afetados.
+   */
+  private setupFootGroundTracking(model: THREE.Object3D): void {
+    this.footBones = [];
+    this.footGroundLift = 0;
+    this.footGroundTargetY = null;
+    this.gameplayModel = null;
+    if (this.characterId !== 'paladin') return;
+    model.traverse((child) => {
+      if (child.type === 'Bone' && FOOT_BONE_NAME_PATTERN.test(child.name)) this.footBones.push(child);
+    });
+    if (this.footBones.length === 0) return;
+    model.updateMatrixWorld(true);
+    this.footGroundTargetY = this.lowestFootWorldY();
+    this.modelBaseY = model.position.y;
+    this.gameplayModel = model;
+  }
+
+  private lowestFootWorldY(): number {
+    let lowest = Infinity;
+    for (const bone of this.footBones) {
+      bone.getWorldPosition(TMP_FOOT_POSITION);
+      if (TMP_FOOT_POSITION.y < lowest) lowest = TMP_FOOT_POSITION.y;
+    }
+    return lowest;
+  }
+
+  private keepFeetOnGround(): void {
+    const model = this.gameplayModel;
+    if (!model || this.footGroundTargetY === null) return;
+    model.updateMatrixWorld(true);
+    const shortfall = this.footGroundTargetY - this.lowestFootWorldY();
+    const lift = Math.max(0, this.footGroundLift + shortfall);
+    if (Math.abs(lift - this.footGroundLift) <= 1e-5) return;
+    this.footGroundLift = lift;
+    model.position.y = this.modelBaseY + lift;
+    model.updateMatrixWorld(true);
   }
 
   private groundModelToRootPlane(model: THREE.Object3D): void {
@@ -1235,6 +1289,7 @@ export class Player {
   public update(delta: number) {
     if (!this.loaded) return;
     this.mixer.update(delta);
+    this.keepFeetOnGround();
     this.tickMageRootLock(delta);
 
     if (this.attackCooldown > 0) this.attackCooldown -= delta;
@@ -2114,6 +2169,11 @@ export class Player {
   /** Movement stays pinned only until the spell launches. */
   private isMageMovementLocked(): boolean {
     return (this.isMageSkillLocked() && this.skillCastAnchor !== null) || this.mageRootLock !== null;
+  }
+
+  /** Juízo do Trovão ativo: a barreira em volta da Maga está de pé. */
+  public isMageRootLocked(): boolean {
+    return this.mageRootLock !== null;
   }
 
   /** Conta a trava de Juízo do Trovão; ela também cai se a Maga morrer. */

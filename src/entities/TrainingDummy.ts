@@ -171,7 +171,7 @@ export class TrainingDummy {
     ctx.fillText(`${this.totalHits} golpes`, 128, 30);
     ctx.fillStyle = '#ffd97a';
     ctx.font = 'bold 20px monospace';
-    ctx.fillText(`-${this.totalDamage} dano total`, 128, 54);
+    ctx.fillText(`${this.totalDamage} dano total`, 128, 54);
     this.labelTexture.needsUpdate = true;
   }
 }

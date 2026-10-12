@@ -882,61 +882,65 @@ html, body {
 }
 .floating-damage {
   position: absolute;
-  color: #ff3636;
-  font-family: Impact, 'Arial Black', 'Trebuchet MS', system-ui, sans-serif;
-  font-size: 18px;
-  font-weight: 900;
+  color: #ffe36b;
+  font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 17px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
-  letter-spacing: .02em;
+  letter-spacing: .01em;
   text-align: center;
   white-space: nowrap;
-  -webkit-text-stroke: .65px rgba(35, 0, 0, .98);
-  text-shadow: 0 0 4px rgba(255, 44, 44, .95), 0 0 11px rgba(210, 0, 20, .8), 0 2px 2px rgba(0, 0, 0, .98);
+  -webkit-text-stroke: .3px rgba(0, 0, 0, .75);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .9), 0 0 6px rgba(0, 0, 0, .55);
   animation: floatUp 1s cubic-bezier(.18, .72, .22, 1) forwards;
   pointer-events: none;
 }
 /* O dano causado fica vermelho; o recebido mantém coral para distingui-los. */
 .floating-damage.taken {
-  color: #ff718b;
-  font-size: 17px;
-  -webkit-text-stroke: .5px rgba(51, 5, 18, .95);
-  text-shadow: 0 0 5px rgba(255, 113, 139, .9), 0 0 12px rgba(255, 47, 83, .72), 0 2px 2px rgba(0, 0, 0, .95);
+  color: #ff8fa3;
+  font-size: 16px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .9), 0 0 6px rgba(255, 60, 90, .45);
 }
 .floating-damage.heal {
-  color: #76ffa4;
-  text-shadow: 0 0 6px rgba(76, 255, 145, .9), 0 0 12px rgba(30, 190, 91, .65), 0 2px 2px rgba(0, 0, 0, .95);
+  color: #7dffb8;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .9), 0 0 6px rgba(60, 220, 130, .45);
 }
 .floating-damage.dodge {
   color: #78edff;
-  font-size: 18px;
-  letter-spacing: .06em;
-  -webkit-text-stroke: .55px rgba(0, 28, 43, .98);
-  text-shadow: 0 0 5px rgba(120, 237, 255, .95), 0 0 13px rgba(25, 183, 233, .85), 0 2px 2px rgba(0, 0, 0, .95);
+  font-size: 17px;
+  letter-spacing: .03em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .9), 0 0 6px rgba(60, 200, 240, .45);
   animation: dodgeFloatUp .95s cubic-bezier(.18, .72, .22, 1) forwards;
 }
 .floating-damage.critical {
   display: flex;
   flex-direction: column;
   align-items: center;
-  font-size: 22px;
-  letter-spacing: .035em;
-  -webkit-text-stroke: .75px rgba(55, 0, 0, .98);
-  text-shadow: 0 0 4px #fff, 0 0 9px rgba(255, 45, 45, .95), 0 0 17px rgba(190, 0, 22, .9), 0 2px 3px rgba(0, 0, 0, .98);
-  animation: criticalFloatUp 1.05s cubic-bezier(.12, .78, .2, 1) forwards;
+  color: #ff8a2b;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  -webkit-text-stroke: .5px rgba(0, 0, 0, .8);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .9), 0 0 8px rgba(255, 120, 30, .65);
+  animation: criticalFloatUp 1.6s cubic-bezier(.12, .78, .2, 1) forwards;
 }
 .floating-damage__label {
   display: block;
-  margin-bottom: 1px;
-  color: #fff;
-  font-size: .52em;
+  margin-bottom: 2px;
+  color: #ffe9b0;
+  font-size: .5em;
+  font-weight: 700;
   line-height: 1;
-  letter-spacing: .12em;
+  letter-spacing: .14em;
   text-transform: uppercase;
-  -webkit-text-stroke: .35px rgba(25, 0, 0, .98);
+  -webkit-text-stroke: .3px rgba(0, 0, 0, .75);
+}
+.floating-damage.critical-magical {
+  color: #5fd8ff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .9), 0 0 8px rgba(60, 180, 255, .65);
 }
 .floating-damage.critical-magical .floating-damage__label {
-  color: #8af1ff;
-  text-shadow: 0 0 5px rgba(84, 222, 255, .95), 0 0 10px rgba(26, 136, 255, .9);
+  color: #d2f6ff;
 }
 .floating-damage__value { display: block; }
 @keyframes floatUp {
@@ -951,8 +955,10 @@ html, body {
 }
 @keyframes criticalFloatUp {
   0% { transform: translate(-50%, 5px) scale(.72); opacity: 0; }
-  14% { transform: translate(-50%, -3px) scale(1.16); opacity: 1; }
-  100% { transform: translate(-50%, -74px) scale(1.04); opacity: 0; }
+  12% { transform: translate(-50%, -3px) scale(1.14); opacity: 1; }
+  20% { transform: translate(-50%, -6px) scale(1); opacity: 1; }
+  70% { transform: translate(-50%, -48px) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -80px) scale(1); opacity: 0; }
 }
 
 /* ---------- Debug Logger Panel ---------- */
@@ -4898,4 +4904,26 @@ body #lobby-screen .equipment-slot.is-equipped,
   width: 324px !important;
   min-width: 324px !important;
   max-width: 324px !important;
+}
+
+/* ---------- Trocar classe pelo lobby ---------- */
+.arena-class-switch {
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+.class-select-back {
+  margin-top: 12px;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 210, 120, .6);
+  border-radius: 6px;
+  background: rgba(20, 14, 6, .75);
+  color: #ffe9b0;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.class-select-back:focus-visible {
+  outline: 2px solid #ffd27a;
+  outline-offset: 2px;
 }

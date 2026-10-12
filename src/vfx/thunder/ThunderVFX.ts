@@ -1,4 +1,4 @@
-import { JUIZO_LIGHTNING_SECONDS, JUIZO_TOTAL_SECONDS } from '../../combat/MageLightningTiming';
+import { JUIZO_BARRIER_RADIUS_METERS, JUIZO_LIGHTNING_SECONDS, JUIZO_TOTAL_SECONDS } from '../../combat/MageLightningTiming';
 import * as THREE from 'three';
 import type { MageVFXResources } from '../MageVFXResources';
 import { PooledParticleCloud } from '../ParticleManager';
@@ -23,7 +23,6 @@ const ARC_HALF_WIDTH: readonly number[] = [0.16];
 /** Corpo grosso do raio (magenta com núcleo branco), sob o filete fino. */
 const BODY_HALF_WIDTH = 0.62;
 
-const BUBBLE_RADIUS = 2.1;
 const BOLT_TOP = 8.5;
 const TAU = Math.PI * 2;
 
@@ -74,8 +73,7 @@ function disposeTree(root: THREE.Object3D): void {
 //  2.95–3.2  a barreira se dissolve.
 
 /** Tamanho da barreira: metade da versão de 3×. */
-const BARRIER_SCALE = 1.5;
-const BARRIER_RADIUS = BUBBLE_RADIUS * BARRIER_SCALE;
+const BARRIER_RADIUS = JUIZO_BARRIER_RADIUS_METERS;
 export const BARRIER_TOTAL_SECONDS = JUIZO_TOTAL_SECONDS;
 /** Quando o raio atinge o inimigo, contado a partir do início da conjuração. */
 export const BARRIER_LIGHTNING_SECONDS = JUIZO_LIGHTNING_SECONDS;

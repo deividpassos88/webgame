@@ -682,6 +682,8 @@ export class HUD {
     el.style.left = `${screenX}px`;
     el.style.top = `${screenY}px`;
     this.damageLog.appendChild(el);
-    setTimeout(() => el.remove(), 1000);
+    // Críticos ficam um pouco mais tempo na tela para facilitar a leitura.
+    const lifetimeMs = variant === 'damage' && criticalType ? 1600 : 1000;
+    setTimeout(() => el.remove(), lifetimeMs);
   }
 }
