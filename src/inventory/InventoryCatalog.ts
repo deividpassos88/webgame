@@ -39,7 +39,9 @@ export const INVENTORY_ITEMS = {
    * weapon in the backpack and in the equipment tab. */
   'starter-sword': {
     id: 'starter-sword',
-    label: 'Sword Novice',
+    // Nome igual ao `initialWeaponLabel` do CharacterCatalog: o rodapé do lobby
+    // e a mochila mostram o mesmo item, então não pode haver dois nomes.
+    label: 'Espada do Recruta',
     kind: 'equipment',
     maxStack: 1,
     slot: 'weapon',

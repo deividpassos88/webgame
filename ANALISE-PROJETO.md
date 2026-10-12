@@ -1,7 +1,7 @@
 # Análise do Projeto — Dragon Miner (webgame)
 
 Documento gerado a partir da leitura completa do repositório, da suíte de testes e
-dos dois builds de produção (público e ADM). Data: 07/10/2026.
+dos dois builds de produção (público e ADM). Data da revisão: 12/10/2026.
 
 ---
 
@@ -14,13 +14,13 @@ Não há servidor de jogo: tudo roda no cliente e o progresso é salvo em
 
 | Item | Valor |
 | --- | --- |
-| Arquivos TypeScript | 355 (`src/**/*.ts`) |
-| Linhas de código (sem testes) | **42.995** |
-| Linhas de testes | **22.147** |
-| Arquivos de teste | 180 |
-| Testes | **1.196**, 100% verdes |
+| Arquivos TypeScript | 385 (`src/**/*.ts`) |
+| Linhas de código (sem testes) | **46.776** |
+| Linhas de testes | **24.505** |
+| Arquivos de teste | 198 |
+| Testes | **1.292**, 100% verdes |
 | Dependências de runtime | apenas `three` |
-| Assets em `public/` | 289 arquivos, **188 MB** |
+| Assets em `public/` | 289 arquivos, **187 MB** |
 | Build de produção (`dist/`) | **190 MB** |
 | Stack | Vite 5 · TypeScript strict · Vitest 4 (happy-dom) |
 
@@ -92,6 +92,12 @@ controle de opacidade. Comandos disponíveis:
 | `Limpar monstros` | Remove os spawns de treino |
 | `Adicionar item` | Injeta itens do catálogo na mochila, com rollback se falhar o save |
 
+O painel abre recolhido como um botão flutuante **ADM** no canto inferior direito
+(`z-index: 10050`), arrastável, recolhível por **F2** e com controle de opacidade.
+Os comandos de combate (waves, boss, spawn, toggles) nascem **desabilitados** e só
+são liberados quando a partida começa (`setGameplayAvailable`); "Adicionar item"
+funciona desde o lobby.
+
 Além do painel, o lobby expõe o botão **MODO ADM**, que inicia uma partida de treino
 sem monstros e com skills livres. Toda autorização passa por `AdminCommandGate`,
 `AdminGameActions` e `resolveAdminEnabled` (ver seção 7).
@@ -105,14 +111,14 @@ sem monstros e com skills livres. Toda autorização passa por `AdminCommandGate
 | `npm run build:admin` | admin | **ligado** | `dist/` |
 | `npm run preview:admin` | admin | ligado | serve o `dist/` em `0.0.0.0:5173` |
 
-Resultado do build ADM atual:
+Resultado do build ADM atual (`npm run build:admin`):
 
 ```
-dist/index.html                  24,25 kB │ gzip   6,35 kB
-dist/assets/index-*.css         196,11 kB │ gzip  38,34 kB
+dist/index.html                  23,70 kB │ gzip   6,18 kB
+dist/assets/index-*.css         206,97 kB │ gzip  40,41 kB
 dist/assets/Game-*.css            8,77 kB │ gzip   2,57 kB
-dist/assets/index-*.js           43,54 kB │ gzip  11,33 kB
-dist/assets/Game-*.js         1.254,88 kB │ gzip 335,35 kB   (Three.js + jogo)
+dist/assets/index-*.js           45,84 kB │ gzip  11,98 kB
+dist/assets/Game-*.js         1.314,72 kB │ gzip 351,50 kB   (Three.js + jogo)
 ```
 
 Aviso de chunk >500 kB é esperado: o `Game` carrega Three.js por `import()`
@@ -175,16 +181,32 @@ HUD) abrem um painel com qualidade gráfica, contador de FPS, números de dano e
 sensibilidade do giro da prévia, salvos no perfil (schema 12). Detalhes em
 `MENU-CONFIGURACOES.md`.
 
-### 7.5 Aberto: documentação defasada
+### 7.5 Resolvido: nome da arma inicial contradizia o lobby
 
-- `BUILD-ADMIN.md` descrevia o `main.ts` antigo (já atualizado nesta entrega).
+O mesmo item (`starter-sword`) aparecia com **dois nomes diferentes** na mesma tela
+de lobby: o rodapé mostrava `initialWeaponLabel` do `CharacterCatalog`
+("Espada do Recruta", em pt-BR) enquanto a mochila, o tooltip e o painel ADM usavam
+`InventoryCatalog` — que trazia `label: 'Sword Novice'`. O nome em inglês era o único
+rótulo de item fora do padrão pt-BR do catálogo (o do Maga já era "Cajado Arcano").
+
+Correção: `InventoryCatalog['starter-sword'].label` passou a ser `'Espada do Recruta'`,
+com um comentário apontando a obrigação de os dois catálogos concordarem. Três
+fixtures de teste que fixavam o texto antigo foram atualizadas
+(`InventoryCatalog.test.ts`, `LobbyScreen.test.ts`, `RpgUiViewModel.test.ts`); o
+`CraftRewardsPresentation.test.ts` passou a usar "Cajado Arcano", que exercita a mesma
+regra (nome sem tier preservado) sem depender desse item.
+
+### 7.6 Aberto: documentação defasada
+
 - `ARQUIVOS-UTILIZADOS.md` / `LIMPEZA-RESUMO.md` falam de um projeto com 52 assets e
-  123 MB; hoje são 289 arquivos e 188 MB. Os documentos anteriores também usam
+  123 MB; hoje são 289 arquivos e 187 MB. Os documentos anteriores também usam
   acentuação inconsistente (`CODEX_HANDOFF.md` sem acentos).
+- As métricas desta seção 1 foram reconferidas em 12/10/2026 contra o repositório:
+  os números antigos (355 arquivos, 42.995 linhas, 1.196 testes) já estavam defasados.
 
-### 7.6 Observações menores
+### 7.7 Observações menores
 
-- `Game.ts` com 3.497 linhas é o maior ponto de acoplamento; mudanças de combate
+- `Game.ts` com 3.853 linhas é o maior ponto de acoplamento; mudanças de combate
   costumam exigir leitura extensa. Já há extrações (políticas, controllers), então é
   uma dívida sob controle, não um bloqueio.
 - 43 arquivos de “debug/inspect” em `scripts-inspect/` e `scripts/` ficam no
@@ -192,17 +214,68 @@ sensibilidade do giro da prévia, salvos no perfil (schema 12). Detalhes em
 - O aviso de chunk >500 kB pode ser silenciado com
   `build.chunkSizeWarningLimit` ou resolvido com `manualChunks` (Three.js separado).
 
-## 8. Verificação desta entrega
+## 8. Verificação executada (12/10/2026)
 
 ```
 npm run typecheck     → limpo
-npm test              → 184 arquivos · 1.228 testes · 0 falhas (~44 s)
-npm run build         → dist/ público sem ADM
-npm run build:admin   → dist/ com ADM (servido em http://localhost:5173)
+npm test              → 198 arquivos · 1.292 testes · 0 falhas (~62 s)
+npm run build         → dist/ público, sem ADM (mode:"production", viteAdminMode:void 0)
+npm run build:admin   → dist/ com ADM (mode:"admin", viteAdminMode:"true")
+npm run preview:admin → serve dist/ em 0.0.0.0:5173
 ```
 
-Mudanças de código deste ciclo: `src/admin/AdminAccess.ts` (+ teste), `src/main.ts`,
-`src/ui/LobbyScreen.ts` (+ teste), `src/profile/PlayerSettings.ts` (+ teste),
-`src/profile/PlayerProfile.ts` (schema 12 + teste de migração), `src/ui/SettingsPanel.ts`
-(+ teste), `src/ui/FpsBadge.ts` (+ teste), `src/ui/SettingsMenuContract.test.ts`,
-`src/core/Game.ts`, `src/styles/settings-panel.css`, `index.html`.
+### 8.1 Fumaça de navegador do build ADM (`tools/smoke-admin.mjs`)
+
+O build ADM foi exercitado de ponta a ponta num Chromium headless, contra o
+`dist/` servido pelo `vite preview` — 20/20 verificações, sem erro de console:
+
+```
+OK  jogo sobe com canvas                              OK  Imortalidade ligada (toggle responde)
+OK  painel ADM montado no boot                        OK  monstro de treino spawnado
+OK  tela de seleção de classe presente                OK  Adicionar item responde na mochila
+OK  lobby aberto após escolher classe                 OK  salto de wave não quebra a página
+OK  botão MODO ADM liberado no lobby                  OK  F2 recolhe/expande o painel
+OK  gate de arma barra o início antes de equipar      OK  sem erros de console / exceções
+OK  mochila mostra o nome da arma em pt-BR
+OK  arma equipada pelo menu da mochila                → partida de treino: 6 waves + Ir para o
+OK  MODO ADM ligado                                   Boss + Imortalidade + Câmera ADM + 3 spawns
+                                                      habilitados só depois de entrar em jogo
+```
+
+Uso (as dependências de navegador não entram no `package.json`; o Chromium vem
+dentro do `@sparticuz/chromium`, como no `tools/smoke-boot.mjs`):
+
+```bash
+PUPPETEER_SKIP_DOWNLOAD=1 npm i --no-save puppeteer @sparticuz/chromium
+npm run build:admin && npm run preview:admin &
+npm run smoke:admin -- http://127.0.0.1:5173/
+```
+
+Os screenshots das quatro etapas (lobby, mochila, painel ADM em jogo e pós-comandos)
+ficam em `artifacts/` (gitignored) para inspeção visual.
+
+### 8.2 Confirmações de regressão importantes
+
+- **ADM não vaza para o build público**: o bundle público compila
+  `mode:"production",viteAdminMode:void 0` e não contém `mode:"admin"`. As strings de
+  UI do painel permanecem no chunk (dead code que o Rollup não elimina sozinho), mas
+  ficam inalcançáveis atrás do gate `resolveAdminEnabled`.
+- **Gate de arma do lobby**: antes de equipar, o botão aparece travado
+  (`.is-weapon-locked`, `aria-disabled="true"`) mas segue clicável e o aviso central
+  "Equipe sua arma antes de iniciar a partida." aparece — confirmado no navegador. O
+  aviso se auto-oculta em 4 s, o que pode dar a impressão de que o clique não fez nada
+  se a tela for observada só depois disso.
+
+### 8.3 Varredura de assets e documentação
+
+- Varredura própria de `public/`: **121 arquivos (63,8 MB) referenciados** e
+  **168 arquivos (123,4 MB) sem nenhuma referência** em `src/`, `index.html`,
+  `tools/` ou `scripts-inspect/` — confirma a seção 7.3.
+- `ANALISE-PROJETO.md` teve as métricas da seção 1 e os números do build atualizados,
+  a numeração das subseções corrigida (havia dois "7.6") e este bloco de verificação
+  reescrito.
+
+Arquivos alterados neste ciclo: `src/inventory/InventoryCatalog.ts` (+ teste de
+catálogo), `src/ui/LobbyScreen.test.ts`, `src/ui/RpgUiViewModel.test.ts`,
+`src/ui/CraftRewardsPresentation.test.ts`, `tools/smoke-admin.mjs` (novo),
+`package.json` (script `smoke:admin`), `ANALISE-PROJETO.md`.

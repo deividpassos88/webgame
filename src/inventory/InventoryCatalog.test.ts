@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { getInventoryItem } from './InventoryCatalog';
 
 describe('final boss craft catalog', () => {
-  it('catalogues the starter sword as an unequipped novice weapon with its art and base damage', () => {
+  it('catalogues the starter sword under the same name the lobby shows for the hero weapon', () => {
     expect(getInventoryItem('starter-sword')).toMatchObject({
       id: 'starter-sword',
-      label: 'Sword Novice',
+      label: 'Espada do Recruta',
       kind: 'equipment',
       maxStack: 1,
       slot: 'weapon',

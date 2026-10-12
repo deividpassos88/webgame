@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "preview:admin": "vite preview --mode admin",
     "test": "vitest run",
-    "validate:warrior-glb": "node scripts/validate-warrior-glb.mjs public/models/Guerreiro/guerreiro_animado.glb"
+    "validate:warrior-glb": "node scripts/validate-warrior-glb.mjs public/models/Guerreiro/guerreiro_animado.glb",
+    "smoke:admin": "node tools/smoke-admin.mjs"
   },
   "dependencies": {
     "three": "^0.161.0"
