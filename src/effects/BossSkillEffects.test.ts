@@ -112,6 +112,39 @@ describe('BossSkillEffects', () => {
     expect(effects.activeObjectCount).toBe(0);
   });
 
+  it('só some com o aviso depois que os efeitos avançam no tempo', () => {
+    // Documenta a regra que o `Game` tem que respeitar: um aviso vermelho só
+    // desaparece se `update()` for chamado. Sem isso ele fica no chão para
+    // sempre — a "marcação que continua" depois do impacto.
+    const scene = new THREE.Scene();
+    const effects = new BossSkillEffects(scene);
+
+    effects.handle(event('telegraph', 'circle'));
+    expect(effects.activeObjectCount).toBeGreaterThan(0);
+
+    // O primeiro `update` só libera o efeito recém-criado (não envelhece).
+    effects.update(0);
+    expect(effects.activeObjectCount).toBeGreaterThan(0);
+
+    // O aviso do círculo dura 4,2 s: passado isso, ele se descarta sozinho.
+    effects.update(5);
+    expect(effects.activeObjectCount).toBe(0);
+  });
+
+  it.each(['circle', 'rectangle'] as const)(
+    'limpa o aviso de %s quando a skill é cancelada',
+    (skill) => {
+      const scene = new THREE.Scene();
+      const effects = new BossSkillEffects(scene);
+
+      effects.handle(event('telegraph', skill));
+      expect(effects.activeObjectCount).toBeGreaterThan(0);
+
+      effects.clear();
+      expect(effects.activeObjectCount).toBe(0);
+    }
+  );
+
   it('gives the falling meteors a flaming tail', () => {
     const scene = new THREE.Scene();
     const effects = new BossSkillEffects(scene);

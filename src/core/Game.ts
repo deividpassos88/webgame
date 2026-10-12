@@ -3617,6 +3617,13 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
   }
 
   private updateBossSkills(delta: number): void {
+    // Os efeitos envelhecem SEMPRE, antes de qualquer decisão de IA. Antes,
+    // este método só chegava ao `bossEffects.update` no caminho em que o boss
+    // estava conjurando: se ele entrasse em modo `follow` (player colado) logo
+    // após um impacto, o decal do aviso e os restos da explosão ficavam
+    // congelados no chão — a "marcação vermelha que continua" depois do golpe.
+    this.bossEffects.update(delta);
+
     const boss = this.combatRegistry.mainBoss;
     if (!boss) {
       if (this.bossEncounterActive) this.stopBossSkills();
@@ -3641,6 +3648,9 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     if (!shouldUpdateBossSkills(mode)) {
       if (shouldClearBossTelegraph(mode, activeCast)) {
         this.bossSkills.reset();
+        // A skill foi cancelada: o aviso vermelho não pode continuar no chão
+        // prometendo uma explosão que não vem mais.
+        this.bossEffects.clear();
       }
       return;
     }
@@ -3672,7 +3682,6 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     if (frame.damage > 0) {
       this.onBossSkillHitPlayer(frame.damage);
     }
-    this.bossEffects.update(delta);
   }
 
   private updateMiniBossSkills(delta: number): void {

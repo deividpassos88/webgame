@@ -237,6 +237,13 @@ export class Enemy {
   >();
   /** Cor de emissivo de cada material antes do vermelho do dano começar. */
   private readonly hitFlashBaseColors = new Map<THREE.MeshStandardMaterial, number>();
+  /**
+   * Emissivo canônico de cada material, capturado uma única vez na criação.
+   * É a fonte da verdade para desfazer tanto o flash de dano quanto o azul do
+   * gelo: os dois sistemas se sobrepõem, e ler o valor corrente de um enquanto
+   * o outro está ativo grudava a tinta errada no corpo.
+   */
+  private readonly hitFlashBaseEmissives = new Map<THREE.MeshStandardMaterial, number>();
   private fadeMaterials: THREE.Material[] = [];
   private readonly ownedGeometries = new Set<THREE.BufferGeometry>();
   private deathTimer = 0;
@@ -647,7 +654,14 @@ export class Enemy {
       const strength = Math.max(0, this.hitFlashTime / HIT_FLASH_SECONDS);
       this.hitFlashBaseIntensities.forEach((baseIntensity, material) => {
         if (!this.hitFlashBaseColors.has(material)) {
-          this.hitFlashBaseColors.set(material, material.emissive.getHex());
+          // O emissivo de repouso vem do valor capturado na criação do
+          // material, nunca do `emissive` corrente: um monstro congelado está
+          // azul, e capturar "o que está na tela" fazia o flash devolver esse
+          // azul para sempre quando o gelo terminava antes do flash.
+          this.hitFlashBaseColors.set(
+            material,
+            this.hitFlashBaseEmissives.get(material) ?? material.emissive.getHex()
+          );
         }
         material.emissive.setHex(HIT_FLASH_COLOR);
         material.emissiveIntensity = baseIntensity + strength * HIT_FLASH_INTENSITY;
@@ -1702,7 +1716,11 @@ export class Enemy {
       if (!(material instanceof THREE.MeshStandardMaterial)) continue;
       if (!this.freezeTintOriginals.has(material)) {
         this.freezeTintOriginals.set(material, {
-          emissive: this.hitFlashBaseColors.get(material) ?? material.emissive.getHex(),
+          // Mesma regra do flash: o repouso vem do valor canônico, não do que
+          // estiver na tela (que pode ser o vermelho de um flash em andamento).
+          emissive: this.hitFlashBaseEmissives.get(material)
+            ?? this.hitFlashBaseColors.get(material)
+            ?? material.emissive.getHex(),
           emissiveIntensity: this.hitFlashBaseIntensities.get(material) ?? material.emissiveIntensity,
           color: material.color.getHex(),
         });
@@ -1915,6 +1933,7 @@ export class Enemy {
   private captureHitFlashBaseIntensity(material: THREE.Material): void {
     if (material instanceof THREE.MeshStandardMaterial) {
       this.hitFlashBaseIntensities.set(material, material.emissiveIntensity);
+      this.hitFlashBaseEmissives.set(material, material.emissive.getHex());
     }
   }
 }

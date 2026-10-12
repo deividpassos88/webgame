@@ -44,6 +44,25 @@ describe('Game final boss contract', () => {
     expect(FINAL_BOSS_MINION_HP_MULTIPLIER).toBe(2);
   });
 
+  it('envelhece os efeitos do boss em TODOS os caminhos, sem congelar o aviso', () => {
+    const start = game.indexOf('private updateBossSkills(');
+    const end = game.indexOf('private updateMiniBossSkills(', start);
+    const update = game.slice(start, end);
+
+    // O `update` dos efeitos roda antes de qualquer decisão de IA...
+    const effectsUpdate = update.indexOf('this.bossEffects.update(delta);');
+    const earlyReturn = update.indexOf('if (!shouldUpdateBossSkills(mode)) {');
+    expect(effectsUpdate).toBeGreaterThan(-1);
+    expect(effectsUpdate).toBeLessThan(earlyReturn);
+    // ...e só existe uma vez: no fim do método ele congelava quando o boss
+    // entrava em modo `follow` e o aviso vermelho ficava no chão.
+    expect(update.match(/this\.bossEffects\.update\(delta\);/g)).toHaveLength(1);
+
+    // Cancelar o aviso também apaga o desenho no chão.
+    expect(update).toContain('this.bossSkills.reset();');
+    expect(update).toContain('this.bossEffects.clear();');
+  });
+
   it('corta 20% do total mantendo as 5 barras coloridas', () => {
     expect(finalBossTotalHp()).toBe(5600);
     expect(finalBossTotalHp()).toBe(FINAL_BOSS_HP_BARS * BOSS_BASE_HP);

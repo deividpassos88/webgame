@@ -14,11 +14,11 @@ Não há servidor de jogo: tudo roda no cliente e o progresso é salvo em
 
 | Item | Valor |
 | --- | --- |
-| Arquivos TypeScript | 385 (`src/**/*.ts`) |
-| Linhas de código (sem testes) | **46.776** |
-| Linhas de testes | **24.505** |
-| Arquivos de teste | 198 |
-| Testes | **1.292**, 100% verdes |
+| Arquivos TypeScript | 387 (`src/**/*.ts`) |
+| Linhas de código (sem testes) | **46.845** |
+| Linhas de testes | **24.793** |
+| Arquivos de teste | 200 |
+| Testes | **1.306**, 100% verdes |
 | Dependências de runtime | apenas `three` |
 | Assets em `public/` | 289 arquivos, **187 MB** |
 | Build de produção (`dist/`) | **190 MB** |
@@ -254,11 +254,58 @@ e passa a exigir peso 1 — falhava antes da correção.
 - O aviso de chunk >500 kB pode ser silenciado com
   `build.chunkSizeWarningLimit` ou resolvido com `manualChunks` (Three.js separado).
 
+### 7.9 Bugs relatados no boss final (corrigidos em 12/10/2026)
+
+Dois defeitos observados em partida real, ambos com causa raiz encontrada e coberta
+por teste de regressão.
+
+**1. A marcação vermelha às vezes ficava no chão depois do impacto.** O
+`updateBossSkills()` só chegava em `bossEffects.update(delta)` na **última** linha do
+método, depois das decisões de IA. Quando o boss entrava no modo `follow` (jogador
+colado nele) logo depois de um impacto, o `return` antecipado de
+`shouldUpdateBossSkills(mode)` pulava o envelhecimento do efeito e o decalque/explosão
+congelava na cena. Correção: `bossEffects.update(delta)` passou a ser a **primeira**
+coisa do método (roda em todo quadro, em qualquer modo) e a chamada duplicada do fim
+foi removida. Aproveitando, quando `shouldClearBossTelegraph(mode, activeCast)` cancela
+um aviso, o código agora faz `bossSkills.reset()` **e** `bossEffects.clear()` — antes o
+aviso cancelado deixava a pintura vermelha prometendo uma explosão que nunca vinha.
+
+**2. O boss ficava azul de gelo até morrer.** Não era o congelamento que não
+restaurava — um repro direto de `applyMageFreeze` mostrou a restauração correta. O
+problema era uma **corrida entre o flash de dano e a tinta de gelo**: ao começar o
+flash, `hitFlashBaseColors` guardava `material.emissive` *corrente*; se o boss estava
+congelado (azul `0x2a7fff`), esse azul era guardado como "cor de repouso" e reescrito
+quando o flash terminava — muito depois de o gelo ter acabado. Correção: um novo mapa
+`hitFlashBaseEmissives` guarda o emissivo canônico por material **uma única vez**, na
+criação do material, e é ele que o flash devolve; `applyFreezeTint()` também passou a
+preferir o valor canônico (`hitFlashBaseEmissives` → `hitFlashBaseColors` → valor
+corrente), de modo que nenhum dos dois sistemas consegue transformar a tinta do outro
+em permanente.
+
+Evidência (antes → depois, um material do corpo do boss):
+
+```
+repouso           { color: 9048080, emissive: 3605251, ei: 1 }
+congelado         { color: 10199740, emissive: 2785279, ei: 1 }   // 0x2a7fff
+após o flash, código antigo   { color: 9048080, emissive: 2785279, ei: 1 }  // azul preso
+após o flash, código novo     { color: 9048080, emissive: 3605251, ei: 1 }  // original
+```
+
+Testes novos: `src/entities/EnemyFreezeVisuals.test.ts` (4 casos: gelo expira e devolve
+a aparência; flash sobrevivendo ao gelo não deixa azul; três ciclos de gelo + dano não
+acumulam tinta; morte do inimigo congelado tira o azul) — **2 dos 4 falham** se a
+correção for revertida. `src/effects/BossSkillEffects.test.ts` ganhou 3 casos
+(o aviso só libera quando o tempo avança e `clear()` apaga os avisos de círculo e
+retângulo) e `src/core/GameFinalBossContract.test.ts` um caso que trava o contrato do
+fonte: exatamente **um** `bossEffects.update(delta)` em `updateBossSkills`, antes do
+`if (!shouldUpdateBossSkills(mode))`, e o desvio de cancelamento com
+`bossSkills.reset()` + `bossEffects.clear()`.
+
 ## 8. Verificação executada (12/10/2026)
 
 ```
 npm run typecheck     → limpo
-npm test              → 198 arquivos · 1.292 testes · 0 falhas (~62 s)
+npm test              → 200 arquivos · 1.306 testes · 0 falhas (~58 s)
 npm run build         → dist/ público, sem ADM (mode:"production", viteAdminMode:void 0)
 npm run build:admin   → dist/ com ADM (mode:"admin", viteAdminMode:"true")
 npm run preview:admin → serve dist/ em 0.0.0.0:5173
@@ -298,7 +345,8 @@ Há também `tools/verify-boss.mjs`, que pula direto para a batalha final pelo p
 ADM e observa as skills do Dragonic Overlord por N segundos, conferindo a HUD de 5
 barras (rótulo `5x` e cor verde no início), se cada skill dispara e aterra, e se o
 player parado perde vida. Última execução: **7/7 verificações**, com
-`meteors: aviso` e `meteors: impacto` no log e o HP do player caindo de 100% para 34%.
+`meteors: aviso` e `meteors: impacto` no log e o HP do player caindo de 100% para 22%
+(reexecutado depois das correções desta seção).
 
 ```bash
 node tools/verify-boss.mjs http://127.0.0.1:5173/ 80
@@ -325,7 +373,6 @@ node tools/verify-boss.mjs http://127.0.0.1:5173/ 80
   a numeração das subseções corrigida (havia dois "7.6") e este bloco de verificação
   reescrito.
 
-Arquivos alterados neste ciclo: `src/inventory/InventoryCatalog.ts` (+ teste de
-catálogo), `src/ui/LobbyScreen.test.ts`, `src/ui/RpgUiViewModel.test.ts`,
-`src/ui/CraftRewardsPresentation.test.ts`, `tools/smoke-admin.mjs` (novo),
-`package.json` (script `smoke:admin`), `ANALISE-PROJETO.md`.
+Arquivos alterados neste ciclo: `src/core/Game.ts`, `src/entities/Enemy.ts`,
+`src/core/GameFinalBossContract.test.ts`, `src/effects/BossSkillEffects.test.ts`,
+`src/entities/EnemyFreezeVisuals.test.ts` (novo) e `ANALISE-PROJETO.md`.
