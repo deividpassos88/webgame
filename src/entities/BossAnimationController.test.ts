@@ -105,6 +105,26 @@ describe('BossAnimationController', () => {
     expect(controller.play('running')).toBe(true);
   });
 
+  it('does not leave the boss in a T-pose when a skill replays the clip already active', () => {
+    const controller = new BossAnimationController(new THREE.Group(), clips());
+
+    // A garra sorteia `attack_meteors` (metade do rodízio de ataques corpo a corpo).
+    controller.playNextAttack();
+    expect(controller.activeClipName).toBe('attack_meteors');
+
+    // O meteoro reativa exatamente o mesmo clipe que já está tocando.
+    expect(controller.scheduleSkill('meteors', 1)).toBe(true);
+    const action = (controller as unknown as {
+      currentAction: THREE.AnimationAction | null;
+    }).currentAction;
+    expect(action?.getClip().name).toBe('boss:attack_meteors');
+
+    // Passado o fade, a ação precisa continuar com peso 1: peso 0 é bind pose
+    // (pose-T), que era o que aparecia quando o meteoro repetia o clipe.
+    controller.update(0.2);
+    expect(action?.getEffectiveWeight()).toBeCloseTo(1, 3);
+  });
+
   it('death cancels scheduled skills and cannot be interrupted', () => {
     const controller = new BossAnimationController(new THREE.Group(), clips());
     controller.scheduleSkill('circle', 4.2);

@@ -18,7 +18,7 @@ export function createBoss(
   visual?: RegularEnemyVisual,
   shockLightPool?: VFXLightPool | null
 ): Enemy {
-  // Dragonic Overlord: 5 barras de vida (base 1400 aumentada em 4x = 7000).
+  // Dragonic Overlord: 5 barras de vida de 1120 (total 5600).
   // Escala aumentada (3.2) para um porte intimidador e imponente.
   // As cores das 5 barras (verde, verde claro, roxo, vermelho escuro e
   // vermelho claro) sao resolvidas em ui/BossHealthView.

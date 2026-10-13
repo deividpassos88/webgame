@@ -276,7 +276,13 @@ export class BossAnimationController implements EnemyAnimator {
     next.setEffectiveWeight(1);
     next.setEffectiveTimeScale(timeScale);
     next.fadeIn(fadeDuration);
-    this.currentAction?.fadeOut(fadeDuration);
+    // Só o clipe anterior pode sair de cena. Se `next` já era o clipe atual
+    // (a garra corpo a corpo usa `attack_meteors`, o mesmo do meteoro), o
+    // `fadeOut` sobrescreveria o `fadeIn` do MESMO action e o peso iria a zero
+    // — bind pose, o "boss em pose-T" que aparecia ao soltar o meteoro.
+    if (this.currentAction && this.currentAction !== next) {
+      this.currentAction.fadeOut(fadeDuration);
+    }
     next.play();
     this.currentAction = next;
     this.currentState = state;

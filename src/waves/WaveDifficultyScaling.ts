@@ -57,10 +57,24 @@ export function equipmentHpMultiplier(armorPiecesCount: number): number {
   }
 }
 
-/** Vida base do Dragonic Overlord antes das 5 barras. */
-export const BOSS_BASE_HP = 1400;
+/**
+ * Vida base do Dragonic Overlord — ou seja, o tamanho de UMA barra.
+ *
+ * Era 1400 (5 barras = 7000). O total caiu 20% (5600) sem mexer na quantidade
+ * de barras: as 5 barras coloridas continuam existindo, cada uma valendo 1120.
+ * `resolveBossBarLayer` divide `maxHP` pelas barras, então reduzir a base é o
+ * único ponto de ajuste — nada na HUD precisa saber do novo total.
+ */
+export const BOSS_BASE_HP = 1120;
 /** Total de barras de vida do boss final (HP = base * barras). */
 export const FINAL_BOSS_HP_BARS = 5;
+
+/**
+ * Os lacaios que acompanham o boss na batalha final nascem com o dobro de vida.
+ * Vale só para a `final-battle`: as waves normais seguem a escala por wave e por
+ * equipamento definida acima.
+ */
+export const FINAL_BOSS_MINION_HP_MULTIPLIER = 2;
 
 /** Atributos base do Dragonic Overlord. */
 export const BASE_BOSS_DAMAGE = 11;
@@ -125,7 +139,7 @@ export function miniBossHpMultiplier(wave: number): number {
   return 1.5;
 }
 
-/** HP total do boss final: a base 1400 mais 4x (5 barras cheias = 7000 HP). */
+/** HP total do boss final: 5 barras de `BOSS_BASE_HP` (5 x 1120 = 5600 HP). */
 export function finalBossTotalHp(): number {
   return BOSS_BASE_HP * FINAL_BOSS_HP_BARS;
 }

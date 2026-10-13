@@ -36,7 +36,7 @@ describe('RpgUiViewModel', () => {
     expect(view.equipment.find(({ slot }) => slot === 'helmet')?.item).toBeNull();
     expect(view.equipment.find(({ slot }) => slot === 'primaryWeapon')?.item).toBeNull();
     expect(view.equipment.find(({ slot }) => slot === 'secondaryWeapon')?.item).toBeNull();
-    expect(view.backpack[0]?.item?.label).toBe('Sword Novice');
+    expect(view.backpack[0]?.item?.label).toBe('Espada do Recruta');
     expect(view.backpack[0]?.quantity).toBe(1);
     expect(view.backpack[1]?.item?.label).toBe('Cristal Rúnico');
     expect(view.backpack[1]?.quantity).toBe(4);

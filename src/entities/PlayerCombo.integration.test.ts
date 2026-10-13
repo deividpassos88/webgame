@@ -380,7 +380,9 @@ describe('Player sword combo integration', () => {
 
     expect(player.tryStartSkillAttack('triplo_ataque')).toBe(true);
     expect(player.activeWarriorAttackId).toBe('triplo_ataque');
-    player.update(0.72);
+    // A animação do Golpe Flamejante roda em 1x: os três golpes autorais
+    // (32%, 55% e 78% do clipe) só terminam de sair além dos 0,78 s.
+    player.update(0.92);
 
     expect(hits).toEqual([
       { attackId: 'triplo_ataque', hitIndex: 0 },
@@ -404,7 +406,8 @@ describe('Player sword combo integration', () => {
     });
 
     expect(player.tryStartSkillAttack('triplo_ataque')).toBe(true);
-    player.update(0.72);
+    // 1x: o último dos três golpes autorais sai depois dos 0,78 s.
+    player.update(0.92);
 
     expect(windows.map(({ hitIndex }) => hitIndex)).toEqual([0, 1, 2]);
     expect(windows[0].forward.x).toBeCloseTo(0);

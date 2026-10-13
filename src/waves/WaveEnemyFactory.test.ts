@@ -210,7 +210,7 @@ describe('createBoss compatibility', () => {
     const boss = createBoss(position);
 
     expect(boss).toMatchObject({
-      hp: 7000,
+      hp: 5600,
       damage: 11,
       detectionRange: 45,
       attackRange: 2.2,

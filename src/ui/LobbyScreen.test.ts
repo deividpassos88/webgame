@@ -1075,7 +1075,7 @@ describe('lobby character preparation', () => {
     expect(popover.classList.contains('hidden')).toBe(false);
     // The tier suffix renders in its own span, so the title reads the full name.
     expect(document.getElementById('lobby-item-actions-title')?.textContent)
-      .toBe('Sword Novice');
+      .toBe('Espada do Recruta');
     expect(store.snapshot().equipment.primaryWeapon).toBeNull();
     expect(store.snapshot().backpack).toEqual([{ itemId: 'starter-sword', quantity: 1 }]);
 

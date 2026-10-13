@@ -42,6 +42,7 @@ import { getBossHealthHudValues, resolveBossBarLayer } from '../ui/BossHealthVie
 import {
   BASE_BOSS_DAMAGE,
   BASE_BOSS_SPEED,
+  FINAL_BOSS_MINION_HP_MULTIPLIER,
   countEquippedArmorPieces,
   equipmentHpMultiplier,
   getBossEnrageStats,
@@ -249,6 +250,12 @@ export function persistVictoryReset(
 const BOSS_POST_CAST_LOCK_SECONDS = 0.6;
 /** How long a combo skill pressed a moment early stays queued. */
 const COMBO_QUEUE_SECONDS = 1.2;
+/**
+ * Onde o vórtice do Golpe Flamejante nasce, em metros à frente dos pés do
+ * herói. Fica à frente do corpo, dentro do arco de 5 m da skill, para o funil
+ * cair em cima dos inimigos que o golpe acerta.
+ */
+const WATER_VORTEX_FORWARD_METERS = 3.2;
 
 export class Game {
   private renderer: THREE.WebGLRenderer;
@@ -1711,6 +1718,8 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       const composition = getBossMinionComposition(bars);
       const roster = composition.roster.slice(0, request.regularCount);
       const spawnPoints = this.level.getFinalBattleMinionSpawnPoints(roster.length);
+      // Os lacaios do boss final aguentam o dobro: só eles, não as waves normais.
+      const minionHpMultiplier = request.hpMultiplier * FINAL_BOSS_MINION_HP_MULTIPLIER;
 
       for (let index = 0; index < roster.length; index++) {
         const variant = roster[index];
@@ -1733,7 +1742,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
           const ally = variant === 'archer'
             ? createArcherEnemy(
                 point,
-                request.hpMultiplier,
+                minionHpMultiplier,
                 request.damageMultiplier,
                 request.speedMultiplier,
                 visual,
@@ -1742,7 +1751,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
             : variant === 'guardian'
               ? createGuardianEnemy(
                   point,
-                  request.hpMultiplier,
+                  minionHpMultiplier,
                   request.damageMultiplier,
                   request.speedMultiplier,
                   visual,
@@ -1750,7 +1759,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
                 )
               : createRegularEnemy(
                   point,
-                  request.hpMultiplier,
+                  minionHpMultiplier,
                   request.damageMultiplier,
                   sequence,
                   request.speedMultiplier,
@@ -2774,9 +2783,36 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       case 'warrior-dark-flame-fan':
         this.playDarkFlameFanAttackWindow(event, effect);
         break;
+      case 'warrior-water-vortex':
+        this.playWaterVortexAttackWindow(event, effect);
+        break;
       default:
         break;
     }
+  }
+
+  /**
+   * Golpe Flamejante: UM vórtice de água por conjuração, aberto à frente do
+   * herói no instante do primeiro golpe da animação. Os outros dois golpes da
+   * skill continuam batendo normalmente — o funil é o efeito da skill inteira,
+   * não de um acerto isolado.
+   */
+  private playWaterVortexAttackWindow(
+    event: WarriorAttackWindowEvent,
+    effect: Extract<SkillVisualEffect, { kind: 'warrior-water-vortex' }>
+  ): void {
+    if (event.hitIndex !== 0) return;
+    const forward = event.forward.clone().setY(0);
+    if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
+    forward.normalize();
+
+    const position = event.origin.clone().addScaledVector(forward, WATER_VORTEX_FORWARD_METERS);
+    position.y = event.origin.y;
+    this.warriorSlashVFX.playWaterVortex({
+      position,
+      forward,
+      scale: effect.scale,
+    });
   }
 
   /**
@@ -3614,6 +3650,13 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
   }
 
   private updateBossSkills(delta: number): void {
+    // Os efeitos envelhecem SEMPRE, antes de qualquer decisão de IA. Antes,
+    // este método só chegava ao `bossEffects.update` no caminho em que o boss
+    // estava conjurando: se ele entrasse em modo `follow` (player colado) logo
+    // após um impacto, o decal do aviso e os restos da explosão ficavam
+    // congelados no chão — a "marcação vermelha que continua" depois do golpe.
+    this.bossEffects.update(delta);
+
     const boss = this.combatRegistry.mainBoss;
     if (!boss) {
       if (this.bossEncounterActive) this.stopBossSkills();
@@ -3638,6 +3681,9 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     if (!shouldUpdateBossSkills(mode)) {
       if (shouldClearBossTelegraph(mode, activeCast)) {
         this.bossSkills.reset();
+        // A skill foi cancelada: o aviso vermelho não pode continuar no chão
+        // prometendo uma explosão que não vem mais.
+        this.bossEffects.clear();
       }
       return;
     }
@@ -3669,7 +3715,6 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     if (frame.damage > 0) {
       this.onBossSkillHitPlayer(frame.damage);
     }
-    this.bossEffects.update(delta);
   }
 
   private updateMiniBossSkills(delta: number): void {

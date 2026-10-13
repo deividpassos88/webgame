@@ -8,6 +8,7 @@ import {
   equipmentHpMultiplier,
   FINAL_BOSS_HP_BARS,
   finalBossTotalHp,
+  FINAL_BOSS_MINION_HP_MULTIPLIER,
   getBossEnrageStats,
   getBossMinionComposition,
   getBossMinionTier,
@@ -106,13 +107,24 @@ describe('miniBossHpMultiplier', () => {
 });
 
 describe('finalBossTotalHp', () => {
-  it('vale 5 barras (base aumentada em 4x)', () => {
+  it('vale 5 barras de 1120 (total 5600, 20% menor que os 7000 originais)', () => {
     expect(FINAL_BOSS_HP_BARS).toBe(5);
+    expect(BOSS_BASE_HP).toBe(1120);
     expect(finalBossTotalHp()).toBe(BOSS_BASE_HP * 5);
-    expect(finalBossTotalHp()).toBe(7000);
+    expect(finalBossTotalHp()).toBe(5600);
+    // Continua sendo 5 barras: o corte de 20% é no total, não na quantidade.
+    expect(finalBossTotalHp() / FINAL_BOSS_HP_BARS).toBe(1120);
+    expect(finalBossTotalHp()).toBe(7000 * 0.8);
     expect(BASE_BOSS_DAMAGE).toBe(11);
     expect(BASE_BOSS_SPEED).toBe(1.6);
     expect(BASE_BOSS_SCALE).toBe(3.2);
+  });
+
+  it('dobra a vida só dos lacaios da batalha final', () => {
+    expect(FINAL_BOSS_MINION_HP_MULTIPLIER).toBe(2);
+    // A escala das waves normais não é afetada pelo multiplicador dos lacaios.
+    expect(regularEnemyHpMultiplier(1)).toBe(1.0);
+    expect(regularEnemyHpMultiplier(1) * FINAL_BOSS_MINION_HP_MULTIPLIER).toBe(2.0);
   });
 });
 

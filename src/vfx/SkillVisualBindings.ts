@@ -61,6 +61,12 @@ export type SkillVisualEffect =
     }
   | {
       readonly effectId: string;
+      readonly kind: 'warrior-water-vortex';
+      readonly stage: 'hit-window';
+      readonly scale: number;
+    }
+  | {
+      readonly effectId: string;
       readonly kind: 'warrior-dark-flame-fan';
       readonly stage: 'hit-window';
       readonly slashType: 'dark_flame';
@@ -94,6 +100,7 @@ const WARRIOR_ONLY_KINDS: readonly SkillVisualEffectKind[] = [
   'warrior-frost-spin-ring',
   'warrior-jump-dive',
   'warrior-flame-fan',
+  'warrior-water-vortex',
   'warrior-dark-flame-fan',
   'warrior-blade-storm',
   'warrior-impact-flash',
@@ -151,21 +158,15 @@ const PALADIN_SKILL_VISUAL_EFFECTS: Readonly<Record<WarriorSkillId, readonly Ski
         scale: 1,
       }),
     ]),
+    // Golpe Flamejante: o leque de fogo e o clarão de impacto saíram de cena.
+    // A skill agora abre UM vórtice de água/energia no ponto do golpe (o
+    // funil, os anéis, os detritos e a coroa de gotas vivem dentro dele).
     triplo_ataque: Object.freeze([
       Object.freeze({
-        effectId: 'paladin.triplo_ataque.flame-fan',
-        kind: 'warrior-flame-fan',
+        effectId: 'paladin.triplo_ataque.water-vortex',
+        kind: 'warrior-water-vortex',
         stage: 'hit-window',
-        slashType: 'flame',
         scale: 1,
-        speed: 12.5,
-      }),
-      Object.freeze({
-        effectId: 'paladin.triplo_ataque.impact-flash',
-        kind: 'warrior-impact-flash',
-        stage: 'impact',
-        scale: 1.1,
-        style: 'fire',
       }),
     ]),
     corte_duplo: Object.freeze([

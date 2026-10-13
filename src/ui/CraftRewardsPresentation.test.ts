@@ -130,7 +130,7 @@ describe('item label tier rendering', () => {
     expect(renderItemLabel('Dragonic Helmet [Common]'))
       .toBe('Dragonic Helmet<span class="item-label__tier">[Common]</span>');
     // Items without a tier stay untouched, and markup in a name is escaped.
-    expect(renderItemLabel('Sword Novice')).toBe('Sword Novice');
+    expect(renderItemLabel('Cajado Arcano')).toBe('Cajado Arcano');
     expect(renderItemLabel('Adaga <Comum> [Rare]'))
       .toBe('Adaga &lt;Comum&gt;<span class="item-label__tier">[Rare]</span>');
   });
