@@ -3494,6 +3494,14 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     const hpBeforeHit = this.player.hp;
     this.player.takeBossSkillDamage(deliveredDamage);
     this.showDamageTaken(deliveredDamage, hpBeforeHit);
+    // Observabilidade: é a única linha do log que separa o dano **da skill do
+    // boss** do dano dos lacaios da batalha final. O log de bônus de dano não
+    // serve (`getHitDamagePenalty('boss')` é 0 e ele nem é impresso), e sem isso
+    // a verificação de navegador não consegue provar que a skill acertou em vez
+    // de o player ter perdido vida para os lacaios.
+    if (this.player.hp < hpBeforeHit) {
+      Logger.info('Boss:Skill', `acertou o jogador: ${deliveredDamage.toFixed(1)} de dano.`);
+    }
     this.afterEnemyHitPlayer(hpBeforeHit, 'boss');
   }
 

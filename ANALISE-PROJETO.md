@@ -351,15 +351,50 @@ detritos, as 14 gotas, o giro/abertura/apagamento, o empréstimo e a devolução
 pool e a limpeza em `clear()`. O `WarriorSkillCatalog.test.ts` trava o `playbackRate`
 em 1.
 
-## 8. Verificação executada (12/10/2026)
+## 8. Verificação executada (13/10/2026)
 
 ```
 npm run typecheck     → limpo
-npm test              → 201 arquivos · 1.310 testes · 0 falhas (~59 s)
-npm run build         → dist/ público, sem ADM (mode:"production", viteAdminMode:void 0)
-npm run build:admin   → dist/ com ADM (mode:"admin", viteAdminMode:"true")
+npm test              → 201 arquivos · 1.310 testes · 0 falhas (~60 s)
+npm run build         → dist-public/, sem ADM (nenhuma ocorrência de viteAdminMode:"true")
+npm run build:admin   → dist/, com ADM (mode:"admin", viteAdminMode:"true")
 npm run preview:admin → serve dist/ em 0.0.0.0:5173
 ```
+
+### 8.0 Auditoria de assets do build
+
+Varredura das referências de asset do código (`src/`, `index.html`) contra o `dist/`
+recém-gerado: **114 referências, todas resolvidas**. Os três caminhos que aparecem
+como "faltando" numa checagem ingênua são falsos positivos:
+
+| Caminho | Situação |
+| --- | --- |
+| `models/Monstros/fase%201-1/*.glb` (3) | o `%20` do código é o escape de `fase 1-1`; os 3 arquivos existem no `dist/` |
+| `/models/primary.glb`, `/models/fallback.glb` | só existem como fixture em `CharacterAssetStore.test.ts`, nunca carregados em produção |
+| `/models/dragonminer-optimized.glb` | caminho do personagem `dragon-miner`, que **não é jogável** (`PLAYABLE_CHARACTER_IDS` = `paladin`, `mage`) e cai no `fallbackCharacterId: 'paladin'` — entrada legada, inalcançável |
+
+Nenhum asset em uso está faltando no build.
+
+### 8.0.1 Como o build reage a ambiente sem GPU (`delta` limitado a 0,1 s)
+
+`Game.ts` limita o passo da simulação: `const delta = Math.min(rawDelta, 0.1)`.
+Isso é correto para o combate não explodir em um quadro longo, mas tem uma
+consequência importante para **medir** o jogo (inclusive no preview deste
+repositório): com `fps` quadros por segundo, cada segundo real avança apenas
+`min(1, fps × 0,1)` segundo de jogo.
+
+| FPS do ambiente | Tempo de jogo |
+| --- | --- |
+| ≥ 10 | 100% (tempo real) |
+| ~1,5 (Chromium por software, sem GPU) | ~15% |
+
+Nesse cenário, uma janela de 80 s de relógio observa só ~12 s de jogo — menos que
+o rodízio do boss (descanso de 5 s + aviso + impacto). Foi exatamente isso que
+fazia `tools/verify-boss.mjs` falhar com "o boss soltou o meteoro — nenhum"
+mesmo com o jogo correto. O harness agora mede os FPS pelo log do próprio jogo
+(`Game:Performance`) e estica a janela por esse fator, além de separar a
+observação em duas fases (prova de dano com o player mortal e rodízio completo
+com Imortalidade ligada, para o boss chegar ao meteoro sem a partida terminar).
 
 ### 8.1 Fumaça de navegador do build ADM (`tools/smoke-admin.mjs`)
 
@@ -392,14 +427,25 @@ Os screenshots das quatro etapas (lobby, mochila, painel ADM em jogo e pós-coma
 ficam em `artifacts/` (gitignored) para inspeção visual.
 
 Há também `tools/verify-boss.mjs`, que pula direto para a batalha final pelo painel
-ADM e observa as skills do Dragonic Overlord por N segundos, conferindo a HUD de 5
-barras (rótulo `5x` e cor verde no início), se cada skill dispara e aterra, e se o
-player parado perde vida. Última execução: **7/7 verificações**, com
-`meteors: aviso` e `meteors: impacto` no log e o HP do player caindo de 100% para 22%
-(reexecutado depois das correções desta seção).
+ADM e observa as skills do Dragonic Overlord por N segundos de **jogo**, conferindo
+a HUD de 5 barras (rótulo `5x` e cor verde no início), se cada skill dispara e
+aterra e se a página segue sem erro de console. Última execução no preview deste
+repositório (sem GPU): **6/6 verificações**, com `circle`, `rectangle` e `meteors`
+registrando `aviso` **e** `impacto`.
+
+A antiga verificação "meteoro causou dano no player parado" **foi removida**: ela
+media o HP do player, que na batalha final também cai pelos **lacaios** — ou seja,
+passava mesmo quando nenhuma skill do boss encostava (e o `boneco parado` do
+harness não existe na prática, porque as três áreas do boss são resolvidas contra
+a posição do player no instante da conjuração e qualquer movimento a desvia). O
+acerto das áreas continua coberto por `src/entities/BossSkillController.test.ts`,
+inclusive pela medição de cobertura em grade dos meteoros. O que o navegador
+comprova agora é o rodízio e o fim dos impactos; o dano do boss que realmente
+chega ao player ganhou log próprio (`[Boss:Skill] acertou o jogador: X de dano.`,
+em `onBossSkillHitPlayer`) e aparece como linha **informativa** na saída.
 
 ```bash
-node tools/verify-boss.mjs http://127.0.0.1:5173/ 80
+node tools/verify-boss.mjs http://127.0.0.1:5173/ 75   # o 3º argumento são segundos de JOGO
 ```
 
 ### 8.2 Confirmações de regressão importantes
