@@ -250,6 +250,12 @@ export function persistVictoryReset(
 const BOSS_POST_CAST_LOCK_SECONDS = 0.6;
 /** How long a combo skill pressed a moment early stays queued. */
 const COMBO_QUEUE_SECONDS = 1.2;
+/**
+ * Onde o vórtice do Golpe Flamejante nasce, em metros à frente dos pés do
+ * herói. Fica à frente do corpo, dentro do arco de 5 m da skill, para o funil
+ * cair em cima dos inimigos que o golpe acerta.
+ */
+const WATER_VORTEX_FORWARD_METERS = 3.2;
 
 export class Game {
   private renderer: THREE.WebGLRenderer;
@@ -2777,9 +2783,36 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       case 'warrior-dark-flame-fan':
         this.playDarkFlameFanAttackWindow(event, effect);
         break;
+      case 'warrior-water-vortex':
+        this.playWaterVortexAttackWindow(event, effect);
+        break;
       default:
         break;
     }
+  }
+
+  /**
+   * Golpe Flamejante: UM vórtice de água por conjuração, aberto à frente do
+   * herói no instante do primeiro golpe da animação. Os outros dois golpes da
+   * skill continuam batendo normalmente — o funil é o efeito da skill inteira,
+   * não de um acerto isolado.
+   */
+  private playWaterVortexAttackWindow(
+    event: WarriorAttackWindowEvent,
+    effect: Extract<SkillVisualEffect, { kind: 'warrior-water-vortex' }>
+  ): void {
+    if (event.hitIndex !== 0) return;
+    const forward = event.forward.clone().setY(0);
+    if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
+    forward.normalize();
+
+    const position = event.origin.clone().addScaledVector(forward, WATER_VORTEX_FORWARD_METERS);
+    position.y = event.origin.y;
+    this.warriorSlashVFX.playWaterVortex({
+      position,
+      forward,
+      scale: effect.scale,
+    });
   }
 
   /**

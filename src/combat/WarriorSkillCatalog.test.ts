@@ -67,7 +67,8 @@ describe('WarriorSkillCatalog', () => {
 
   it('accelerates only Mage animations and preserves combat balance for both classes', () => {
     expect(WARRIOR_SKILLS.map(({ magePlaybackRate }) => magePlaybackRate)).toEqual([1.8, 1.8, 2.1, 1.8, 1.9]);
-    expect(WARRIOR_SKILLS.map(({ playbackRate }) => playbackRate)).toEqual([1.1, 1.1, 1, 1.1, 1.2]);
+    // Golpe Flamejante roda em 1x: a animação normal, sem aceleração nenhuma.
+    expect(WARRIOR_SKILLS.map(({ playbackRate }) => playbackRate)).toEqual([1.1, 1.1, 1, 1, 1.2]);
     expect(WARRIOR_SKILLS.map(({ energyCost }) => energyCost)).toEqual([8, 10, 14, 18, 16]);
     expect(WARRIOR_SKILLS.map(({ id }) => warriorSkillCooldown(id, 'mage'))).toEqual([6, 8, 10, 12, 14]);
     expect(WARRIOR_SKILLS.map(({ id }) => warriorSkillDamageMultiplier(id, 'mage'))).toEqual([1.5, 1.7, 2, 2.3, 2.6]);

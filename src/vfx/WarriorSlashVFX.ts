@@ -19,6 +19,11 @@ import {
   createGlacialCrystalResources,
   type GlacialCrystalResources,
 } from './warrior/GlacialCrystalsVFX';
+import {
+  WaterVortexEffect,
+  type WaterVortexOptions,
+  type WaterVortexShakeRequest,
+} from './warrior/WaterVortexVFX';
 
 export interface WarriorSlashPlayOptions {
   readonly position: THREE.Vector3;
@@ -29,6 +34,8 @@ export interface WarriorSlashPlayOptions {
   /** Só há clarão de impacto no fim do rastro quando o golpe realmente acerta alguém. */
   readonly hasImpact?: boolean;
 }
+
+export type WarriorWaterVortexOptions = WaterVortexOptions;
 
 export interface WarriorTravelingSlashOptions {
   readonly start: THREE.Vector3;
@@ -2114,6 +2121,8 @@ export class WarriorSlashVFX {
   private readonly activeVerticalArcs: WarriorVerticalArcEffect[] = [];
   private readonly jumpDivePool: VFXPool<WarriorJumpDiveEffect>;
   private readonly activeJumpDive: WarriorJumpDiveEffect[] = [];
+  private readonly waterVortexPool: VFXPool<WaterVortexEffect>;
+  private readonly activeWaterVortex: WaterVortexEffect[] = [];
   private readonly cameraShake = new CameraShake();
   /**
    * Efeitos modulares do guerreiro em um group próprio que o Game adiciona na
@@ -2155,6 +2164,12 @@ export class WarriorSlashVFX {
       () => new WarriorJumpDiveEffect(this.resources, lightPool),
       6
     );
+    // O vórtice do Golpe Flamejante é grande e raro (recarga de 12 s): três
+    // instâncias simultâneas já cobrem qualquer encadeamento de combo.
+    this.waterVortexPool = new VFXPool(
+      () => new WaterVortexEffect(this.resources, lightPool),
+      3
+    );
   }
 
   /**
@@ -2182,6 +2197,19 @@ export class WarriorSlashVFX {
     effect.play(options);
     this.scene.add(effect.group);
     this.activeJumpDive.push(effect);
+  }
+
+  /**
+   * Golpe Flamejante: VÓRTICE DE ÁGUA no ponto do golpe. Substitui por
+   * completo o leque de fogo que a skill usava — as fitas em espiral, os
+   * anéis empilhados, os detritos e a coroa de gotas nascem todos aqui.
+   */
+  public playWaterVortex(options: WarriorWaterVortexOptions): void {
+    const effect = this.waterVortexPool.acquire();
+    if (!effect) return;
+    effect.play(options);
+    this.scene.add(effect.group);
+    this.activeWaterVortex.push(effect);
   }
 
   public play(options: WarriorSlashPlayOptions): void {
@@ -2372,6 +2400,15 @@ export class WarriorSlashVFX {
       this.jumpDivePool.release(dive);
       this.activeJumpDive.splice(i, 1);
     }
+    for (let i = this.activeWaterVortex.length - 1; i >= 0; i--) {
+      const vortex = this.activeWaterVortex[i];
+      const alive = vortex.update(delta);
+      const shake: WaterVortexShakeRequest | null = vortex.consumeImpactShake();
+      if (shake) this.cameraShake.add(shake.intensity, shake.duration);
+      if (alive) continue;
+      this.waterVortexPool.release(vortex);
+      this.activeWaterVortex.splice(i, 1);
+    }
   }
 
   public applyCameraShake(camera: THREE.Camera, delta: number): void {
@@ -2394,6 +2431,8 @@ export class WarriorSlashVFX {
     this.activeVerticalArcs.length = 0;
     for (const e of this.activeJumpDive) this.jumpDivePool.release(e);
     this.activeJumpDive.length = 0;
+    for (const e of this.activeWaterVortex) this.waterVortexPool.release(e);
+    this.activeWaterVortex.length = 0;
     this.cameraShake.clear();
   }
 
@@ -2408,6 +2447,7 @@ export class WarriorSlashVFX {
     this.glacialResources.dispose();
     this.verticalArcPool.dispose();
     this.jumpDivePool.dispose();
+    this.waterVortexPool.dispose();
     this.resources.quad.dispose();
     this.resources.ring.dispose();
     this.resources.softGlow.dispose();
@@ -2422,6 +2462,7 @@ export class WarriorSlashVFX {
       + this.activeSpin.length
       + this.activeGlacial.length
       + this.activeVerticalArcs.length
-      + this.activeJumpDive.length;
+      + this.activeJumpDive.length
+      + this.activeWaterVortex.length;
   }
 }

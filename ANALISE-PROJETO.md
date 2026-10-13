@@ -17,8 +17,8 @@ Não há servidor de jogo: tudo roda no cliente e o progresso é salvo em
 | Arquivos TypeScript | 387 (`src/**/*.ts`) |
 | Linhas de código (sem testes) | **46.845** |
 | Linhas de testes | **24.793** |
-| Arquivos de teste | 200 |
-| Testes | **1.306**, 100% verdes |
+| Arquivos de teste | 201 |
+| Testes | **1.310**, 100% verdes |
 | Dependências de runtime | apenas `three` |
 | Assets em `public/` | 289 arquivos, **187 MB** |
 | Build de produção (`dist/`) | **190 MB** |
@@ -64,7 +64,8 @@ em português explicando decisões de produto.
   combo, status elemental, medidor de fadiga, dano por distância e projéteis.
 - **Skills:** catálogo por classe com custo de energia, cooldown e efeitos visuais
   exclusivos por skill (`SkillVisualBindings`) — Mage usa feitiços water/ice/
-  lightning/laser/lava, Guerreiro usa slashes, tornado e mergulho.
+  lightning/laser/lava, Guerreiro usa slashes, tornado e mergulho. O Golpe
+  Flamejante do Guerreiro abre um vórtice de água (ver 7.10).
 - **Waves e boss:** 6 waves com escalonamento por dificuldade e multiplicador de
   equipamento, mini-boss, boss final com múltiplas barras de HP e skills próprias.
   O Dragonic Overlord alterna três skills — círculo, retângulo e chuva de 30
@@ -301,11 +302,60 @@ fonte: exatamente **um** `bossEffects.update(delta)` em `updateBossSkills`, ante
 `if (!shouldUpdateBossSkills(mode))`, e o desvio de cancelamento com
 `bossSkills.reset()` + `bossEffects.clear()`.
 
+### 7.10 Golpe Flamejante: vórtice de água + animação em 1x (13/10/2026)
+
+A skill **Golpe Flamejante** (Guerreiro, tecla 4) foi refeita por pedido do design: a
+referência é a imagem de um **vórtice de água/energia azul**. As outras skills do
+Guerreiro e a Maga **não foram tocadas** — a Maga segue com o feitiço laser dela
+nessa tecla.
+
+**O que mudou**
+
+| Item | Antes | Agora |
+| --- | --- | --- |
+| Efeito | leque de fogo + rastro de lâmina + clarão de fogo | **vórtice de água** único |
+| Animação | `playbackRate: 1,1` (acelerada) | **`playbackRate: 1`** (normal, 1x) |
+| Clarão de impacto | `fire`, escala 1,1 | removido (o vórtice é o efeito todo) |
+
+**Como o vórtice é montado** (`src/vfx/warrior/WaterVortexVFX.ts`, novo):
+
+- **3 fitas helicoidais** em cone invertido (larga na boca, ponta fina no chão), com
+  shader próprio: fio de luz no meio da fita, azul profundo nas bordas e estrias de
+  correnteza que sobem a espiral.
+- **5 anéis empilhados** (torus) com clearance correndo pelo aro e fase própria por
+  anel — é o empilhado luminoso da imagem.
+- **Espelho d'água** no topo: dois discos com anéis concêntricos girando, **aro aceso
+  em volta do olho** e centro escuro.
+- **Camadas de sombra** (blending normal, o que o aditivo não consegue fazer): o miolo
+  do olho, os vãos entre as fitas do funil, os vãos entre os anéis do disco, a borda
+  externa e a piscina escura no chão.
+- **10 detritos** azul-marinho em órbitas próprias, girando e tombando (as pedras da
+  imagem), iluminados pela luz do vórtice.
+- **Coroa de gotas**: 14 sprites com física simples (sobem, abrem e caem) + spray ciano
+  em jatos que sobem em espiral.
+- **1 luz azul** do pool compartilhado (`VFXLightPool`) e um tremor de câmera curto e
+  discreto no impacto.
+- Ciclo de vida: pop-in de 0,16 s, giro cheio de 1,15 s e apagamento de 0,42 s
+  (~1,73 s no total), tudo em pool (máximo de 3 instâncias simultâneas).
+
+**Onde ele nasce:** um vórtice por conjuração, no **primeiro golpe autoral** da
+animação, 3,2 m à frente do herói (`WATER_VORTEX_FORWARD_METERS`), dentro do arco de
+5 m da skill. Os outros dois golpes continuam ferindo normalmente — o funil é o efeito
+da skill inteira, não de um acerto isolado.
+
+**Regressão travada:** o teste `src/vfx/SkillVisualBindings.test.ts` agora exige que a
+skill tenha **um único** efeito (`warrior-water-vortex`) e que o estilo de clarão
+`fire` não pertença a mais ninguém; `src/vfx/WaterVortexVFX.test.ts` (novo, 4 casos)
+confere as 3 fitas, os 5 anéis, os dois espelhos d'água com as suas sombras, os 10
+detritos, as 14 gotas, o giro/abertura/apagamento, o empréstimo e a devolução da luz ao
+pool e a limpeza em `clear()`. O `WarriorSkillCatalog.test.ts` trava o `playbackRate`
+em 1.
+
 ## 8. Verificação executada (12/10/2026)
 
 ```
 npm run typecheck     → limpo
-npm test              → 200 arquivos · 1.306 testes · 0 falhas (~58 s)
+npm test              → 201 arquivos · 1.310 testes · 0 falhas (~59 s)
 npm run build         → dist/ público, sem ADM (mode:"production", viteAdminMode:void 0)
 npm run build:admin   → dist/ com ADM (mode:"admin", viteAdminMode:"true")
 npm run preview:admin → serve dist/ em 0.0.0.0:5173

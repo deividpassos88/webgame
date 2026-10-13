@@ -62,7 +62,9 @@ describe('SkillVisualBindings', () => {
     expect(kinds('ataque_giratorio')).not.toContain('warrior-frost-spin-ring');
     expect(kinds('ataque_giratorio_2')).not.toContain('warrior-spin-ring');
     expect(kinds('pulo_atacando')).toEqual(['warrior-jump-dive']);
-    expect(kinds('triplo_ataque')).toContain('warrior-flame-fan');
+    // Golpe Flamejante trocou o leque de fogo pelo vórtice de água: a skill
+    // tem UM efeito só, e é ele.
+    expect(kinds('triplo_ataque')).toEqual(['warrior-water-vortex']);
     expect(kinds('corte_duplo')).toContain('warrior-dark-flame-fan');
     expect(kinds('corte_duplo')).toContain('warrior-blade-storm');
 
@@ -75,7 +77,8 @@ describe('SkillVisualBindings', () => {
         flashes.set(effect.style, effect.scale);
       }
     }
-    expect([...flashes.keys()].sort()).toEqual(['dark_flame', 'fire', 'frost', 'plain']);
+    // O clarão de fogo saiu junto com o leque do Golpe Flamejante.
+    expect([...flashes.keys()].sort()).toEqual(['dark_flame', 'frost', 'plain']);
   });
 
   it('separates the effects by stage of the skill', () => {

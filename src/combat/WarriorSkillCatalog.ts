@@ -87,7 +87,9 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     element: 'fire',
     energyCost: 18,
     cooldown: 12,
-    playbackRate: 1.1,
+    // Animação em velocidade normal (1x): a skill toca exatamente como o clipe
+    // foi autorado; quem acelera é só o combo empoderado.
+    playbackRate: 1,
     magePlaybackRate: 1.8,
     area: getWarriorSkillArea('triplo_ataque'),
   },
