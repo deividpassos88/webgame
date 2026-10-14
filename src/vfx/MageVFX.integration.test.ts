@@ -266,7 +266,11 @@ describe('MageVFX full spell architecture', () => {
         expect(diagnostics.activeProjectiles + diagnostics.pooledProjectiles).toBe(0);
         expect(diagnostics.activeBarriers + diagnostics.pooledBarriers).toBe(0);
         expect(impacts).toBe(1);
-      } else if (spellId === 'laser' || spellId === 'radiant_laser') {
+      } else if (spellId === 'radiant_laser') {
+        // Laser Rajante: módulo premium exclusivo (não usa o LaserVFX genérico).
+        expect(diagnostics.activeRadiantLasers + diagnostics.pooledRadiantLasers).toBeGreaterThan(0);
+        expect(impacts).toBeGreaterThan(0);
+      } else if (spellId === 'laser') {
         expect(diagnostics.activeLasers + diagnostics.pooledLasers).toBeGreaterThan(0);
         expect(impacts).toBeGreaterThan(0);
       } else {

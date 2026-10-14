@@ -10,6 +10,8 @@ export const MAGE_VFX_LIMITS = Object.freeze({
   maxTemporaryLights: 8,
   maxLightning: 8,
   maxLasers: 4,
+  /** Lasers Rajantes (skill 4 da Maga) simultâneos. */
+  maxRadiantLasers: 2,
   maxBarriers: 3,
   /** Impactos de chão simultâneos das skills 1 e 2 da Maga. */
   maxGroundDecals: 6,

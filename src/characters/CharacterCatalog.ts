@@ -49,6 +49,13 @@ export interface CharacterDefinition {
   attackClipMap?: Partial<Record<WarriorAttackId, string>>;
   fallbackModelPath?: string;
   inPlaceAxes?: readonly RootMotionAxis[];
+  /**
+   * Override de `inPlaceAxes` POR CLIP, chaveado pelo nome autoral do clip no
+   * GLB. Um clip listado aqui usa o próprio conjunto de eixos travados no
+   * lugar do padrão do personagem (ex.: o 'ataque laser' da Maga mantém o
+   * pulo autoral da raiz enquanto os demais clips seguem 100% no lugar).
+   */
+  inPlaceAxesByClip?: Readonly<Partial<Record<string, readonly RootMotionAxis[]>>>;
   animationTimeScale?: Partial<Record<CharacterAnimationState, number>>;
   /**
    * By default root-motion axes are pinned to the first frame of the reference
@@ -137,6 +144,14 @@ export const CHARACTERS: readonly CharacterDefinition[] = [
     // and lifts the skinned mesh above the lobby when played as-is. Lock every
     // root component to the bind/rest position so only the pose animation moves.
     inPlaceAxes: ['x', 'y', 'z'],
+    inPlaceAxesByClip: {
+      // 'ataque laser' traz um PULO autoral na raiz: a Maga sobe ~0,26 m no
+      // mundo (gameScale 2.25) e volta no fim do clip. Só esse clip libera o Y
+      // para o salto aparecer; X/Z continuam presos para ela não deslizar.
+      // Os demais clips seguem com os três eixos travados — o de corrida tem
+      // root motion quebrado no Y (179 unidades) e voaria se solto.
+      'ataque laser': ['x', 'z'],
+    },
     rootMotionReference: 'rest-pose',
     clipMap: {
       idle: 'idle',

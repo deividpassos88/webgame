@@ -369,8 +369,17 @@ describe('resolveCharacterClips', () => {
       'triplo_ataque',
       'corte_duplo',
     ]);
-    for (const clip of Object.values(attacks)) {
+    for (const [attackId, clip] of Object.entries(attacks)) {
       const track = clip?.tracks.find((candidate) => candidate.name === 'mixamorig:Hips.position');
+      if (attackId === 'triplo_ataque') {
+        // 'ataque laser' mantém o Y autoral (o pulo da Maga no Laser Rajante);
+        // só X/Z seguem pinados na rest pose.
+        expect(Array.from(track?.values ?? [])).toEqual([
+          Math.fround(rest.x), Math.fround(-1.16), Math.fround(rest.z),
+          Math.fround(rest.x), 6, Math.fround(rest.z),
+        ]);
+        continue;
+      }
       expect(Array.from(track?.values ?? [])).toEqual([
         Math.fround(rest.x), Math.fround(rest.y), Math.fround(rest.z),
         Math.fround(rest.x), Math.fround(rest.y), Math.fround(rest.z),
@@ -477,5 +486,47 @@ describe('resolveCharacterClips', () => {
     expect(Array.from(attackPosition?.values ?? [])).toEqual([
       10, 20, 30, 10, 20, 31,
     ]);
+  });
+});
+
+describe('root motion por clip da Maga (pulo do Laser Rajante)', () => {
+  it('libera só o Y do ataque laser e mantém todos os outros clips 100% no lugar', () => {
+    const animations: Record<CharacterId, THREE.AnimationClip[]> = {
+      'dragon-miner': [],
+      paladin: [],
+      mage: [
+        // O idle ancora o X/Y/Z de referência (-1 em Y).
+        clipWithRootMotion('idle', [0, -1, 0], [0, -1, 0]),
+        // 'ataque laser' traz o pulo autoral: Y vai de -1 até 9.
+        clipWithRootMotion('ataque laser', [1, -1, -2], [2, 9, -3]),
+        // Outros ataques têm a mesma variação, mas devem ficar achatados.
+        clipWithRootMotion('ataque de larva', [1, -1, -2], [2, 9, -3]),
+      ],
+    };
+    const source: CharacterAnimationSource = {
+      getAnimations: (id) => animations[id],
+      getBoneNames: () => new Set(['mixamorig:Hips']),
+      getBoneRestRotations: () => new Map(),
+      getBoneRestTranslations: () => new Map(),
+    };
+
+    const attacks = resolveWarriorAttackClips('mage', source);
+    const laserHips = attacks.triplo_ataque?.tracks.find(
+      (track) => track.name === 'mixamorig:Hips.position'
+    );
+    // X/Z travados no idle; Y autoral preservado — é o pulo que o jogador vê.
+    expect(Array.from(laserHips?.values ?? [])).toEqual([0, -1, 0, 0, 9, 0]);
+
+    const larvaHips = attacks.corte_duplo?.tracks.find(
+      (track) => track.name === 'mixamorig:Hips.position'
+    );
+    expect(Array.from(larvaHips?.values ?? [])).toEqual([0, -1, 0, 0, -1, 0]);
+
+    // Clips de estado continuam com os três eixos travados.
+    const states = resolveCharacterClips('mage', source);
+    const idleHips = states.idle?.tracks.find(
+      (track) => track.name === 'mixamorig:Hips.position'
+    );
+    expect(Array.from(idleHips?.values ?? [])).toEqual([0, -1, 0, 0, -1, 0]);
   });
 });

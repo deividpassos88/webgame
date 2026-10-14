@@ -125,7 +125,7 @@ export function resolveCharacterClips(
         clip,
         characterId,
         state,
-        definition.inPlaceAxes,
+        definition.inPlaceAxesByClip?.[clip.name] ?? definition.inPlaceAxes,
         idleReferenceClip,
         rootRestTranslations
       );
@@ -190,8 +190,9 @@ export function resolveWarriorAttackClips(
     const clipName = definition.attackClipMap?.[attackId] ?? attackId;
     const clip = findExact(nativeClips, clipName);
     if (!clip) continue;
-    const prepared = definition.inPlaceAxes
-      ? makeClipInPlace(clip, definition.inPlaceAxes, idleReferenceClip, rootRestTranslations)
+    const inPlaceAxes = definition.inPlaceAxesByClip?.[clip.name] ?? definition.inPlaceAxes;
+    const prepared = inPlaceAxes
+      ? makeClipInPlace(clip, inPlaceAxes, idleReferenceClip, rootRestTranslations)
       : clip.clone();
     prepared.name = `${characterId}:attack:${attackId}`;
     result[attackId] = prepared;

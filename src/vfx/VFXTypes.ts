@@ -229,6 +229,9 @@ export interface MageVFXDiagnostics {
   readonly pooledLightning: number;
   readonly activeLasers: number;
   readonly pooledLasers: number;
+  /** Lasers Rajantes (skill 4 da Maga) — módulo premium exclusivo dela. */
+  readonly activeRadiantLasers: number;
+  readonly pooledRadiantLasers: number;
   readonly activeBarriers: number;
   readonly pooledBarriers: number;
   readonly activeWaterCharges: number;

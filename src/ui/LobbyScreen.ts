@@ -291,7 +291,7 @@ function buildLobbySkillTip(
     : playerClass === 'mage' && skillId === 'pulo_atacando'
     ? 'Barreira de trovão em volta da Maga: quem estiver perto leva dano e nenhum monstro consegue atravessá-la enquanto ela dura.'
     : playerClass === 'mage' && skillId === 'triplo_ataque'
-    ? 'Laser Rajante da Maga: um feixe de energia carmesim dispara da ponta do cajado e explode numa descarga elétrica sobre o alvo.'
+    ? 'Laser Rajante da Maga: ela se ergue em um salto e dispara um feixe de energia carmesim, com raios elétricos, fagulhas e uma explosão de luz sobre o alvo.'
     : playerClass === 'mage' && skillId === 'corte_duplo'
     ? 'Apenas a animação do personagem: o corte não tem efeitos especiais.'
     : SKILL_TIP_DESCRIPTIONS[skillId];

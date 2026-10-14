@@ -5,6 +5,7 @@ import { CameraShake } from './CameraShake';
 import { DEFAULT_MAGE_VFX_QUALITY, MAGE_SPELL_PRESETS, MAGE_VFX_LIMITS, mageQualityProfile } from './VFXConfig';
 import { ImpactVFX } from './ImpactVFX';
 import { LaserVFX } from './LaserVFX';
+import { RadiantCastAura, RadiantLaserVFX } from './RadiantLaserVFX';
 import { LightningVFX } from './LightningVFX';
 import { WaterDragonVFX, type WaterDragonChargeHandle } from './water/WaterDragonVFX';
 import { BARRIER_LIGHTNING_SECONDS, ThunderVFX, type ThunderChargeHandle } from './thunder/ThunderVFX';
@@ -564,6 +565,9 @@ export class MageVFX {
   private readonly waterDragon: WaterDragonVFX;
   private readonly thunder: ThunderVFX;
   private readonly lasers: LaserVFX;
+  /** Laser Rajante (skill 4 da Maga): módulo premium exclusivo dela. */
+  private readonly radiantLasers: RadiantLaserVFX;
+  private readonly radiantAura: RadiantCastAura;
   private readonly impacts: ImpactVFX;
   private readonly magicCircles: MagicCircleVFX;
   private readonly iceWave: IceCrystalWaveVFX;
@@ -601,6 +605,9 @@ export class MageVFX {
     this.waterDragon = new WaterDragonVFX(scene, this.resources, this.lightPool, this.quality);
     this.thunder = new ThunderVFX(scene, this.resources, this.lightPool, this.quality);
     this.lasers = new LaserVFX(scene, this.resources, this.quality, this.lightPool);
+    this.radiantLasers = new RadiantLaserVFX(scene, this.resources, this.quality, this.lightPool);
+    this.radiantAura = new RadiantCastAura(this.resources, this.quality);
+    this.scene.add(this.radiantAura.group);
     this.impacts = new ImpactVFX(scene, this.resources, this.quality, this.lightPool);
     this.magicCircles = new MagicCircleVFX(this.resources);
     this.iceWave = new IceCrystalWaveVFX(scene, this.resources.softGlow, this.lightPool);
@@ -669,6 +676,8 @@ export class MageVFX {
     this.waterDragon.update(elapsed);
     this.thunder.update(elapsed * JUIZO_SPEED);
     this.lasers.update(elapsed);
+    this.radiantLasers.update(elapsed);
+    this.radiantAura.update(elapsed);
     this.impacts.update(elapsed);
     this.magicCircles.update(elapsed);
     this.iceWave.update(elapsed);
@@ -689,6 +698,8 @@ export class MageVFX {
     this.waterDragon.clear();
     this.thunder.clear();
     this.lasers.clear();
+    this.radiantLasers.clear();
+    this.radiantAura.clear();
     this.impacts.clear();
     this.magicCircles.clear();
     this.iceWave.clear();
@@ -705,6 +716,8 @@ export class MageVFX {
     this.waterDragon.dispose();
     this.thunder.dispose();
     this.lasers.dispose();
+    this.radiantLasers.dispose();
+    this.radiantAura.dispose();
     this.impacts.dispose();
     this.magicCircles.dispose();
     this.iceWave.dispose();
@@ -786,6 +799,7 @@ export class MageVFX {
           }
           const deliveryActive = diagnostics.activeProjectiles
             + diagnostics.activeLasers
+            + diagnostics.activeRadiantLasers
             + diagnostics.activeLightning
             + diagnostics.activeWaterStrikes;
           if (!compiledStage.delivery && deliveryActive > 0) {
@@ -877,6 +891,8 @@ export class MageVFX {
       pooledLightning: this.lightning.pooledCount,
       activeLasers: this.lasers.activeCount,
       pooledLasers: this.lasers.pooledCount,
+      activeRadiantLasers: this.radiantLasers.activeCount,
+      pooledRadiantLasers: this.radiantLasers.pooledCount,
       activeBarriers: this.activeBarriers.length,
       pooledBarriers: this.barriers.inactiveCount,
       activeWaterCharges: this.waterDragon.activeCharges,
@@ -960,6 +976,10 @@ export class MageVFX {
     charge.setWorldPosition(this.resolveCastSocketWorldPosition(cast, this.resolveHand(cast), TMP_WORLD));
     this.scene.add(charge.group);
     cast.charge = charge;
+    // Laser Rajante: chamas magenta/roxeas envolvendo a Maga durante o cast.
+    if (cast.preset.id === 'radiant_laser') {
+      this.radiantAura.begin(cast.context.caster);
+    }
   }
 
   private spawnSecondaryCharge(cast: ActiveMageCast): void {
@@ -1022,7 +1042,7 @@ export class MageVFX {
     // hand hid the cast pose and lingered after the Mage started moving.
     // No gelo (skill 2) o clarão de saída também sai: o único visual do
     // disparo é a onda de cristais irrompendo do chão.
-    if (!bullet && cast.preset.style !== 'lightning' && cast.preset.style !== 'ice') {
+    if (!bullet && cast.preset.style !== 'lightning' && cast.preset.style !== 'ice' && cast.preset.id !== 'radiant_laser') {
       this.impacts.play({
         position: origin,
         preset: cast.preset,
@@ -1076,6 +1096,28 @@ export class MageVFX {
     if (cast.preset.delivery === 'beam') {
       const aimed = this.resolveTargetPoint(cast, origin, direction, MAGE_SPELL_TRAVEL_METERS);
       const stopped = this.stopOnBody(cast, origin, aimed);
+      // Laser Rajante: módulo premium exclusivo (5 camadas de feixe, raios
+      // elétricos grossos, fagulhas densas, anel de choque e resíduo elétrico).
+      if (cast.preset.id === 'radiant_laser') {
+        this.radiantLasers.fire({
+          startProvider: (output) => this.resolveCastSocketWorldPosition(cast, this.resolveHand(cast), output),
+          fallbackStart: origin,
+          target: stopped.target,
+          fallbackDirection: direction,
+          preset: cast.preset,
+          caster: cast.context.caster,
+          isTargetAlive: cast.context.isTargetAlive,
+          queryBodyHit: cast.context.queryBodyHit,
+          onImpact: (target) => this.handleDirectImpact(
+            this.bodyImpactPoint(target, aimed),
+            cast,
+            target,
+            direction
+          ),
+          onFinalImpact: (position, target) => this.handleDirectImpact(position, cast, target, direction),
+        });
+        return;
+      }
       this.lasers.fire({
         startAnchor: null,
         startProvider: (output) => this.resolveCastSocketWorldPosition(cast, this.resolveHand(cast), output),
@@ -1185,7 +1227,7 @@ export class MageVFX {
         // Skill 2 (gelo): o acerto é desenhado pelo cristal-herói da onda — a
         // explosão antiga ficava sobreposta a ele. Mantém o tremor de câmera
         // e o som; só o desenho antigo sai.
-        if (cast.preset.delivery !== 'water-column' && cast.preset.id !== 'lightning' && cast.preset.style !== 'ice') this.impacts.play({
+        if (cast.preset.delivery !== 'water-column' && cast.preset.id !== 'lightning' && cast.preset.style !== 'ice' && cast.preset.id !== 'radiant_laser') this.impacts.play({
           position: impactPoint,
           preset: cast.preset,
           // Sem a direção do projétil (raio, laser, queda do alvo) o impacto usa
