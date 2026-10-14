@@ -194,9 +194,13 @@ const PALADIN_SKILL_VISUAL_EFFECTS: Readonly<Record<WarriorSkillId, readonly Ski
   });
 
 /**
- * Maga: cada skill tem o SEU feitiço (água, gelo, raio, laser, lava). Nenhum
- * efeito do kit do Guerreiro entra aqui — o rastro/anel de lâmina é exclusivo
- * dele, assim como o feitiço é exclusivo dela.
+ * Maga: cada skill tem o SEU feitiço (água, gelo, raio). Nenhum efeito do kit
+ * do Guerreiro entra aqui — o rastro/anel de lâmina é exclusivo dele, assim
+ * como o feitiço é exclusivo dela.
+ *
+ * Golpe Flamejante e Corte Duplo da Maga ficaram SEM feitiço: o Laser e a
+ * Lava saíram de cena e o que resta é apenas a animação do personagem, em
+ * velocidade normal (1x).
  */
 const MAGE_SKILL_VISUAL_EFFECTS: Readonly<Record<WarriorSkillId, readonly SkillVisualEffect[]>> =
   Object.freeze({
@@ -224,22 +228,12 @@ const MAGE_SKILL_VISUAL_EFFECTS: Readonly<Record<WarriorSkillId, readonly SkillV
         spellId: 'lightning',
       }),
     ]),
-    triplo_ataque: Object.freeze([
-      Object.freeze({
-        effectId: 'mage.triplo_ataque.laser-spell',
-        kind: 'mage-spell',
-        stage: 'cast',
-        spellId: 'laser',
-      }),
-    ]),
-    corte_duplo: Object.freeze([
-      Object.freeze({
-        effectId: 'mage.corte_duplo.lava-spell',
-        kind: 'mage-spell',
-        stage: 'cast',
-        spellId: 'lava',
-      }),
-    ]),
+    // Golpe Flamejante da Maga: o Laser saiu de cena. Só a animação do
+    // personagem toca, sem nenhum efeito visual.
+    triplo_ataque: Object.freeze([]),
+    // Corte Duplo da Maga: a Lava saiu de cena. Só a animação do personagem
+    // toca, sem nenhum efeito visual.
+    corte_duplo: Object.freeze([]),
   });
 
 export const SKILL_VISUAL_EFFECTS: Readonly<

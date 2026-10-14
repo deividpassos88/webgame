@@ -90,7 +90,9 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     // Animação em velocidade normal (1x): a skill toca exatamente como o clipe
     // foi autorado; quem acelera é só o combo empoderado.
     playbackRate: 1,
-    magePlaybackRate: 1.8,
+    // Maga: sem feitiço (Laser saiu de cena) e o cast também toca em 1x —
+    // apenas a animação do personagem, sem efeitos.
+    magePlaybackRate: 1,
     area: getWarriorSkillArea('triplo_ataque'),
   },
   {
@@ -108,7 +110,9 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     mageDamageMultiplier: 2.6,
     mageElement: null,
     playbackRate: 1.2,
-    magePlaybackRate: 1.9,
+    // Maga: sem feitiço (Lava saiu de cena) e o cast toca em 1x — apenas a
+    // animação do personagem, sem efeitos.
+    magePlaybackRate: 1,
     area: getWarriorSkillArea('corte_duplo'),
   },
 ] as const;

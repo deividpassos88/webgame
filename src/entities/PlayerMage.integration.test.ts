@@ -300,27 +300,34 @@ describe('Mage gameplay player', () => {
     expect(player.root.position.z).toBeGreaterThan(0);
   });
 
-  it('can preview every mapped Mage skill animation and emits its spell VFX id without equipping a sword', async () => {
+  it('can preview every Mage skill animation and emits a spell only for the three still bound to one', async () => {
     const player = new Player('mage', createMageAssets());
     await player.load();
 
     const casts: MageSpellCastEvent[] = [];
     player.onMageSpellCast((event) => { casts.push(event); });
-    const expectedSpellBySkill = {
+    const expectedSpellBySkill: Partial<Record<(typeof WARRIOR_SKILLS)[number]['id'], 'water' | 'ice' | 'lightning'>> = {
       ataque_giratorio: 'water',
       ataque_giratorio_2: 'ice',
       pulo_atacando: 'lightning',
-      triplo_ataque: 'laser',
-      corte_duplo: 'lava',
-    } as const;
+    };
 
     for (const skill of WARRIOR_SKILLS) {
+      const castsBefore = casts.length;
       expect(player.tryStartSkillAttack(skill.id)).toBe(true);
       expect(player.activeWarriorAttackId).toBe(skill.id);
       expect(player.actionInvulnerabilityRemaining).toBe(0);
-      const latestCast = casts[casts.length - 1];
-      expect(latestCast?.spellId).toBe(expectedSpellBySkill[skill.id]);
-      expect(latestCast?.onImpact).toBeNull();
+      const expectedSpell = expectedSpellBySkill[skill.id];
+      if (expectedSpell === undefined) {
+        // Golpe Flamejante e Corte Duplo da Maga: sem feitiço (Laser e Lava
+        // saíram de cena) — nenhum VFX nasce do cast.
+        expect(casts.length).toBe(castsBefore);
+      } else {
+        expect(casts.length).toBe(castsBefore + 1);
+        const latestCast = casts[casts.length - 1];
+        expect(latestCast?.spellId).toBe(expectedSpell);
+        expect(latestCast?.onImpact).toBeNull();
+      }
       for (let step = 0; step < 25; step += 1) player.update(0.1);
       expect(player.isAttackInSwing()).toBe(false);
     }
@@ -330,8 +337,6 @@ describe('Mage gameplay player', () => {
     ['ataque_giratorio', 1.8],
     ['ataque_giratorio_2', 1.8],
     ['pulo_atacando', 2.1],
-    ['triplo_ataque', 1.8],
-    ['corte_duplo', 1.9],
   ] as const)('accelerates %s without desynchronizing the clip and action slot', async (id, rate) => {
     const player = new Player('mage', createMageAssets());
     await player.load();
@@ -349,6 +354,33 @@ describe('Mage gameplay player', () => {
     expect(player.isCastingSkill).toBe(true);
     player.update(0.02);
     expect(player.isCastingSkill).toBe(false);
+  });
+
+  it.each([
+    ['triplo_ataque'],
+    ['corte_duplo'],
+  ] as const)('plays %s at 1x with no spell VFX, just the authored character animation', async (id) => {
+    const player = new Player('mage', createMageAssets());
+    await player.load();
+    const casts: MageSpellCastEvent[] = [];
+    player.onMageSpellCast((event) => { casts.push(event); });
+
+    expect(player.tryStartSkillAttack(id)).toBe(true);
+    expect(player.activeWarriorAttackId).toBe(id);
+    // Sem feitiço, o cast não dispara VFX algum.
+    expect(casts).toHaveLength(0);
+    // Cast em velocidade natural (1x): a duração é a do clipe puro, sem
+    // aceleração — o mesmo cálculo do combo prova o playbackRate 1.
+    const clipDuration = player.getWarriorSkillComboTiming(id)!.durationSeconds;
+    expect(clipDuration).toBeCloseTo(1);
+    expect(player.activeSkillRemainingSeconds).toBeCloseTo(1);
+
+    player.update(0.99);
+    expect(player.isCastingSkill).toBe(true);
+    player.update(0.02);
+    expect(player.isCastingSkill).toBe(false);
+    // Nenhum feitiço nasceu nem no fim da animação.
+    expect(casts).toHaveLength(0);
   });
 
   it('scales the faster Mage clip and combo gauge together, without the Warrior landing pause', async () => {

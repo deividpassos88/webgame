@@ -10,9 +10,16 @@ import {
 } from './SkillVisualBindings';
 
 describe('SkillVisualBindings', () => {
-  it('binds at least one exclusive visual effect to every skill of both classes', () => {
+  it('binds effects to every Warrior skill and leaves the two stripped Mage skills with none', () => {
     for (const skill of WARRIOR_SKILLS) {
       expect(getSkillVisualEffects('paladin', skill.id).length).toBeGreaterThan(0);
+    }
+    // Golpe Flamejante e Corte Duplo da Maga: sem feitiço, sem efeito algum —
+    // sobra apenas a animação do personagem (Laser e Lava saíram de cena).
+    expect(getSkillVisualEffects('mage', 'triplo_ataque')).toEqual([]);
+    expect(getSkillVisualEffects('mage', 'corte_duplo')).toEqual([]);
+    for (const skill of WARRIOR_SKILLS) {
+      if (skill.id === 'triplo_ataque' || skill.id === 'corte_duplo') continue;
       expect(getSkillVisualEffects('mage', skill.id).length).toBeGreaterThan(0);
     }
   });
@@ -43,10 +50,11 @@ describe('SkillVisualBindings', () => {
     }
   });
 
-  it('gives each mage skill its own spell, so no spell is shared', () => {
+  it('gives each still-bound mage skill its own spell and leaves the stripped ones with none', () => {
     const spells = WARRIOR_SKILLS.map((skill) => getSkillMageSpellId('mage', skill.id));
-    expect(spells).toEqual(['water', 'ice', 'lightning', 'laser', 'lava']);
-    expect(new Set(spells).size).toBe(spells.length);
+    expect(spells).toEqual(['water', 'ice', 'lightning', null, null]);
+    const bound = spells.filter((spell): spell is Exclude<(typeof spells)[number], null> => spell !== null);
+    expect(new Set(bound).size).toBe(bound.length);
     // O Guerreiro não emite feitiço nenhum.
     for (const skill of WARRIOR_SKILLS) {
       expect(getSkillMageSpellId('paladin', skill.id)).toBeNull();
@@ -92,10 +100,16 @@ describe('SkillVisualBindings', () => {
       expect(staged.map((effect) => effect.effectId).sort())
         .toEqual(all.map((effect) => effect.effectId).sort());
     }
-    // A Maga só dispara no cast (o projétil cuida do impacto).
+    // A Maga só dispara no cast (o projétil cuida do impacto). Golpe
+    // Flamejante e Corte Duplo não têm mais feitiço: nenhuma etapa sobra.
     for (const skill of WARRIOR_SKILLS) {
       expect(getSkillVisualEffectsForStage('mage', skill.id, 'hit-window')).toEqual([]);
-      expect(getSkillVisualEffectsForStage('mage', skill.id, 'cast')).toHaveLength(1);
+      const castEffects = getSkillVisualEffectsForStage('mage', skill.id, 'cast');
+      if (skill.id === 'triplo_ataque' || skill.id === 'corte_duplo') {
+        expect(castEffects).toEqual([]);
+      } else {
+        expect(castEffects).toHaveLength(1);
+      }
     }
   });
 });

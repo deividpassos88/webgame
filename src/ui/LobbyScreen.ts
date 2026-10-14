@@ -288,8 +288,10 @@ function buildLobbySkillTip(
     ? 'Um dragão de água envolve a Maga e invoca uma coluna do céu sobre o alvo. O impacto aplica lentidão.'
     : playerClass === 'mage' && skillId === 'pulo_atacando'
     ? 'Barreira de trovão em volta da Maga: quem estiver perto leva dano e nenhum monstro consegue atravessá-la enquanto ela dura.'
+    : playerClass === 'mage' && skillId === 'triplo_ataque'
+    ? 'Apenas a animação do personagem: o golpe não tem efeitos especiais.'
     : playerClass === 'mage' && skillId === 'corte_duplo'
-    ? 'Magia de lava da Maga: um corte arcano lançado contra o alvo.'
+    ? 'Apenas a animação do personagem: o corte não tem efeitos especiais.'
     : SKILL_TIP_DESCRIPTIONS[skillId];
   const cost = playerClass === 'mage'
     ? `${skill.energyCost} MP · ${mageSkillFatiguePercent(skill.id)}% fadiga`

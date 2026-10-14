@@ -65,8 +65,9 @@ describe('WarriorSkillCatalog', () => {
     expect(WARRIOR_SKILLS.map(({ cooldown }) => cooldown)).toEqual([6, 8, 10, 12, 180]);
   });
 
-  it('accelerates only Mage animations and preserves combat balance for both classes', () => {
-    expect(WARRIOR_SKILLS.map(({ magePlaybackRate }) => magePlaybackRate)).toEqual([1.8, 1.8, 2.1, 1.8, 1.9]);
+  it('accelerates only the three spell Mage animations and plays the stripped skills at 1x', () => {
+    // Golpe Flamejante e Corte Duplo da Maga: sem feitiço, cast em 1x.
+    expect(WARRIOR_SKILLS.map(({ magePlaybackRate }) => magePlaybackRate)).toEqual([1.8, 1.8, 2.1, 1, 1]);
     // Golpe Flamejante roda em 1x: a animação normal, sem aceleração nenhuma.
     expect(WARRIOR_SKILLS.map(({ playbackRate }) => playbackRate)).toEqual([1.1, 1.1, 1, 1, 1.2]);
     expect(WARRIOR_SKILLS.map(({ energyCost }) => energyCost)).toEqual([8, 10, 14, 18, 16]);
