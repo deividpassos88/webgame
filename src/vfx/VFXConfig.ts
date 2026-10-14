@@ -251,4 +251,48 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
     qualityParticleMultiplier: multipliers(0.55, 0.84, 1),
     audio: { charge: 'mage-laser-charge', cast: 'mage-laser-cast', impact: 'mage-laser-impact', loop: 'mage-laser-loop' },
   },
+  /**
+   * Laser Rajante — skill 4 da Maga (o Guerreiro mantém o vórtice de água da
+   * dele). Recriado a partir das referências do usuário, frame a frame:
+   *
+   * - feixe reto e fino: núcleo BRANCO-quente, corpo CARMESIM, halo MAGENTA;
+   * - descarga elétrica ROXA serpenteando ao longo do trajeto (fase 2);
+   * - fagulhas ROSAS voando pelo caminho e estourando no ponto de impacto;
+   * - impacto: explosão BRANCA grande com halo rosa e fagulhas em leque;
+   * - orbe do cajado acende em rosa/roxo na carga, com aura de cast na Maga
+   *   (BarrierAura tingida pelas cores do preset).
+   *
+   * Receita copiada do laser base, mas id/cores/dimensões/ritmo são EXCLUSIVOS
+   * desta skill: nenhum outro feitiço aponta para `radiant_laser`.
+   */
+  radiant_laser: {
+    id: 'radiant_laser',
+    style: 'laser',
+    delivery: 'beam',
+    colors: {
+      core: 0xffffff,
+      glow: 0xff2340,
+      secondary: 0xff3df0,
+      spark: 0xffc2ec,
+      smoke: 0xa04dff,
+    },
+    timeline: { chargeStart: 0.28, secondaryCharge: 0.34, magicCircle: 0.42, launch: 0.58, chargeEnd: 0.6, recover: 0.94, end: 1 },
+    charge: { scale: 1.15, particleCount: 20, sparkCount: 8, lightIntensity: 1.15, twoHanded: true },
+    projectile: { speed: 42, lifetime: 0.65, radius: 0.55, trailLength: 2.4, trailWidth: 0.2 },
+    impact: {
+      duration: 0.5,
+      radius: 1.35,
+      shockwaveRadius: 2.1,
+      ringScale: 1.2,
+      cameraShakeIntensity: 0.05,
+      cameraShakeDuration: 0.2,
+      lightIntensity: 1.6,
+      particleCount: 42,
+      debrisCount: 0,
+    },
+    laser: { duration: 0.75, outerWidth: 0.5, bodyWidth: 0.2, coreWidth: 0.055, impactPulseInterval: 0.09 },
+    hand: 'both',
+    qualityParticleMultiplier: multipliers(0.55, 0.84, 1),
+    audio: { charge: 'mage-laser-charge', cast: 'mage-laser-cast', impact: 'mage-laser-impact', loop: 'mage-laser-loop' },
+  },
 };

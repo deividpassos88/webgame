@@ -224,7 +224,7 @@ describe('MageVFX full spell architecture', () => {
   });
 
   it('launches every Mage spell preset through the AnimationAction timeline and pooled managers', () => {
-    const spells: readonly MageSpellId[] = ['basic', 'water', 'lightning', 'lava', 'ice', 'laser'];
+    const spells: readonly MageSpellId[] = ['basic', 'water', 'lightning', 'lava', 'ice', 'laser', 'radiant_laser'];
     for (const spellId of spells) {
       const scene = new THREE.Scene();
       const vfx = new MageVFX(scene, { quality: 'low' });
@@ -266,7 +266,7 @@ describe('MageVFX full spell architecture', () => {
         expect(diagnostics.activeProjectiles + diagnostics.pooledProjectiles).toBe(0);
         expect(diagnostics.activeBarriers + diagnostics.pooledBarriers).toBe(0);
         expect(impacts).toBe(1);
-      } else if (spellId === 'laser') {
+      } else if (spellId === 'laser' || spellId === 'radiant_laser') {
         expect(diagnostics.activeLasers + diagnostics.pooledLasers).toBeGreaterThan(0);
         expect(impacts).toBeGreaterThan(0);
       } else {
@@ -288,7 +288,7 @@ describe('MageVFX full spell architecture', () => {
     target.position.set(0, 0, 4);
     target.userData.enemyBodyScale = 1;
 
-    for (const spellId of ['basic', 'water', 'lightning', 'lava', 'ice', 'laser'] as const) {
+    for (const spellId of ['basic', 'water', 'lightning', 'lava', 'ice', 'laser', 'radiant_laser'] as const) {
       const { root, mixer, action } = createAction(2, 0.7);
       const rightHand = new THREE.Object3D();
       const leftHand = new THREE.Object3D();

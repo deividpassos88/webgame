@@ -279,7 +279,9 @@ function buildLobbySkillTip(
   const damageLabel = playerClass === 'paladin' && skillId === 'corte_duplo'
     ? '×2 do dano anterior'
     : `×${warriorSkillDamageMultiplier(skillId, playerClass, stars).toFixed(2)} do ataque`;
-  const areaLabel = waterDragon ? `coluna sobre o alvo · até ${MAGE_MAX_RANGE_METERS} m` : playerClass === 'mage' && skillId === 'corte_duplo'
+  const areaLabel = waterDragon ? `coluna sobre o alvo · até ${MAGE_MAX_RANGE_METERS} m` : playerClass === 'mage' && skillId === 'triplo_ataque'
+    ? `feixe até ${MAGE_MAX_RANGE_METERS} m`
+    : playerClass === 'mage' && skillId === 'corte_duplo'
     ? `projétil até ${MAGE_MAX_RANGE_METERS} m`
     : playerClass === 'paladin' && skillId === 'corte_duplo'
       ? 'leque frontal · 125° · raio 10 m'
@@ -289,7 +291,7 @@ function buildLobbySkillTip(
     : playerClass === 'mage' && skillId === 'pulo_atacando'
     ? 'Barreira de trovão em volta da Maga: quem estiver perto leva dano e nenhum monstro consegue atravessá-la enquanto ela dura.'
     : playerClass === 'mage' && skillId === 'triplo_ataque'
-    ? 'Apenas a animação do personagem: o golpe não tem efeitos especiais.'
+    ? 'Laser Rajante da Maga: um feixe de energia carmesim dispara da ponta do cajado e explode numa descarga elétrica sobre o alvo.'
     : playerClass === 'mage' && skillId === 'corte_duplo'
     ? 'Apenas a animação do personagem: o corte não tem efeitos especiais.'
     : SKILL_TIP_DESCRIPTIONS[skillId];

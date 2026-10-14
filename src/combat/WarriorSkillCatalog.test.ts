@@ -16,7 +16,10 @@ describe('WarriorSkillCatalog', () => {
     // Pulo Atacando da Maga: nome próprio "Juízo do Trovão"; o do Guerreiro continua.
     expect(warriorSkillLabel('pulo_atacando', 'mage')).toBe('Juízo do Trovão');
     expect(warriorSkillLabel('pulo_atacando')).toBe('Pulo Atacando');
-    for (const skill of WARRIOR_SKILLS.filter((item) => item.id !== 'pulo_atacando').slice(1)) {
+    // Golpe Flamejante da Maga virou "Laser Rajante"; o do Guerreiro não muda.
+    expect(warriorSkillLabel('triplo_ataque', 'mage')).toBe('Laser Rajante');
+    expect(warriorSkillLabel('triplo_ataque')).toBe('Golpe Flamejante');
+    for (const skill of WARRIOR_SKILLS.filter((item) => item.id !== 'pulo_atacando' && item.id !== 'triplo_ataque').slice(1)) {
       expect(warriorSkillLabel(skill.id, 'mage')).toBe(skill.label);
     }
   });
@@ -65,8 +68,8 @@ describe('WarriorSkillCatalog', () => {
     expect(WARRIOR_SKILLS.map(({ cooldown }) => cooldown)).toEqual([6, 8, 10, 12, 180]);
   });
 
-  it('accelerates only the three spell Mage animations and plays the stripped skills at 1x', () => {
-    // Golpe Flamejante e Corte Duplo da Maga: sem feitiço, cast em 1x.
+  it('accelerates only the three spell Mage animations and plays Laser Rajante and Corte Duplo at 1x', () => {
+    // Laser Rajante e Corte Duplo da Maga: cast em 1x (ritmo autoral do clipe).
     expect(WARRIOR_SKILLS.map(({ magePlaybackRate }) => magePlaybackRate)).toEqual([1.8, 1.8, 2.1, 1, 1]);
     // Golpe Flamejante roda em 1x: a animação normal, sem aceleração nenhuma.
     expect(WARRIOR_SKILLS.map(({ playbackRate }) => playbackRate)).toEqual([1.1, 1.1, 1, 1, 1.2]);

@@ -22,6 +22,7 @@ const SPELL_ATTACK_ID: Record<Exclude<MageSpellId, 'basic'>, WarriorSkillId> = {
   lightning: 'pulo_atacando',
   lava: 'corte_duplo',
   laser: 'triplo_ataque',
+  radiant_laser: 'triplo_ataque',
 };
 
 export function mageSkillAttackId(spellId: MageSpellId): WarriorSkillId | null {

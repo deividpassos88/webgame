@@ -162,12 +162,17 @@ class LaserBeam implements PoolableVFX {
       opacity: 0,
       distortion: 0.65 * profile.distortionMultiplier,
     });
-    (this.discharge.material as THREE.LineBasicMaterial).color.set(options.preset.colors.spark);
+    // Descarga elétrica: roxo-magenta quando o preset tem `smoke` (Laser
+    // Rajante), senão o rosa-claro das fagulhas.
+    (this.discharge.material as THREE.LineBasicMaterial).color.set(
+      options.preset.colors.smoke ?? options.preset.colors.spark
+    );
     const chargeTexture = this.resources.mageTexture(options.preset.style, 'charge');
     const impactTexture = this.resources.mageTexture(options.preset.style, 'impact');
     const originMaterial = this.originGlow.material as THREE.SpriteMaterial;
     originMaterial.map = chargeTexture;
-    originMaterial.color.set(options.preset.colors.glow);
+    // Clarão do orbe no cast: roxo-magenta (smoke) ou o brilho do preset.
+    originMaterial.color.set(options.preset.colors.smoke ?? options.preset.colors.glow);
     const impactMaterial = this.impactGlow.material as THREE.SpriteMaterial;
     impactMaterial.map = impactTexture;
     impactMaterial.color.set(options.preset.colors.spark);
@@ -198,7 +203,9 @@ class LaserBeam implements PoolableVFX {
     }
     (this.originGlow.material as THREE.SpriteMaterial).opacity = 0.85 * intensity;
     (this.impactGlow.material as THREE.SpriteMaterial).opacity = 0.95 * intensity;
-    (this.discharge.material as THREE.LineBasicMaterial).opacity = 0.58 * intensity * (0.45 + Math.random() * 0.55);
+    // Descarga mais presente (referência: arcos elétricos marcados ao longo do
+    // feixe, com brilho instável).
+    (this.discharge.material as THREE.LineBasicMaterial).opacity = 0.72 * intensity * (0.45 + Math.random() * 0.55);
     if (this.lightHandle) {
       this.lightHandle.light.intensity = this.preset.impact.lightIntensity * 0.65 * intensity;
     }
@@ -218,6 +225,18 @@ class LaserBeam implements PoolableVFX {
         lifetime: 0.2,
         upwardBias: 0.16,
         size: [0.7, 2],
+      });
+      // Fagulhas ao longo do trajeto (referência: pontinhos rosas voando pelo
+      // meio do feixe), em pontos aleatórios entre a origem e o impacto.
+      TMP_MID.copy(TMP_START).lerp(TMP_END, 0.2 + Math.random() * 0.55);
+      this.particles.emit(TMP_MID, {
+        color: this.preset.colors.spark,
+        count: qualityCount(5, this.quality, this.preset.qualityParticleMultiplier),
+        speed: 1.1,
+        spread: 0.5,
+        lifetime: 0.18,
+        upwardBias: 0.12,
+        size: [0.4, 1.1],
       });
     }
 
@@ -311,7 +330,7 @@ class LaserBeam implements PoolableVFX {
     for (let index = 0; index < DISCHARGE_POINTS; index += 1) {
       const t = index / (DISCHARGE_POINTS - 1);
       const base = TMP_START.clone().addScaledVector(TMP_DIR, length * t);
-      const jitter = Math.sin(this.age * 42 + index * 2.1) * 0.18 + (Math.random() - 0.5) * 0.12;
+      const jitter = Math.sin(this.age * 42 + index * 2.1) * 0.26 + (Math.random() - 0.5) * 0.18;
       base.addScaledVector(TMP_SIDE, jitter);
       base.y += Math.sin(index * 1.7 + this.age * 24) * 0.08;
       const offset = index * 3;

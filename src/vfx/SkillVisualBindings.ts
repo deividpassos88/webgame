@@ -194,13 +194,14 @@ const PALADIN_SKILL_VISUAL_EFFECTS: Readonly<Record<WarriorSkillId, readonly Ski
   });
 
 /**
- * Maga: cada skill tem o SEU feitiço (água, gelo, raio). Nenhum efeito do kit
- * do Guerreiro entra aqui — o rastro/anel de lâmina é exclusivo dele, assim
- * como o feitiço é exclusivo dela.
+ * Maga: cada skill tem o SEU feitiço (água, gelo, raio, Laser Rajante). Nenhum
+ * efeito do kit do Guerreiro entra aqui — o rastro/anel de lâmina é exclusivo
+ * dele, assim como o feitiço é exclusivo dela.
  *
- * Golpe Flamejante e Corte Duplo da Maga ficaram SEM feitiço: o Laser e a
- * Lava saíram de cena e o que resta é apenas a animação do personagem, em
- * velocidade normal (1x).
+ * Golpe Flamejante da Maga virou "Laser Rajante": o feitiço `radiant_laser` é
+ * EXCLUSIVO dele (o Laser genérico não é usado por skill nenhuma). Corte
+ * Duplo segue SEM feitiço — a Lava saiu de cena e só a animação do personagem
+ * toca, em velocidade normal (1x).
  */
 const MAGE_SKILL_VISUAL_EFFECTS: Readonly<Record<WarriorSkillId, readonly SkillVisualEffect[]>> =
   Object.freeze({
@@ -228,9 +229,16 @@ const MAGE_SKILL_VISUAL_EFFECTS: Readonly<Record<WarriorSkillId, readonly SkillV
         spellId: 'lightning',
       }),
     ]),
-    // Golpe Flamejante da Maga: o Laser saiu de cena. Só a animação do
-    // personagem toca, sem nenhum efeito visual.
-    triplo_ataque: Object.freeze([]),
+    // Laser Rajante (Golpe Flamejante da Maga): feixe carmesim com descarga
+    // elétrica roxa — efeito próprio dela, do cast à explosão de impacto.
+    triplo_ataque: Object.freeze([
+      Object.freeze({
+        effectId: 'mage.triplo_ataque.radiant-laser-spell',
+        kind: 'mage-spell',
+        stage: 'cast',
+        spellId: 'radiant_laser',
+      }),
+    ]),
     // Corte Duplo da Maga: a Lava saiu de cena. Só a animação do personagem
     // toca, sem nenhum efeito visual.
     corte_duplo: Object.freeze([]),

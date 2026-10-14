@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type MageSpellId = 'basic' | 'water' | 'lightning' | 'lava' | 'ice' | 'laser';
+export type MageSpellId = 'basic' | 'water' | 'lightning' | 'lava' | 'ice' | 'laser' | 'radiant_laser';
 export type MageVFXQuality = 'low' | 'medium' | 'high' | 'ultra';
 export type MageHandId = 'right' | 'left' | 'both';
 export type MageSpellDelivery = 'projectile' | 'instant-lightning' | 'beam' | 'water-column';

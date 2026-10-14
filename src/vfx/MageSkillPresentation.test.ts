@@ -45,7 +45,7 @@ describe('Mage faster skill presentation', () => {
   });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it.each(['water', 'ice', 'lightning', 'laser', 'lava'] as const)(
+  it.each(['water', 'ice', 'lightning', 'laser', 'lava', 'radiant_laser'] as const)(
     'uses small sparks instead of screen-filling additive particles for %s', (spellId) => {
       const { scene, vfx, step, onLaunch, onImpact } = setupCast(spellId);
       let checkedClouds = 0;

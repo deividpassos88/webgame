@@ -79,6 +79,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
   {
     id: 'triplo_ataque',
     label: 'Golpe Flamejante',
+    mageLabel: 'Laser Rajante',
     input: '4',
     unlockLevel: 12,
     damageMultiplier: 1.22,
@@ -90,8 +91,7 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
     // Animação em velocidade normal (1x): a skill toca exatamente como o clipe
     // foi autorado; quem acelera é só o combo empoderado.
     playbackRate: 1,
-    // Maga: sem feitiço (Laser saiu de cena) e o cast também toca em 1x —
-    // apenas a animação do personagem, sem efeitos.
+    // Maga (Laser Rajante): cast em 1x também — a animação no ritmo autoral.
     magePlaybackRate: 1,
     area: getWarriorSkillArea('triplo_ataque'),
   },
