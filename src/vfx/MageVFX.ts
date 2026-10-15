@@ -1028,7 +1028,7 @@ export class MageVFX {
       this.impacts.play({
         position: origin,
         preset: cast.preset,
-        scale: cast.preset.style === 'laser' ? 0.5 : 0.35,
+        scale: 0.35,
         lightIntensity: cast.preset.impact.lightIntensity * 0.45,
       });
     }
