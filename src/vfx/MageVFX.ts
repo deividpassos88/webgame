@@ -940,7 +940,12 @@ export class MageVFX {
   private startCharge(cast: ActiveMageCast): void {
     if (cast.charge || cast.waterCharge || cast.thunderCharge) return;
     // A habilidade 4 desenha portal e anéis no próprio LaserVFX (sem charge herdada).
-    if (cast.preset.id === 'laser') return;
+    if (cast.preset.id === 'laser') {
+      this.lasers.beginCharge(cast.context, (output) =>
+        this.resolveCastSocketWorldPosition(cast, this.resolveHand(cast), output)
+      );
+      return;
+    }
     // Cast que já lançou não volta a carregar: quando o ataque é reiniciado no
     // meio (andar e atacar de novo), a timeline refaz os eventos deste cast e a
     // carga ficava pendurada na mão — sem isso o brilho nunca saía de lá.
@@ -1267,6 +1272,7 @@ export class MageVFX {
   }
 
   private releaseCharge(cast: ActiveMageCast): void {
+    if (cast.preset.id === 'laser') this.lasers.endCharge(cast.context);
     cast.waterCharge?.release();
     cast.waterCharge = null;
     cast.thunderCharge?.release();
