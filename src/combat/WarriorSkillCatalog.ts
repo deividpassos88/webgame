@@ -79,10 +79,13 @@ export const WARRIOR_SKILLS: readonly WarriorSkillDefinition[] = [
   {
     id: 'triplo_ataque',
     label: 'Golpe Flamejante',
+    // A tecla 4 da Maga e independente do Golpe Flamejante do Guerreiro.
+    mageLabel: 'Raio Prismático',
     input: '4',
     unlockLevel: 12,
     damageMultiplier: 1.22,
     mageDamageMultiplier: 2.3,
+    mageElement: null,
     icon: 'triple-flame',
     element: 'fire',
     energyCost: 18,
