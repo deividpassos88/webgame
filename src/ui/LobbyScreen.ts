@@ -269,7 +269,9 @@ function buildLobbySkillTip(
   const waterDragon = playerClass === 'mage' && skillId === 'ataque_giratorio';
   const elementLabel = waterDragon ? 'Água' : playerClass === 'paladin' && skillId === 'corte_duplo'
     ? 'Fogo + Trevas'
-    : playerClass === 'mage' && skillId === 'corte_duplo'
+    : playerClass === 'mage' && skillId === 'triplo_ataque'
+       ? 'Arcano'
+       : playerClass === 'mage' && skillId === 'corte_duplo'
       ? 'Lava'
       : skillElement === 'ice'
         ? 'Gelo'
@@ -279,7 +281,9 @@ function buildLobbySkillTip(
   const damageLabel = playerClass === 'paladin' && skillId === 'corte_duplo'
     ? '×2 do dano anterior'
     : `×${warriorSkillDamageMultiplier(skillId, playerClass, stars).toFixed(2)} do ataque`;
-  const areaLabel = waterDragon ? `coluna sobre o alvo · até ${MAGE_MAX_RANGE_METERS} m` : playerClass === 'mage' && skillId === 'corte_duplo'
+  const areaLabel = waterDragon ? `coluna sobre o alvo · até ${MAGE_MAX_RANGE_METERS} m` : playerClass === 'mage' && skillId === 'triplo_ataque'
+    ? `feixe de energia até ${MAGE_MAX_RANGE_METERS} m`
+    : playerClass === 'mage' && skillId === 'corte_duplo'
     ? `projétil até ${MAGE_MAX_RANGE_METERS} m`
     : playerClass === 'paladin' && skillId === 'corte_duplo'
       ? 'leque frontal · 125° · raio 10 m'
@@ -288,7 +292,9 @@ function buildLobbySkillTip(
     ? 'Um dragão de água envolve a Maga e invoca uma coluna do céu sobre o alvo. O impacto aplica lentidão.'
     : playerClass === 'mage' && skillId === 'pulo_atacando'
     ? 'Barreira de trovão em volta da Maga: quem estiver perto leva dano e nenhum monstro consegue atravessá-la enquanto ela dura.'
-    : playerClass === 'mage' && skillId === 'corte_duplo'
+    : playerClass === 'mage' && skillId === 'triplo_ataque'
+     ? 'Raio Prismático: um feixe azul e branco de energia concentrada, com anéis de conjuração e clarão no alvo. Tecla 4.'
+     : playerClass === 'mage' && skillId === 'corte_duplo'
     ? 'Magia de lava da Maga: um corte arcano lançado contra o alvo.'
     : SKILL_TIP_DESCRIPTIONS[skillId];
   const cost = playerClass === 'mage'
