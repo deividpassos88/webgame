@@ -78,13 +78,20 @@ describe('Mage faster skill presentation', () => {
       expect(vfx.diagnostics().activeBarriers).toBe(0);
       expect(vfx.diagnostics().activeMagicCircles).toBe(0);
 
+      // Primeiro o portal se abre sozinho, antes de existir qualquer feixe.
+      for (let frame = 0; frame < 16; frame += 1) step(0.04);
+      expect(scene.getObjectByName('MagePrismChargePortalVFX')).toBeDefined();
+      expect(scene.getObjectByName('MagePrismChargeRing')).toBeDefined();
+      expect(vfx.diagnostics().activeLasers).toBe(0);
+
       for (let frame = 0; frame < 42 && vfx.diagnostics().activeLasers === 0; frame += 1) {
         step(0.04);
       }
       expect(onLaunch).toHaveBeenCalledTimes(1);
       expect(vfx.diagnostics().activeLasers).toBe(1);
       expect(scene.getObjectByName('MagePrismaticBeamVFX')).toBeDefined();
-      expect(scene.getObjectByName('MagePrismSourcePortal')).toBeDefined();
+      expect(scene.getObjectByName('MagePrismChargePortalVFX')).toBeUndefined();
+      // O portal não deve permanecer visível durante o feixe.
       expect(scene.getObjectByName('MagePrismCyanBeam')).toBeDefined();
       expect(scene.getObjectByName('MagePrismImpactStar')).toBeDefined();
       expect(scene.getObjectByName('MageChargeOrbVFX')).toBeUndefined();
