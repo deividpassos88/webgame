@@ -209,9 +209,14 @@ describe('dano em área das cinco skills da Maga', () => {
       expect(fora.hits).toEqual([]);
       // Mantêm os visuais próprios: sem rachadura nem gelo no piso.
       expect(decals).toEqual([]);
-      if (spellId === 'lightning' || spellId === 'laser') {
-        // A propagação de dano não amplia o status elemental do alvo principal.
+      if (spellId === 'lightning') {
+        // Somente o raio de trovão mantém um status elemental no alvo.
         expect(primary.elementalHits).toBe(1);
+        expect(dentro.elementalHits).toBe(0);
+      }
+      if (spellId === 'laser') {
+        // Raio Prismático é arcano, não aplica a antiga queimadura de fogo.
+        expect(primary.elementalHits).toBe(0);
         expect(dentro.elementalHits).toBe(0);
       }
     }
