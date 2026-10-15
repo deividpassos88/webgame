@@ -5,7 +5,8 @@ import { MageVFXResources } from './MageVFXResources';
 import { PooledParticleCloud, qualityCount } from './ParticleManager';
 import { VFXPool, type PoolableVFX } from './VFXPool';
 import { VFXLightPool, type VFXLightHandle } from './VFXLightPool';
-import type { MageSpellPreset, MageVFXQuality } from './VFXTypes';
+import type { MageCastContext, MageSpellPreset, MageVFXQuality } from './VFXTypes';
+import { PrismPortalCharge } from './PrismPortalCharge';
 
 /**
  * Raio Prismático: efeito exclusivo da skill 4 da Maga.
@@ -40,6 +41,47 @@ const DIRECTION = new THREE.Vector3();
 const MIDDLE = new THREE.Vector3();
 const SIDE = new THREE.Vector3();
 const DISCHARGE_COUNT = 10;
+
+/** Faixas com comprimento unitário que ondulam em 3D ao longo do disparo.
+ * Cada camada tem geometria própria: não há cilindro estático.
+ */
+const RIBBON_STEPS = 64;
+
+function newRibbonGeometry(): THREE.BufferGeometry {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(
+    new Float32Array((RIBBON_STEPS + 1) * 2 * 3), 3
+  ));
+  const indices: number[] = [];
+  for (let index = 0; index < RIBBON_STEPS; index += 1) {
+    const a = index * 2;
+    indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+  geometry.setIndex(indices);
+  return geometry;
+}
+
+function animateRibbon(
+  geometry: THREE.BufferGeometry,
+  age: number,
+  phase: number,
+  waveAmplitude: number,
+  ribbonWidth: number
+): void {
+  const positions = geometry.getAttribute('position') as THREE.BufferAttribute;
+  for (let index = 0; index <= RIBBON_STEPS; index += 1) {
+    const t = index / RIBBON_STEPS;
+    const envelope = Math.pow(Math.sin(Math.PI * t), 0.72);
+    const angle = t * Math.PI * 5.2 - age * 18 + phase;
+    const drift = Math.sin(angle) * waveAmplitude * envelope;
+    const depth = Math.cos(angle * 0.94) * waveAmplitude * envelope * 0.6;
+    // A fita aperta, alarga e cruza a sua gêmea durante o disparo.
+    const width = ribbonWidth * (0.52 + 0.28 * Math.cos(t * Math.PI * 7 - age * 11 + phase));
+    positions.setXYZ(index * 2, drift - width, t - 0.5, depth);
+    positions.setXYZ(index * 2 + 1, drift + width, t - 0.5, depth);
+  }
+  positions.needsUpdate = true;
+}
 
 function glowMaterial(texture: THREE.Texture, color: number): THREE.SpriteMaterial {
   return new THREE.SpriteMaterial({
@@ -93,11 +135,11 @@ class PrismBeam implements PoolableVFX {
   public active = false;
   public readonly group = new THREE.Group();
 
-  // Um único cone, compartilhado por três camadas. A base larga começa na mão.
-  private readonly beamGeometry = new THREE.CylinderGeometry(0.055, 0.65, 1, 16, 1, true);
-  private readonly outer = new THREE.Mesh(this.beamGeometry, energyMaterial(0x164fff));
-  private readonly body = new THREE.Mesh(this.beamGeometry, energyMaterial(0x19b6ff));
-  private readonly core = new THREE.Mesh(this.beamGeometry, energyMaterial(0xe9ffff));
+  // Três fitas com ondulações DIFERENTES: campo azul, duas correntes ciano,
+  // núcleo branco. Cada fita cruza o eixo do feixe ao longo do tempo.
+  private readonly outer = new THREE.Mesh(newRibbonGeometry(), energyMaterial(0x1457ff));
+  private readonly body = new THREE.Mesh(newRibbonGeometry(), energyMaterial(0x43ccff));
+  private readonly core = new THREE.Mesh(newRibbonGeometry(), energyMaterial(0xf1ffff));
   private readonly portal = ring(0.94, 0.055, 0x347bff);
   private readonly portalInner = ring(0.68, 0.018, 0x9aefff);
   private readonly echoes = [
@@ -129,7 +171,8 @@ class PrismBeam implements PoolableVFX {
 
   private lightHandle: VFXLightHandle | null = null;
   private age = 0;
-  private duration = 0.65;
+  private duration = 2.0;
+  private finalSent = false;
   private impactCooldown = 0;
   private target: THREE.Object3D | null = null;
   private preset: MageSpellPreset | null = null;
@@ -153,6 +196,12 @@ class PrismBeam implements PoolableVFX {
     this.outer.name = 'MagePrismBlueHalo';
     this.body.name = 'MagePrismCyanBeam';
     this.core.name = 'MagePrismWhiteCore';
+    this.outer.frustumCulled = false;
+    this.body.frustumCulled = false;
+    this.core.frustumCulled = false;
+    // O portal pertence APENAS à antecipação da magia, não fica sobre o feixe.
+    this.portal.visible = false;
+    this.portalInner.visible = false;
     this.portal.name = 'MagePrismSourcePortal';
     this.portalInner.name = 'MagePrismSourceInnerRing';
     this.impactStar.name = 'MagePrismImpactStar';
@@ -201,10 +250,11 @@ class PrismBeam implements PoolableVFX {
     this.queryBodyHit = options.queryBodyHit;
     this.onImpact = options.onImpact;
     this.onFinalImpact = options.onFinalImpact;
-    this.duration = Math.max(0.05, options.preset.laser?.duration ?? 0.65);
+    this.duration = Math.max(0.05, options.preset.laser?.duration ?? 2.0);
     this.age = 0;
     this.impactCooldown = 0;
     this.impactSent = false;
+    this.finalSent = false;
     this.group.visible = true;
     this.sparks.reset();
 
@@ -225,23 +275,23 @@ class PrismBeam implements PoolableVFX {
 
     const progress = THREE.MathUtils.clamp(this.age / this.duration, 0, 1);
     const fadeIn = THREE.MathUtils.smoothstep(progress, 0, 0.12);
-    const fadeOut = 1 - THREE.MathUtils.smoothstep(progress, 0.7, 1);
+    const fadeOut = 1 - THREE.MathUtils.smoothstep(progress, 0.84, 1);
     const glow = fadeIn * fadeOut;
     const pulse = 0.94 + 0.06 * Math.sin(this.age * 37);
     this.updateTransform(glow);
 
-    (this.outer.material as THREE.MeshBasicMaterial).opacity = 0.23 * glow * pulse;
-    (this.body.material as THREE.MeshBasicMaterial).opacity = 0.68 * glow * pulse;
-    (this.core.material as THREE.MeshBasicMaterial).opacity = 0.98 * glow;
-    (this.portal.material as THREE.MeshBasicMaterial).opacity = 0.86 * glow;
-    (this.portalInner.material as THREE.MeshBasicMaterial).opacity = 0.58 * glow;
-    this.portal.scale.setScalar(0.94 + 0.08 * Math.sin(this.age * 24));
-    this.portalInner.scale.setScalar(0.96 + 0.05 * Math.cos(this.age * 30));
+    (this.outer.material as THREE.MeshBasicMaterial).opacity = 0.34 * glow * pulse;
+    (this.body.material as THREE.MeshBasicMaterial).opacity = 0.82 * glow * pulse;
+    (this.core.material as THREE.MeshBasicMaterial).opacity = 0.97 * glow;
+    (this.portal.material as THREE.MeshBasicMaterial).opacity = 0;
+    (this.portalInner.material as THREE.MeshBasicMaterial).opacity = 0;
 
+    // Os três círculos de eco acompanham só os primeiros instantes da descarga.
+    const earlyRings = 1 - THREE.MathUtils.smoothstep(this.age, 0.16, 0.62);
     for (let index = 0; index < this.echoes.length; index += 1) {
       const echo = this.echoes[index];
-      (echo.material as THREE.MeshBasicMaterial).opacity = (0.56 - index * 0.1) * glow;
-      echo.scale.setScalar(0.85 + 0.12 * Math.sin(this.age * 26 - index * 1.2));
+      (echo.material as THREE.MeshBasicMaterial).opacity = (0.53 - index * 0.10) * glow * earlyRings;
+      echo.scale.setScalar(0.80 + 0.15 * Math.sin(this.age * 24 - index * 1.2));
     }
     (this.sourceAura.material as THREE.SpriteMaterial).opacity = 0.66 * glow;
     (this.sourceCore.material as THREE.SpriteMaterial).opacity = 0.96 * glow;
@@ -272,11 +322,19 @@ class PrismBeam implements PoolableVFX {
       });
     }
 
-    if (this.age >= this.duration) {
+    if (this.age >= this.duration && !this.finalSent) {
+      this.finalSent = true;
       this.onFinalImpact?.(END.clone(), this.target);
-      return false;
+      // O feixe apaga primeiro, as faíscas são as últimas a desaparecer.
+      for (let index = 0; index < 10; index += 1) {
+        const along = START.clone().lerp(END, index / 9);
+        this.sparks.emit(along, {
+          color: 0x4c9cff, count: 3, speed: 0.42, spread: 0.26,
+          lifetime: 0.48, upwardBias: 0.12, size: [0.45, 1.3],
+        });
+      }
     }
-    return true;
+    return this.age < this.duration + 0.58;
   }
 
   private updateTransform(intensity: number): void {
@@ -305,6 +363,10 @@ class PrismBeam implements PoolableVFX {
     const outerWidth = (this.preset.laser?.outerWidth ?? 0.64) * profile.laserLayerMultiplier;
     const bodyWidth = (this.preset.laser?.bodyWidth ?? 0.3) * profile.laserLayerMultiplier;
     const coreWidth = this.preset.laser?.coreWidth ?? 0.085;
+    animateRibbon(this.outer.geometry, this.age, 0, 0.75, 0.57);
+    animateRibbon(this.body.geometry, this.age, Math.PI * 0.95, 0.82, 0.53);
+    // Filamento interno: ondulação quase imperceptível, branco e concentrado.
+    animateRibbon(this.core.geometry, this.age, Math.PI * 0.35, 0.07, 0.78);
     this.placeBeam(this.outer, length, outerWidth * (0.96 + intensity * 0.1));
     this.placeBeam(this.body, length, bodyWidth);
     this.placeBeam(this.core, length, coreWidth);
@@ -358,6 +420,7 @@ class PrismBeam implements PoolableVFX {
     this.group.visible = false;
     this.group.removeFromParent();
     this.age = 0;
+    this.finalSent = false;
     this.preset = null;
     this.target = null;
     this.startAnchor = null;
@@ -381,9 +444,8 @@ class PrismBeam implements PoolableVFX {
 
   public dispose(): void {
     this.reset();
-    this.beamGeometry.dispose();
     for (const mesh of [this.outer, this.body, this.core, this.portal, this.portalInner, ...this.echoes]) {
-      if (mesh.geometry !== this.beamGeometry) mesh.geometry.dispose();
+      mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
     }
     for (const sprite of [this.sourceAura, this.sourceCore, this.impactAura, this.impactCore]) {
@@ -401,6 +463,8 @@ class PrismBeam implements PoolableVFX {
 export class LaserVFX {
   private readonly pool: VFXPool<PrismBeam>;
   private readonly active: PrismBeam[] = [];
+  private readonly portalPool: VFXPool<PrismPortalCharge>;
+  private readonly charging = new Map<MageCastContext, PrismPortalCharge>();
 
   public constructor(
     private readonly scene: THREE.Scene,
@@ -409,6 +473,27 @@ export class LaserVFX {
     lightPool: VFXLightPool
   ) {
     this.pool = new VFXPool(() => new PrismBeam(resources, quality, lightPool), MAGE_VFX_LIMITS.maxLasers);
+    this.portalPool = new VFXPool(() => new PrismPortalCharge(resources), MAGE_VFX_LIMITS.maxLasers);
+  }
+
+  /** O portal nasce no intervalo de carga ANTES da animação soltar o feixe. */
+  public beginCharge(
+    context: MageCastContext,
+    provider: (out: THREE.Vector3) => THREE.Vector3
+  ): void {
+    this.endCharge(context);
+    const portal = this.portalPool.acquire();
+    if (!portal) return;
+    portal.play(provider, context.fallbackDirection);
+    this.scene.add(portal.group);
+    this.charging.set(context, portal);
+  }
+
+  public endCharge(context: MageCastContext): void {
+    const portal = this.charging.get(context);
+    if (!portal) return;
+    this.charging.delete(context);
+    this.portalPool.release(portal);
   }
 
   public fire(options: LaserOptions): boolean {
@@ -425,6 +510,7 @@ export class LaserVFX {
   }
 
   public update(delta: number): void {
+    for (const charge of this.charging.values()) charge.update(delta);
     for (let index = this.active.length - 1; index >= 0; index -= 1) {
       const beam = this.active[index];
       if (beam.update(delta)) continue;
@@ -434,6 +520,8 @@ export class LaserVFX {
   }
 
   public clear(): void {
+    for (const portal of this.charging.values()) this.portalPool.release(portal);
+    this.charging.clear();
     for (const beam of this.active) this.pool.release(beam);
     this.active.length = 0;
   }
@@ -441,6 +529,7 @@ export class LaserVFX {
   public dispose(): void {
     this.clear();
     this.pool.dispose();
+    this.portalPool.dispose();
   }
 
   public get activeCount(): number { return this.active.length; }
