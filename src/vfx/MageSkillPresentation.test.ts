@@ -72,6 +72,34 @@ describe('Mage faster skill presentation', () => {
     }
   );
 
+  it('draws only the prismatic blue beam for Mage skill 4, without the legacy aura and circles', () => {
+    const { scene, vfx, step, onLaunch, onImpact } = setupCast('laser');
+    try {
+      expect(vfx.diagnostics().activeBarriers).toBe(0);
+      expect(vfx.diagnostics().activeMagicCircles).toBe(0);
+
+      for (let frame = 0; frame < 42 && vfx.diagnostics().activeLasers === 0; frame += 1) {
+        step(0.04);
+      }
+      expect(onLaunch).toHaveBeenCalledTimes(1);
+      expect(vfx.diagnostics().activeLasers).toBe(1);
+      expect(scene.getObjectByName('MagePrismaticBeamVFX')).toBeDefined();
+      expect(scene.getObjectByName('MagePrismSourcePortal')).toBeDefined();
+      expect(scene.getObjectByName('MagePrismCyanBeam')).toBeDefined();
+      expect(scene.getObjectByName('MagePrismImpactStar')).toBeDefined();
+      expect(scene.getObjectByName('MageChargeOrbVFX')).toBeUndefined();
+      expect(vfx.diagnostics().activeMagicCircles).toBe(0);
+      expect(vfx.diagnostics().activeBarriers).toBe(0);
+
+      for (let frame = 0; frame < 110; frame += 1) step(0.04);
+      expect(onImpact).toHaveBeenCalledTimes(1);
+      expect(vfx.diagnostics().activeLasers).toBe(0);
+      expect(vfx.diagnostics().activeCharges).toBe(0);
+    } finally {
+      vfx.dispose();
+    }
+  });
+
   it('raises the barrier from the staff without an aura around the Maga or a hand orb', () => {
     const { scene, root, vfx, step } = setupCast('lightning', 2.1);
     try {
