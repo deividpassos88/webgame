@@ -640,7 +640,7 @@ export class MageVFX {
       impactDelivered: false,
     });
     // Pulo Atacando (Maga): sem aura em volta da Maga; a barreira nasce do cajado (ThunderVFX).
-    if (spellId !== 'basic' && spellId !== 'water' && spellId !== 'lightning') this.startSkillBarrier(context, preset);
+    if (spellId !== 'basic' && spellId !== 'water' && spellId !== 'lightning' && spellId !== 'laser') this.startSkillBarrier(context, preset);
     this.emitAudio(context, preset, 'charge');
   }
 
@@ -939,6 +939,8 @@ export class MageVFX {
 
   private startCharge(cast: ActiveMageCast): void {
     if (cast.charge || cast.waterCharge || cast.thunderCharge) return;
+    // A habilidade 4 desenha portal e anéis no próprio LaserVFX (sem charge herdada).
+    if (cast.preset.id === 'laser') return;
     // Cast que já lançou não volta a carregar: quando o ataque é reiniciado no
     // meio (andar e atacar de novo), a timeline refaz os eventos deste cast e a
     // carga ficava pendurada na mão — sem isso o brilho nunca saía de lá.
@@ -1022,7 +1024,7 @@ export class MageVFX {
     // hand hid the cast pose and lingered after the Mage started moving.
     // No gelo (skill 2) o clarão de saída também sai: o único visual do
     // disparo é a onda de cristais irrompendo do chão.
-    if (!bullet && cast.preset.style !== 'lightning' && cast.preset.style !== 'ice') {
+    if (!bullet && cast.preset.style !== 'lightning' && cast.preset.style !== 'ice' && cast.preset.style !== 'laser') {
       this.impacts.play({
         position: origin,
         preset: cast.preset,
