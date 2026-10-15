@@ -4,15 +4,17 @@ import { MAGE_VFX_LIMITS, mageQualityProfile } from './VFXConfig';
 import { MageVFXResources } from './MageVFXResources';
 import { PooledParticleCloud, qualityCount } from './ParticleManager';
 import { VFXPool, type PoolableVFX } from './VFXPool';
-import {
-  configureEnergyMaterial,
-  createBeamMaterial,
-  setEnergyTime,
-  type EnergyShaderMaterial,
-} from './VFXMaterials';
 import { VFXLightPool, type VFXLightHandle } from './VFXLightPool';
 import type { MageSpellPreset, MageVFXQuality } from './VFXTypes';
 
+/**
+ * Raio Prismático: efeito exclusivo da skill 4 da Maga.
+ *
+ * Referência: feixe azul-ciano com núcleo branco, afunilado ao longo do voo,
+ * portal circular na saída, três anéis de propagação, filamento elétrico e
+ * clarão em estrela na ponta. Não reutiliza efeitos nem shaders do Guerreiro.
+ * A lógica de colisão/dano continua na pipeline normal da MageVFX.
+ */
 interface LaserOptions {
   readonly startAnchor: THREE.Object3D | null;
   readonly startProvider?: (output: THREE.Vector3) => THREE.Vector3;
@@ -31,72 +33,142 @@ interface LaserOptions {
 }
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
-const TMP_START = new THREE.Vector3();
-const TMP_END = new THREE.Vector3();
-const TMP_DIR = new THREE.Vector3();
-const TMP_MID = new THREE.Vector3();
-const TMP_SIDE = new THREE.Vector3();
-const DISCHARGE_POINTS = 8;
+const Z_AXIS = new THREE.Vector3(0, 0, 1);
+const START = new THREE.Vector3();
+const END = new THREE.Vector3();
+const DIRECTION = new THREE.Vector3();
+const MIDDLE = new THREE.Vector3();
+const SIDE = new THREE.Vector3();
+const DISCHARGE_COUNT = 10;
 
-function targetPoint(target: THREE.Object3D, output: THREE.Vector3): THREE.Vector3 {
+function glowMaterial(texture: THREE.Texture, color: number): THREE.SpriteMaterial {
+  return new THREE.SpriteMaterial({
+    map: texture,
+    color,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    depthTest: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  });
+}
+
+function energyMaterial(color: number): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    depthTest: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  });
+}
+
+function ring(radius: number, tube: number, color: number): THREE.Mesh {
+  return new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 8, 56), energyMaterial(color));
+}
+
+function starGeometry(): THREE.BufferGeometry {
+  const points: number[] = [];
+  for (let ray = 0; ray < 8; ray += 1) {
+    const theta = ray * Math.PI / 4;
+    const radius = ray % 2 === 0 ? 1.0 : 0.48;
+    points.push(0, 0, 0, Math.cos(theta) * radius, Math.sin(theta) * radius, 0);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+  return geometry;
+}
+
+function enemyAimPoint(target: THREE.Object3D, output: THREE.Vector3): THREE.Vector3 {
   target.getWorldPosition(output);
-  const bodyScale = Number(target.userData?.enemyBodyScale) || 1;
-  output.y += 0.95 * bodyScale;
+  output.y += 0.95 * (Number(target.userData?.enemyBodyScale) || 1);
   return output;
 }
 
-class LaserBeam implements PoolableVFX {
+class PrismBeam implements PoolableVFX {
   public active = false;
   public readonly group = new THREE.Group();
-  private readonly outer: THREE.Mesh;
-  private readonly body: THREE.Mesh;
-  private readonly core: THREE.Mesh;
-  private readonly outerMaterial: EnergyShaderMaterial;
-  private readonly bodyMaterial: EnergyShaderMaterial;
-  private readonly coreMaterial: EnergyShaderMaterial;
-  private readonly discharge: THREE.Line;
-  private readonly dischargePositions = new Float32Array(DISCHARGE_POINTS * 3);
+
+  // Um único cone, compartilhado por três camadas. A base larga começa na mão.
+  private readonly beamGeometry = new THREE.CylinderGeometry(0.055, 0.65, 1, 16, 1, true);
+  private readonly outer = new THREE.Mesh(this.beamGeometry, energyMaterial(0x164fff));
+  private readonly body = new THREE.Mesh(this.beamGeometry, energyMaterial(0x19b6ff));
+  private readonly core = new THREE.Mesh(this.beamGeometry, energyMaterial(0xe9ffff));
+  private readonly portal = ring(0.94, 0.055, 0x347bff);
+  private readonly portalInner = ring(0.68, 0.018, 0x9aefff);
+  private readonly echoes = [
+    ring(0.42, 0.017, 0x84dcff),
+    ring(0.31, 0.012, 0x6b9fff),
+    ring(0.22, 0.009, 0xc1faff),
+  ];
+
+  private readonly sourceAura: THREE.Sprite;
+  private readonly sourceCore: THREE.Sprite;
+  private readonly impactAura: THREE.Sprite;
+  private readonly impactCore: THREE.Sprite;
+  private readonly impactStar = new THREE.LineSegments(
+    starGeometry(),
+    new THREE.LineBasicMaterial({
+      color: 0xd8faff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    })
+  );
+  private readonly dischargePositions = new Float32Array(DISCHARGE_COUNT * 3);
   private readonly dischargeAttribute = new THREE.BufferAttribute(this.dischargePositions, 3);
-  private readonly originGlow: THREE.Sprite;
-  private readonly impactGlow: THREE.Sprite;
-  private readonly particles: PooledParticleCloud;
+  private readonly discharge: THREE.Line;
+  private readonly sparks: PooledParticleCloud;
+
   private lightHandle: VFXLightHandle | null = null;
   private age = 0;
-  private duration = 0.5;
+  private duration = 0.65;
   private impactCooldown = 0;
+  private target: THREE.Object3D | null = null;
   private preset: MageSpellPreset | null = null;
   private startAnchor: THREE.Object3D | null = null;
-  private startProvider: ((output: THREE.Vector3) => THREE.Vector3) | undefined;
-  private target: THREE.Object3D | null = null;
-  private fallbackStart = new THREE.Vector3();
-  private fallbackDirection = new THREE.Vector3(0, 0, 1);
-  private isTargetAlive: ((target: THREE.Object3D) => boolean) | undefined;
+  private startProvider: LaserOptions['startProvider'];
+  private readonly fallbackStart = new THREE.Vector3();
+  private readonly fallbackDirection = new THREE.Vector3(0, 0, 1);
+  private isTargetAlive: LaserOptions['isTargetAlive'];
   private queryBodyHit: LaserOptions['queryBodyHit'];
-  private onImpact: ((target: THREE.Object3D) => void) | undefined;
-  private onFinalImpact: ((position: THREE.Vector3, target: THREE.Object3D | null) => void) | undefined;
+  private onImpact: LaserOptions['onImpact'];
+  private onFinalImpact: LaserOptions['onFinalImpact'];
   private impactSent = false;
 
   public constructor(
-    private readonly resources: MageVFXResources,
+    resources: MageVFXResources,
     private readonly quality: MageVFXQuality,
     private readonly lightPool: VFXLightPool
   ) {
-    this.group.name = 'MageLaserPremiumVFX';
+    this.group.name = 'MagePrismaticBeamVFX';
     this.group.visible = false;
-    this.outerMaterial = createBeamMaterial({ opacity: 0, intensity: 1.15, thickness: 1.25, distortion: 1.15, scrollSpeed: 0.8 });
-    this.bodyMaterial = createBeamMaterial({ opacity: 0, intensity: 1.75, thickness: 0.72, distortion: 1.35, scrollSpeed: 1.25 });
-    this.coreMaterial = createBeamMaterial({ opacity: 0, intensity: 2.25, thickness: 0.38, distortion: 0.65, scrollSpeed: 1.9 });
-    this.outer = new THREE.Mesh(resources.beamCylinder, this.outerMaterial);
-    this.body = new THREE.Mesh(resources.beamCylinder, this.bodyMaterial);
-    this.core = new THREE.Mesh(resources.beamCylinder, this.coreMaterial);
-    this.outer.name = 'MageLaserOuterShaderGlow';
-    this.body.name = 'MageLaserUnstableBody';
-    this.core.name = 'MageLaserWhiteHotCore';
+    this.outer.name = 'MagePrismBlueHalo';
+    this.body.name = 'MagePrismCyanBeam';
+    this.core.name = 'MagePrismWhiteCore';
+    this.portal.name = 'MagePrismSourcePortal';
+    this.portalInner.name = 'MagePrismSourceInnerRing';
+    this.impactStar.name = 'MagePrismImpactStar';
+    this.impactStar.frustumCulled = false;
 
-    const dischargeGeometry = new THREE.BufferGeometry();
-    dischargeGeometry.setAttribute('position', this.dischargeAttribute);
-    this.discharge = new THREE.Line(dischargeGeometry, new THREE.LineBasicMaterial({
-      color: 0xdcb7ff,
+    this.sourceAura = new THREE.Sprite(glowMaterial(resources.softGlow, 0x2462ff));
+    this.sourceCore = new THREE.Sprite(glowMaterial(resources.softGlow, 0xe4ffff));
+    this.impactAura = new THREE.Sprite(glowMaterial(resources.softGlow, 0x2864ff));
+    this.impactCore = new THREE.Sprite(glowMaterial(resources.softGlow, 0xf2ffff));
+    this.sourceAura.name = 'MagePrismSourceBlueBloom';
+    this.impactCore.name = 'MagePrismImpactWhiteFlash';
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', this.dischargeAttribute);
+    this.discharge = new THREE.Line(geometry, new THREE.LineBasicMaterial({
+      color: 0x9fedff,
       transparent: true,
       opacity: 0,
       depthWrite: false,
@@ -104,26 +176,16 @@ class LaserBeam implements PoolableVFX {
       blending: THREE.AdditiveBlending,
       toneMapped: false,
     }));
-    this.discharge.name = 'MageLaserSideDischarge';
+    this.discharge.name = 'MagePrismEnergyFilament';
     this.discharge.frustumCulled = false;
-    this.discharge.renderOrder = 8;
+    this.sparks = new PooledParticleCloud(40, resources.softGlow);
 
-    this.originGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: resources.softGlow,
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      depthTest: false,
-      blending: THREE.AdditiveBlending,
-      toneMapped: false,
-    }));
-    this.impactGlow = this.originGlow.clone();
-    this.impactGlow.material = (this.originGlow.material as THREE.SpriteMaterial).clone();
-    this.originGlow.name = 'MageLaserOriginFlash';
-    this.impactGlow.name = 'MageLaserImpactBloom';
-    this.particles = new PooledParticleCloud(48, resources.softGlow);
-    this.group.add(this.outer, this.body, this.core, this.discharge, this.originGlow, this.impactGlow, this.particles.points);
+    this.group.add(
+      this.outer, this.body, this.core,
+      this.portal, this.portalInner, ...this.echoes,
+      this.sourceAura, this.sourceCore, this.impactAura, this.impactCore,
+      this.impactStar, this.discharge, this.sparks.points
+    );
   }
 
   public play(options: LaserOptions): void {
@@ -132,53 +194,26 @@ class LaserBeam implements PoolableVFX {
     this.startProvider = options.startProvider;
     this.target = options.target;
     this.fallbackStart.copy(options.fallbackStart);
-    this.fallbackDirection.copy(options.fallbackDirection).normalize();
+    this.fallbackDirection.copy(options.fallbackDirection);
+    if (this.fallbackDirection.lengthSq() < 1e-8) this.fallbackDirection.set(0, 0, 1);
+    this.fallbackDirection.normalize();
     this.isTargetAlive = options.isTargetAlive;
     this.queryBodyHit = options.queryBodyHit;
     this.onImpact = options.onImpact;
     this.onFinalImpact = options.onFinalImpact;
-    this.duration = options.preset.laser?.duration ?? 0.5;
+    this.duration = Math.max(0.05, options.preset.laser?.duration ?? 0.65);
     this.age = 0;
     this.impactCooldown = 0;
     this.impactSent = false;
     this.group.visible = true;
+    this.sparks.reset();
 
-    const profile = mageQualityProfile(this.quality);
-    configureEnergyMaterial(this.outerMaterial, {
-      colorA: options.preset.colors.core,
-      colorB: options.preset.colors.glow,
-      opacity: 0,
-      distortion: 1.05 * profile.distortionMultiplier,
-    });
-    configureEnergyMaterial(this.bodyMaterial, {
-      colorA: options.preset.colors.glow,
-      colorB: options.preset.colors.secondary,
-      opacity: 0,
-      distortion: 1.35 * profile.distortionMultiplier,
-    });
-    configureEnergyMaterial(this.coreMaterial, {
-      colorA: options.preset.colors.core,
-      colorB: options.preset.colors.spark,
-      opacity: 0,
-      distortion: 0.65 * profile.distortionMultiplier,
-    });
-    (this.discharge.material as THREE.LineBasicMaterial).color.set(options.preset.colors.spark);
-    const chargeTexture = this.resources.mageTexture(options.preset.style, 'charge');
-    const impactTexture = this.resources.mageTexture(options.preset.style, 'impact');
-    const originMaterial = this.originGlow.material as THREE.SpriteMaterial;
-    originMaterial.map = chargeTexture;
-    originMaterial.color.set(options.preset.colors.glow);
-    const impactMaterial = this.impactGlow.material as THREE.SpriteMaterial;
-    impactMaterial.map = impactTexture;
-    impactMaterial.color.set(options.preset.colors.spark);
-    // No needsUpdate on the map swaps above: both sprites are constructed with
-    // a map, so texture-to-texture swaps keep the same compiled program.
-    this.particles.setTexture(impactTexture);
-    // The impact light is borrowed from the shared pool (this group's children
-    // are positioned in world space, so the pooled scene-level light lands on
-    // the exact same spot the old child light did).
-    this.lightHandle = profile.enableSecondaryLights ? this.lightPool.acquire() : null;
-    if (this.lightHandle) this.lightHandle.light.color.set(options.preset.colors.glow);
+    this.lightHandle = mageQualityProfile(this.quality).enableSecondaryLights
+      ? this.lightPool.acquire() : null;
+    if (this.lightHandle) {
+      this.lightHandle.light.color.set(0x4f99ff);
+      this.lightHandle.light.distance = 6;
+    }
     this.updateTransform(0);
   }
 
@@ -187,45 +222,136 @@ class LaserBeam implements PoolableVFX {
     const elapsed = Math.max(0, delta);
     this.age += elapsed;
     this.impactCooldown = Math.max(0, this.impactCooldown - elapsed);
+
     const progress = THREE.MathUtils.clamp(this.age / this.duration, 0, 1);
-    const intro = THREE.MathUtils.smoothstep(progress, 0, 0.16);
-    const outro = 1 - THREE.MathUtils.smoothstep(progress, 0.78, 1);
-    const intensity = intro * outro;
-    this.updateTransform(intensity);
-    for (const [material, multiplier] of [[this.outerMaterial, 0.32], [this.bodyMaterial, 0.68], [this.coreMaterial, 0.98]] as const) {
-      setEnergyTime(material, this.age);
-      material.uniforms.uOpacity.value = multiplier * intensity;
+    const fadeIn = THREE.MathUtils.smoothstep(progress, 0, 0.12);
+    const fadeOut = 1 - THREE.MathUtils.smoothstep(progress, 0.7, 1);
+    const glow = fadeIn * fadeOut;
+    const pulse = 0.94 + 0.06 * Math.sin(this.age * 37);
+    this.updateTransform(glow);
+
+    (this.outer.material as THREE.MeshBasicMaterial).opacity = 0.23 * glow * pulse;
+    (this.body.material as THREE.MeshBasicMaterial).opacity = 0.68 * glow * pulse;
+    (this.core.material as THREE.MeshBasicMaterial).opacity = 0.98 * glow;
+    (this.portal.material as THREE.MeshBasicMaterial).opacity = 0.86 * glow;
+    (this.portalInner.material as THREE.MeshBasicMaterial).opacity = 0.58 * glow;
+    this.portal.scale.setScalar(0.94 + 0.08 * Math.sin(this.age * 24));
+    this.portalInner.scale.setScalar(0.96 + 0.05 * Math.cos(this.age * 30));
+
+    for (let index = 0; index < this.echoes.length; index += 1) {
+      const echo = this.echoes[index];
+      (echo.material as THREE.MeshBasicMaterial).opacity = (0.56 - index * 0.1) * glow;
+      echo.scale.setScalar(0.85 + 0.12 * Math.sin(this.age * 26 - index * 1.2));
     }
-    (this.originGlow.material as THREE.SpriteMaterial).opacity = 0.85 * intensity;
-    (this.impactGlow.material as THREE.SpriteMaterial).opacity = 0.95 * intensity;
-    (this.discharge.material as THREE.LineBasicMaterial).opacity = 0.58 * intensity * (0.45 + Math.random() * 0.55);
-    if (this.lightHandle) {
-      this.lightHandle.light.intensity = this.preset.impact.lightIntensity * 0.65 * intensity;
-    }
-    this.particles.update(elapsed);
+    (this.sourceAura.material as THREE.SpriteMaterial).opacity = 0.66 * glow;
+    (this.sourceCore.material as THREE.SpriteMaterial).opacity = 0.96 * glow;
+    (this.impactAura.material as THREE.SpriteMaterial).opacity = 0.82 * glow;
+    (this.impactCore.material as THREE.SpriteMaterial).opacity = 0.95 * glow;
+    (this.impactStar.material as THREE.LineBasicMaterial).opacity = 0.83 * glow;
+    this.impactStar.rotation.z += elapsed * 1.3;
+    (this.discharge.material as THREE.LineBasicMaterial).opacity =
+      0.48 * glow * (0.72 + 0.28 * Math.sin(this.age * 46));
+
+    if (this.lightHandle) this.lightHandle.light.intensity = 1.1 * glow;
+    this.sparks.update(elapsed);
 
     if (!this.impactSent && this.target && (!this.isTargetAlive || this.isTargetAlive(this.target))) {
       this.impactSent = true;
       this.onImpact?.(this.target);
     }
-    if (this.impactCooldown <= 0) {
-      this.impactCooldown = this.preset.laser?.impactPulseInterval ?? 0.12;
-      this.particles.emit(TMP_END, {
-        color: this.preset.colors.spark,
-        count: qualityCount(18, this.quality, this.preset.qualityParticleMultiplier),
-        speed: 2.4,
-        spread: 1.05,
-        lifetime: 0.2,
-        upwardBias: 0.16,
-        size: [0.7, 2],
+    if (glow > 0.15 && this.impactCooldown <= 0) {
+      this.impactCooldown = this.preset.laser?.impactPulseInterval ?? 0.07;
+      this.sparks.emit(END, {
+        color: 0xc6f7ff,
+        count: qualityCount(9, this.quality, this.preset.qualityParticleMultiplier),
+        speed: 2.2,
+        spread: 0.55,
+        lifetime: 0.18,
+        upwardBias: 0.15,
+        size: [0.6, 1.8],
       });
     }
 
     if (this.age >= this.duration) {
-      this.onFinalImpact?.(TMP_END.clone(), this.target);
+      this.onFinalImpact?.(END.clone(), this.target);
       return false;
     }
     return true;
+  }
+
+  private updateTransform(intensity: number): void {
+    if (!this.preset) return;
+    if (this.startProvider) this.startProvider(START);
+    else if (this.startAnchor) this.startAnchor.getWorldPosition(START);
+    else START.copy(this.fallbackStart);
+    START.y += 0.08;
+
+    if (this.target && this.isTargetAlive && !this.isTargetAlive(this.target)) this.target = null;
+    if (this.target) enemyAimPoint(this.target, END);
+    else END.copy(START).addScaledVector(this.fallbackDirection, MAGE_SPELL_TRAVEL_METERS);
+
+    const blocker = this.queryBodyHit?.(START, END, this.preset.projectile.radius);
+    if (blocker) {
+      this.target = blocker;
+      enemyAimPoint(blocker, END);
+    }
+
+    DIRECTION.subVectors(END, START);
+    const length = Math.max(0.01, DIRECTION.length());
+    DIRECTION.normalize();
+    MIDDLE.copy(START).addScaledVector(DIRECTION, length * 0.5);
+
+    const profile = mageQualityProfile(this.quality);
+    const outerWidth = (this.preset.laser?.outerWidth ?? 0.64) * profile.laserLayerMultiplier;
+    const bodyWidth = (this.preset.laser?.bodyWidth ?? 0.3) * profile.laserLayerMultiplier;
+    const coreWidth = this.preset.laser?.coreWidth ?? 0.085;
+    this.placeBeam(this.outer, length, outerWidth * (0.96 + intensity * 0.1));
+    this.placeBeam(this.body, length, bodyWidth);
+    this.placeBeam(this.core, length, coreWidth);
+
+    const directionRotation = new THREE.Quaternion().setFromUnitVectors(Z_AXIS, DIRECTION);
+    this.portal.position.copy(START);
+    this.portalInner.position.copy(START);
+    this.portal.quaternion.copy(directionRotation);
+    this.portalInner.quaternion.copy(directionRotation);
+
+    for (let index = 0; index < this.echoes.length; index += 1) {
+      const echo = this.echoes[index];
+      echo.position.copy(START).addScaledVector(DIRECTION, Math.min(length * 0.72, 0.95 + index * 0.75));
+      echo.quaternion.copy(directionRotation);
+    }
+
+    this.sourceAura.position.copy(START);
+    this.sourceAura.scale.setScalar(3.25 + intensity * 0.25);
+    this.sourceCore.position.copy(START);
+    this.sourceCore.scale.setScalar(0.62 + intensity * 0.22);
+    this.impactAura.position.copy(END);
+    this.impactAura.scale.setScalar(2.15 + intensity * 0.8);
+    this.impactCore.position.copy(END);
+    this.impactCore.scale.setScalar(0.62 + intensity * 0.3);
+    this.impactStar.position.copy(END);
+    this.impactStar.quaternion.copy(directionRotation);
+    this.impactStar.scale.setScalar(0.65 + intensity * 0.3);
+
+    SIDE.crossVectors(DIRECTION, Y_AXIS);
+    if (SIDE.lengthSq() < 1e-6) SIDE.set(1, 0, 0);
+    SIDE.normalize();
+    for (let index = 0; index < DISCHARGE_COUNT; index += 1) {
+      const t = index / (DISCHARGE_COUNT - 1);
+      const offset = index * 3;
+      const jitter = Math.sin(index * 2.7 + this.age * 51) * 0.09 * (1 - t);
+      this.dischargePositions[offset] = START.x + DIRECTION.x * length * t + SIDE.x * jitter;
+      this.dischargePositions[offset + 1] = START.y + DIRECTION.y * length * t + Math.sin(index * 1.5 + this.age * 38) * 0.05;
+      this.dischargePositions[offset + 2] = START.z + DIRECTION.z * length * t + SIDE.z * jitter;
+    }
+    this.dischargeAttribute.needsUpdate = true;
+    if (this.lightHandle) this.lightHandle.light.position.copy(END);
+  }
+
+  private placeBeam(mesh: THREE.Mesh, length: number, width: number): void {
+    mesh.position.copy(MIDDLE);
+    mesh.quaternion.setFromUnitVectors(Y_AXIS, DIRECTION);
+    mesh.scale.set(width, length, width);
   }
 
   public reset(): void {
@@ -233,99 +359,48 @@ class LaserBeam implements PoolableVFX {
     this.group.removeFromParent();
     this.age = 0;
     this.preset = null;
+    this.target = null;
     this.startAnchor = null;
     this.startProvider = undefined;
-    this.target = null;
     this.isTargetAlive = undefined;
     this.queryBodyHit = undefined;
     this.onImpact = undefined;
     this.onFinalImpact = undefined;
-    this.particles.reset();
+    this.sparks.reset();
     this.lightHandle?.release();
     this.lightHandle = null;
-    this.outerMaterial.uniforms.uOpacity.value = 0;
-    this.bodyMaterial.uniforms.uOpacity.value = 0;
-    this.coreMaterial.uniforms.uOpacity.value = 0;
+    for (const mesh of [this.outer, this.body, this.core, this.portal, this.portalInner, ...this.echoes]) {
+      (mesh.material as THREE.MeshBasicMaterial).opacity = 0;
+    }
+    for (const sprite of [this.sourceAura, this.sourceCore, this.impactAura, this.impactCore]) {
+      (sprite.material as THREE.SpriteMaterial).opacity = 0;
+    }
     (this.discharge.material as THREE.LineBasicMaterial).opacity = 0;
-    (this.originGlow.material as THREE.SpriteMaterial).opacity = 0;
-    (this.impactGlow.material as THREE.SpriteMaterial).opacity = 0;
+    (this.impactStar.material as THREE.LineBasicMaterial).opacity = 0;
   }
 
   public dispose(): void {
-    this.outerMaterial.dispose();
-    this.bodyMaterial.dispose();
-    this.coreMaterial.dispose();
+    this.reset();
+    this.beamGeometry.dispose();
+    for (const mesh of [this.outer, this.body, this.core, this.portal, this.portalInner, ...this.echoes]) {
+      if (mesh.geometry !== this.beamGeometry) mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    }
+    for (const sprite of [this.sourceAura, this.sourceCore, this.impactAura, this.impactCore]) {
+      (sprite.material as THREE.Material).dispose();
+    }
     this.discharge.geometry.dispose();
     (this.discharge.material as THREE.Material).dispose();
-    (this.originGlow.material as THREE.Material).dispose();
-    (this.impactGlow.material as THREE.Material).dispose();
-    this.particles.dispose();
-  }
-
-  private updateTransform(intensity: number): void {
-    if (!this.preset) return;
-    if (this.startProvider) this.startProvider(TMP_START);
-    else if (this.startAnchor) this.startAnchor.getWorldPosition(TMP_START);
-    else TMP_START.copy(this.fallbackStart);
-    TMP_START.y += 0.08;
-
-    if (this.target && this.isTargetAlive && !this.isTargetAlive(this.target)) this.target = null;
-    if (this.target) targetPoint(this.target, TMP_END);
-    else TMP_END.copy(TMP_START).addScaledVector(this.fallbackDirection, MAGE_SPELL_TRAVEL_METERS);
-    const blocker = this.queryBodyHit?.(TMP_START, TMP_END, this.preset.projectile.radius);
-    if (blocker) {
-      this.target = blocker;
-      targetPoint(blocker, TMP_END);
-    }
-
-    TMP_DIR.subVectors(TMP_END, TMP_START);
-    const length = Math.max(0.01, TMP_DIR.length());
-    TMP_DIR.normalize();
-    TMP_MID.copy(TMP_START).addScaledVector(TMP_DIR, length * 0.5);
-
-    const profile = mageQualityProfile(this.quality);
-    const outerWidth = (this.preset.laser?.outerWidth ?? 0.56) * profile.laserLayerMultiplier;
-    const bodyWidth = (this.preset.laser?.bodyWidth ?? 0.26) * profile.laserLayerMultiplier;
-    const coreWidth = this.preset.laser?.coreWidth ?? 0.08;
-    this.placeBeam(this.outer, TMP_MID, TMP_DIR, length, outerWidth * (0.88 + intensity * 0.28));
-    this.placeBeam(this.body, TMP_MID, TMP_DIR, length, bodyWidth * (0.92 + intensity * 0.2));
-    this.placeBeam(this.core, TMP_MID, TMP_DIR, length, coreWidth * (0.9 + Math.sin(this.age * 48) * 0.12));
-    this.updateDischarge(length);
-    this.originGlow.position.copy(TMP_START);
-    this.originGlow.scale.setScalar(1.2 + intensity * 1.1);
-    this.impactGlow.position.copy(TMP_END);
-    this.impactGlow.scale.setScalar(1.5 + intensity * 1.5);
-    if (this.lightHandle) this.lightHandle.light.position.copy(TMP_END);
-  }
-
-  private placeBeam(mesh: THREE.Mesh, midpoint: THREE.Vector3, direction: THREE.Vector3, length: number, width: number): void {
-    mesh.position.copy(midpoint);
-    mesh.quaternion.setFromUnitVectors(Y_AXIS, direction);
-    mesh.scale.set(width, length, width);
-  }
-
-  private updateDischarge(length: number): void {
-    TMP_SIDE.crossVectors(TMP_DIR, Y_AXIS);
-    if (TMP_SIDE.lengthSq() <= 1e-8) TMP_SIDE.set(1, 0, 0);
-    TMP_SIDE.normalize();
-    for (let index = 0; index < DISCHARGE_POINTS; index += 1) {
-      const t = index / (DISCHARGE_POINTS - 1);
-      const base = TMP_START.clone().addScaledVector(TMP_DIR, length * t);
-      const jitter = Math.sin(this.age * 42 + index * 2.1) * 0.18 + (Math.random() - 0.5) * 0.12;
-      base.addScaledVector(TMP_SIDE, jitter);
-      base.y += Math.sin(index * 1.7 + this.age * 24) * 0.08;
-      const offset = index * 3;
-      this.dischargePositions[offset] = base.x;
-      this.dischargePositions[offset + 1] = base.y;
-      this.dischargePositions[offset + 2] = base.z;
-    }
-    this.dischargeAttribute.needsUpdate = true;
+    this.impactStar.geometry.dispose();
+    (this.impactStar.material as THREE.Material).dispose();
+    this.sparks.dispose();
   }
 }
 
+/** Pool reutilizável: não aloca cenas nem buffers a cada conjuração. */
 export class LaserVFX {
-  private readonly pool: VFXPool<LaserBeam>;
-  private readonly active: LaserBeam[] = [];
+  private readonly pool: VFXPool<PrismBeam>;
+  private readonly active: PrismBeam[] = [];
 
   public constructor(
     private readonly scene: THREE.Scene,
@@ -333,7 +408,7 @@ export class LaserVFX {
     quality: MageVFXQuality,
     lightPool: VFXLightPool
   ) {
-    this.pool = new VFXPool(() => new LaserBeam(resources, quality, lightPool), MAGE_VFX_LIMITS.maxLasers);
+    this.pool = new VFXPool(() => new PrismBeam(resources, quality, lightPool), MAGE_VFX_LIMITS.maxLasers);
   }
 
   public fire(options: LaserOptions): boolean {
