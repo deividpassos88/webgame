@@ -248,7 +248,7 @@ export const MAGE_SPELL_PRESETS: Readonly<Record<MageSpellId, MageSpellPreset>> 
     charge: { scale: 0, particleCount: 0, sparkCount: 0, lightIntensity: 0, twoHanded: false },
     projectile: { speed: 42, lifetime: 0.65, radius: 0.55, trailLength: 2.4, trailWidth: 0.2 },
     impact: { visual: false, duration: 0.36, radius: 1.05, shockwaveRadius: 1.75, cameraShakeIntensity: 0, cameraShakeDuration: 0, lightIntensity: 1.2, particleCount: 0, debrisCount: 0 },
-    laser: { duration: 0.65, outerWidth: 0.64, bodyWidth: 0.3, coreWidth: 0.085, impactPulseInterval: 0.07 },
+    laser: { duration: 2.0, outerWidth: 0.76, bodyWidth: 0.42, coreWidth: 0.17, impactPulseInterval: 0.09 },
     hand: 'right',
     qualityParticleMultiplier: multipliers(0.55, 0.84, 1),
     audio: { charge: 'mage-laser-charge', cast: 'mage-laser-cast', impact: 'mage-laser-impact', loop: 'mage-laser-loop' },
