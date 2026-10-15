@@ -9,14 +9,19 @@ import {
 } from './WarriorSkillCatalog';
 
 describe('WarriorSkillCatalog', () => {
-  it('names the Mage first skill Dragão das Marés and Pulo Atacando Juízo do Trovão, preserving the other labels', () => {
+  it('names class-exclusive Mage skills while retaining the Warrior names', () => {
     expect(warriorSkillLabel('ataque_giratorio', 'mage')).toBe('Dragão das Marés');
     expect(warriorSkillLabel('ataque_giratorio', 'paladin')).toBe('Ataque Giratório');
     expect(warriorSkillLabel('ataque_giratorio')).toBe('Ataque Giratório');
     // Pulo Atacando da Maga: nome próprio "Juízo do Trovão"; o do Guerreiro continua.
     expect(warriorSkillLabel('pulo_atacando', 'mage')).toBe('Juízo do Trovão');
     expect(warriorSkillLabel('pulo_atacando')).toBe('Pulo Atacando');
-    for (const skill of WARRIOR_SKILLS.filter((item) => item.id !== 'pulo_atacando').slice(1)) {
+    expect(warriorSkillLabel('triplo_ataque', 'mage')).toBe('Raio Prismático');
+    expect(warriorSkillLabel('triplo_ataque', 'paladin')).toBe('Golpe Flamejante');
+    expect(warriorSkillElement('triplo_ataque', 'mage')).toBeNull();
+    expect(warriorSkillElement('triplo_ataque', 'paladin')).toBe('fire');
+    expect(getWarriorSkill('triplo_ataque').input).toBe('4');
+    for (const skill of WARRIOR_SKILLS.filter((item) => !['ataque_giratorio', 'pulo_atacando', 'triplo_ataque'].includes(item.id))) {
       expect(warriorSkillLabel(skill.id, 'mage')).toBe(skill.label);
     }
   });
