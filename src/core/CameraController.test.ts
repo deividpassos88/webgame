@@ -9,15 +9,24 @@ describe('CameraController dead zone', () => {
 
     controller.update(new THREE.Vector3(2, 0, 2), 1);
 
-    // Default zoom 1.1 and angled camera expose the divine stands in the background.
+    // Default zoom 1.1 frames both the player and the open celestial horizon.
     expect(controller.camera.position.x).toBeCloseTo(0);
-    expect(controller.camera.position.z).toBeCloseTo(17 * 1.1);
-    expect(controller.camera.position.y).toBeCloseTo(16 * 1.1);
+    expect(controller.camera.position.z).toBeCloseTo(22 * 1.1);
+    expect(controller.camera.position.y).toBeCloseTo(12 * 1.1);
     expect(controller.camera.fov).toBe(49);
     // The audience is framed in the upper portion without sacrificing VFX projection.
     const audience = new THREE.Vector3(0, 5, -29).project(controller.camera);
     expect(audience.y).toBeLessThan(1);
     expect(audience.y).toBeGreaterThan(0);
+    // The opening between north galleries reveals elevated distant temples.
+    const distantTemple = new THREE.Vector3(0, 24, -116).project(controller.camera);
+    expect(distantTemple.y).toBeLessThan(1);
+    expect(distantTemple.y).toBeGreaterThan(-1);
+    const viewDirection = controller.camera.getWorldDirection(new THREE.Vector3());
+    const declination = Math.atan2(-viewDirection.y,
+      Math.hypot(viewDirection.x, viewDirection.z)) * 180 / Math.PI;
+    // Camera top frustum must cross the horizon; the prior setup did not.
+    expect(declination).toBeLessThan(controller.camera.fov / 2);
   });
 
   it('follows only the distance that exceeds the dead zone', () => {
@@ -29,8 +38,8 @@ describe('CameraController dead zone', () => {
     // dead zone 3: followTarget fica em (2, 0, -2)
     expect(controller.followTargetX()).toBeCloseTo(2);
     expect(controller.camera.position.x).toBeCloseTo(2);
-    // câmera z = followTarget(-2) + offset(11) * zoom(1.20)
-    expect(controller.camera.position.z).toBeCloseTo(-2 + 17 * 1.1);
+    // câmera z = followTarget(-2) + offset(22) * zoom(1.10)
+    expect(controller.camera.position.z).toBeCloseTo(-2 + 22 * 1.1);
   });
 
   it('clamps player zoom but allows free zoom in admin mode', () => {
