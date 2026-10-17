@@ -29,7 +29,11 @@ const VERTEX = /* glsl */ `
     float curl = sin(t * 37.0 - uTime * 12.0 + uLayer * 3.1);
     float curl2 = cos(t * 69.0 + uTime * 17.0 - uLayer * 2.2);
     vec3 p = position;
-    p.xz *= 1.0 + envelope * (0.12 * curl + 0.05 * curl2);
+    // A energia não termina em cilindros retos: nasce fina no cajado,
+    // engrossa no trajeto e se comprime ao tocar o corpo do alvo.
+    float taperIn = smoothstep(0.0, 0.13, t);
+    float taperOut = 1.0 - 0.7 * smoothstep(0.81, 1.0, t);
+    p.xz *= taperIn * taperOut * (1.0 + envelope * (0.12 * curl + 0.05 * curl2));
     vN = curl * 0.5 + curl2 * 0.5;
     vUV = uv;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
@@ -46,7 +50,7 @@ const FRAGMENT = /* glsl */ `
   void main() {
     float t = vUV.y;
     float a = vUV.x * 6.2831853;
-    float cap = smoothstep(0.0, 0.055, t) * (1.0 - smoothstep(0.92, 1.0, t));
+    float cap = smoothstep(0.0, 0.13, t) * (1.0 - smoothstep(0.84, 1.0, t));
     float streak = sin(t * 68.0 - uTime * 19.0 + sin(a * 3.0 + uTime * 3.0) * 2.2);
     float plasma = sin(a * 5.0 + t * 51.0 - uTime * 24.0)
       * sin(a * 3.0 - t * 85.0 + uTime * 13.0);
@@ -178,8 +182,8 @@ export class PrismaticLaserField {
     this.group.visible = strength > 0.002;
     const width = qualityScale * (0.94 + 0.045 * Math.sin(time * 28));
     const materials = [this.outer.material, this.body.material, this.core.material];
-    const widths = [0.65 * width, 0.29 * width, 0.075];
-    const opacity = [0.58, 0.84, 0.96];
+    const widths = [0.51 * width, 0.245 * width, 0.062];
+    const opacity = [0.48, 0.77, 0.91];
     const meshes = [this.outer, this.body, this.core];
     for (let k = 0; k < 3; k++) {
       meshes[k].scale.set(widths[k], length, widths[k]);
