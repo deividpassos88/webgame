@@ -29,7 +29,7 @@ export class CameraController {
   private adminMode = false;
 
   constructor(aspect: number) {
-    this.camera = new THREE.PerspectiveCamera(35, aspect, 0.1, 200);
+    this.camera = new THREE.PerspectiveCamera(35, aspect, 0.1, 250);
     this.camera.position.set(0, 16, 11);
     this.zoom = this.defaultZoom;
   }
