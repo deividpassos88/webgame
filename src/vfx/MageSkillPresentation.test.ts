@@ -65,7 +65,7 @@ describe('Mage faster skill presentation', () => {
         }
         expect(checkedClouds).toBeGreaterThan(0);
         expect(onLaunch).toHaveBeenCalledTimes(1);
-        expect(onImpact).toHaveBeenCalledTimes(1);
+        expect(onImpact).toHaveBeenCalledTimes(spellId === 'laser' ? 8 : 1);
       } finally {
         vfx.dispose();
       }
@@ -78,10 +78,11 @@ describe('Mage faster skill presentation', () => {
       expect(vfx.diagnostics().activeBarriers).toBe(0);
       expect(vfx.diagnostics().activeMagicCircles).toBe(0);
 
-      // Primeiro o portal se abre sozinho, antes de existir qualquer feixe.
+      // Partículas luminosas sem o portal circular artificial.
       for (let frame = 0; frame < 16; frame += 1) step(0.04);
       expect(scene.getObjectByName('MagePrismChargePortalVFX')).toBeDefined();
-      expect(scene.getObjectByName('MagePrismChargeRing')).toBeDefined();
+      expect(scene.getObjectByName('MagePrismChargeRing')?.visible).toBe(false);
+      expect(scene.getObjectByName('MagePrismChargeEnergyParticles')).toBeDefined();
       expect(vfx.diagnostics().activeLasers).toBe(0);
 
       for (let frame = 0; frame < 42 && vfx.diagnostics().activeLasers === 0; frame += 1) {
@@ -99,7 +100,8 @@ describe('Mage faster skill presentation', () => {
       expect(vfx.diagnostics().activeBarriers).toBe(0);
 
       for (let frame = 0; frame < 110; frame += 1) step(0.04);
-      expect(onImpact).toHaveBeenCalledTimes(1);
+      expect(onImpact).toHaveBeenCalledTimes(8);
+      expect(onImpact.mock.calls.every((call) => call[1] === 1 / 8)).toBe(true);
       expect(vfx.diagnostics().activeLasers).toBe(0);
       expect(vfx.diagnostics().activeCharges).toBe(0);
     } finally {
