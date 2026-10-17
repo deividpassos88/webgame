@@ -67,6 +67,10 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
       });
       scene.add(effect.group);
       effect.update(1.8);
+      const prechargeCore = effect.group.getObjectByName('MagePrismExplosionCore') as THREE.Sprite;
+      const prechargeDisc = effect.group.getObjectByName('MagePrismExplosionGroundDisc') as THREE.Mesh;
+      expect(prechargeCore.material.opacity).toBeGreaterThan(0.45);
+      expect((prechargeDisc.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBeGreaterThan(0.5);
       const impact = new THREE.Vector3(0, 1.5, 7);
       effect.detonate(impact);
       effect.detonate(impact); // Detonation is idempotent.
@@ -85,7 +89,10 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
       expect(core).toBeDefined();
       expect(disc).toBeDefined();
       expect(halo).toBeDefined();
-      expect(burst.children).toHaveLength(7);
+      expect(burst.children).toHaveLength(14);
+      expect(burst.getObjectByName('MagePrismExplosionLightningBranch')).toBeDefined();
+      expect(effect.group.children.filter(x=>x.name==='MagePrismExplosionFlameTongue')).toHaveLength(14);
+      expect(effect.group.getObjectByName('MagePrismExplosionOuterHaloBloom')).toBeDefined();
       expect(orbits.every(Boolean)).toBe(true);
       expect(rising.count).toBeGreaterThan(40);
 
@@ -98,6 +105,7 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
       // Rupture: seven physically thick lightning ribbons + intense white core.
       effect.update(0.14);
       expect(core.material.opacity).toBeGreaterThan(0.7);
+      expect(core.scale.x).toBeGreaterThan(2.5);
       expect(burst.visible).toBe(true);
       const bolt = burst.children[0] as THREE.Mesh;
       expect((bolt.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBeGreaterThan(0.4);
@@ -111,6 +119,7 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
         expect(coords.getY(0)).not.toBeCloseTo(coords.getY(10), 3);
       }
       expect(burst.visible).toBe(false);
+      expect(core.scale.x).toBeGreaterThan(3.5);
       expect((rising.material as THREE.MeshBasicMaterial).opacity).toBeGreaterThan(0);
       expect((volume.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBeLessThan(0.00001);
 
