@@ -13,6 +13,9 @@ describe('Campo dos Deuses - arena celestial', () => {
     expect(level.group.getObjectByName('CelestialFloatingSquareFoundation')).toBeDefined();
     expect(level.group.getObjectByName('CelestialEastGrandstand')).toBeDefined();
     expect(level.group.getObjectByName('CelestialWestGrandstand')).toBeDefined();
+    expect(level.group.getObjectByName('CelestialNorthGrandstand')).toBeDefined();
+    expect(level.group.getObjectByName('CelestialNorthStadiumAudience')).toBeDefined();
+    expect(level.group.getObjectByName('CelestialNorthClassicalArch')).toBeDefined();
   });
 
   it('renders four ceremonial braziers without the old dungeon torch pool', () => {
@@ -27,6 +30,11 @@ describe('Campo dos Deuses - arena celestial', () => {
     expect(lights.some((l, i) => l.intensity !== before[i])).toBe(true);
     expect(level.group.getObjectByName('CelestialVolumetricCloudBanks')).toBeDefined();
     expect(level.group.getObjectByName('CelestialSkydomeSun')).toBeDefined();
+    const clouds = level.group.getObjectByName('CelestialVolumetricCloudBanks') as THREE.InstancedMesh;
+    expect(clouds.count).toBeGreaterThan(800);
+    expect(clouds.geometry).toBeInstanceOf(THREE.SphereGeometry);
+    const marble = (level.groundMeshes[0] as THREE.Mesh).material as THREE.MeshPhysicalMaterial;
+    expect(marble.roughness).toBeGreaterThan(0.25);
   });
 
   it('preserves the wave, boss and mini-boss spawn positions on the playing floor', () => {
