@@ -119,6 +119,13 @@ export class PrismaticExplosionField {
   public readonly corona: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
   private readonly sparkArc: THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial>;
   private readonly sparkPositions = new THREE.Float32BufferAttribute(new Float32Array(18 * 2 * 3), 3);
+  /** Irregular directional energy jets; unlike a sphere, each jet breaks away. */
+  private readonly rupture: THREE.InstancedMesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
+  private readonly rupturePosition = new THREE.Vector3();
+  private readonly ruptureDirection = new THREE.Vector3();
+  private readonly ruptureQuaternion = new THREE.Quaternion();
+  private readonly ruptureSize = new THREE.Vector3();
+  private readonly ruptureMatrix = new THREE.Matrix4();
 
   public constructor() {
     this.group.name = 'MagePrismaticFinalExplosionField';
@@ -153,7 +160,22 @@ export class PrismaticExplosionField {
     }));
     this.sparkArc.name = 'MagePrismBrokenLightningArcs';
     this.sparkArc.frustumCulled = false;
-    this.group.add(this.ground, this.volume, this.corona, this.sparkArc);
+    this.rupture = new THREE.InstancedMesh(
+      new THREE.ConeGeometry(0.065, 1, 5, 1),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0,
+        depthWrite: false, depthTest: true,
+        blending: THREE.AdditiveBlending, toneMapped: false,
+      }),
+      52
+    );
+    this.rupture.name = 'MagePrismLaserRuptureJets';
+    this.rupture.frustumCulled = false;
+    for (let i = 0; i < this.rupture.count; i++) {
+      this.rupture.setColorAt(i, new THREE.Color(i % 7 < 3 ? 0xd8f8ff : i % 7 < 5 ? 0x7bbfff : 0xcc70ff));
+    }
+    this.rupture.instanceColor!.needsUpdate = true;
+    this.group.add(this.ground, this.volume, this.corona, this.sparkArc, this.rupture);
   }
 
   public detonate(position: THREE.Vector3): void {
@@ -170,20 +192,20 @@ export class PrismaticExplosionField {
     const flash = Math.exp(-t * 31);
     const shock = 1 - THREE.MathUtils.smoothstep(t, 0.13, 0.44);
     // A casca visual existe só por uma fração de segundo; não cresce em bolha.
-    const blastFade = 1 - THREE.MathUtils.smoothstep(t, 0.07, 0.27);
+    const blastFade = 1 - THREE.MathUtils.smoothstep(t, 0.04, 0.15);
     this.ground.material.uniforms.uTime.value = t;
     this.ground.material.uniforms.uPhase.value = Math.min(1, t / 0.38);
     this.ground.material.uniforms.uOpacity.value = 1.05 * shock;
     this.ground.scale.setScalar(4.7);
 
     this.volume.material.uniforms.uTime.value = t;
-    this.volume.material.uniforms.uOpacity.value = 0.43 * blastFade;
-    const burstScale = 0.28 + 1.68 * (1 - Math.exp(-t * 25));
-    this.volume.scale.set(burstScale * 1.06, burstScale * 0.69, burstScale * 0.91);
+    this.volume.material.uniforms.uOpacity.value = 0.16 * blastFade;
+    const burstScale = 0.18 + 0.65 * (1 - Math.exp(-t * 32));
+    this.volume.scale.set(burstScale * 1.05, burstScale * 0.67, burstScale * 0.88);
 
     this.corona.material.uniforms.uTime.value = t * 1.7 + 0.47;
-    this.corona.material.uniforms.uOpacity.value = 0.15 * flash;
-    this.corona.scale.set(0.35 + t * 3.1, 0.3 + t * 1.9, 0.4 + t * 2.2);
+    this.corona.material.uniforms.uOpacity.value = 0.08 * flash;
+    this.corona.scale.set(0.3 + t * 1.8, 0.22 + t * 1.15, 0.3 + t * 1.5);
 
     // Fragmentos elétricos curtos arremessados para fora do epicentro.
     const radius = 0.25 + 3.9 * (1 - Math.exp(-t * 11));
@@ -200,6 +222,26 @@ export class PrismaticExplosionField {
     }
     this.sparkPositions.needsUpdate = true;
     this.sparkArc.material.opacity = 0.89 * shock + 0.1 * flash;
+    const jetFade = 1 - THREE.MathUtils.smoothstep(t, 0.17, 0.48);
+    const impulse = 1 - Math.exp(-t * 22);
+    this.rupture.material.opacity = 0.81 * jetFade;
+    for (let i = 0; i < this.rupture.count; i++) {
+      const a = i * 2.399963 + Math.sin(i * 1.79) * 0.41;
+      const elevation = 0.14 + ((i * 7) % 11) * 0.047;
+      const travel = impulse * (1.35 + (i % 9) * 0.34);
+      const dx = Math.cos(a);
+      const dz = Math.sin(a);
+      this.ruptureDirection.set(dx, elevation, dz).normalize();
+      this.rupturePosition.copy(this.ruptureDirection).multiplyScalar(travel);
+      this.rupturePosition.y += Math.sin(i * 2.4) * 0.13;
+      this.ruptureQuaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.ruptureDirection);
+      const width = (0.042 + (i % 4) * 0.012) * jetFade;
+      const length = (0.48 + (i % 8) * 0.17) * (0.34 + 0.66 * impulse) * jetFade;
+      this.ruptureSize.set(width, length, width);
+      this.ruptureMatrix.compose(this.rupturePosition, this.ruptureQuaternion, this.ruptureSize);
+      this.rupture.setMatrixAt(i, this.ruptureMatrix);
+    }
+    this.rupture.instanceMatrix.needsUpdate = true;
   }
 
   public reset(): void {
@@ -209,6 +251,7 @@ export class PrismaticExplosionField {
     this.volume.material.uniforms.uOpacity.value = 0;
     this.corona.material.uniforms.uOpacity.value = 0;
     this.sparkArc.material.opacity = 0;
+    this.rupture.material.opacity = 0;
   }
 
   public dispose(): void {
@@ -221,5 +264,7 @@ export class PrismaticExplosionField {
     this.corona.material.dispose();
     this.sparkArc.geometry.dispose();
     this.sparkArc.material.dispose();
+    this.rupture.geometry.dispose();
+    this.rupture.material.dispose();
   }
 }
