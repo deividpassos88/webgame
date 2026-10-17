@@ -11,8 +11,9 @@ describe('CameraController dead zone', () => {
 
     // Default zoom 1.1 and angled camera expose the divine stands in the background.
     expect(controller.camera.position.x).toBeCloseTo(0);
-    expect(controller.camera.position.z).toBeCloseTo(19 * 1.1);
-    expect(controller.camera.position.y).toBeCloseTo(17 * 1.1);
+    expect(controller.camera.position.z).toBeCloseTo(17 * 1.1);
+    expect(controller.camera.position.y).toBeCloseTo(16 * 1.1);
+    expect(controller.camera.fov).toBe(49);
   });
 
   it('follows only the distance that exceeds the dead zone', () => {
@@ -25,7 +26,7 @@ describe('CameraController dead zone', () => {
     expect(controller.followTargetX()).toBeCloseTo(2);
     expect(controller.camera.position.x).toBeCloseTo(2);
     // câmera z = followTarget(-2) + offset(11) * zoom(1.20)
-    expect(controller.camera.position.z).toBeCloseTo(-2 + 19 * 1.1);
+    expect(controller.camera.position.z).toBeCloseTo(-2 + 17 * 1.1);
   });
 
   it('clamps player zoom but allows free zoom in admin mode', () => {
