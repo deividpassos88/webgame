@@ -46,6 +46,22 @@ describe('Campo dos Deuses - arena celestial', () => {
     expect(clouds.geometry).toBeInstanceOf(THREE.SphereGeometry);
     const marble = (level.groundMeshes[0] as THREE.Mesh).material as THREE.MeshPhysicalMaterial;
     expect(marble.roughness).toBeGreaterThan(0.25);
+    expect(marble.map?.name).toBe('CelestialMarblePBRAlbedo');
+    expect(marble.bumpMap?.name).toBe('CelestialMarbleMicroRelief');
+    expect(marble.roughnessMap?.name).toBe('CelestialMarblePolishedRoughness');
+    expect(level.group.getObjectByName('CelestialSculptedPlatformFacade')).toBeDefined();
+    expect(level.group.getObjectByName('CelestialPlatformArcades')).toBeInstanceOf(THREE.InstancedMesh);
+    expect(level.group.getObjectByName('CelestialGrandstandBalustrades')).toBeDefined();
+    expect(level.group.getObjectByName('CelestialGalleryStoneBalusters')).toBeInstanceOf(THREE.InstancedMesh);
+    expect(level.group.getObjectByName('CelestialSculptedFloatingRock')).toBeDefined();
+    expect(level.group.getObjectByName('CelestialFloatingIslandVegetation')).toBeInstanceOf(THREE.InstancedMesh);
+    const waterfall = level.group.getObjectByName('CelestialIslandAnimatedWaterfall') as THREE.Mesh;
+    expect(waterfall).toBeDefined();
+    const waterMaterial = waterfall.material as THREE.MeshBasicMaterial;
+    const initialOffset = waterMaterial.map?.offset.y;
+    level.update(4.2);
+    expect(waterMaterial.map?.offset.y).not.toEqual(initialOffset);
+    expect(level.group.getObjectByName('CelestialFlameLuminousCore')).toBeDefined();
   });
 
   it('preserves the wave, boss and mini-boss spawn positions on the playing floor', () => {
