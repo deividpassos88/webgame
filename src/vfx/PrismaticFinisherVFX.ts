@@ -17,7 +17,7 @@ export const PRISM_FINISHER = {
   missileCount: 24,
   missileInterval: 0.064,
   flightTime: 0.87,
-  explosionSeconds: 1.65,
+  explosionSeconds: 1.35,
   explosionRadius: 4.15,
 } as const;
 
@@ -475,21 +475,22 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.explosiveField.update(this.explosionAge);
     const t = this.explosionAge;
     const p = THREE.MathUtils.clamp(t / PRISM_FINISHER.explosionSeconds, 0, 1);
-    // A sequência replica o vídeo: carga rosa -> flash branco -> vórtice -> resíduo.
-    const flash = Math.exp(-Math.pow((t - 0.31) * 16, 2));
-    const charge = 1 - THREE.MathUtils.smoothstep(t, 0.19, 0.37);
-    const vortex = THREE.MathUtils.smoothstep(t, 0.24, 0.42)
-      * (1 - THREE.MathUtils.smoothstep(t, 1.0, 1.52));
-    const shock = THREE.MathUtils.smoothstep(t, 0.23, 0.35)
-      * (1 - THREE.MathUtils.smoothstep(t, 0.39, 0.68));
-    const after = (1 - THREE.MathUtils.smoothstep(t, 0.92, 1.52))
-      * THREE.MathUtils.smoothstep(t, 0.29, 0.49);
-    (this.burst.material as THREE.SpriteMaterial).opacity = 0.47 * charge + 0.96 * flash + 0.55 * vortex;
-    (this.corona.material as THREE.SpriteMaterial).opacity = 0.37 * charge + 0.48 * vortex;
-    (this.horizontalFlash.material as THREE.SpriteMaterial).opacity = 0.93 * flash;
-    this.burst.scale.setScalar(0.55 * charge + 1.45 * flash + 1.95 * vortex);
-    this.corona.scale.setScalar(1.0 + 2.35 * vortex);
-    this.horizontalFlash.scale.set(5.2 + flash * 2.3, 0.22 + 0.15 * flash, 1);
+    // The six dedicated visual layers now own the explosion.
+    // These legacy flare sprites are subtle supporting glints only.
+    const flash = Math.exp(-Math.pow((t - 0.20) * 18, 2));
+    const charge = 1 - THREE.MathUtils.smoothstep(t, 0.11, 0.25);
+    const vortex = THREE.MathUtils.smoothstep(t, 0.21, 0.34)
+      * (1 - THREE.MathUtils.smoothstep(t, 0.89, 1.25));
+    const shock = THREE.MathUtils.smoothstep(t, 0.14, 0.21)
+      * (1 - THREE.MathUtils.smoothstep(t, 0.30, 0.47));
+    const after = (1 - THREE.MathUtils.smoothstep(t, 0.85, 1.24))
+      * THREE.MathUtils.smoothstep(t, 0.20, 0.35);
+    (this.burst.material as THREE.SpriteMaterial).opacity = 0.09 * charge + 0.24 * flash;
+    (this.corona.material as THREE.SpriteMaterial).opacity = 0.10 * charge + 0.08 * vortex;
+    (this.horizontalFlash.material as THREE.SpriteMaterial).opacity = 0.53 * flash;
+    this.burst.scale.setScalar(0.55 + 1.05 * flash);
+    this.corona.scale.setScalar(0.8 + 1.3 * vortex);
+    this.horizontalFlash.scale.set(3.9 + flash * 2.0, 0.14 + 0.14 * flash, 1);
     this.plasma.scale.setScalar(0.35 + p * 2.9);
     this.plasma.material.uniforms.uTime.value = this.age;
     this.plasma.material.uniforms.uAlpha.value = 0;
@@ -538,37 +539,37 @@ export class PrismaticFinisherEffect implements PoolableVFX {
       this.fragments.setMatrixAt(i, this.fragmentMatrix);
     }
     this.fragments.instanceMatrix.needsUpdate = true;
-    if (!this.secondaryBurst && t > 0.30) {
+    if (!this.secondaryBurst && t > 0.20) {
       this.secondaryBurst = true;
       // Descarga branca comprimida seguida do giro violeta da referência.
       this.impactParticles.add(this.ending, {
-        color: 0xf9edff, count: qualityCount(170, this.quality, {
+        color: 0xedfaff, count: qualityCount(125, this.quality, {
           low: 0.35, medium: 0.63, high: 1, ultra: 1.12,
         }),
-        speed: 6.8, spread: 0.87, lifetime: 0.72,
-        upwardBias: 0.2, opacity: 0.88, size: [0.65, 2.4], growth: -0.7,
+        speed: 6.2, spread: 0.70, lifetime: 0.42,
+        upwardBias: 0.3, opacity: 0.72, size: [0.6, 2.1], growth: -0.73,
       });
     }
-    if (!this.tertiaryBurst && t > 0.76) {
+    if (!this.tertiaryBurst && t > 0.49) {
       this.tertiaryBurst = true;
       this.impactParticles.add(this.ending, {
-        color: 0xae7dff, count: qualityCount(95, this.quality, {
+        color: 0xbc8dff, count: qualityCount(82, this.quality, {
           low: 0.3, medium: 0.62, high: 1, ultra: 1.12,
         }),
-        speed: 3.3, spread: 0.83, lifetime: 0.68,
-        opacity: 0.62, size: [0.55, 1.9], growth: -0.65,
+        speed: 2.3, spread: 0.61, lifetime: 0.70,
+        upwardBias: 0.68, opacity: 0.70, size: [0.45, 1.6], growth: -0.65,
       });
       this.afterglow.add(this.ending, {
         color: 0x4d397b, count: qualityCount(42, this.quality, {
           low: 0.3, medium: 0.6, high: 1, ultra: 1.12,
         }),
-        speed: 0.9, spread: 0.8, lifetime: 0.66,
-        upwardBias: 0.2, growth: 0.45, opacity: 0.06, size: [1.0, 2.4],
+        speed: 0.55, spread: 0.5, lifetime: 0.60,
+        upwardBias: 0.45, growth: 0.31, opacity: 0.05, size: [0.8, 1.9],
       });
     }
     if (this.light) {
-      this.light.light.color.set(t < 0.38 ? 0xf1d7ff : 0x9f63ee);
-      this.light.light.intensity = 7.2 * flash + 0.6 * charge + 1.5 * vortex + 1.0 * shock;
+      this.light.light.color.set(t < 0.28 ? 0xddf8ff : 0xba81ff);
+      this.light.light.intensity = 7.4 * flash + 0.5 * charge + 1.2 * vortex + 0.9 * shock;
     }
     return this.explosionAge < PRISM_FINISHER.explosionSeconds;
   }
