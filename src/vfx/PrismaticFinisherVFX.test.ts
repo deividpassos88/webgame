@@ -91,7 +91,7 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
       expect(halo).toBeDefined();
       expect(burst.children).toHaveLength(14);
       expect(burst.getObjectByName('MagePrismExplosionLightningBranch')).toBeDefined();
-      expect(effect.group.children.filter(x=>x.name==='MagePrismExplosionFlameTongue')).toHaveLength(14);
+      expect(field.children.filter(x=>x.name==='MagePrismExplosionFlameTongue')).toHaveLength(14);
       expect(effect.group.getObjectByName('MagePrismExplosionOuterHaloBloom')).toBeDefined();
       expect(orbits.every(Boolean)).toBe(true);
       expect(rising.count).toBeGreaterThan(40);
