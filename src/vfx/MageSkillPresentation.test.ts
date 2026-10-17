@@ -94,7 +94,10 @@ describe('Mage faster skill presentation', () => {
       expect(scene.getObjectByName('MagePrismChargePortalVFX')).toBeUndefined();
       // O portal não deve permanecer visível durante o feixe.
       expect(scene.getObjectByName('MagePrismCyanBeam')).toBeDefined();
-      expect(scene.getObjectByName('MagePrismImpactStar')).toBeDefined();
+      // Sem bolinhas e estrelas soltas: o shader chega afinando ao inimigo.
+      expect(scene.getObjectByName('MagePrismImpactStar')).toBeUndefined();
+      expect(scene.getObjectByName('MagePrismSourceBlueBloom')).toBeUndefined();
+      expect(scene.getObjectByName('MagePrismImpactTexturedBurst')).toBeDefined();
       expect(scene.getObjectByName('MageChargeOrbVFX')).toBeUndefined();
       expect(vfx.diagnostics().activeMagicCircles).toBe(0);
       expect(vfx.diagnostics().activeBarriers).toBe(0);
