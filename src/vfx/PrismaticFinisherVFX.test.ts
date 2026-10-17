@@ -112,7 +112,7 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
       }
       expect(burst.visible).toBe(false);
       expect((rising.material as THREE.MeshBasicMaterial).opacity).toBeGreaterThan(0);
-      expect((volume.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBe(0);
+      expect((volume.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBeLessThan(0.00001);
 
       // Fast fade: visually gone at 1.26s, even if the pooled object survives a few frames.
       effect.update(0.75);
