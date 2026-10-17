@@ -30,6 +30,7 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
       });
       scene.add(effect.group);
       expect(effect.group.getObjectByName('MagePrismHomingMissile')).toBeDefined();
+      expect(PRISM_FINISHER.missileCount).toBe(24);
       expect(effect.group.children.filter((x) => x.name === 'MagePrismHomingMissile')).toHaveLength(PRISM_FINISHER.missileCount);
       expect(effect.group.getObjectByName('MagePrismMissileCore')).toBeUndefined();
       expect(effect.group.getObjectByName('MagePrismMissileGlow')).toBeUndefined();
@@ -45,6 +46,9 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
       target.position.set(6, 0, 7);
       effect.update(0.12);
       expect(missile!.position.distanceTo(before)).toBeGreaterThan(0.01);
+      effect.update(0.45);
+      const active = effect.group.children.filter((x) => x.name === 'MagePrismHomingMissile' && x.visible);
+      expect(active.length).toBeGreaterThan(8);
     } finally {
       effect.dispose();
       lightPool.dispose();
@@ -75,9 +79,17 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
       expect(plasma.material).toBeInstanceOf(THREE.ShaderMaterial);
       expect(effect.group.getObjectByName('MagePrismExplosionBrokenShockwave')).toBeDefined();
       expect(effect.group.getObjectByName('MagePrismExplosionRadialLightning')).toBeDefined();
+      const field = effect.group.getObjectByName('MagePrismaticFinalExplosionField');
+      expect(field).toBeDefined();
+      expect(effect.group.getObjectByName('MagePrismVolumetricBlast')).toBeDefined();
+      const shockfront = effect.group.getObjectByName('MagePrismShockFront') as THREE.Mesh;
+      expect(shockfront).toBeDefined();
+      expect(shockwave.visible).toBe(false);
       expect(effect.update(0.06)).toBe(true);
       expect(shockwave.scale.x).toBeGreaterThan(0.2);
       expect((whiteCore.material as THREE.SpriteMaterial).opacity).toBeGreaterThan(0);
+      const newShader = shockfront.material as THREE.ShaderMaterial;
+      expect(newShader.uniforms.uOpacity.value).toBeGreaterThan(0);
       let alive = true;
       for (let i = 0; i < 65; i++) alive = effect.update(0.04);
       expect(alive).toBe(false);
