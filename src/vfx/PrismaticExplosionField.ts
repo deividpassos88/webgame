@@ -410,17 +410,46 @@ export class PrismaticExplosionField {
       this.lightningBurst,this.fragments);
   }
 
-  public detonate(position: THREE.Vector3):void{
+  private place(position:THREE.Vector3):void{
     this.group.visible=true;
     this.group.position.copy(position);
     this.localGroundY=-Math.min(1.08,Math.max(0.05,position.y-0.08));
     this.groundDisc.position.y=this.localGroundY+0.04;
     this.ground.position.y=this.localGroundY+0.027;
-    this.vortex.position.y=this.localGroundY+0.10;
-    this.core.position.set(0,this.localGroundY+0.52,0);
+    this.vortex.position.y=this.localGroundY+0.22;
+    this.core.position.set(0,this.localGroundY+1.32,0);
     this.outerGlow.position.copy(this.core.position);
     this.volume.position.copy(this.core.position);
     this.corona.position.copy(this.core.position);
+  }
+
+  /** The reference charges for two seconds WHILE the main laser is active. */
+  public prepare(position:THREE.Vector3):void{
+    this.charging=true;
+    this.place(position);
+    this.updateCharge(0);
+  }
+
+  public updateCharge(elapsed:number,position?:THREE.Vector3):void{
+    if(!this.charging)return;
+    if(position)this.place(position);
+    const p=THREE.MathUtils.clamp(elapsed/PRISM_EXPLOSION_TIMING.charge,0,1);
+    this.update(0.07);
+    this.core.position.y=this.localGroundY+1.32+0.11*Math.sin(elapsed*13);
+    this.outerGlow.position.copy(this.core.position);
+    this.core.material.opacity=0.42+0.38*p+0.1*Math.sin(elapsed*22);
+    this.core.scale.setScalar(1.0+p*1.55);
+    this.outerGlow.scale.setScalar(2.5+p*1.8);
+    this.outerGlow.material.opacity=0.48+0.12*p;
+    this.groundDisc.material.uniforms.uOpacity.value=0.56+0.11*p;
+    this.outerHalo.material.uniforms.uOpacity.value=0.48+0.29*p;
+    this.updateBolts(elapsed,0.47+0.23*p);
+    this.fragments.material.opacity=0;
+  }
+
+  public detonate(position: THREE.Vector3):void{
+    this.charging=false;
+    this.place(position);
     this.update(0);
   }
 
@@ -429,8 +458,10 @@ export class PrismaticExplosionField {
     const outer=index===3;
     const rot=outer?time*1.1:time*(index===1?-4.2:index===0?6.6:3.2);
     const scale=outer?1:0.66+0.34*THREE.MathUtils.smoothstep(time,0.24,0.49);
-    const height=this.localGroundY+(outer?0.22:0.34+index*0.15);
-    const tilt=outer?0.02:(index===0?0.19:index===1?-0.14:0.26);
+    // Differing elevations are critical in a top-down camera: each ribbon
+    // curves above the bright pool instead of becoming another painted ring.
+    const height=this.localGroundY+(outer?0.45:0.63+index*0.23);
+    const tilt=outer?0.12:(index===0?0.31:index===1?-0.27:0.38);
     const pos=band.points;
     for(let i=0;i<=count;i++){
       const u=i/count;
@@ -438,12 +469,12 @@ export class PrismaticExplosionField {
       const warp=Math.sin(a*(outer?17:7+index*2)-time*20+index*0.9)*0.08+
         Math.sin(a*(outer?33:13)+time*14)*0.037;
       const radius=(band.radius+warp)*(outer?1:scale);
-      const y=height+Math.sin(a*2+time*11+index)*0.12+
+      const y=height+Math.sin(a*2+time*11+index)*0.31+
         Math.cos(a*3-index)*tilt;
       const taper=0.68+0.32*Math.sin(u*TWO_PI*3-time*16);
       const half=band.width*taper*Math.max(0.01,strength);
-      pos.setXYZ(i*2,Math.cos(a)*(radius-half),y-0.03,Math.sin(a)*(radius-half));
-      pos.setXYZ(i*2+1,Math.cos(a)*(radius+half),y+0.03,Math.sin(a)*(radius+half));
+      pos.setXYZ(i*2,Math.cos(a)*(radius-half),y-half*0.45,Math.sin(a)*(radius-half));
+      pos.setXYZ(i*2+1,Math.cos(a)*(radius+half),y+half*0.45,Math.sin(a)*(radius+half));
     }
     pos.needsUpdate=true;
     band.mesh.material.uniforms.uTime.value=time;
@@ -463,13 +494,29 @@ export class PrismaticExplosionField {
         const radius=0.17+dist*u;
         const x=Math.cos(a)*radius+sideX*jag*u;
         const z=Math.sin(a)*radius+sideZ*jag*u;
-        const y=this.localGroundY+0.54+u*(0.31+(i%3)*0.22)+Math.sin(phase)*u*0.12;
+        const y=this.localGroundY+1.30+u*(0.16+(i%3)*0.31)+Math.sin(phase)*u*0.20;
         const width=(0.17+(i%2)*0.045)*(1-0.62*u);
         bolt.positions.setXYZ(2*j,x-sideX*width,y-0.025,z-sideZ*width);
         bolt.positions.setXYZ(2*j+1,x+sideX*width,y+0.025,z+sideZ*width);
       }
       bolt.positions.needsUpdate=true;
       bolt.mesh.material.uniforms.uOpacity.value=opacity*(0.75+0.25*Math.sin(t*43+i));
+      const branch=this.boltBranches[i];
+      const ba=a+(i%2?0.55:-0.55);
+      const branchSideX=-Math.sin(ba),branchSideZ=Math.cos(ba);
+      for(let j=0;j<=BOLT_STEPS;j++){
+        const u=j/BOLT_STEPS;
+        const jitter=Math.sin(t*59+i*7.1+j*2.9)*0.16*u;
+        const rad=1.1+(i%3)*0.22+u*(0.95+(i%4)*0.17);
+        const x=Math.cos(ba)*rad+branchSideX*jitter;
+        const z=Math.sin(ba)*rad+branchSideZ*jitter;
+        const y=this.localGroundY+1.43+u*0.87+Math.cos(j*3+t*50)*0.11*u;
+        const width=0.12*(1-u*0.78);
+        branch.positions.setXYZ(j*2,x-branchSideX*width,y-0.025,z-branchSideZ*width);
+        branch.positions.setXYZ(j*2+1,x+branchSideX*width,y+0.025,z+branchSideZ*width);
+      }
+      branch.positions.needsUpdate=true;
+      branch.mesh.material.uniforms.uOpacity.value=opacity*0.73;
     }
   }
 
@@ -497,61 +544,84 @@ export class PrismaticExplosionField {
 
   public update(time:number):void{
     const t=Math.max(0,time);
-    const charge=1-THREE.MathUtils.smoothstep(t,0.11,0.25);
-    const flash=Math.exp(-Math.pow((t-0.20)*14,2));
-    const vortexIn=THREE.MathUtils.smoothstep(t,0.21,0.34);
-    const vortexOut=1-THREE.MathUtils.smoothstep(t,0.89,1.25);
+    const charge=1-THREE.MathUtils.smoothstep(t,0.085,0.20);
+    const flash=Math.exp(-Math.pow((t-0.18)*19,2));
+    const vortexIn=THREE.MathUtils.smoothstep(t,0.19,0.34);
+    const vortexOut=1-THREE.MathUtils.smoothstep(t,0.94,1.30);
     const swirl=vortexIn*vortexOut;
-    const fade=1-THREE.MathUtils.smoothstep(t,0.97,1.25);
-    const boltOpacity=THREE.MathUtils.smoothstep(t,0.045,0.13)*
-      (1-THREE.MathUtils.smoothstep(t,0.25,0.43));
-    const fragmentOpacity=THREE.MathUtils.smoothstep(t,0.19,0.32)*
-      (1-THREE.MathUtils.smoothstep(t,0.85,1.23));
+    const fade=1-THREE.MathUtils.smoothstep(t,0.97,1.30);
+    const boltOpacity=THREE.MathUtils.smoothstep(t,0.005,0.07)*
+      (1-THREE.MathUtils.smoothstep(t,0.24,0.39));
+    const fragmentOpacity=THREE.MathUtils.smoothstep(t,0.18,0.32)*
+      (1-THREE.MathUtils.smoothstep(t,0.87,1.28));
 
-    this.core.material.opacity=Math.min(1,0.35*charge+0.96*flash+0.77*swirl)*fade;
-    this.core.scale.setScalar(0.55*charge+1.92*flash+1.65*swirl+0.03);
-    this.outerGlow.material.opacity=(0.36*charge+0.49*flash+0.32*swirl)*fade;
-    this.outerGlow.scale.setScalar(1.28+2.8*flash+2.65*swirl);
+    // One broad white plasma bowl, with independent elevated rings.
+    const whiteStrength=0.77*flash+0.92*swirl;
+    this.core.material.opacity=Math.min(1,0.47*charge+whiteStrength)*fade;
+    this.core.scale.setScalar(1.0*charge+3.2*flash+4.0*swirl+0.02);
+    this.outerGlow.material.opacity=(0.50*charge+0.43*flash+0.60*swirl)*fade;
+    this.outerGlow.scale.setScalar(2.0+4.2*flash+5.6*swirl);
+    const coreHeight=this.localGroundY+THREE.MathUtils.lerp(1.32,0.75,vortexIn);
+    this.core.position.y=coreHeight;
+    this.outerGlow.position.copy(this.core.position);
 
     this.groundDisc.material.uniforms.uTime.value=t;
-    this.groundDisc.material.uniforms.uOpacity.value=0.52*
-      (1-THREE.MathUtils.smoothstep(t,0.14,0.43));
-    this.groundDisc.scale.setScalar(3.35);
+    this.groundDisc.material.uniforms.uOpacity.value=0.60*
+      (1-THREE.MathUtils.smoothstep(t,0.18,0.43));
+    this.groundDisc.scale.setScalar(3.9);
     this.ground.material.uniforms.uTime.value=t;
-    this.ground.material.uniforms.uOpacity.value=0.54*
-      THREE.MathUtils.smoothstep(t,0.14,0.20)*
-      (1-THREE.MathUtils.smoothstep(t,0.28,0.43));
-    this.ground.scale.setScalar(4.15);
-    this.vortex.material.uniforms.uTime.value=t;
-    this.vortex.material.uniforms.uOpacity.value=0.24*swirl;
-    this.vortex.scale.setScalar(3.0);
+    this.ground.material.uniforms.uOpacity.value=0.55*
+      THREE.MathUtils.smoothstep(t,0.14,0.21)*
+      (1-THREE.MathUtils.smoothstep(t,0.31,0.46));
+    this.ground.scale.setScalar(4.3);
 
-    this.outerHalo.material.uniforms.uOpacity.value=(0.75*charge+0.85*swirl)*fade;
+    this.vortex.material.uniforms.uTime.value=t;
+    this.vortex.material.uniforms.uOpacity.value=1.05*swirl;
+    this.vortex.scale.setScalar(3.5);
+    this.outerHalo.material.uniforms.uOpacity.value=(0.79*charge+0.90*swirl)*fade;
     this.writeBand(this.haloBand,t,3,Math.max(charge,swirl));
+    this.haloBloom.mesh.material.uniforms.uOpacity.value=(0.19*charge+0.48*swirl)*fade;
+    this.writeBand(this.haloBloom,t,3,Math.max(charge,swirl));
     for(let i=0;i<this.orbitBands.length;i++){
       const band=this.orbitBands[i];
-      band.mesh.material.uniforms.uOpacity.value=(0.86-i*0.06)*swirl;
+      band.mesh.material.uniforms.uOpacity.value=(0.94-i*0.06)*swirl;
       this.writeBand(band,t,i,swirl);
+      const bloom=this.orbitBlooms[i];
+      bloom.mesh.material.uniforms.uOpacity.value=0.43*swirl;
+      this.writeBand(bloom,t,i,swirl);
       const arc=this.shockArcs[i];
-      arc.position.set(0,this.localGroundY+0.32+i*0.15,0);
+      arc.position.set(0,this.localGroundY+0.48+i*0.25,0);
       arc.rotation.z=t*(i===1?-4.2:i===0?6.6:3.2)+i*1.8;
-      arc.scale.setScalar(0.83+i*0.43);
-      arc.material.opacity=(0.25-i*0.03)*swirl;
+      arc.scale.setScalar(1.22+i*0.53);
+      arc.material.opacity=(0.21-i*0.025)*swirl;
+    }
+    for(let i=0;i<this.flameTongues.length;i++){
+      const flame=this.flameTongues[i];
+      const angle=i*TWO_PI/this.flameTongues.length+t*(i%2?-0.9:1.3);
+      const r=2.83+Math.sin(i*3.3+t*16)*0.13;
+      flame.position.set(Math.cos(angle)*r,
+        this.localGroundY+0.72+Math.sin(t*13+i*1.8)*0.28,
+        Math.sin(angle)*r);
+      flame.scale.set(0.66+(i%3)*0.22,1.46+(i%4)*0.24,1);
+      (flame.material as THREE.SpriteMaterial).opacity=(0.32+(i%3)*0.035)*swirl;
     }
     this.updateBolts(t,boltOpacity);
     this.updateFragments(t,fragmentOpacity);
 
-    // The two tiny plasma skins only accompany the flash, never expand as a bubble.
+    // Only a hot brief nucleus: never a swelling spherical shield.
     this.volume.material.uniforms.uTime.value=t;
-    this.volume.material.uniforms.uOpacity.value=0.15*flash;
-    this.volume.scale.set(0.65,0.36,0.65);
+    this.volume.material.uniforms.uOpacity.value=0.12*flash;
+    this.volume.scale.set(0.68,0.34,0.68);
+    this.volume.position.y=coreHeight;
     this.corona.material.uniforms.uTime.value=t*1.3;
-    this.corona.material.uniforms.uOpacity.value=0.09*flash;
-    this.corona.scale.set(0.95,0.43,0.95);
+    this.corona.material.uniforms.uOpacity.value=0.08*flash;
+    this.corona.scale.set(0.98,0.45,0.98);
+    this.corona.position.y=coreHeight;
   }
 
   public reset():void{
     this.group.visible=false;
+    this.charging=false;
     this.core.material.opacity=0;
     this.outerGlow.material.opacity=0;
     this.groundDisc.material.uniforms.uOpacity.value=0;
@@ -559,7 +629,11 @@ export class PrismaticExplosionField {
     this.vortex.material.uniforms.uOpacity.value=0;
     this.outerHalo.material.uniforms.uOpacity.value=0;
     for(const band of this.orbitBands)band.mesh.material.uniforms.uOpacity.value=0;
+    this.haloBloom.mesh.material.uniforms.uOpacity.value=0;
+    for(const bloom of this.orbitBlooms)bloom.mesh.material.uniforms.uOpacity.value=0;
+    for(const flame of this.flameTongues)(flame.material as THREE.SpriteMaterial).opacity=0;
     for(const bolt of this.bolts)bolt.mesh.material.uniforms.uOpacity.value=0;
+    for(const branch of this.boltBranches)branch.mesh.material.uniforms.uOpacity.value=0;
     this.lightningBurst.visible=false;
     this.volume.material.uniforms.uOpacity.value=0;
     this.corona.material.uniforms.uOpacity.value=0;
@@ -584,8 +658,13 @@ export class PrismaticExplosionField {
     this.corona.material.dispose();
     this.haloBand.mesh.geometry.dispose();
     this.haloBand.mesh.material.dispose();
+    this.haloBloom.mesh.geometry.dispose();
+    this.haloBloom.mesh.material.dispose();
     for(const band of this.orbitBands){band.mesh.geometry.dispose();band.mesh.material.dispose();}
+    for(const bloom of this.orbitBlooms){bloom.mesh.geometry.dispose();bloom.mesh.material.dispose();}
     for(const bolt of this.bolts){bolt.mesh.geometry.dispose();bolt.mesh.material.dispose();}
+    for(const branch of this.boltBranches){branch.mesh.geometry.dispose();branch.mesh.material.dispose();}
+    for(const flame of this.flameTongues)(flame.material as THREE.SpriteMaterial).dispose();
     for(const arc of this.shockArcs){arc.geometry.dispose();arc.material.dispose();}
     this.fragments.geometry.dispose();
     this.fragments.material.dispose();
