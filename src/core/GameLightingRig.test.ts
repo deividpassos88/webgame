@@ -26,7 +26,8 @@ describe('GameLightingRig - Campo dos Deuses', () => {
     expect((scene.fog as THREE.Fog).color.getHex()).toBe(0xb2d8ff);
     expect((scene.background as THREE.Color).getHex()).toBe(0xb2d8ff);
     const ambient = scene.children.find(child => child instanceof THREE.AmbientLight) as THREE.AmbientLight;
-    expect(ambient.intensity).toBeGreaterThan(0.7);
+    expect(ambient.intensity).toBeGreaterThan(0.4);
+    expect(ambient.intensity).toBeLessThan(0.6);
   });
 
   it('still updates the boss light dynamically on the divine platform', () => {
