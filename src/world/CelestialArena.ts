@@ -1,4 +1,13 @@
 import * as THREE from 'three';
+import { createCelestialMarble, createCelestialLimestone } from './CelestialSurface';
+import {
+  buildCelestialArchitectureDetails,
+  createFloatingRock,
+  addIslandVegetation,
+  createCelestialWaterfallTexture,
+  addIslandWaterfalls,
+  enhanceCelestialFlame,
+} from './CelestialArchitecturalDetails';
 
 /**
  * Campo dos Deuses: cenário jogável de 50 x 50m, inspirado nas três imagens
@@ -28,40 +37,6 @@ const GOLD = 0xd9ad58;
 function pseudo(seed: number): number {
   const value = Math.sin(seed * 127.1 + seed * seed * 0.017) * 43758.5453;
   return value - Math.floor(value);
-}
-
-/** Deterministic, subtly veined pale marble; no network assets or canvas needed. */
-function marbleTexture(): THREE.DataTexture {
-  const size = 256;
-  const data = new Uint8Array(size * size * 4);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const nx = x / size;
-      const ny = y / size;
-      const shift = Math.sin(ny * 15.1 + Math.sin(nx * 21) * 1.7) * 0.08;
-      const contour = Math.sin((nx + ny * 0.49 + shift) * 39);
-      const vein = Math.pow(Math.max(0, contour), 19);
-      const granular = (pseudo(x + y * 256 + 67) - 0.5) * 3.5;
-      const soft = Math.sin(nx * 11.2 + Math.sin(ny * 9.2)) * 2.8;
-      const value = THREE.MathUtils.clamp(250 - vein * 22 + granular + soft, 210, 255);
-      const i = (y * size + x) * 4;
-      data[i] = value;
-      data[i + 1] = value;
-      data[i + 2] = Math.min(255, value + 2);
-      data[i + 3] = 255;
-    }
-  }
-  const t = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-  t.name = 'CampoDosDeusesMarbleVeining';
-  t.wrapS = THREE.RepeatWrapping;
-  t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(6, 6);
-  t.magFilter = THREE.LinearFilter;
-  t.minFilter = THREE.LinearMipmapLinearFilter;
-  t.generateMipmaps = true;
-  t.needsUpdate = true;
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
 }
 
 function standard(color: number, roughness = 0.48, metalness = 0.02): THREE.MeshStandardMaterial {
@@ -223,56 +198,92 @@ function makeSky(parent: THREE.Object3D): void {
   parent.add(sky);
 }
 
-function createIsland(parent: THREE.Object3D, palette: Palette, x: number, y: number, z: number, radius: number, seed: number): void {
+function createIsland(
+  parent: THREE.Object3D, palette: Palette,
+  x: number, y: number, z: number, radius: number, seed: number,
+  waterfall: THREE.Material
+): void {
   const root = new THREE.Group();
   root.position.set(x, y, z);
   root.name = 'CelestialDistantFloatingTempleIsland';
   parent.add(root);
-  const rock = new THREE.Mesh(
-    new THREE.ConeGeometry(radius * 0.92, radius * 2.4, 7),
-    palette.stone
-  );
+
+  // Jagged stone mass; the original perfectly smooth cone looked like a prop.
+  const rock = new THREE.Mesh(createFloatingRock(radius, seed), palette.stone);
+  rock.name = 'CelestialSculptedFloatingRock';
   rock.rotation.z = Math.PI;
-  rock.position.y = -radius * 0.72;
+  rock.position.y = -radius * 1.31;
   root.add(rock);
+
   const vegetation = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius * 0.91, radius * 1.08, 0.65, 12),
-    standard(0x6a875d, 0.95)
+    new THREE.CylinderGeometry(radius * 0.96, radius * 0.91, 0.50, 24),
+    standard(0x6b845f, 0.91)
   );
+  vegetation.position.y = 0.24;
   root.add(vegetation);
+  addIslandVegetation(root, radius, seed);
+
   const deck = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius, radius * 0.96, 0.34, 12),
+    new THREE.CylinderGeometry(radius * 0.66, radius * 0.71, 0.53, 24),
     palette.marble
   );
-  deck.position.y = 0.52;
+  deck.position.y = 0.73;
   root.add(deck);
-  const roofY = 4 + radius * 0.21;
-  for (let p = 0; p < 7; p++) {
-    const a = p * Math.PI * 2 / 7;
-    column(root, palette.ivory, Math.cos(a) * radius * 0.51,
-      roofY / 2 + 0.45, Math.sin(a) * radius * 0.51, roofY - 0.4, 0.24);
+  const goldFrieze = new THREE.Mesh(
+    new THREE.TorusGeometry(radius * 0.68, 0.09, 7, 48), palette.gold
+  );
+  goldFrieze.rotation.x = Math.PI / 2;
+  goldFrieze.position.y = 0.72;
+  root.add(goldFrieze);
+
+  // Temple drums, paired fluted columns and gilded roof are readable even
+  // from the actual gameplay perspective, not only from an aerial screenshot.
+  const roofY = 4.0 + radius * 0.22;
+  const n = radius > 12 ? 12 : 10;
+  for (let i = 0; i < n; i++) {
+    const a = i * Math.PI * 2 / n;
+    const px = Math.cos(a) * radius * 0.50;
+    const pz = Math.sin(a) * radius * 0.50;
+    column(root, palette.ivory, px, roofY / 2 + 0.53, pz, roofY - 0.67, 0.29, 16);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.44, 0.21, 12), palette.goldSoft);
+    cap.position.set(px, roofY - 0.02, pz);
+    root.add(cap);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.50, 0.22, 12), palette.ivory);
+    base.position.set(px, 0.87, pz);
+    root.add(base);
   }
-  const roof = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.68, radius * 0.77, 0.46, 12), palette.gold);
-  roof.position.y = roofY + 0.30;
-  root.add(roof);
-  const dome = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.6, radius * 0.48, 12), palette.ivory);
-  dome.position.y = roofY + 0.82;
+
+  const entablature = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius * 0.66, radius * 0.70, 0.37, 24),
+    palette.ivory
+  );
+  entablature.position.y = roofY + 0.04;
+  root.add(entablature);
+  const crown = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius * 0.70, radius * 0.70, 0.20, 24),
+    palette.gold
+  );
+  crown.position.y = roofY + 0.29;
+  root.add(crown);
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(radius * 0.53, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+    palette.ivory
+  );
+  dome.position.y = roofY + 0.42;
   root.add(dome);
-  const finial = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.3, 7), palette.goldBright);
-  finial.position.y = roofY + radius * 0.48 + 0.7;
+  const cupola = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius * 0.19, radius * 0.23, 0.35, 16),
+    palette.goldBright
+  );
+  cupola.position.y = roofY + radius * 0.52;
+  root.add(cupola);
+  const finial = new THREE.Mesh(
+    new THREE.ConeGeometry(0.22, 1.8, 10), palette.goldBright
+  );
+  finial.position.y = roofY + radius * 0.54 + 0.85;
   root.add(finial);
-  // Waterfalls falling off two sides of remote islands.
-  for (let k = 0; k < 2; k++) {
-    const a = seed + k * 2.5;
-    const fall = block(root,
-      new THREE.MeshBasicMaterial({
-        color: 0x9feaff, transparent: true, opacity: 0.33,
-        depthWrite: false, side: THREE.DoubleSide
-      }),
-      Math.cos(a) * radius * 0.68, -radius * 2.0,
-      Math.sin(a) * radius * 0.68, 0.38, radius * 4.5, 0.07);
-    fall.rotation.y = a;
-  }
+
+  addIslandWaterfalls(root, radius, seed, waterfall);
 }
 
 export class CelestialArena {
@@ -282,20 +293,23 @@ export class CelestialArena {
   public readonly flameVisuals: THREE.Mesh[] = [];
   private readonly materials: Palette;
   private readonly cloudField: THREE.InstancedMesh;
+  private readonly waterfallTexture = createCelestialWaterfallTexture();
+  private readonly waterfallMaterial = new THREE.MeshBasicMaterial({
+    color: 0xd1f3ff, map: this.waterfallTexture,
+    transparent: true, opacity: 0.77, side: THREE.DoubleSide,
+    depthWrite: false, fog: true
+  });
 
   public constructor() {
     this.group.name = 'CampoDosDeusesCelestialArena';
     this.materials = {
-      marble: standard(0xe1e7f0, 0.42),
-      tile: new THREE.MeshPhysicalMaterial({
-        color: 0xe1e6ef, map: marbleTexture(), metalness: 0.08, roughness: 0.29,
-        clearcoat: 0.46, clearcoatRoughness: 0.27, vertexColors: false
-      }),
-      ivory: standard(0xe8e8e9, 0.37),
-      stone: standard(0x8794b2, 0.85),
-      gold: standard(0xc5a05c, 0.29, 0.64),
-      goldBright: standard(0xffd68a, 0.24, 0.6),
-      goldSoft: standard(0xdac995, 0.35, 0.27),
+      marble: standard(0xf3f0e8, 0.39),
+      tile: createCelestialMarble(),
+      ivory: createCelestialLimestone(),
+      stone: standard(0x929ba9, 0.87),
+      gold: standard(0xc9a45e, 0.28, 0.71),
+      goldBright: standard(0xffd68a, 0.22, 0.68),
+      goldSoft: standard(0xd6c090, 0.37, 0.35),
       royalBlue: standard(0x13468e, 0.77),
       deepBlue: standard(0x092f6c, 0.5),
       flame: new THREE.MeshBasicMaterial({ color: 0xffc065 }),
@@ -307,6 +321,7 @@ export class CelestialArena {
     this.buildCornerPillarsAndBanners();
     this.buildGrandstands();
     this.buildNorthGrandstand();
+    buildCelestialArchitectureDetails(this.group, this.materials);
     this.buildFloatingIslands();
     this.buildCeremonialTorches();
     this.buildGoldenWingedOrnaments();
@@ -331,6 +346,7 @@ export class CelestialArena {
       flame.name='CelestialDivineFlame';
       flame.position.y=8.05;
       node.add(flame);
+      enhanceCelestialFlame(flame);
       this.flameVisuals.push(flame);
       const light=new THREE.PointLight(0xffc989,3.7,16,2);
       light.position.set(x,8.1,z);
@@ -512,12 +528,6 @@ export class CelestialArena {
   }
 
   /**
-   * Front-facing stadium backdrop. The former east/west stands sat outside
-   * the camera frustum, making the arena look like an empty marble square.
-   * This northern grandstand frames the fight from the default camera angle.
-   * Every object is beyond z=-27, outside the player/enemy movement limits.
-   */
-  /**
    * Two independent celestial galleries frame an open horizon. Keeping an
    * uninterrupted 28 m sky corridor is essential: a continuous rear wall
    * hides the cloudscape and floating temples from the gameplay camera.
@@ -667,10 +677,13 @@ export class CelestialArena {
       [94, 9, -96, 8], [-30, 10, -104, 7],
       [31, 11, -109, 7],
     ];
-    islandDefs.forEach(([x,y,z,r],i)=>createIsland(this.group,p,x,y,z,r,i*1.13));
+    islandDefs.forEach(([x,y,z,r],i)=>createIsland(
+      this.group, p, x, y, z, r, i * 1.13, this.waterfallMaterial
+    ));
   }
 
   public update(time: number): void {
+    this.waterfallTexture.offset.y = -(time * 0.19 % 1);
     // Four subtle warm decorative flames at the platform perimeter.
     for (let i = 0; i < this.flameVisuals.length; i++) {
       const flame=this.flameVisuals[i];
