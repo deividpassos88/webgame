@@ -57,7 +57,7 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
     }
   });
 
-  it('detona uma explosão violeta com onda de choque, fragmentos e dissolução', () => {
+  it('reconstrói a explosão da referência em seis blocos 3D com fases e cleanup', () => {
     const { scene, lightPool, resources, effect } = setup();
     try {
       effect.play({
@@ -69,58 +69,64 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
       effect.update(1.8);
       const impact = new THREE.Vector3(0, 1.5, 7);
       effect.detonate(impact);
-      // Mesmo com múltiplas solicitações, a detonação não reinicia.
-      effect.detonate(impact);
-      const shockwave = effect.group.getObjectByName('MagePrismExplosionShockwave') as THREE.Mesh;
-      const whiteCore = effect.group.getObjectByName('MagePrismExplosionWhiteCore') as THREE.Sprite;
-      expect(shockwave).toBeDefined();
-      expect(whiteCore).toBeDefined();
-      const plasma = effect.group.getObjectByName('MagePrismExplosionPlasma') as THREE.Mesh;
-      expect(plasma.material).toBeInstanceOf(THREE.ShaderMaterial);
-      expect(effect.group.getObjectByName('MagePrismExplosionBrokenShockwave')).toBeDefined();
-      expect(effect.group.getObjectByName('MagePrismExplosionRadialLightning')).toBeDefined();
-      const field = effect.group.getObjectByName('MagePrismaticFinalExplosionField');
-      expect(field).toBeDefined();
-      expect(effect.group.getObjectByName('MagePrismVolumetricBlast')).toBeDefined();
-      const shockfront = effect.group.getObjectByName('MagePrismShockFront') as THREE.Mesh;
-      expect(shockfront).toBeDefined();
-      expect(shockwave.visible).toBe(false);
-      const spiral = effect.group.getObjectByName('MagePrismSpiralVortex') as THREE.Mesh;
-      const horizontalFlash = effect.group.getObjectByName('MagePrismExplosionHorizontalFlash') as THREE.Sprite;
-      const jets = effect.group.getObjectByName('MagePrismLaserRuptureJets') as THREE.InstancedMesh;
-      expect(spiral).toBeDefined();
-      expect(horizontalFlash).toBeDefined();
-      expect(jets.count).toBeGreaterThan(40);
-      // Before the flash: magenta charged ring, white center and cyan lightning.
-      expect(effect.update(0.06)).toBe(true);
-      expect((whiteCore.material as THREE.SpriteMaterial).opacity).toBeGreaterThan(0);
-      const spiralMat = spiral.material as THREE.ShaderMaterial;
-      expect(spiralMat.uniforms.uOpacity.value).toBeGreaterThan(0.6);
-      expect((horizontalFlash.material as THREE.SpriteMaterial).opacity).toBeLessThan(0.1);
-      expect((jets.material as THREE.MeshBasicMaterial).opacity).toBe(0);
+      effect.detonate(impact); // Detonation is idempotent.
 
-      // Detonation: white horizontal flare and 3D shards without a giant shield.
-      effect.update(0.26);
-      expect((horizontalFlash.material as THREE.SpriteMaterial).opacity).toBeGreaterThan(0.7);
-      expect((jets.material as THREE.MeshBasicMaterial).opacity).toBeGreaterThan(0);
-      expect((shockfront.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBeGreaterThan(0);
+      const core = effect.group.getObjectByName('MagePrismExplosionCore') as THREE.Sprite;
+      const disc = effect.group.getObjectByName('MagePrismExplosionGroundDisc') as THREE.Mesh;
+      const halo = effect.group.getObjectByName('MagePrismExplosionOuterHalo') as THREE.Mesh;
+      const burst = effect.group.getObjectByName('MagePrismExplosionLightningBurst') as THREE.Group;
+      const orbits = ['MagePrismExplosionOrbitA', 'MagePrismExplosionOrbitB', 'MagePrismExplosionOrbitC']
+        .map((name) => effect.group.getObjectByName(name) as THREE.Mesh);
+      const rising = effect.group.getObjectByName('MagePrismExplosionFragmentsAscending') as THREE.InstancedMesh;
+      const field = effect.group.getObjectByName('MagePrismaticFinalExplosionField')!;
       const volume = effect.group.getObjectByName('MagePrismVolumetricBlast') as THREE.Mesh;
-      expect(volume.scale.x).toBeLessThan(2.4);
 
-      // Rotation and residual glow continue after the flash, but no bubble.
-      effect.update(0.50);
-      expect(spiralMat.uniforms.uOpacity.value).toBeGreaterThan(0.3);
-      expect((horizontalFlash.material as THREE.SpriteMaterial).opacity).toBeLessThan(0.01);
+      expect(field).toBeDefined();
+      expect(core).toBeDefined();
+      expect(disc).toBeDefined();
+      expect(halo).toBeDefined();
+      expect(burst.children).toHaveLength(7);
+      expect(orbits.every(Boolean)).toBe(true);
+      expect(rising.count).toBeGreaterThan(40);
+
+      // Charge: cyan floor and a white center, no flash or orbits yet.
+      expect(effect.update(0.06)).toBe(true);
+      expect(core.material.opacity).toBeGreaterThan(0.1);
+      expect((disc.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBeGreaterThan(0);
+      expect((orbits[0].material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBe(0);
+
+      // Rupture: seven physically thick lightning ribbons + intense white core.
+      effect.update(0.14);
+      expect(core.material.opacity).toBeGreaterThan(0.7);
+      expect(burst.visible).toBe(true);
+      const bolt = burst.children[0] as THREE.Mesh;
+      expect((bolt.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBeGreaterThan(0.4);
+      expect(bolt.geometry.getAttribute('position').count).toBeGreaterThan(12);
+
+      // Vortex: three independently raised, rotating 3D ribbons.
+      effect.update(0.31);
+      for (const orbit of orbits) {
+        expect((orbit.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBeGreaterThan(0.4);
+        const coords = orbit.geometry.getAttribute('position') as THREE.BufferAttribute;
+        expect(coords.getY(0)).not.toBeCloseTo(coords.getY(10), 3);
+      }
+      expect(burst.visible).toBe(false);
+      expect(rising.material.opacity).toBeGreaterThan(0);
       expect((volume.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBe(0);
-      expect((jets.material as THREE.MeshBasicMaterial).opacity).toBeLessThan(0.25);
-      effect.update(0.22);
-      expect((jets.material as THREE.MeshBasicMaterial).opacity).toBe(0);
+
+      // Fast fade: visually gone at 1.26s, even if the pooled object survives a few frames.
+      effect.update(0.75);
+      expect(core.material.opacity).toBe(0);
+      expect((orbits[1].material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBe(0);
+      expect(rising.material.opacity).toBe(0);
+
       let alive = true;
-      for (let i = 0; i < 65; i++) alive = effect.update(0.04);
+      for (let i = 0; i < 20; i++) alive = effect.update(0.05);
       expect(alive).toBe(false);
       effect.reset();
       expect(effect.group.visible).toBe(false);
       expect(lightPool.availableCount).toBe(2);
+      expect(core.material.opacity).toBe(0);
     } finally {
       effect.dispose();
       lightPool.dispose();
