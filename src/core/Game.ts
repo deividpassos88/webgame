@@ -2621,7 +2621,14 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       readonly applyElementalStatus?: boolean;
     } = {}
   ): void {
-    record.enemy.receivePlayerHit(damage, this.player.root.position);
+    if (spellId === 'laser') {
+      // Cada um dos oito pulsos gera dano real e renova o slow.
+      // Sem knockback cumulativo nem stagger permanente a cada frame.
+      record.enemy.receivePrismaticBeamHit(damage);
+      if (!record.enemy.isDead) record.enemy.applyPrismaticSlow(0.31);
+    } else {
+      record.enemy.receivePlayerHit(damage, this.player.root.position);
+    }
     if (skillElement === 'fire' && options.applyElementalStatus !== false && !record.enemy.isDead) {
       record.enemy.applyElementalHit(skillElement, Math.max(1, damage * 0.12));
     }
