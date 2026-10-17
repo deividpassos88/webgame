@@ -267,6 +267,36 @@ export class CelestialArena {
     this.buildCornerPillarsAndBanners();
     this.buildGrandstands();
     this.buildFloatingIslands();
+    this.buildCeremonialTorches();
+  }
+
+  private buildCeremonialTorches(): void {
+    const p=this.materials;
+    const sites: Array<[number,number]>=[[-28,-23],[28,-23],[-28,23],[28,23]];
+    sites.forEach(([x,z],index)=>{
+      const node=new THREE.Group();
+      node.name='CelestialGoldenFlameColumn';
+      node.position.set(x,0,z);
+      this.group.add(node);
+      block(node,p.stone,0,0.8,0,2.25,1.6,2.25);
+      block(node,p.gold,0,1.66,0,2.45,0.22,2.45);
+      column(node,p.ivory,0,4.1,0,4.8,0.66,12);
+      block(node,p.gold,0,6.55,0,2.15,0.44,2.15);
+      const bowl=new THREE.Mesh(new THREE.CylinderGeometry(0.81,0.52,0.58,14),p.goldBright);
+      bowl.position.y=7.0;
+      node.add(bowl);
+      const flame=new THREE.Mesh(new THREE.ConeGeometry(0.44,1.5,8),p.flame);
+      flame.name='CelestialDivineFlame';
+      flame.position.y=8.05;
+      node.add(flame);
+      this.flameVisuals.push(flame);
+      const light=new THREE.PointLight(0xffc989,3.7,16,2);
+      light.position.set(x,8.1,z);
+      light.name='CelestialBrazierLight'+index;
+      this.group.add(light);
+      this.ambientTorches.push(light);
+      createBanner(node,p.royalBlue,p.gold,0,3.0,0.78,false);
+    });
   }
 
   private buildSquarePlatform(): void {
@@ -444,6 +474,7 @@ export class CelestialArena {
     for (let i = 0; i < this.flameVisuals.length; i++) {
       const flame=this.flameVisuals[i];
       flame.scale.setScalar(1+Math.sin(time*7.3+i*1.7)*0.1);
+      this.ambientTorches[i].intensity=3.2+Math.sin(time*6.3+i*1.8)*0.5;
     }
   }
 }
