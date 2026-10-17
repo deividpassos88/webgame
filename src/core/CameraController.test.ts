@@ -11,12 +11,13 @@ describe('CameraController dead zone', () => {
 
     // Default zoom 1.1 and angled camera expose the divine stands in the background.
     expect(controller.camera.position.x).toBeCloseTo(0);
-    expect(controller.camera.position.z).toBeCloseTo(20 * 1.1);
-    expect(controller.camera.position.y).toBeCloseTo(10 * 1.1);
+    expect(controller.camera.position.z).toBeCloseTo(17 * 1.1);
+    expect(controller.camera.position.y).toBeCloseTo(16 * 1.1);
     expect(controller.camera.fov).toBe(49);
-    // Roofline of the north stand is visible in the upper part of the view.
-    const roof = new THREE.Vector3(0, 19, -49).project(controller.camera);
-    expect(roof.y).toBeLessThan(1);
+    // The audience is framed in the upper portion without sacrificing VFX projection.
+    const audience = new THREE.Vector3(0, 5, -29).project(controller.camera);
+    expect(audience.y).toBeLessThan(1);
+    expect(audience.y).toBeGreaterThan(0);
   });
 
   it('follows only the distance that exceeds the dead zone', () => {
@@ -29,7 +30,7 @@ describe('CameraController dead zone', () => {
     expect(controller.followTargetX()).toBeCloseTo(2);
     expect(controller.camera.position.x).toBeCloseTo(2);
     // câmera z = followTarget(-2) + offset(11) * zoom(1.20)
-    expect(controller.camera.position.z).toBeCloseTo(-2 + 20 * 1.1);
+    expect(controller.camera.position.z).toBeCloseTo(-2 + 17 * 1.1);
   });
 
   it('clamps player zoom but allows free zoom in admin mode', () => {
