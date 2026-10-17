@@ -301,6 +301,7 @@ export class CelestialArena {
     this.buildEngravedFloor();
     this.buildCornerPillarsAndBanners();
     this.buildGrandstands();
+    this.buildNorthGrandstand();
     this.buildFloatingIslands();
     this.buildCeremonialTorches();
     this.buildGoldenWingedOrnaments();
@@ -502,6 +503,90 @@ export class CelestialArena {
           block(side, p.gold, sign * 51.8, 13.76, z + 3, 1.35, 0.13, 5.9);
         }
       }
+    }
+  }
+
+  /**
+   * Front-facing stadium backdrop. The former east/west stands sat outside
+   * the camera frustum, making the arena look like an empty marble square.
+   * This northern grandstand frames the fight from the default camera angle.
+   * Every object is beyond z=-27, outside the player/enemy movement limits.
+   */
+  private buildNorthGrandstand(): void {
+    const p=this.materials;
+    const grandstand=new THREE.Group();
+    grandstand.name='CelestialNorthGrandstand';
+    this.group.add(grandstand);
+
+    block(grandstand,p.stone,0,1.25,-37.6,64,5.1,22,'CelestialNorthFloatingGrandstandFoundation');
+    block(grandstand,p.ivory,0,4.03,-37.6,64.5,0.45,22.5);
+    block(grandstand,p.gold,0,4.28,-37.6,65,0.13,23);
+    for(let row=0;row<10;row++){
+      const z=-29.2-row*1.78;
+      const y=4.55+row*0.70;
+      block(grandstand,p.ivory,0,y-0.18,z,62,0.46,1.7);
+      block(grandstand,p.gold,0,y+0.10,z,61.5,0.105,1.63);
+      block(grandstand,p.deepBlue,0,y+0.19,z,60.5,0.13,1.35);
+    }
+
+    const count=10*106;
+    const spectators=new THREE.InstancedMesh(
+      new THREE.CapsuleGeometry(0.18,0.31,2,4),
+      standard(0x45587a,0.9),
+      count
+    );
+    spectators.name='CelestialNorthStadiumAudience';
+    const dummy=new THREE.Object3D();
+    const color=new THREE.Color();
+    for(let row=0;row<10;row++) for(let seat=0;seat<106;seat++){
+      const idx=row*106+seat;
+      dummy.position.set(-29.7+seat*0.56,
+        4.92+row*0.70+pseudo(idx*4+25)*0.09,
+        -29.2-row*1.78);
+      dummy.scale.setScalar(0.78+pseudo(idx*3+34)*0.37);
+      dummy.rotation.y=(pseudo(idx*7+44)-0.5)*0.4;
+      dummy.updateMatrix();
+      spectators.setMatrixAt(idx,dummy.matrix);
+      color.setHex(idx%13===0?0xd3c4aa:idx%5===0?0x818cad:idx%3===0?0x4d4a69:0x314968);
+      spectators.setColorAt(idx,color);
+    }
+    spectators.instanceMatrix.needsUpdate=true;
+    if(spectators.instanceColor)spectators.instanceColor.needsUpdate=true;
+    grandstand.add(spectators);
+
+    // Tall sacred Roman-style colonnade and gold cornice, facing the viewer.
+    block(grandstand,p.ivory,0,18.35,-49.0,69,1.15,2.45,'CelestialStadiumCrown');
+    block(grandstand,p.goldBright,0,18.89,-48.88,69.7,0.24,2.75);
+    block(grandstand,p.gold,0,17.55,-47.72,69.5,0.32,0.33);
+    for(let k=0;k<12;k++){
+      const x=-32.0+k*5.82;
+      column(grandstand,p.ivory,x,12.8,-48.9,11.1,0.56,12);
+      block(grandstand,p.gold,x,18.34,-48.9,1.72,0.41,1.72);
+      block(grandstand,p.goldSoft,x,7.45,-48.9,1.75,0.42,1.7);
+      if(k<11){
+        const arch=new THREE.Mesh(
+          new THREE.TorusGeometry(2.9,0.20,7,30,Math.PI),
+          p.ivory
+        );
+        arch.name='CelestialNorthClassicalArch';
+        arch.position.set(x+2.91,15.0,-48.67);
+        grandstand.add(arch);
+      }
+      if(k%2===0){
+        createBanner(grandstand,p.royalBlue,p.gold,x,12.4,-47.88,false);
+      }
+      if(k%3===0){
+        const finial=new THREE.Mesh(new THREE.ConeGeometry(0.40,1.25,8),p.goldBright);
+        finial.position.set(x,19.6,-48.9);
+        grandstand.add(finial);
+      }
+    }
+    // North stand supports hang below the cloud deck, reading as floating.
+    for(const x of [-29,-15,0,15,29]){
+      const rock=new THREE.Mesh(new THREE.ConeGeometry(2.5,8.5,5),p.stone);
+      rock.rotation.z=Math.PI;
+      rock.position.set(x,-7.3,-38.0);
+      grandstand.add(rock);
     }
   }
 
