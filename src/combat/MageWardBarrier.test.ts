@@ -3,9 +3,17 @@ import {
   MAGE_WARD_DURATION_SECONDS,
   MAGE_WARD_RADIUS_METERS,
   projectOutsideMageWard,
+  shouldActivateMageWard,
 } from './MageWardBarrier';
 
 describe('Mage ward enemy collision', () => {
+  it('activates only for the Mage skill 4 laser, never for basic or other spells', () => {
+    expect(shouldActivateMageWard('mage', 'laser')).toBe(true);
+    for (const spellId of ['basic', 'water', 'lightning', 'lava', 'ice'] as const) {
+      expect(shouldActivateMageWard('mage', spellId)).toBe(false);
+    }
+    expect(shouldActivateMageWard('warrior', 'laser')).toBe(false);
+  });
   it('keeps collision capsules outside exactly four metres plus enemy radius', () => {
     expect(MAGE_WARD_RADIUS_METERS).toBe(4);
     expect(MAGE_WARD_DURATION_SECONDS).toBe(3);
