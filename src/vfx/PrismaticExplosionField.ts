@@ -1,15 +1,26 @@
 import * as THREE from 'three';
 
 /**
- * Raio Prismático - descarga final, baseada na sequência da referência:
- * 0.00-0.20s: anel magenta e descargas ciano;
- * 0.20-0.38s: colapso branco e flash horizontal;
- * 0.30-1.20s: três espirais luminosas girando sobre um núcleo branco;
- * 1.20-1.65s: plasma e faíscas se dissipam.
+ * The Mage's skill-4 finisher, modelled after the reference rather than a
+ * collection of flat concentric outlines. All times are relative to detonate().
  *
- * O efeito é planar com espirais a diferentes alturas. Não existe cúpula
- * translúcida grande nem esfera que cresce como escudo.
+ * Charge 0-.14: cyan ground field, hot nucleus, magenta rupture rim.
+ * Rupture .14-.28: seven branching white/cyan bolts and a hot flash.
+ * Vortex .28-.95: three independent, physically raised rotating plasma ribbons.
+ * Fade .95-1.25: light and fragments travel upward, all geometry goes dark.
+ *
+ * This class owns VISUALS ONLY. Damage, knockdown and the invisible skill-4
+ * collision field are handled elsewhere and remain unchanged.
  */
+export const PRISM_EXPLOSION_TIMING = {
+  charge: 0.14,
+  rupture: 0.28,
+  vortexEnd: 0.95,
+  fadeEnd: 1.25,
+} as const;
+
+const TWO_PI = Math.PI * 2;
+const UP = new THREE.Vector3(0, 1, 0);
 const QUAD_VERTEX = /* glsl */ `
   varying vec2 vUv;
   void main() {
@@ -18,348 +29,509 @@ const QUAD_VERTEX = /* glsl */ `
   }
 `;
 
-const VORTEX_FRAGMENT = /* glsl */ `
+const GROUND_FRAGMENT = /* glsl */ `
   precision highp float;
+  varying vec2 vUv;
   uniform float uTime;
   uniform float uOpacity;
-  varying vec2 vUv;
-
   void main() {
-    vec2 uv = (vUv - vec2(0.5)) * 2.0;
-    float radius = length(uv);
-    float angle = atan(uv.y, uv.x);
-    float t = max(0.0, uTime);
-    float open = smoothstep(0.19, 0.39, t);
-    float fade = 1.0 - smoothstep(1.04, 1.48, t);
-
-    // No início só há o aro magenta e um ponto de plasma vibrante.
-    float charge = 1.0 - smoothstep(0.18, 0.32, t);
-    float edgeWarp = 0.025 * sin(angle * 13.0 + t * 13.0)
-      + 0.017 * sin(angle * 29.0 - t * 18.0);
-    float chargeRing = exp(-pow((radius - 0.70 - edgeWarp) * 48.0, 2.0));
-    float chargeSparks = pow(max(0.0, sin(angle * 24.0 - t * 26.0)), 11.0);
-    chargeRing *= 0.54 + 0.35 * chargeSparks;
-
-    // Em vez de uma bolha, são três fitas de plasma espiraladas.
-    float age = max(0.0, t - 0.23);
-    float expansion = 0.6 + 0.4 * (1.0 - exp(-age * 6.0));
-    float ripple = sin(angle * 9.0 - age * 27.0 + sin(angle * 3.0) * 0.9);
-    float ribbonA = exp(-pow(
-      (radius - (0.29 + 0.044 * sin(angle * 4.0 - age * 13.0)) * expansion
-      - 0.032 * ripple) * 30.0, 2.0));
-    float ribbonB = exp(-pow(
-      (radius - (0.49 + 0.065 * sin(angle * 3.0 + age * 10.0)) * expansion
-      - 0.024 * sin(angle * 13.0 - age * 30.0)) * 26.0, 2.0));
-    float ribbonC = exp(-pow(
-      (radius - (0.71 + 0.054 * sin(angle * 5.0 - age * 9.0)) * expansion
-      - 0.017 * sin(angle * 21.0 + age * 18.0)) * 25.0, 2.0));
-    float sparkNoise = pow(max(0.0, sin(angle * 37.0 + radius * 45.0 - age * 30.0)), 10.0);
-    float crackle = 0.75 + 0.25 * sparkNoise;
-    float ribbons = (ribbonA * 1.05 + ribbonB * 0.85 + ribbonC * 0.7) * crackle;
-
-    // Chamas magenta fragmentadas que escapam da espiral externa.
-    float flames = exp(-pow((radius - 0.77 - 0.055 * sin(angle * 11.0 - age * 15.0))
-      * 17.0, 2.0)) * pow(max(0.0, sin(angle * 23.0 - age * 12.0)), 7.0);
-    float whiteCore = exp(-radius * radius * 31.0)
-      * (0.64 + 0.36 * sin(age * 26.0));
-    float chargeCore = exp(-radius * radius * 66.0) * charge * 0.8;
-    float energy = charge * (chargeRing + chargeCore)
-      + open * fade * (ribbons + flames * 0.46 + whiteCore * 1.45);
-
-    // Cor branca no centro, magenta no aro externo, lilás-ciano entre eles.
-    vec3 violet = vec3(0.55, 0.13, 1.25);
-    vec3 lilac = vec3(0.91, 0.49, 1.22);
-    vec3 cyan = vec3(0.64, 0.93, 1.35);
-    vec3 tint = mix(violet, lilac, clamp(1.0 - radius, 0.0, 1.0));
-    tint = mix(tint, cyan, 0.38 * ribbonA + 0.22 * ribbonB);
-    tint = mix(tint, vec3(1.5, 1.48, 1.59),
-      clamp(whiteCore * open * fade * 1.15, 0.0, 1.0));
-
-    float alpha = min(0.97, max(0.0, energy * uOpacity));
-    alpha *= 1.0 - smoothstep(0.90, 1.04, radius);
-    if (alpha < 0.009) discard;
-    gl_FragColor = vec4(tint, alpha);
+    vec2 p = (vUv - 0.5) * 2.0;
+    float r = length(p);
+    float a = atan(p.y, p.x);
+    float irregular = 0.025*sin(a*13.0+uTime*17.0)
+      + 0.015*sin(a*37.0-uTime*22.0);
+    float disc = (1.0-smoothstep(0.70,0.99,r+irregular))*0.14;
+    float rim = exp(-pow((r-0.76-irregular)*27.0,2.0))*0.74;
+    float runes = pow(max(0.0,sin(a*42.0+uTime*11.0)),12.0)*rim*0.32;
+    float alpha = (disc+rim+runes)*uOpacity;
+    if(alpha<0.01)discard;
+    vec3 color = mix(vec3(0.20,0.72,1.25),vec3(0.72,1.04,1.30),rim);
+    gl_FragColor = vec4(color,min(0.62,alpha));
   }
 `;
 
-const SHOCK_FRAGMENT = /* glsl */ `
+const VORTEX_FRAGMENT = /* glsl */ `
   precision highp float;
+  varying vec2 vUv;
   uniform float uTime;
   uniform float uOpacity;
+  void main() {
+    vec2 p = (vUv-0.5)*2.0;
+    float r = length(p);
+    float a = atan(p.y,p.x);
+    float swirl = 0.034*sin(a*9.0-uTime*23.0)
+      + 0.022*sin(a*21.0+uTime*19.0);
+    float inner = exp(-pow((r-0.33-swirl)*18.0,2.0));
+    float outer = exp(-pow((r-0.65-1.3*swirl)*16.0,2.0));
+    float alpha = (0.24*inner+0.16*outer)*uOpacity;
+    if(alpha<0.008)discard;
+    gl_FragColor = vec4(mix(vec3(0.52,0.21,1.0),vec3(0.92,0.68,1.22),inner),alpha);
+  }
+`;
+
+const BAND_VERTEX = /* glsl */ `
   varying vec2 vUv;
   void main() {
-    vec2 uv = (vUv - vec2(0.5)) * 2.0;
-    float r = length(uv);
-    float a = atan(uv.y, uv.x);
-    float t = max(0.0, uTime);
-    float expand = 0.15 + 0.78 * (1.0 - exp(-max(0.0, t - 0.22) * 13.0));
-    float irregular = 0.03 * sin(a * 9.0 + t * 17.0)
-      + 0.019 * sin(a * 29.0 - t * 24.0);
-    float broken = smoothstep(0.08, 0.8,
-      0.4 + 0.35 * sin(a * 17.0) + 0.25 * sin(a * 37.0 + 1.5));
-    float wave = exp(-pow((r - expand - irregular) * 45.0, 2.0)) * broken;
-    float alpha = wave * uOpacity;
-    if (alpha < 0.009) discard;
-    gl_FragColor = vec4(mix(vec3(0.35, 0.56, 1.1), vec3(0.8, 0.4, 1.2), broken), alpha);
+    vUv=uv;
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+  }
+`;
+const BAND_FRAGMENT = /* glsl */ `
+  precision highp float;
+  varying vec2 vUv;
+  uniform float uTime;
+  uniform float uOpacity;
+  uniform vec3 uColor;
+  void main() {
+    float core = pow(max(0.0,1.0-abs(vUv.x*2.0-1.0)),1.2);
+    float cuts = sin(vUv.y*75.4+uTime*16.0)
+      + 0.65*sin(vUv.y*201.2-uTime*31.0);
+    float gaps = smoothstep(-0.95,-0.12,cuts);
+    float hot = pow(core,5.0);
+    float flicker = 0.81+0.19*sin(vUv.y*121.0-uTime*25.0);
+    float alpha = (core*0.45+hot*0.55)*gaps*flicker*uOpacity;
+    if(alpha<0.01)discard;
+    vec3 color=mix(uColor,vec3(1.28,1.2,1.38),hot*0.84);
+    gl_FragColor=vec4(color,min(0.95,alpha));
+  }
+`;
+
+const LIGHTNING_FRAGMENT = /* glsl */ `
+  precision highp float;
+  varying vec2 vUv;
+  uniform float uOpacity;
+  void main() {
+    float d=abs(vUv.x*2.0-1.0);
+    float white=pow(max(0.0,1.0-d),7.0);
+    float blue=pow(max(0.0,1.0-d),1.1);
+    float longitudinal = 1.0-smoothstep(0.73,1.0,vUv.y);
+    float alpha=(blue*0.47+white*0.84)*longitudinal*uOpacity;
+    if(alpha<0.01)discard;
+    gl_FragColor=vec4(mix(vec3(0.18,0.74,1.25),vec3(1.38,1.45,1.54),white),min(0.98,alpha));
   }
 `;
 
 const SHELL_VERTEX = /* glsl */ `
   varying vec3 vPosition;
-  void main() {
-    vPosition = position;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  void main(){
+    vPosition=position;
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
   }
 `;
 const SHELL_FRAGMENT = /* glsl */ `
   uniform float uTime;
   uniform float uOpacity;
   varying vec3 vPosition;
-  void main() {
-    float breaks = pow(max(0.0, sin(vPosition.x * 19.0 + uTime * 21.0)
-      * sin(vPosition.y * 27.0 - uTime * 17.0)), 4.0);
-    float opacity = uOpacity * breaks;
-    if (opacity < 0.01) discard;
-    gl_FragColor = vec4(0.73, 0.81, 1.25, opacity);
+  void main(){
+    float veins=pow(max(0.0,sin(vPosition.x*23.0+uTime*19.0)
+      *sin(vPosition.z*21.0-uTime*16.0)),5.0);
+    float alpha=uOpacity*veins;
+    if(alpha<0.01)discard;
+    gl_FragColor=vec4(0.84,0.87,1.25,alpha);
   }
 `;
 
-type FloatUniforms = Record<string, { value: number }>;
-function plasmaShader(uniforms: FloatUniforms, vert: string, frag: string): THREE.ShaderMaterial {
+function material(
+  uniforms: Record<string, { value: number | THREE.Color }>,
+  fragmentShader: string,
+  vertexShader = QUAD_VERTEX
+): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms,
-    vertexShader: vert,
-    fragmentShader: frag,
+    vertexShader,
+    fragmentShader,
     transparent: true,
-    depthWrite: false,
     depthTest: true,
-    blending: THREE.AdditiveBlending,
+    depthWrite: false,
     side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
     toneMapped: false,
   });
 }
 
-const ARC_COUNT = 24;
-const JET_COUNT = 52;
-const UP = new THREE.Vector3(0, 1, 0);
+/** Gaussian RGBA blob, used for bright white/cyan cores without browser canvas. */
+function glowTexture(): THREE.DataTexture {
+  const size = 64;
+  const data = new Uint8Array(size * size * 4);
+  for(let y=0;y<size;y++){
+    for(let x=0;x<size;x++){
+      const dx=(x+0.5-size/2)/(size/2);
+      const dy=(y+0.5-size/2)/(size/2);
+      const radius=Math.sqrt(dx*dx+dy*dy);
+      const alpha=Math.exp(-radius*radius*5.2)*Math.max(0,1-THREE.MathUtils.smoothstep(radius,0.72,1));
+      const index=(y*size+x)*4;
+      data[index]=255;
+      data[index+1]=255;
+      data[index+2]=255;
+      data[index+3]=Math.round(alpha*255);
+    }
+  }
+  const texture=new THREE.DataTexture(data,size,size,THREE.RGBAFormat);
+  texture.needsUpdate=true;
+  texture.magFilter=THREE.LinearFilter;
+  texture.minFilter=THREE.LinearFilter;
+  texture.generateMipmaps=false;
+  return texture;
+}
+
+interface Ribbon {
+  readonly mesh: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+  readonly points: THREE.BufferAttribute;
+  readonly radius: number;
+  readonly width: number;
+}
+const BAND_SEGMENTS=120;
+function ribbon(name: string, color: number, radius: number, width: number): Ribbon {
+  const positions=new THREE.BufferAttribute(new Float32Array((BAND_SEGMENTS+1)*6),3);
+  positions.setUsage(THREE.DynamicDrawUsage);
+  const uv=new Float32Array((BAND_SEGMENTS+1)*4);
+  const idx: number[]=[];
+  for(let i=0;i<=BAND_SEGMENTS;i++){
+    uv[i*4]=0;uv[i*4+1]=i/BAND_SEGMENTS;
+    uv[i*4+2]=1;uv[i*4+3]=i/BAND_SEGMENTS;
+    if(i<BAND_SEGMENTS){
+      const k=i*2;
+      idx.push(k,k+1,k+2,k+1,k+3,k+2);
+    }
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',positions);
+  geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+  geometry.setIndex(idx);
+  const mesh=new THREE.Mesh(geometry,material({
+    uTime:{value:0},uOpacity:{value:0},uColor:{value:new THREE.Color(color)}
+  },BAND_FRAGMENT,BAND_VERTEX));
+  mesh.name=name;
+  mesh.frustumCulled=false;
+  mesh.renderOrder=12;
+  return {mesh,points:positions,radius,width};
+}
+
+const BOLT_COUNT=7;
+const BOLT_STEPS=7;
+interface Lightning {
+  readonly mesh: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+  readonly positions: THREE.BufferAttribute;
+}
+function lightningGeometry(): Lightning {
+  const positions=new THREE.BufferAttribute(new Float32Array((BOLT_STEPS+1)*6),3);
+  positions.setUsage(THREE.DynamicDrawUsage);
+  const uv=new Float32Array((BOLT_STEPS+1)*4);
+  const idx:number[]=[];
+  for(let i=0;i<=BOLT_STEPS;i++){
+    uv[4*i]=0;uv[4*i+1]=i/BOLT_STEPS;
+    uv[4*i+2]=1;uv[4*i+3]=i/BOLT_STEPS;
+    if(i<BOLT_STEPS){const k=i*2;idx.push(k,k+1,k+2,k+1,k+3,k+2);}
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',positions);
+  geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+  geo.setIndex(idx);
+  const mesh=new THREE.Mesh(geo,material({uOpacity:{value:0}},LIGHTNING_FRAGMENT,BAND_VERTEX));
+  mesh.frustumCulled=false;
+  mesh.renderOrder=14;
+  return {mesh,positions};
+}
+
+const FRAGMENTS=52;
+const TEMP_QUAT=new THREE.Quaternion();
+const TEMP_MATRIX=new THREE.Matrix4();
+const TEMP_POS=new THREE.Vector3();
+const TEMP_SIZE=new THREE.Vector3();
+const TEMP_DIR=new THREE.Vector3();
 
 export class PrismaticExplosionField {
-  public readonly group = new THREE.Group();
-  /** Very brief, broken shockfront - subordinate to the vortex. */
-  public readonly ground: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
-  /** Reference's bright, flat rotating magenta-white plasma vortex. */
-  public readonly vortex: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
-  /** Kept small: never forms a large opaque bubble. */
-  public readonly volume: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
-  public readonly corona: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
-  private readonly orbitArcs: THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>[] = [];
-  private readonly sparkArc: THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial>;
-  private readonly sparkPositions = new THREE.Float32BufferAttribute(
-    new Float32Array(ARC_COUNT * 2 * 3), 3
-  );
-  private readonly rupture: THREE.InstancedMesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
-  private readonly rupturePosition = new THREE.Vector3();
-  private readonly ruptureDirection = new THREE.Vector3();
-  private readonly ruptureQuaternion = new THREE.Quaternion();
-  private readonly ruptureSize = new THREE.Vector3();
-  private readonly ruptureMatrix = new THREE.Matrix4();
+  public readonly group=new THREE.Group();
+  public readonly core: THREE.Sprite;
+  public readonly groundDisc: THREE.Mesh<THREE.PlaneGeometry,THREE.ShaderMaterial>;
+  public readonly outerHalo: THREE.Mesh<THREE.BufferGeometry,THREE.ShaderMaterial>;
+  public readonly lightningBurst=new THREE.Group();
+  public readonly orbitA: THREE.Mesh<THREE.BufferGeometry,THREE.ShaderMaterial>;
+  public readonly orbitB: THREE.Mesh<THREE.BufferGeometry,THREE.ShaderMaterial>;
+  public readonly orbitC: THREE.Mesh<THREE.BufferGeometry,THREE.ShaderMaterial>;
+  public readonly fragments: THREE.InstancedMesh<THREE.TetrahedronGeometry,THREE.MeshBasicMaterial>;
+  /** Compatibility with existing VFX diagnostics. */
+  public readonly ground: THREE.Mesh<THREE.PlaneGeometry,THREE.ShaderMaterial>;
+  public readonly vortex: THREE.Mesh<THREE.PlaneGeometry,THREE.ShaderMaterial>;
+  public readonly volume: THREE.Mesh<THREE.SphereGeometry,THREE.ShaderMaterial>;
+  public readonly corona: THREE.Mesh<THREE.SphereGeometry,THREE.ShaderMaterial>;
+  private readonly glow=glowTexture();
+  private readonly outerGlow: THREE.Sprite;
+  private readonly haloBand=ribbon('MagePrismExplosionOuterHalo',0xd94aff,2.85,0.19);
+  private readonly orbitBands=[
+    ribbon('MagePrismExplosionOrbitA',0xf8d0ff,0.92,0.13),
+    ribbon('MagePrismExplosionOrbitB',0xc373ff,1.68,0.21),
+    ribbon('MagePrismExplosionOrbitC',0xb543f3,2.40,0.23),
+  ];
+  private readonly bolts: Lightning[]=[];
+  private readonly shockArcs: THREE.Mesh<THREE.TorusGeometry,THREE.MeshBasicMaterial>[]=[];
+  private localGroundY=0;
+  private readonly fragmentColor=new THREE.Color();
 
-  public constructor() {
-    this.group.name = 'MagePrismaticFinalExplosionField';
-    this.group.visible = false;
-
-    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), plasmaShader({
-      uTime: { value: 0 }, uOpacity: { value: 0 }
-    }, QUAD_VERTEX, SHOCK_FRAGMENT));
-    this.ground.name = 'MagePrismShockFront';
-    this.ground.rotation.x = -Math.PI / 2;
-    this.ground.frustumCulled = false;
-    this.ground.renderOrder = 8;
-
-    this.vortex = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), plasmaShader({
-      uTime: { value: 0 }, uOpacity: { value: 0 }
-    }, QUAD_VERTEX, VORTEX_FRAGMENT));
-    this.vortex.name = 'MagePrismSpiralVortex';
-    this.vortex.rotation.x = -Math.PI / 2;
-    this.vortex.frustumCulled = false;
-    this.vortex.renderOrder = 9;
-
-    this.volume = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 14),
-      plasmaShader({ uTime: { value: 0 }, uOpacity: { value: 0 } }, SHELL_VERTEX, SHELL_FRAGMENT));
-    this.volume.name = 'MagePrismVolumetricBlast';
-    this.volume.frustumCulled = false;
-    this.corona = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12),
-      plasmaShader({ uTime: { value: 0 }, uOpacity: { value: 0 } }, SHELL_VERTEX, SHELL_FRAGMENT));
-    this.corona.name = 'MagePrismElectricAftershock';
-    this.corona.frustumCulled = false;
-
-    const arcs = new THREE.BufferGeometry();
-    arcs.setAttribute('position', this.sparkPositions);
-    this.sparkArc = new THREE.LineSegments(arcs, new THREE.LineBasicMaterial({
-      color: 0xb5efff,
-      transparent: true,
-      opacity: 0,
-      depthTest: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      toneMapped: false,
+  public constructor(){
+    this.group.name='MagePrismaticFinalExplosionField';
+    this.group.visible=false;
+    this.core=new THREE.Sprite(new THREE.SpriteMaterial({
+      map:this.glow,color:0xfaffff,opacity:0,transparent:true,
+      depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false
     }));
-    this.sparkArc.name = 'MagePrismBrokenLightningArcs';
-    this.sparkArc.frustumCulled = false;
-    this.sparkArc.renderOrder = 11;
+    this.core.name='MagePrismExplosionCore';
+    this.outerGlow=new THREE.Sprite(new THREE.SpriteMaterial({
+      map:this.glow,color:0xb659ff,opacity:0,transparent:true,
+      depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false
+    }));
+    this.outerGlow.name='MagePrismExplosionCoreHalo';
 
-    // Three staggered, partial 3D orbits add volume while the shader supplies
-    // animated, irregular inner plasma (same silhouette as the reference).
-    const colors = [0xec8eff, 0xcbd7ff, 0x966aff];
-    for (let i = 0; i < 3; i++) {
-      const mesh = new THREE.Mesh(
-        new THREE.TorusGeometry(0.58 + i * 0.28, 0.022 + i * 0.007, 6, 66,
-          Math.PI * (1.35 + i * 0.11)),
+    this.groundDisc=new THREE.Mesh(new THREE.PlaneGeometry(2,2),material({
+      uTime:{value:0},uOpacity:{value:0}
+    },GROUND_FRAGMENT));
+    this.groundDisc.name='MagePrismExplosionGroundDisc';
+    this.groundDisc.rotation.x=-Math.PI/2;
+    this.groundDisc.frustumCulled=false;
+    this.groundDisc.renderOrder=7;
+    // A separate, short broken shockfront; ground disc must remain cyan.
+    this.ground=new THREE.Mesh(new THREE.PlaneGeometry(2,2),material({
+      uTime:{value:0},uOpacity:{value:0}
+    },GROUND_FRAGMENT));
+    this.ground.name='MagePrismShockFront';
+    this.ground.rotation.x=-Math.PI/2;
+    this.ground.frustumCulled=false;
+    this.ground.renderOrder=8;
+
+    this.vortex=new THREE.Mesh(new THREE.PlaneGeometry(2,2),material({
+      uTime:{value:0},uOpacity:{value:0}
+    },VORTEX_FRAGMENT));
+    this.vortex.name='MagePrismSpiralVortex';
+    this.vortex.rotation.x=-Math.PI/2;
+    this.vortex.frustumCulled=false;
+    this.vortex.renderOrder=9;
+    this.volume=new THREE.Mesh(new THREE.SphereGeometry(1,24,14),material({
+      uTime:{value:0},uOpacity:{value:0}
+    },SHELL_FRAGMENT,SHELL_VERTEX));
+    this.volume.name='MagePrismVolumetricBlast';
+    this.volume.frustumCulled=false;
+    this.corona=new THREE.Mesh(new THREE.SphereGeometry(1,20,12),material({
+      uTime:{value:0},uOpacity:{value:0}
+    },SHELL_FRAGMENT,SHELL_VERTEX));
+    this.corona.name='MagePrismElectricAftershock';
+    this.corona.frustumCulled=false;
+
+    this.outerHalo=this.haloBand.mesh;
+    this.orbitA=this.orbitBands[0].mesh;
+    this.orbitB=this.orbitBands[1].mesh;
+    this.orbitC=this.orbitBands[2].mesh;
+    this.lightningBurst.name='MagePrismExplosionLightningBurst';
+    for(let i=0;i<BOLT_COUNT;i++){
+      const bolt=lightningGeometry();
+      bolt.mesh.name='MagePrismExplosionLightningBolt';
+      this.bolts.push(bolt);
+      this.lightningBurst.add(bolt.mesh);
+    }
+
+    const colors=[0xe1a6ff,0xc7ebff,0xb662ff];
+    for(let i=0;i<3;i++){
+      const m=new THREE.Mesh(
+        new THREE.TorusGeometry(1,0.025+i*0.008,6,96,Math.PI*(1.23+i*0.1)),
         new THREE.MeshBasicMaterial({
-          color: colors[i],
-          transparent: true,
-          opacity: 0,
-          depthWrite: false,
-          depthTest: true,
-          blending: THREE.AdditiveBlending,
-          toneMapped: false,
+          color:colors[i],opacity:0,transparent:true,depthWrite:false,
+          depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false
         })
       );
-      mesh.name = 'MagePrismSpiralEnergyOrbit';
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.renderOrder = 10;
-      this.orbitArcs.push(mesh);
-      this.group.add(mesh);
+      m.name='MagePrismSpiralEnergyOrbit';
+      m.rotation.x=-Math.PI/2;
+      m.renderOrder=11;
+      this.shockArcs.push(m);
+      this.group.add(m);
     }
 
-    this.rupture = new THREE.InstancedMesh(
-      new THREE.ConeGeometry(0.065, 1, 5, 1),
+    this.fragments=new THREE.InstancedMesh(
+      new THREE.TetrahedronGeometry(1,0),
       new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0,
-        depthTest: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        toneMapped: false,
-      }),
-      JET_COUNT
+        color:0xffffff,opacity:0,transparent:true,
+        depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false
+      }),FRAGMENTS
     );
-    this.rupture.name = 'MagePrismLaserRuptureJets';
-    this.rupture.frustumCulled = false;
-    for (let i = 0; i < JET_COUNT; i++) {
-      this.rupture.setColorAt(i, new THREE.Color(
-        i % 7 < 3 ? 0xd7faff : i % 7 < 5 ? 0xf7a8ff : 0x916fff
-      ));
+    this.fragments.name='MagePrismExplosionFragmentsAscending';
+    this.fragments.frustumCulled=false;
+    for(let i=0;i<FRAGMENTS;i++){
+      this.fragmentColor.setHex(i%5===0?0xf5edff:i%3===0?0x90eaff:0xb868ff);
+      this.fragments.setColorAt(i,this.fragmentColor);
+      // Initialize matrices before first render so they never display giant shards.
+      this.fragments.setMatrixAt(i,TEMP_MATRIX.makeScale(0,0,0));
     }
-    if (this.rupture.instanceColor) this.rupture.instanceColor.needsUpdate = true;
-    this.group.add(this.ground, this.vortex, this.volume, this.corona, this.sparkArc, this.rupture);
+    this.fragments.instanceMatrix.needsUpdate=true;
+    if(this.fragments.instanceColor)this.fragments.instanceColor.needsUpdate=true;
+
+    this.group.add(this.groundDisc,this.ground,this.vortex,this.outerHalo,
+      ...this.orbitBands.map(b=>b.mesh),
+      this.volume,this.corona,this.outerGlow,this.core,
+      this.lightningBurst,this.fragments);
   }
 
-  public detonate(position: THREE.Vector3): void {
-    this.group.visible = true;
+  public detonate(position: THREE.Vector3):void{
+    this.group.visible=true;
     this.group.position.copy(position);
-    const groundOffset = -Math.min(1.08, Math.max(0.05, position.y - 0.08));
-    this.ground.position.set(0, groundOffset, 0);
-    this.vortex.position.set(0, groundOffset + 0.045, 0);
-    this.volume.position.set(0, groundOffset + 0.22, 0);
-    this.corona.position.copy(this.volume.position);
+    this.localGroundY=-Math.min(1.08,Math.max(0.05,position.y-0.08));
+    this.groundDisc.position.y=this.localGroundY+0.04;
+    this.ground.position.y=this.localGroundY+0.027;
+    this.vortex.position.y=this.localGroundY+0.10;
+    this.core.position.set(0,this.localGroundY+0.52,0);
+    this.outerGlow.position.copy(this.core.position);
+    this.volume.position.copy(this.core.position);
+    this.corona.position.copy(this.core.position);
     this.update(0);
   }
 
-  public update(time: number): void {
-    const t = Math.max(0, time);
-    const charge = 1 - THREE.MathUtils.smoothstep(t, 0.17, 0.34);
-    const flash = Math.exp(-Math.pow((t - 0.30) * 14, 2));
-    const vortexIn = THREE.MathUtils.smoothstep(t, 0.23, 0.44);
-    const vortexOut = 1 - THREE.MathUtils.smoothstep(t, 1.05, 1.52);
-    const swirl = vortexIn * vortexOut;
-    const shock = THREE.MathUtils.smoothstep(t, 0.22, 0.31)
-      * (1 - THREE.MathUtils.smoothstep(t, 0.33, 0.53));
+  private writeBand(band:Ribbon, time:number, index:number, strength:number):void{
+    const count=BAND_SEGMENTS;
+    const outer=index===3;
+    const rot=outer?time*1.1:time*(index===1?-4.2:index===0?6.6:3.2);
+    const scale=outer?1:0.66+0.34*THREE.MathUtils.smoothstep(time,0.24,0.49);
+    const height=this.localGroundY+(outer?0.22:0.34+index*0.15);
+    const tilt=outer?0.02:(index===0?0.19:index===1?-0.14:0.26);
+    const pos=band.points;
+    for(let i=0;i<=count;i++){
+      const u=i/count;
+      const a=u*TWO_PI+rot;
+      const warp=Math.sin(a*(outer?17:7+index*2)-time*20+index*0.9)*0.08+
+        Math.sin(a*(outer?33:13)+time*14)*0.037;
+      const radius=(band.radius+warp)*(outer?1:scale);
+      const y=height+Math.sin(a*2+time*11+index)*0.12+
+        Math.cos(a*3-index)*tilt;
+      const taper=0.68+0.32*Math.sin(u*TWO_PI*3-time*16);
+      const half=band.width*taper*Math.max(0.01,strength);
+      pos.setXYZ(i*2,Math.cos(a)*(radius-half),y-0.03,Math.sin(a)*(radius-half));
+      pos.setXYZ(i*2+1,Math.cos(a)*(radius+half),y+0.03,Math.sin(a)*(radius+half));
+    }
+    pos.needsUpdate=true;
+    band.mesh.material.uniforms.uTime.value=time;
+  }
 
-    this.vortex.material.uniforms.uTime.value = t;
-    this.vortex.material.uniforms.uOpacity.value = (0.90 * charge + 1.1 * swirl + 0.2 * flash);
-    this.vortex.scale.setScalar(3.4 * (0.72 + 0.28 * Math.min(1, t / 0.5)));
+  private updateBolts(t:number,opacity:number):void{
+    this.lightningBurst.visible=opacity>0.002;
+    for(let i=0;i<this.bolts.length;i++){
+      const bolt=this.bolts[i];
+      const a=(i/BOLT_COUNT)*TWO_PI+0.34;
+      const dist=2.2+(i%3)*0.58;
+      const sideX=-Math.sin(a),sideZ=Math.cos(a);
+      for(let j=0;j<=BOLT_STEPS;j++){
+        const u=j/BOLT_STEPS;
+        const phase=t*67+i*3.43+j*2.7;
+        const jag=(j===0?0:Math.sin(phase)*0.22+Math.sin(phase*1.73)*0.10);
+        const radius=0.17+dist*u;
+        const x=Math.cos(a)*radius+sideX*jag*u;
+        const z=Math.sin(a)*radius+sideZ*jag*u;
+        const y=this.localGroundY+0.54+u*(0.31+(i%3)*0.22)+Math.sin(phase)*u*0.12;
+        const width=(0.17+(i%2)*0.045)*(1-0.62*u);
+        bolt.positions.setXYZ(2*j,x-sideX*width,y-0.025,z-sideZ*width);
+        bolt.positions.setXYZ(2*j+1,x+sideX*width,y+0.025,z+sideZ*width);
+      }
+      bolt.positions.needsUpdate=true;
+      bolt.mesh.material.uniforms.uOpacity.value=opacity*(0.75+0.25*Math.sin(t*43+i));
+    }
+  }
 
-    this.ground.material.uniforms.uTime.value = t;
-    this.ground.material.uniforms.uOpacity.value = 0.68 * shock;
+  private updateFragments(t:number,opacity:number):void{
+    this.fragments.material.opacity=opacity*0.76;
+    const progress=THREE.MathUtils.clamp((t-0.22)/0.93,0,1);
+    for(let i=0;i<FRAGMENTS;i++){
+      const a=i*2.399963;
+      const seed=0.32+(i%11)*0.057;
+      const radius=seed+progress*(0.5+(i%9)*0.16);
+      TEMP_POS.set(
+        Math.cos(a)*radius,
+        this.localGroundY+0.18+progress*(0.62+(i%8)*0.22),
+        Math.sin(a)*radius
+      );
+      TEMP_DIR.set(Math.cos(a),0.35+progress,Math.sin(a)).normalize();
+      TEMP_QUAT.setFromUnitVectors(UP,TEMP_DIR);
+      const width=(0.025+(i%5)*0.009)*Math.max(0,opacity);
+      TEMP_SIZE.set(width,width*(2.0+(i%3)),width);
+      TEMP_MATRIX.compose(TEMP_POS,TEMP_QUAT,TEMP_SIZE);
+      this.fragments.setMatrixAt(i,TEMP_MATRIX);
+    }
+    this.fragments.instanceMatrix.needsUpdate=true;
+  }
+
+  public update(time:number):void{
+    const t=Math.max(0,time);
+    const charge=1-THREE.MathUtils.smoothstep(t,0.11,0.25);
+    const flash=Math.exp(-Math.pow((t-0.20)*14,2));
+    const vortexIn=THREE.MathUtils.smoothstep(t,0.21,0.34);
+    const vortexOut=1-THREE.MathUtils.smoothstep(t,0.89,1.25);
+    const swirl=vortexIn*vortexOut;
+    const fade=1-THREE.MathUtils.smoothstep(t,0.97,1.25);
+    const boltOpacity=THREE.MathUtils.smoothstep(t,0.045,0.13)*
+      (1-THREE.MathUtils.smoothstep(t,0.25,0.43));
+    const fragmentOpacity=THREE.MathUtils.smoothstep(t,0.19,0.32)*
+      (1-THREE.MathUtils.smoothstep(t,0.85,1.23));
+
+    this.core.material.opacity=Math.min(1,0.35*charge+0.96*flash+0.77*swirl)*fade;
+    this.core.scale.setScalar(0.55*charge+1.92*flash+1.65*swirl+0.03);
+    this.outerGlow.material.opacity=(0.36*charge+0.49*flash+0.32*swirl)*fade;
+    this.outerGlow.scale.setScalar(1.28+2.8*flash+2.65*swirl);
+
+    this.groundDisc.material.uniforms.uTime.value=t;
+    this.groundDisc.material.uniforms.uOpacity.value=0.52*
+      (1-THREE.MathUtils.smoothstep(t,0.14,0.43));
+    this.groundDisc.scale.setScalar(3.35);
+    this.ground.material.uniforms.uTime.value=t;
+    this.ground.material.uniforms.uOpacity.value=0.54*
+      THREE.MathUtils.smoothstep(t,0.14,0.20)*
+      (1-THREE.MathUtils.smoothstep(t,0.28,0.43));
     this.ground.scale.setScalar(4.15);
+    this.vortex.material.uniforms.uTime.value=t;
+    this.vortex.material.uniforms.uOpacity.value=0.24*swirl;
+    this.vortex.scale.setScalar(3.0);
 
-    // Short corona never turns into an inflating shield.
-    const blastFade = 1 - THREE.MathUtils.smoothstep(t, 0.34, 0.50);
-    this.volume.material.uniforms.uTime.value = t;
-    this.volume.material.uniforms.uOpacity.value = 0.22 * flash * blastFade;
-    this.volume.scale.set(0.35 + 0.55 * flash, 0.18 + 0.28 * flash, 0.35 + 0.55 * flash);
-    this.corona.material.uniforms.uTime.value = t * 1.4;
-    this.corona.material.uniforms.uOpacity.value = 0.11 * flash;
-    this.corona.scale.set(0.48 + 0.5 * flash, 0.23 + 0.3 * flash, 0.48 + 0.5 * flash);
-
-    for (let i = 0; i < this.orbitArcs.length; i++) {
-      const arc = this.orbitArcs[i];
-      arc.position.copy(this.vortex.position);
-      arc.position.y += 0.075 + i * 0.065;
-      arc.rotation.z = t * (i % 2 ? -3.8 : 5.5) + i * 1.7;
-      // Physical arcs align with the three shader ribbons, not a tiny inner circle.
-      arc.scale.setScalar((1.5 + i * 0.32) * (0.58 + 0.42 * Math.min(1, t / 0.5)));
-      arc.material.opacity = (0.36 - i * 0.05) * swirl;
+    this.outerHalo.material.uniforms.uOpacity.value=(0.75*charge+0.85*swirl)*fade;
+    this.writeBand(this.haloBand,t,3,Math.max(charge,swirl));
+    for(let i=0;i<this.orbitBands.length;i++){
+      const band=this.orbitBands[i];
+      band.mesh.material.uniforms.uOpacity.value=(0.86-i*0.06)*swirl;
+      this.writeBand(band,t,i,swirl);
+      const arc=this.shockArcs[i];
+      arc.position.set(0,this.localGroundY+0.32+i*0.15,0);
+      arc.rotation.z=t*(i===1?-4.2:i===0?6.6:3.2)+i*1.8;
+      arc.scale.setScalar(0.83+i*0.43);
+      arc.material.opacity=(0.25-i*0.03)*swirl;
     }
+    this.updateBolts(t,boltOpacity);
+    this.updateFragments(t,fragmentOpacity);
 
-    // Electric lashes begin BEFORE the flash (white/cyan) and then dance along
-    // the spiral. Geometry is a handful of short, non-uniform 3D segments.
-    for (let i = 0; i < ARC_COUNT; i++) {
-      const a = i * 2.399963 + t * (i % 2 ? -8 : 9);
-      const initialRadius = 0.38 + (i % 6) * 0.2;
-      const laterRadius = 0.72 + (i % 8) * 0.31;
-      const radius = THREE.MathUtils.lerp(initialRadius, laterRadius, vortexIn);
-      const y = this.vortex.position.y + 0.08 + 0.07 * (i % 4);
-      this.sparkPositions.setXYZ(i * 2,
-        Math.cos(a) * radius * 0.65,
-        y + Math.sin(i * 7 + t * 22) * 0.25,
-        Math.sin(a) * radius * 0.65);
-      this.sparkPositions.setXYZ(i * 2 + 1,
-        Math.cos(a + 0.15) * (radius + 0.65),
-        y + 0.28 + Math.sin(i * 11 + t * 24) * 0.62,
-        Math.sin(a + 0.15) * (radius + 0.65));
-    }
-    this.sparkPositions.needsUpdate = true;
-    this.sparkArc.material.opacity = (0.75 * charge + 0.55 * swirl) * (1 - THREE.MathUtils.smoothstep(t, 0.9, 1.4));
-
-    // Outward jets peak on the flash then dissipate into violet sparks.
-    const jetIn = THREE.MathUtils.smoothstep(t, 0.20, 0.34);
-    const jetOut = 1 - THREE.MathUtils.smoothstep(t, 0.57, 0.96);
-    const impulse = jetIn * jetOut;
-    this.rupture.material.opacity = 0.64 * impulse;
-    for (let i = 0; i < JET_COUNT; i++) {
-      const a = i * 2.399963 + Math.sin(i * 1.79) * 0.42;
-      const elevation = 0.12 + ((i * 7) % 11) * 0.05;
-      const travel = (1 - Math.exp(-Math.max(0, t - 0.24) * 7)) * (1.1 + (i % 9) * 0.28);
-      this.ruptureDirection.set(Math.cos(a), elevation, Math.sin(a)).normalize();
-      this.rupturePosition.copy(this.ruptureDirection).multiplyScalar(travel);
-      this.rupturePosition.y += this.vortex.position.y + 0.2;
-      this.ruptureQuaternion.setFromUnitVectors(UP, this.ruptureDirection);
-      const width = (0.028 + (i % 4) * 0.011) * impulse;
-      const length = (0.38 + (i % 8) * 0.14) * (0.3 + travel * 0.35) * impulse;
-      this.ruptureSize.set(width, length, width);
-      this.ruptureMatrix.compose(this.rupturePosition, this.ruptureQuaternion, this.ruptureSize);
-      this.rupture.setMatrixAt(i, this.ruptureMatrix);
-    }
-    this.rupture.instanceMatrix.needsUpdate = true;
+    // The two tiny plasma skins only accompany the flash, never expand as a bubble.
+    this.volume.material.uniforms.uTime.value=t;
+    this.volume.material.uniforms.uOpacity.value=0.15*flash;
+    this.volume.scale.set(0.65,0.36,0.65);
+    this.corona.material.uniforms.uTime.value=t*1.3;
+    this.corona.material.uniforms.uOpacity.value=0.09*flash;
+    this.corona.scale.set(0.95,0.43,0.95);
   }
 
-  public reset(): void {
-    // Kept in pooled parent's hierarchy: never remove this group from its owner.
-    this.group.visible = false;
-    this.ground.material.uniforms.uOpacity.value = 0;
-    this.vortex.material.uniforms.uOpacity.value = 0;
-    this.volume.material.uniforms.uOpacity.value = 0;
-    this.corona.material.uniforms.uOpacity.value = 0;
-    this.sparkArc.material.opacity = 0;
-    this.rupture.material.opacity = 0;
-    for (const arc of this.orbitArcs) arc.material.opacity = 0;
+  public reset():void{
+    this.group.visible=false;
+    this.core.material.opacity=0;
+    this.outerGlow.material.opacity=0;
+    this.groundDisc.material.uniforms.uOpacity.value=0;
+    this.ground.material.uniforms.uOpacity.value=0;
+    this.vortex.material.uniforms.uOpacity.value=0;
+    this.outerHalo.material.uniforms.uOpacity.value=0;
+    for(const band of this.orbitBands)band.mesh.material.uniforms.uOpacity.value=0;
+    for(const bolt of this.bolts)bolt.mesh.material.uniforms.uOpacity.value=0;
+    this.lightningBurst.visible=false;
+    this.volume.material.uniforms.uOpacity.value=0;
+    this.corona.material.uniforms.uOpacity.value=0;
+    this.fragments.material.opacity=0;
+    for(const arc of this.shockArcs)arc.material.opacity=0;
   }
 
-  public dispose(): void {
+  public dispose():void{
     this.reset();
+    this.glow.dispose();
+    this.core.material.dispose();
+    this.outerGlow.material.dispose();
+    this.groundDisc.geometry.dispose();
+    this.groundDisc.material.dispose();
     this.ground.geometry.dispose();
     this.ground.material.dispose();
     this.vortex.geometry.dispose();
@@ -368,13 +540,12 @@ export class PrismaticExplosionField {
     this.volume.material.dispose();
     this.corona.geometry.dispose();
     this.corona.material.dispose();
-    this.sparkArc.geometry.dispose();
-    this.sparkArc.material.dispose();
-    this.rupture.geometry.dispose();
-    this.rupture.material.dispose();
-    for (const arc of this.orbitArcs) {
-      arc.geometry.dispose();
-      arc.material.dispose();
-    }
+    this.haloBand.mesh.geometry.dispose();
+    this.haloBand.mesh.material.dispose();
+    for(const band of this.orbitBands){band.mesh.geometry.dispose();band.mesh.material.dispose();}
+    for(const bolt of this.bolts){bolt.mesh.geometry.dispose();bolt.mesh.material.dispose();}
+    for(const arc of this.shockArcs){arc.geometry.dispose();arc.material.dispose();}
+    this.fragments.geometry.dispose();
+    this.fragments.material.dispose();
   }
 }
