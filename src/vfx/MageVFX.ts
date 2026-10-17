@@ -1094,7 +1094,8 @@ export class MageVFX {
         queryBodyHit: cast.context.queryBodyHit,
         // Pulsos do feixe não passam pelo guard único dos projéteis.
         onImpact: (target, fraction) => cast.context.onImpact?.(target, fraction),
-        onFinalImpact: () => undefined,
+        findHomingTargets: cast.context.getLaserHomingTargets,
+        onFinalImpact: (position) => cast.context.onLaserFinisher?.(position),
       });
       return;
     }
