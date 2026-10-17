@@ -246,7 +246,7 @@ class PrismBeam implements PoolableVFX {
     (this.impactFlare.material as THREE.SpriteMaterial).opacity = (0.4 + 0.52 * hitPulse) * glow * hitGlow;
     (this.impactStar.material as THREE.LineBasicMaterial).opacity = (0.25 + 0.65 * hitPulse) * glow * hitGlow;
     this.impactStar.rotation.z += elapsed * (1.2 + hitPulse * 2);
-    this.impactShards.material.opacity = (0.24 + 0.5 * hitPulse) * glow * hitGlow;
+    (this.impactShards.material as THREE.MeshBasicMaterial).opacity = (0.24 + 0.5 * hitPulse) * glow * hitGlow;
     this.updateImpactShards(hitPulse, glow);
     (this.discharge.material as THREE.LineBasicMaterial).opacity =
       0.48 * glow * (0.72 + 0.28 * Math.sin(this.age * 46));
