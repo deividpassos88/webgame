@@ -15,8 +15,8 @@ function setup() {
   return { scene, lightPool, resources, effect };
 }
 
-describe('Raio Prismático - mísseis teleguiados e explosão', () => {
-  it('lança seis mísseis violetas com trajetória curva e deixa os inimigos como alvos móveis', () => {
+describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
+  it('lança seis feixes violetas curvos com geometria de laser e acompanha alvos móveis', () => {
     const { scene, lightPool, resources, effect } = setup();
     const target = new THREE.Group();
     target.position.set(3, 0, 7);
@@ -31,10 +31,17 @@ describe('Raio Prismático - mísseis teleguiados e explosão', () => {
       scene.add(effect.group);
       expect(effect.group.getObjectByName('MagePrismHomingMissile')).toBeDefined();
       expect(effect.group.children.filter((x) => x.name === 'MagePrismHomingMissile')).toHaveLength(PRISM_FINISHER.missileCount);
+      expect(effect.group.getObjectByName('MagePrismMissileCore')).toBeUndefined();
+      expect(effect.group.getObjectByName('MagePrismMissileGlow')).toBeUndefined();
+      expect(effect.group.getObjectByName('MagePrismHomingLaserCore')).toBeDefined();
       for (let i = 0; i < 10; i++) effect.update(0.04);
       const missile = effect.group.children.find((x) => x.name === 'MagePrismHomingMissile' && x.visible);
       expect(missile).toBeDefined();
       const before = missile!.position.clone();
+      const core = missile!.getObjectByName('MagePrismHomingLaserCore') as THREE.Mesh;
+      const positions = core.geometry.getAttribute('position');
+      expect(positions.count).toBeGreaterThan(40);
+      expect(positions.getX(9)).not.toBeNaN();
       target.position.set(6, 0, 7);
       effect.update(0.12);
       expect(missile!.position.distanceTo(before)).toBeGreaterThan(0.01);
@@ -64,6 +71,10 @@ describe('Raio Prismático - mísseis teleguiados e explosão', () => {
       const whiteCore = effect.group.getObjectByName('MagePrismExplosionWhiteCore') as THREE.Sprite;
       expect(shockwave).toBeDefined();
       expect(whiteCore).toBeDefined();
+      const plasma = effect.group.getObjectByName('MagePrismExplosionPlasma') as THREE.Mesh;
+      expect(plasma.material).toBeInstanceOf(THREE.ShaderMaterial);
+      expect(effect.group.getObjectByName('MagePrismExplosionBrokenShockwave')).toBeDefined();
+      expect(effect.group.getObjectByName('MagePrismExplosionRadialLightning')).toBeDefined();
       expect(effect.update(0.06)).toBe(true);
       expect(shockwave.scale.x).toBeGreaterThan(0.2);
       expect((whiteCore.material as THREE.SpriteMaterial).opacity).toBeGreaterThan(0);
