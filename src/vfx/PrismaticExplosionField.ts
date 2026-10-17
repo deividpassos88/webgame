@@ -11,49 +11,49 @@ const PLANE_VERTEX = /* glsl */ `
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
+// O choque rompe em fragmentos desiguais, não em um aro perfeito de escudo.
 const PLANE_FRAGMENT = /* glsl */ `
   precision highp float;
   uniform float uTime;
   uniform float uPhase;
   uniform float uOpacity;
   varying vec2 vUv;
-
   float hash(float n) { return fract(sin(n * 17.21) * 43758.5453123); }
   float n2(vec2 p) {
     vec2 i = floor(p); vec2 f = fract(p);
     f = f * f * (3.0 - 2.0 * f);
-    return mix(
-      mix(hash(i.x + i.y * 73.0), hash(i.x + 1.0 + i.y * 73.0), f.x),
-      mix(hash(i.x + (i.y + 1.0) * 73.0), hash(i.x + 1.0 + (i.y + 1.0) * 73.0), f.x),
-      f.y
-    );
+    return mix(mix(hash(i.x+i.y*73.0),hash(i.x+1.0+i.y*73.0),f.x),
+      mix(hash(i.x+(i.y+1.0)*73.0),hash(i.x+1.0+(i.y+1.0)*73.0),f.x),f.y);
   }
   void main() {
     vec2 d = (vUv - 0.5) * 2.0;
     float r = length(d);
-    float a = atan(d.y, d.x);
-    float p = clamp(uPhase, 0.0, 1.0);
-    float irregular = sin(a * 13.0 + uTime * 8.0) * 0.025
-      + sin(a * 31.0 - uTime * 11.0) * 0.014
-      + (n2(vec2(a * 11.0, uTime * 3.2)) - 0.5) * 0.036;
-    float front = 0.10 + 0.80 * pow(min(1.0, p * 2.6), 0.82);
-    float distanceFromFront = abs(r - front - irregular);
-    float shock = exp(-pow(distanceFromFront * (31.0 - p * 4.0), 2.0));
-    float filaments = pow(max(0.0, sin(a * 48.0 + r * 31.0 - uTime * 12.0)), 8.0);
-    float wave = shock * (0.63 + filaments * 0.45);
-    float inner = exp(-r * 8.0) * exp(-p * 16.0);
-    float cascading = exp(-abs(r - front * 0.73) * 19.0)
-      * (0.22 + 0.25 * sin(a * 19.0 + uTime * 21.0))
-      * (1.0 - smoothstep(0.1, 0.76, p));
-    float edge = 1.0 - smoothstep(0.88, 1.0, r);
-    float alpha = (wave + inner * 0.85 + cascading) * uOpacity * edge;
-    if (alpha < 0.008) discard;
-    vec3 cyan = vec3(0.30, 0.82, 1.0);
-    vec3 violet = vec3(0.62, 0.25, 1.0);
-    vec3 hot = vec3(1.25, 1.30, 1.38);
-    vec3 color = mix(violet, cyan, clamp(filaments * 0.5 + shock * 0.5, 0.0, 1.0));
-    color = mix(color, hot, inner * 0.85);
-    gl_FragColor = vec4(color, min(0.97, alpha));
+    float angle = atan(d.y,d.x);
+    float t = max(0.0,uTime);
+    float p = clamp(uPhase,0.0,1.0);
+    float shape = (n2(vec2(angle*19.0,2.0))-0.5)*0.15
+      + sin(angle*11.0+4.0)*0.045
+      + sin(angle*37.0-t*23.0)*0.023;
+    float edge = 0.07 + 0.75*(1.0-exp(-t*17.0));
+    float distanceToEdge = abs(r-edge-shape);
+    float shock = exp(-pow(distanceToEdge*34.0,2.0));
+    // Grandes rachaduras eliminam a circunferência uniforme.
+    float cut = n2(vec2(angle*27.0,t*6.0)) * 0.75 +
+      0.25 * sin(angle*47.0+t*18.0);
+    float broken = smoothstep(0.2,0.64,cut);
+    float sparks = pow(max(0.0,sin(angle*49.0-r*30.0+t*36.0)),10.0);
+    float fragments = shock * broken * (0.55+0.75*sparks);
+    float splinter = exp(-abs(r-edge*0.72)*28.0)
+      * pow(max(0.0,sin(angle*23.0+t*35.0)),8.0)*0.34;
+    float core = exp(-r*15.0)*exp(-t*34.0);
+    float fade = 1.0-smoothstep(0.16,0.43,t);
+    float alpha = (fragments+splinter)*fade*uOpacity + core*exp(-t*15.0);
+    alpha *= (1.0-smoothstep(0.91,1.01,r));
+    if (alpha<0.009) discard;
+    vec3 color = mix(vec3(0.47,0.12,0.9),vec3(0.27,0.85,1.15),
+      clamp(sparks*0.6+broken*0.35,0.0,1.0));
+    color = mix(color,vec3(1.3,1.35,1.4),core);
+    gl_FragColor = vec4(color,min(0.94,alpha));
   }
 `;
 
@@ -67,7 +67,8 @@ const VOLUME_VERTEX = /* glsl */ `
     float warp = sin(p.x * 17.0 + p.z * 8.0 + uTime * 17.0)
       * sin(p.y * 19.0 - uTime * 12.0)
       + 0.5 * sin(p.z * 31.0 - p.x * 13.0 + uTime * 23.0);
-    p += normal * warp * 0.085;
+    // Rasga a forma do plasma: nenhuma casca perfeitamente esférica.
+    p += normal * warp * 0.23;
     vec4 viewPos = modelViewMatrix * vec4(p, 1.0);
     vPos = p;
     vNormalVS = normalize(normalMatrix * normal);
@@ -89,7 +90,7 @@ const VOLUME_FRAGMENT = /* glsl */ `
     float turbulence = max(0.0, 0.36 + 0.38 * veining + 0.27 * branches);
     float fresnel = pow(1.0 - max(0.0, dot(normalize(vNormalVS), normalize(vViewDir))), 1.7);
     float cores = pow(turbulence, 3.0);
-    float alpha = uOpacity * (0.23 + 0.76 * cores + 0.40 * fresnel);
+    float alpha = uOpacity * (0.05 + 0.90 * cores + 0.09 * fresnel);
     if (alpha < 0.012) discard;
     vec3 purple = vec3(0.44, 0.16, 1.0);
     vec3 magenta = vec3(1.0, 0.29, 0.82);
@@ -165,35 +166,40 @@ export class PrismaticExplosionField {
   }
 
   public update(time: number): void {
-    const p = THREE.MathUtils.clamp(time / 1.45, 0, 1);
-    const impulse = Math.exp(-p * 8.0);
-    const wave = 1 - THREE.MathUtils.smoothstep(p, 0.15, 0.83);
-    const volumeFade = Math.exp(-p * 5.3);
-    this.ground.material.uniforms.uTime.value = time;
-    this.ground.material.uniforms.uPhase.value = p;
-    this.ground.material.uniforms.uOpacity.value = 1.45 * wave;
-    this.ground.scale.setScalar(5.1);
-    this.volume.material.uniforms.uTime.value = time;
-    this.volume.material.uniforms.uOpacity.value = 1.03 * volumeFade;
-    const rad = 0.24 + 2.9 * (1 - Math.exp(-p * 9.5));
-    this.volume.scale.set(rad, rad * 0.76, rad);
-    this.corona.material.uniforms.uTime.value = time * 1.43 + 0.47;
-    this.corona.material.uniforms.uOpacity.value = 0.71 * Math.exp(-p * 3.5);
-    this.corona.scale.setScalar(0.35 + 3.8 * (1 - Math.exp(-p * 5.5)));
+    const t = Math.max(0, time);
+    const flash = Math.exp(-t * 31);
+    const shock = 1 - THREE.MathUtils.smoothstep(t, 0.13, 0.44);
+    // A casca visual existe só por uma fração de segundo; não cresce em bolha.
+    const blastFade = 1 - THREE.MathUtils.smoothstep(t, 0.07, 0.27);
+    this.ground.material.uniforms.uTime.value = t;
+    this.ground.material.uniforms.uPhase.value = Math.min(1, t / 0.38);
+    this.ground.material.uniforms.uOpacity.value = 1.05 * shock;
+    this.ground.scale.setScalar(4.7);
 
-    // Local lightning cuts across the shockfront rather than rays/spokes.
-    const radius = 0.3 + 3.9 * Math.min(1, p * 2.4);
+    this.volume.material.uniforms.uTime.value = t;
+    this.volume.material.uniforms.uOpacity.value = 0.43 * blastFade;
+    const burstScale = 0.28 + 1.68 * (1 - Math.exp(-t * 25));
+    this.volume.scale.set(burstScale * 1.06, burstScale * 0.69, burstScale * 0.91);
+
+    this.corona.material.uniforms.uTime.value = t * 1.7 + 0.47;
+    this.corona.material.uniforms.uOpacity.value = 0.15 * flash;
+    this.corona.scale.set(0.35 + t * 3.1, 0.3 + t * 1.9, 0.4 + t * 2.2);
+
+    // Fragmentos elétricos curtos arremessados para fora do epicentro.
+    const radius = 0.25 + 3.9 * (1 - Math.exp(-t * 11));
     for (let i = 0; i < 18; i++) {
-      const phase = i * 2.399963 + Math.sin(i * 4.1) * 0.12;
-      const base = radius * (0.5 + 0.4 * Math.sin(i * 7.1) ** 2);
-      const a = phase + time * (i % 2 ? -1.2 : 1.7);
-      const b = a + 0.12 + (i % 5) * 0.035;
-      this.sparkPositions.setXYZ(i * 2, Math.cos(a) * base, Math.sin(i * 11.0) * 0.3, Math.sin(a) * base);
-      this.sparkPositions.setXYZ(i * 2 + 1, Math.cos(b) * (base + 0.32),
-        Math.sin(i * 11.0 + time * 7.0) * 0.44, Math.sin(b) * (base + 0.32));
+      const phase = i * 2.399963 + Math.sin(i * 4.1) * 0.28;
+      const base = radius * (0.48 + 0.43 * Math.sin(i * 7.1) ** 2);
+      const a = phase + t * (i % 2 ? -2.2 : 2.8);
+      const b = a + 0.09 + (i % 5) * 0.09;
+      this.sparkPositions.setXYZ(i * 2,
+        Math.cos(a) * base, Math.sin(i * 11) * 0.28, Math.sin(a) * base);
+      this.sparkPositions.setXYZ(i * 2 + 1,
+        Math.cos(b) * (base + 0.46), Math.sin(i * 11 + t * 12) * 0.5,
+        Math.sin(b) * (base + 0.46));
     }
     this.sparkPositions.needsUpdate = true;
-    this.sparkArc.material.opacity = 0.86 * wave + 0.18 * impulse;
+    this.sparkArc.material.opacity = 0.89 * shock + 0.1 * flash;
   }
 
   public reset(): void {
