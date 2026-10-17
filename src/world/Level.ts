@@ -73,4 +73,8 @@ export class Level extends CelestialArena {
   }
 
 
+  /** Same Level API as before; celestial lighting is animated by time. */
+  public update(time: number, _playerPosition?: THREE.Vector3): void {
+    super.update(time);
+  }
 }
