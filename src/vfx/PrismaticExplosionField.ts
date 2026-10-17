@@ -20,7 +20,7 @@ export const PRISM_EXPLOSION_TIMING = {
   charge: 2.0,
   rupture: 0.22,
   vortexEnd: 0.98,
-  fadeEnd: 1.30,
+  fadeEnd: 1.25,
 } as const;
 
 const TWO_PI = Math.PI * 2;
@@ -547,16 +547,16 @@ export class PrismaticExplosionField {
     const charge=1-THREE.MathUtils.smoothstep(t,0.085,0.20);
     const flash=Math.exp(-Math.pow((t-0.18)*19,2));
     const vortexIn=THREE.MathUtils.smoothstep(t,0.19,0.34);
-    const vortexOut=1-THREE.MathUtils.smoothstep(t,0.94,1.30);
+    const vortexOut=1-THREE.MathUtils.smoothstep(t,0.94,1.25);
     const swirl=vortexIn*vortexOut;
-    const fade=1-THREE.MathUtils.smoothstep(t,0.97,1.30);
+    const fade=1-THREE.MathUtils.smoothstep(t,0.97,1.25);
     const boltOpacity=THREE.MathUtils.smoothstep(t,0.005,0.07)*
       (1-THREE.MathUtils.smoothstep(t,0.24,0.39));
     const fragmentOpacity=THREE.MathUtils.smoothstep(t,0.18,0.32)*
       (1-THREE.MathUtils.smoothstep(t,0.87,1.28));
 
     // One broad white plasma bowl, with independent elevated rings.
-    const whiteStrength=0.77*flash+0.92*swirl;
+    const whiteStrength=1.04*flash+0.92*swirl;
     this.core.material.opacity=Math.min(1,0.47*charge+whiteStrength)*fade;
     this.core.scale.setScalar(1.0*charge+3.2*flash+4.0*swirl+0.02);
     this.outerGlow.material.opacity=(0.50*charge+0.43*flash+0.60*swirl)*fade;
