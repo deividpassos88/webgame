@@ -1,31 +1,34 @@
 import * as THREE from 'three';
 
+/** Luz solar de Campo dos Deuses. O rig central preserva luz dinâmica do jogador/boss. */
 export class GameLightingRig {
-  public readonly playerLight = new THREE.PointLight(0xffe0b8, 30, 18, 2);
-  public readonly bossLight = new THREE.PointLight(0xffb06a, 0, 18, 2);
+  public readonly playerLight = new THREE.PointLight(0xffe7c5, 6, 18, 2);
+  public readonly bossLight = new THREE.PointLight(0xffcb92, 0, 18, 2);
 
   public constructor(scene: THREE.Scene) {
-    const darkness = new THREE.Color(0x060912);
-    scene.background = darkness.clone();
-    // Fog é calculada a partir da câmera elevada; esta faixa mantém o jogador
-    // visível enquanto a luz radial permanece forte perto do jogador e
-    // desaparece gradualmente ao se aproximar do alcance máximo de 18 m.
-    scene.fog = new THREE.Fog(darkness, 30, 50);
-    scene.add(new THREE.AmbientLight(0x66708a, 0.4));
+    const sky = new THREE.Color(0xb2d8ff);
+    scene.background = sky.clone();
+    // The playable 50-metre square remains clear. Fog blends distant
+    // floating temples and cloud banks into the bright sky.
+    scene.fog = new THREE.Fog(sky, 105, 205);
+    scene.add(new THREE.AmbientLight(0xf5f4fc, 0.77));
 
-    const moon = new THREE.DirectionalLight(0x9fb3df, 0.55);
-    moon.position.set(-10, 20, -5);
-    moon.castShadow = true;
-    moon.shadow.mapSize.set(1024, 1024);
-    moon.shadow.camera.left = -25;
-    moon.shadow.camera.right = 25;
-    moon.shadow.camera.top = 25;
-    moon.shadow.camera.bottom = -25;
-    moon.shadow.camera.far = 60;
-    moon.shadow.bias = -0.001;
-    scene.add(moon);
+    const sunlight = new THREE.DirectionalLight(0xffebcc, 2.0);
+    sunlight.name = 'CelestialSunLight';
+    sunlight.position.set(-31, 48, -25);
+    sunlight.target.position.set(0, 0, 0);
+    sunlight.castShadow = true;
+    sunlight.shadow.mapSize.set(1024, 1024);
+    sunlight.shadow.camera.left = -35;
+    sunlight.shadow.camera.right = 35;
+    sunlight.shadow.camera.top = 35;
+    sunlight.shadow.camera.bottom = -35;
+    sunlight.shadow.camera.near = 0.5;
+    sunlight.shadow.camera.far = 120;
+    sunlight.shadow.bias = -0.00075;
+    scene.add(sunlight, sunlight.target);
 
-    scene.add(new THREE.HemisphereLight(0x8294bd, 0x17130f, 0.3));
+    scene.add(new THREE.HemisphereLight(0xd9efff, 0x9a9dba, 1.1));
     scene.add(this.playerLight, this.bossLight);
   }
 
@@ -38,7 +41,7 @@ export class GameLightingRig {
       playerPosition.y + 5,
       playerPosition.z
     );
-    this.bossLight.intensity = bossPosition ? 28 : 0;
+    this.bossLight.intensity = bossPosition ? 16 : 0;
     if (bossPosition) {
       this.bossLight.position.set(
         bossPosition.x,
