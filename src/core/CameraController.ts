@@ -8,8 +8,10 @@ export class CameraController {
   public camera: THREE.PerspectiveCamera;
 
   // offset da câmera em relação ao jogador (altura/distância isométrica)
-  private offset = new THREE.Vector3(0, 16, 11);
-  private lookOffset = new THREE.Vector3(0, 1, 0);
+  // Lower, forward-looking three-quarter composition: the divine stands, sky
+  // and floating temples stay visible instead of showing only white floor.
+  private offset = new THREE.Vector3(0, 17, 19);
+  private lookOffset = new THREE.Vector3(0, 1.1, -6);
   private currentPosition = new THREE.Vector3();
   private currentLookAt = new THREE.Vector3();
   private followTarget = new THREE.Vector3();
@@ -19,7 +21,7 @@ export class CameraController {
   public zoom = 1;
 
   /** Zoom padrão dos jogadores (mais longe = personagem pequeno na tela). */
-  private readonly defaultZoom = 1.2;
+  private readonly defaultZoom = 1.1;
   /** Limites de zoom para jogadores normais. */
   private readonly playerZoomMin = 0.85;
   private readonly playerZoomMax = 1.6;
@@ -29,8 +31,8 @@ export class CameraController {
   private adminMode = false;
 
   constructor(aspect: number) {
-    this.camera = new THREE.PerspectiveCamera(35, aspect, 0.1, 250);
-    this.camera.position.set(0, 16, 11);
+    this.camera = new THREE.PerspectiveCamera(39, aspect, 0.1, 250);
+    this.camera.position.set(0, 17, 19);
     this.zoom = this.defaultZoom;
   }
 
