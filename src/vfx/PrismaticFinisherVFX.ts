@@ -327,6 +327,9 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.group.visible = true;
     this.source.copy(options.start);
     this.ending.copy(options.endpoint);
+    // Charging visibly starts with the main laser; the actual explosion
+    // callback and combat damage still fire only at the end of the beam.
+    this.explosiveField.prepare(this.ending);
     this.aliveCheck = options.isTargetAlive;
     const targets = options.targets;
     const axis = this.tmp.subVectors(this.ending, this.source);
@@ -437,6 +440,7 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.impactParticles.update(elapsed);
     this.afterglow.update(elapsed);
     if (this.explosionAge < 0) {
+      this.explosiveField.updateCharge(this.age);
       const emitTrail = this.trailClock >= 0.07;
       if (emitTrail) this.trailClock = 0;
       for (let i = 0; i < this.missiles.length; i++) {
