@@ -145,12 +145,13 @@ function createBanner(parent: THREE.Object3D, blue: THREE.Material, gold: THREE.
 }
 
 function makeClouds(parent: THREE.Object3D): THREE.InstancedMesh {
-  const geometry = new THREE.IcosahedronGeometry(1, 1);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xf9fbff, roughness: 1, metalness: 0,
-    flatShading: false, emissive: 0x8cb7f0, emissiveIntensity: 0.14
+  // Rounded overlapping cloud puffs rather than low-poly floating rocks.
+  const geometry = new THREE.SphereGeometry(1, 10, 8);
+  const mat = new THREE.MeshLambertMaterial({
+    color: 0xffffff, emissive: 0x8faee1, emissiveIntensity: 0.085,
+    flatShading: false
   });
-  const count = 730;
+  const count = 860;
   const clouds = new THREE.InstancedMesh(geometry, mat, count);
   clouds.name = 'CelestialVolumetricCloudBanks';
   clouds.frustumCulled = false;
@@ -158,12 +159,12 @@ function makeClouds(parent: THREE.Object3D): THREE.InstancedMesh {
   const col = new THREE.Color();
   for (let i = 0; i < count; i++) {
     const az = pseudo(i * 2 + 3) * Math.PI * 2;
-    const r = 40 + Math.pow(pseudo(i * 2 + 9), 0.68) * 100;
+    const r = 33 + Math.pow(pseudo(i * 2 + 9), 0.68) * 113;
     const depth = pseudo(i * 7 + 39);
     const x = Math.cos(az) * r;
     const z = Math.sin(az) * r;
-    const y = -11 - depth * 15 + pseudo(i * 11 + 73) * 9;
-    const size = 3 + pseudo(i * 7 + 12) * 7.5;
+    const y = -14 - depth * 11 + pseudo(i * 11 + 73) * 9;
+    const size = 3.5 + pseudo(i * 7 + 12) * 5.5;
     dummy.position.set(x, y, z);
     dummy.scale.set(size * (1.08 + pseudo(i * 17 + 5)),
       size * (0.5 + pseudo(i * 13 + 8) * 0.30),
@@ -171,8 +172,8 @@ function makeClouds(parent: THREE.Object3D): THREE.InstancedMesh {
     dummy.rotation.y = pseudo(i * 9 + 1) * Math.PI * 2;
     dummy.updateMatrix();
     clouds.setMatrixAt(i, dummy.matrix);
-    col.setHSL(0.59 + pseudo(i * 3 + 2) * 0.016,
-      0.24 + pseudo(i * 5 + 6) * 0.12, 0.90 + pseudo(i * 11 + 13) * 0.055);
+    col.setHSL(0.585 + pseudo(i * 3 + 2) * 0.018,
+      0.18 + pseudo(i * 5 + 6) * 0.11, 0.90 + pseudo(i * 11 + 13) * 0.066);
     clouds.setColorAt(i, col);
   }
   clouds.instanceMatrix.needsUpdate = true;
@@ -282,8 +283,8 @@ export class CelestialArena {
     this.materials = {
       marble: standard(0xe1e7f0, 0.42),
       tile: new THREE.MeshPhysicalMaterial({
-        color: 0xffffff, map: marbleTexture(), metalness: 0.14, roughness: 0.19,
-        clearcoat: 0.68, clearcoatRoughness: 0.16, vertexColors: false
+        color: 0xe1e6ef, map: marbleTexture(), metalness: 0.08, roughness: 0.29,
+        clearcoat: 0.46, clearcoatRoughness: 0.27, vertexColors: false
       }),
       ivory: standard(0xe8e8e9, 0.37),
       stone: standard(0x8794b2, 0.85),
@@ -378,10 +379,10 @@ export class CelestialArena {
     this.group.add(floor);
 
     // Very faint white-on-white tile veining and narrow joints.
-    const jointMat = standard(0xd6d9df, 0.75);
+    const jointMat = standard(0xbcc3d3, 0.77);
     for (let at = -20; at <= 20; at += 5) {
-      carvedLine(this.group, jointMat, at, -24.4, at, 24.4, 0.055, 0.017);
-      carvedLine(this.group, jointMat, -24.4, at, 24.4, at, 0.055, 0.017);
+      carvedLine(this.group, jointMat, at, -24.4, at, 24.4, 0.057, 0.027);
+      carvedLine(this.group, jointMat, -24.4, at, 24.4, at, 0.057, 0.027);
     }
     for (const r of [4.5, 4.74, 5.32, 7.3, 7.52]) {
       ring(this.group, r, r < 6 ? 0.052 : 0.039, 0, 0.082, 0, p.gold);
