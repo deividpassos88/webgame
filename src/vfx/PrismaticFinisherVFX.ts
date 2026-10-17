@@ -410,21 +410,22 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.light = this.lights.acquire();
     if (this.light) {
       this.light.light.position.copy(position);
-      this.light.light.color.set(0xb177ff);
+      // A primeira fração de segundo é branco-azulada; violeta entra no residual.
+      this.light.light.color.set(0xd7eeff);
       this.light.light.distance = 12;
       this.light.light.intensity = 0;
     }
     this.impactParticles.add(position, {
-      color: 0xecf5ff,
-      count: qualityCount(260, this.quality, { low: 0.36, medium: 0.7, high: 1, ultra: 1.1 }),
-      speed: 9.2, spread: 1.25, lifetime: 1.05, upwardBias: 0.22,
-      opacity: 0.96, size: [0.8, 3.7], growth: -0.56,
+      color: 0xedfaff,
+      count: qualityCount(330, this.quality, { low: 0.3, medium: 0.62, high: 1, ultra: 1.12 }),
+      speed: 12.4, spread: 1.14, lifetime: 0.57, upwardBias: 0.1,
+      opacity: 0.99, size: [0.65, 2.8], growth: -0.8,
     });
     this.afterglow.add(position, {
-      color: 0x584079,
-      count: qualityCount(80, this.quality, { low: 0.3, medium: 0.58, high: 1, ultra: 1.1 }),
-      speed: 1.6, spread: 0.9, lifetime: 1.45, upwardBias: 0.24,
-      growth: 0.92, opacity: 0.12, size: [1.8, 3.6],
+      color: 0x546081,
+      count: qualityCount(57, this.quality, { low: 0.3, medium: 0.57, high: 1, ultra: 1.1 }),
+      speed: 2.1, spread: 0.8, lifetime: 0.73, upwardBias: 0.2,
+      growth: 0.57, opacity: 0.075, size: [1.2, 2.8],
     });
   }
 
@@ -472,14 +473,16 @@ export class PrismaticFinisherEffect implements PoolableVFX {
 
     this.explosionAge += elapsed;
     this.explosiveField.update(this.explosionAge);
-    const p = THREE.MathUtils.clamp(this.explosionAge / PRISM_FINISHER.explosionSeconds, 0, 1);
-    const flash = Math.exp(-p * 20);
-    const shock = Math.max(0, 1 - THREE.MathUtils.smoothstep(p, 0.13, 0.54));
-    const after = Math.max(0, 1 - THREE.MathUtils.smoothstep(p, 0.45, 0.96));
-    (this.burst.material as THREE.SpriteMaterial).opacity = 0.95 * flash;
-    (this.corona.material as THREE.SpriteMaterial).opacity = 0.5 * Math.exp(-p * 10);
-    this.burst.scale.setScalar(0.75 + p * 4.4);
-    this.corona.scale.setScalar(1.25 + p * 5);
+    const t = this.explosionAge;
+    const p = THREE.MathUtils.clamp(t / 0.9, 0, 1);
+    // Clarão estreito e violento, sem ficar um disco brilhante durante a expansão.
+    const flash = Math.exp(-t * 19);
+    const shock = 1 - THREE.MathUtils.smoothstep(t, 0.08, 0.39);
+    const after = 1 - THREE.MathUtils.smoothstep(t, 0.36, 0.86);
+    (this.burst.material as THREE.SpriteMaterial).opacity = 1.0 * flash;
+    (this.corona.material as THREE.SpriteMaterial).opacity = 0.27 * Math.exp(-t * 22);
+    this.burst.scale.setScalar(0.6 + (1 - Math.exp(-t * 34)) * 2.4);
+    this.corona.scale.setScalar(0.85 + (1 - Math.exp(-t * 21)) * 3.1);
     this.plasma.scale.setScalar(0.35 + p * 2.9);
     this.plasma.material.uniforms.uTime.value = this.age;
     this.plasma.material.uniforms.uAlpha.value = 0;
@@ -510,10 +513,12 @@ export class PrismaticFinisherEffect implements PoolableVFX {
       void at;
     }
     this.rayPositions.needsUpdate = true;
-    this.fragments.material.opacity = 0.88 * after;
+    this.fragments.material.opacity = 0.92 * after;
     for (let i = 0; i < FRAGMENT_COUNT; i++) {
       const angle = i * 2.399963;
-      const radius = (0.18 + p * 5) * (0.53 + (i % 7) * 0.087);
+      // Fragmentos saem rápido, com assimetria e sem formar outra esfera.
+      const radius = (0.12 + (1 - Math.exp(-t * 8.5)) * 4.5)
+        * (0.42 + (i % 9) * 0.082);
       this.fragmentPosition.set(
         this.ending.x + Math.cos(angle) * radius,
         this.ending.y + Math.sin(angle * 2.3) * radius * 0.33,
@@ -526,27 +531,27 @@ export class PrismaticFinisherEffect implements PoolableVFX {
       this.fragments.setMatrixAt(i, this.fragmentMatrix);
     }
     this.fragments.instanceMatrix.needsUpdate = true;
-    if (!this.secondaryBurst && this.explosionAge > 0.15) {
+    if (!this.secondaryBurst && this.explosionAge > 0.095) {
       this.secondaryBurst = true;
       this.impactParticles.add(this.ending, {
-        color: 0x9d7aff, count: qualityCount(100, this.quality, {
-          low: 0.4, medium: 0.65, high: 1, ultra: 1.1,
+        color: 0xb38cff, count: qualityCount(136, this.quality, {
+          low: 0.35, medium: 0.63, high: 1, ultra: 1.12,
         }),
-        speed: 3.9, spread: 0.93, lifetime: 0.8,
-        opacity: 0.75, size: [0.6, 2.2], growth: -0.63,
+        speed: 7.2, spread: 1.0, lifetime: 0.64,
+        opacity: 0.82, size: [0.5, 2.05], growth: -0.76,
       });
     }
-    if (!this.tertiaryBurst && this.explosionAge > 0.33) {
+    if (!this.tertiaryBurst && this.explosionAge > 0.24) {
       this.tertiaryBurst = true;
       this.impactParticles.add(this.ending, {
-        color: 0xc5eaff, count: qualityCount(125, this.quality, {
-          low: 0.3, medium: 0.64, high: 1, ultra: 1.1,
+        color: 0x8fdfff, count: qualityCount(104, this.quality, {
+          low: 0.3, medium: 0.62, high: 1, ultra: 1.12,
         }),
-        speed: 4.8, spread: 1.0, lifetime: 0.8,
-        opacity: 0.82, size: [0.7, 2.6], growth: -0.55,
+        speed: 4.9, spread: 0.94, lifetime: 0.62,
+        opacity: 0.68, size: [0.55, 1.8], growth: -0.73,
       });
     }
-    if (this.light) this.light.light.intensity = 6.5 * flash + 2.3 * shock;
+    if (this.light) this.light.light.intensity = 7.0 * flash + 1.4 * shock;
     return this.explosionAge < PRISM_FINISHER.explosionSeconds;
   }
 
