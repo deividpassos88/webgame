@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { PoolableVFX } from './VFXPool';
 import type { MageVFXResources } from './MageVFXResources';
+import { PooledParticleCloud } from './ParticleManager';
 
 const NORMAL = new THREE.Vector3(0, 0, 1);
 const POSITION = new THREE.Vector3();
@@ -18,6 +19,7 @@ export class PrismPortalCharge implements PoolableVFX {
   private readonly glow: THREE.Sprite;
   private readonly core: THREE.Sprite;
   private readonly sparks: THREE.LineSegments;
+  private readonly particles: PooledParticleCloud;
   private originProvider: ((out: THREE.Vector3) => THREE.Vector3) | null = null;
   private readonly direction = new THREE.Vector3(0, 0, 1);
   private age = 0;
@@ -70,6 +72,12 @@ export class PrismPortalCharge implements PoolableVFX {
     }));
     this.sparks.name = 'MagePrismPortalSparks';
     this.group.add(this.sparks);
+    // Sem círculos na conjuração, apenas concentração de energia.
+    for (const circle of this.rings) circle.visible = false;
+    this.sparks.visible = false;
+    this.particles = new PooledParticleCloud(112, resources.softGlow);
+    this.particles.points.name = 'MagePrismChargeEnergyParticles';
+    this.group.add(this.particles.points);
   }
 
   public play(originProvider: (out: THREE.Vector3) => THREE.Vector3, direction: THREE.Vector3): void {
@@ -90,22 +98,31 @@ export class PrismPortalCharge implements PoolableVFX {
     DIRECTION.copy(this.direction).normalize();
     this.group.quaternion.setFromUnitVectors(NORMAL, DIRECTION);
 
+    const elapsed = Math.max(0, delta);
     const appear = THREE.MathUtils.smoothstep(this.age, 0, 0.16);
-    const pulse = 1 + Math.sin(this.age * 22) * 0.06;
-    this.group.scale.setScalar((0.53 + 0.47 * appear) * pulse);
-    for (let i = 0; i < this.rings.length; i++) {
-      const mesh = this.rings[i];
-      (mesh.material as THREE.MeshBasicMaterial).opacity = (0.77 - i * 0.14) * appear;
-      mesh.rotation.z = this.age * (i % 2 === 0 ? 0.33 : -0.28);
+    this.group.scale.setScalar(1);
+    for (const ring of this.rings) {
+      (ring.material as THREE.MeshBasicMaterial).opacity = 0;
     }
-    (this.glow.material as THREE.SpriteMaterial).opacity = 0.33 * appear;
-    (this.core.material as THREE.SpriteMaterial).opacity = 0.94 * appear;
-    (this.sparks.material as THREE.LineBasicMaterial).opacity =
-      0.45 * appear * (0.5 + 0.5 * Math.sin(this.age * 31));
-    this.sparks.rotation.z += Math.max(0, delta) * 1.4;
+    (this.glow.material as THREE.SpriteMaterial).opacity = 0.24 * appear;
+    (this.core.material as THREE.SpriteMaterial).opacity = 0.8 * appear;
+    (this.sparks.material as THREE.LineBasicMaterial).opacity = 0;
+    this.particles.update(elapsed);
+    if (elapsed > 0 && Math.floor(this.age * 24) > Math.floor((this.age - elapsed) * 24)) {
+      this.particles.emit(new THREE.Vector3(), {
+        color: 0x8ddfff,
+        count: 14,
+        speed: 1.1,
+        spread: 0.55,
+        lifetime: 0.52,
+        upwardBias: 0.12,
+        size: [0.65, 2.5],
+      });
+    }
   }
 
   public reset(): void {
+    this.particles.reset();
     this.originProvider = null;
     this.age = 0;
     this.group.visible = false;
@@ -122,5 +139,6 @@ export class PrismPortalCharge implements PoolableVFX {
     (this.core.material as THREE.Material).dispose();
     this.sparks.geometry.dispose();
     (this.sparks.material as THREE.Material).dispose();
+    this.particles.dispose();
   }
 }
