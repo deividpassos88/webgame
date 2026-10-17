@@ -90,12 +90,18 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
       expect((whiteCore.material as THREE.SpriteMaterial).opacity).toBeGreaterThan(0);
       const newShader = shockfront.material as THREE.ShaderMaterial;
       expect(newShader.uniforms.uOpacity.value).toBeGreaterThan(0);
+      const jets = effect.group.getObjectByName('MagePrismLaserRuptureJets') as THREE.InstancedMesh;
+      expect(jets).toBeDefined();
+      expect(jets.count).toBeGreaterThan(40);
+      expect((jets.material as THREE.MeshBasicMaterial).opacity).toBeGreaterThan(0);
       // A carga volumétrica precisa morrer antes de virar uma bolha de energia.
       const volume = effect.group.getObjectByName('MagePrismVolumetricBlast') as THREE.Mesh;
       expect(volume.scale.x).toBeLessThan(2.4);
       for (let i = 0; i < 9; i++) effect.update(0.04);
       expect((volume.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBe(0);
       expect((shockfront.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBeLessThan(0.18);
+      effect.update(0.15);
+      expect((jets.material as THREE.MeshBasicMaterial).opacity).toBe(0);
       let alive = true;
       for (let i = 0; i < 65; i++) alive = effect.update(0.04);
       expect(alive).toBe(false);
