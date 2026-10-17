@@ -29,7 +29,7 @@ interface LaserOptions {
     to: THREE.Vector3,
     spellRadius: number
   ) => THREE.Object3D | null;
-  readonly onImpact?: (target: THREE.Object3D) => void;
+  readonly onImpact?: (target: THREE.Object3D, damageFraction: number) => void;
   readonly onFinalImpact?: (position: THREE.Vector3, target: THREE.Object3D | null) => void;
 }
 
@@ -168,6 +168,13 @@ class PrismBeam implements PoolableVFX {
   private readonly dischargeAttribute = new THREE.BufferAttribute(this.dischargePositions, 3);
   private readonly discharge: THREE.Line;
   private readonly sparks: PooledParticleCloud;
+  /** Primeiro corpo atingido fica travado até terminar o disparo. */
+  private readonly lastImpactPoint = new THREE.Vector3();
+  private lockedTarget: THREE.Object3D | null = null;
+  private ticksDelivered = 0;
+  private nextDamageTick = 0.08;
+  private static readonly DAMAGE_TICKS = 8;
+  private static readonly DAMAGE_INTERVAL = 0.235;
 
   private lightHandle: VFXLightHandle | null = null;
   private age = 0;
@@ -184,7 +191,7 @@ class PrismBeam implements PoolableVFX {
   private queryBodyHit: LaserOptions['queryBodyHit'];
   private onImpact: LaserOptions['onImpact'];
   private onFinalImpact: LaserOptions['onFinalImpact'];
-  private impactSent = false;
+  // Oito pulsos iguais substituem o impacto único do laser.
 
   public constructor(
     resources: MageVFXResources,
@@ -227,7 +234,7 @@ class PrismBeam implements PoolableVFX {
     }));
     this.discharge.name = 'MagePrismEnergyFilament';
     this.discharge.frustumCulled = false;
-    this.sparks = new PooledParticleCloud(40, resources.softGlow);
+    this.sparks = new PooledParticleCloud(160, resources.softGlow);
 
     this.group.add(
       this.outer, this.body, this.core,
@@ -239,8 +246,9 @@ class PrismBeam implements PoolableVFX {
 
   public play(options: LaserOptions): void {
     this.preset = options.preset;
-    this.startAnchor = options.startAnchor;
-    this.startProvider = options.startProvider;
+    // Não mover a origem do feixe com a personagem após o lançamento.
+    this.startAnchor = null;
+    this.startProvider = undefined;
     this.target = options.target;
     this.fallbackStart.copy(options.fallbackStart);
     this.fallbackDirection.copy(options.fallbackDirection);
@@ -253,7 +261,10 @@ class PrismBeam implements PoolableVFX {
     this.duration = Math.max(0.05, options.preset.laser?.duration ?? 2.0);
     this.age = 0;
     this.impactCooldown = 0;
-    this.impactSent = false;
+    this.lockedTarget = null;
+    this.ticksDelivered = 0;
+    this.nextDamageTick = 0.08;
+    this.lastImpactPoint.copy(this.fallbackStart);
     this.finalSent = false;
     this.group.visible = true;
     this.sparks.reset();
@@ -286,12 +297,9 @@ class PrismBeam implements PoolableVFX {
     (this.portal.material as THREE.MeshBasicMaterial).opacity = 0;
     (this.portalInner.material as THREE.MeshBasicMaterial).opacity = 0;
 
-    // Os três círculos de eco acompanham só os primeiros instantes da descarga.
-    const earlyRings = 1 - THREE.MathUtils.smoothstep(this.age, 0.16, 0.62);
-    for (let index = 0; index < this.echoes.length; index += 1) {
-      const echo = this.echoes[index];
-      (echo.material as THREE.MeshBasicMaterial).opacity = (0.53 - index * 0.10) * glow * earlyRings;
-      echo.scale.setScalar(0.80 + 0.15 * Math.sin(this.age * 24 - index * 1.2));
+    // Sem círculos rígidos durante o disparo.
+    for (const echo of this.echoes) {
+      (echo.material as THREE.MeshBasicMaterial).opacity = 0;
     }
     (this.sourceAura.material as THREE.SpriteMaterial).opacity = 0.66 * glow;
     (this.sourceCore.material as THREE.SpriteMaterial).opacity = 0.96 * glow;
@@ -305,20 +313,35 @@ class PrismBeam implements PoolableVFX {
     if (this.lightHandle) this.lightHandle.light.intensity = 1.1 * glow;
     this.sparks.update(elapsed);
 
-    if (!this.impactSent && this.target && (!this.isTargetAlive || this.isTargetAlive(this.target))) {
-      this.impactSent = true;
-      this.onImpact?.(this.target);
+    // Os hit ticks têm 0,235 s de intervalo: reagem no corpo do inimigo.
+    // O dano total do cast fica em 8/8, não oito vezes o dano anterior.
+    while (this.age >= this.nextDamageTick
+      && this.ticksDelivered < PrismBeam.DAMAGE_TICKS
+      && this.lockedTarget
+      && (!this.isTargetAlive || this.isTargetAlive(this.lockedTarget))) {
+      this.onImpact?.(this.lockedTarget, 1 / PrismBeam.DAMAGE_TICKS);
+      this.ticksDelivered += 1;
+      this.nextDamageTick += PrismBeam.DAMAGE_INTERVAL;
     }
     if (glow > 0.15 && this.impactCooldown <= 0) {
-      this.impactCooldown = this.preset.laser?.impactPulseInterval ?? 0.07;
+      this.impactCooldown = Math.max(0.055, this.preset.laser?.impactPulseInterval ?? 0.07);
       this.sparks.emit(END, {
         color: 0xc6f7ff,
-        count: qualityCount(9, this.quality, this.preset.qualityParticleMultiplier),
-        speed: 2.2,
-        spread: 0.55,
-        lifetime: 0.18,
-        upwardBias: 0.15,
-        size: [0.6, 1.8],
+        count: qualityCount(20, this.quality, this.preset.qualityParticleMultiplier),
+        speed: 3.1,
+        spread: 0.64,
+        lifetime: 0.28,
+        upwardBias: 0.22,
+        size: [0.6, 2.5],
+      });
+      const middle = START.clone().lerp(END, 0.3 + 0.4 * Math.random());
+      this.sparks.emit(middle, {
+        color: 0x55bfff,
+        count: qualityCount(12, this.quality, this.preset.qualityParticleMultiplier),
+        speed: 1.2,
+        spread: 0.32,
+        lifetime: 0.22,
+        size: [0.45, 1.4],
       });
     }
 
@@ -344,14 +367,27 @@ class PrismBeam implements PoolableVFX {
     else START.copy(this.fallbackStart);
     START.y += 0.08;
 
-    if (this.target && this.isTargetAlive && !this.isTargetAlive(this.target)) this.target = null;
-    if (this.target) enemyAimPoint(this.target, END);
-    else END.copy(START).addScaledVector(this.fallbackDirection, MAGE_SPELL_TRAVEL_METERS);
-
-    const blocker = this.queryBodyHit?.(START, END, this.preset.projectile.radius);
-    if (blocker) {
-      this.target = blocker;
-      enemyAimPoint(blocker, END);
+    if (this.lockedTarget) {
+      // Preserva o primeiro alvo; após morte conserva o último ponto de acerto.
+      if (!this.isTargetAlive || this.isTargetAlive(this.lockedTarget)) {
+        enemyAimPoint(this.lockedTarget, END);
+        this.lastImpactPoint.copy(END);
+      } else {
+        END.copy(this.lastImpactPoint);
+      }
+    } else {
+      if (this.target && this.isTargetAlive && !this.isTargetAlive(this.target)) this.target = null;
+      if (this.target) enemyAimPoint(this.target, END);
+      else END.copy(START).addScaledVector(this.fallbackDirection, MAGE_SPELL_TRAVEL_METERS);
+      const blocker = this.queryBodyHit?.(START, END, this.preset.projectile.radius);
+      if (blocker) {
+        this.target = blocker;
+        enemyAimPoint(blocker, END);
+      }
+      if (this.target) {
+        this.lockedTarget = this.target;
+        this.lastImpactPoint.copy(END);
+      }
     }
 
     DIRECTION.subVectors(END, START);
@@ -423,6 +459,9 @@ class PrismBeam implements PoolableVFX {
     this.finalSent = false;
     this.preset = null;
     this.target = null;
+    this.lockedTarget = null;
+    this.ticksDelivered = 0;
+    this.nextDamageTick = 0.08;
     this.startAnchor = null;
     this.startProvider = undefined;
     this.isTargetAlive = undefined;
@@ -499,7 +538,7 @@ export class LaserVFX {
   public fire(options: LaserOptions): boolean {
     const beam = this.pool.acquire();
     if (!beam) {
-      if (options.target) options.onImpact?.(options.target);
+      if (options.target) options.onImpact?.(options.target, 1);
       options.onFinalImpact?.(options.fallbackStart.clone().addScaledVector(options.fallbackDirection, 8), options.target);
       return false;
     }
