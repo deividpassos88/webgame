@@ -85,23 +85,34 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
       const shockfront = effect.group.getObjectByName('MagePrismShockFront') as THREE.Mesh;
       expect(shockfront).toBeDefined();
       expect(shockwave.visible).toBe(false);
-      expect(effect.update(0.06)).toBe(true);
-      expect(shockwave.scale.x).toBeGreaterThan(0.2);
-      expect((whiteCore.material as THREE.SpriteMaterial).opacity).toBeGreaterThan(0);
-      const newShader = shockfront.material as THREE.ShaderMaterial;
-      expect(newShader.uniforms.uOpacity.value).toBeGreaterThan(0);
+      const spiral = effect.group.getObjectByName('MagePrismSpiralVortex') as THREE.Mesh;
+      const horizontalFlash = effect.group.getObjectByName('MagePrismExplosionHorizontalFlash') as THREE.Sprite;
       const jets = effect.group.getObjectByName('MagePrismLaserRuptureJets') as THREE.InstancedMesh;
-      expect(jets).toBeDefined();
+      expect(spiral).toBeDefined();
+      expect(horizontalFlash).toBeDefined();
       expect(jets.count).toBeGreaterThan(40);
+      // Before the flash: magenta charged ring, white center and cyan lightning.
+      expect(effect.update(0.06)).toBe(true);
+      expect((whiteCore.material as THREE.SpriteMaterial).opacity).toBeGreaterThan(0);
+      const spiralMat = spiral.material as THREE.ShaderMaterial;
+      expect(spiralMat.uniforms.uOpacity.value).toBeGreaterThan(0.6);
+      expect((horizontalFlash.material as THREE.SpriteMaterial).opacity).toBeLessThan(0.1);
+      expect((jets.material as THREE.MeshBasicMaterial).opacity).toBe(0);
+
+      // Detonation: white horizontal flare and 3D shards without a giant shield.
+      effect.update(0.26);
+      expect((horizontalFlash.material as THREE.SpriteMaterial).opacity).toBeGreaterThan(0.7);
       expect((jets.material as THREE.MeshBasicMaterial).opacity).toBeGreaterThan(0);
-      // A carga volumétrica precisa morrer antes de virar uma bolha de energia.
+      expect((shockfront.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBeGreaterThan(0);
       const volume = effect.group.getObjectByName('MagePrismVolumetricBlast') as THREE.Mesh;
       expect(volume.scale.x).toBeLessThan(2.4);
-      for (let i = 0; i < 9; i++) effect.update(0.04);
+
+      // Rotation and residual glow continue after the flash, but no bubble.
+      effect.update(0.50);
+      expect(spiralMat.uniforms.uOpacity.value).toBeGreaterThan(0.3);
+      expect((horizontalFlash.material as THREE.SpriteMaterial).opacity).toBeLessThan(0.01);
       expect((volume.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBe(0);
-      expect((shockfront.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBeLessThan(0.18);
-      effect.update(0.15);
-      expect((jets.material as THREE.MeshBasicMaterial).opacity).toBe(0);
+      expect((jets.material as THREE.MeshBasicMaterial).opacity).toBeLessThan(0.01);
       let alive = true;
       for (let i = 0; i < 65; i++) alive = effect.update(0.04);
       expect(alive).toBe(false);
