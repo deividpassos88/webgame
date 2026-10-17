@@ -137,7 +137,7 @@ import { FatigueMeter, MAX_FATIGUE, DASH_FATIGUE_COST } from '../combat/FatigueM
 import { mageBasicAttackManaCost, mageSkillFatiguePercent } from '../combat/MageSkillCost';
 import { firstColumnHit, mageSkillAttackId } from '../combat/MageSpellFlight';
 import { juizoBarrierMinDistance, pushOutOfJuizoBarrier } from '../combat/JuizoBarrier';
-import { projectOutsideMageWard } from '../combat/MageWardBarrier';
+import { projectOutsideMageWard, shouldActivateMageWard } from '../combat/MageWardBarrier';
 import { MageWardVFX } from '../vfx/MageWardVFX';
 import type { ElementalType } from '../combat/ElementalStatus';
 import {
@@ -546,14 +546,15 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       this.setupLights();
       this.scene.add(this.level.group);
       this.scene.add(this.warriorSlashVFX.group);
-      this.scene.add(this.mageWard.group);
       this.player = new Player(characterId, this.characterAssets);
       await this.player.load();
       this.player.onWarriorSkillHit((event) => this.onWarriorSkillHit(event));
       this.player.onWarriorAttackWindow((event) => this.onWarriorAttackWindow(event));
       this.player.onMageSpellCast((event) => {
-        // Every Mage cast renews the 4m / 3s protection.
-        if (this.profile.selectedClass === 'mage') this.mageWard.activate(this.player.root.position);
+        // Only the Mage's key-4 laser starts an invisible 4m/3s collision ward.
+        if (shouldActivateMageWard(this.profile.selectedClass, event.spellId)) {
+          this.mageWard.activate(this.player.root.position);
+        }
         const target = this.resolveMageSpellTarget(event.target);
         this.mageVFX.cast(event.spellId, {
           caster: event.caster,
