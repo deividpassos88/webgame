@@ -137,6 +137,8 @@ import { FatigueMeter, MAX_FATIGUE, DASH_FATIGUE_COST } from '../combat/FatigueM
 import { mageBasicAttackManaCost, mageSkillFatiguePercent } from '../combat/MageSkillCost';
 import { firstColumnHit, mageSkillAttackId } from '../combat/MageSpellFlight';
 import { juizoBarrierMinDistance, pushOutOfJuizoBarrier } from '../combat/JuizoBarrier';
+import { projectOutsideMageWard } from '../combat/MageWardBarrier';
+import { MageWardVFX } from '../vfx/MageWardVFX';
 import type { ElementalType } from '../combat/ElementalStatus';
 import {
   isInsideMageSkillRadius,
@@ -314,6 +316,8 @@ export class Game {
   private readonly skillCombo = new SkillComboController();
   /** Imunidade do combo: primeira skill até o fim (0.2 s se falhar). */
   private readonly comboImmunity = new ComboImmunityController();
+  /** Activated by any Mage spell; never by the Warrior. */
+  private readonly mageWard = new MageWardVFX();
   /**
    * Dano de cada skill que está no ar, registrado no instante do cast: 2x
    * enquanto o combo estiver empoderado (depois do primeiro link verde) e 1x
@@ -542,11 +546,14 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       this.setupLights();
       this.scene.add(this.level.group);
       this.scene.add(this.warriorSlashVFX.group);
+      this.scene.add(this.mageWard.group);
       this.player = new Player(characterId, this.characterAssets);
       await this.player.load();
       this.player.onWarriorSkillHit((event) => this.onWarriorSkillHit(event));
       this.player.onWarriorAttackWindow((event) => this.onWarriorAttackWindow(event));
       this.player.onMageSpellCast((event) => {
+        // Every Mage cast renews the 4m / 3s protection.
+        if (this.profile.selectedClass === 'mage') this.mageWard.activate(this.player.root.position);
         const target = this.resolveMageSpellTarget(event.target);
         this.mageVFX.cast(event.spellId, {
           caster: event.caster,
@@ -594,6 +601,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
           this.dismissRpgOverlay();
           this.stopBossSkills();
           this.mageVFX.clear();
+          this.mageWard.reset();
           this.combatRegistry.clearLivingAllies();
           this.player.clearAttackTarget();
           this.targetedEnemyRoot = null;
@@ -793,6 +801,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     this.clearTargetMarker();
     this.healthPlasma.clear();
     this.mageVFX.clear();
+    this.mageWard.reset();
     this.warriorSlashVFX.clear();
     this.warriorBladeStorm.clear();
     this.pendingBladeStorm = null;
@@ -1824,6 +1833,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       this.healthPlasma.clear();
       this.archerProjectiles.clear();
       this.mageVFX.clear();
+      this.mageWard.reset();
       this.warriorSlashVFX.clear();
       this.warriorBladeStorm.clear();
       this.pendingBladeStorm = null;
@@ -2349,6 +2359,21 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
         root.position.x = pushed.x;
         root.position.z = pushed.z;
       }
+    }
+  }
+
+  /** During 3s after a Mage cast, keep enemy bodies outside 4 meters. */
+  private updateMageWardBarrier(): void {
+    if (!this.mageWard?.active || this.profile.selectedClass !== 'mage') return;
+    const { x, z } = this.player.root.position;
+    for (const root of this.combatRegistry.activeRoots()) {
+      const record = this.combatRegistry.findByRoot(root);
+      if (!record || record.enemy.isDead) continue;
+      const next = projectOutsideMageWard(
+        x, z, root.position.x, root.position.z,
+        record.enemy.collisionRadius ?? 0.45
+      );
+      if (next) root.position.set(next.x, root.position.y, next.z);
     }
   }
 
@@ -3496,8 +3521,9 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       (record, damage) => this.showFloatingDamage(record.enemy.root.position, damage),
       (_record, attack) => this.archerProjectiles.fire(attack)
     );
-    // Depois da IA dos monstros: a barreira do Juízo empurra quem tentar entrar.
+    // Depois da IA: também respeita a fronteira do campo temporário.
     this.updateJuizoBarrier();
+    this.updateMageWardBarrier();
     for (const record of this.combatRegistry.unreportedDeaths()) {
       this.handleEnemyDeath(record);
     }
@@ -3628,6 +3654,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       this.healthPlasma.clear();
       this.archerProjectiles.clear();
       this.mageVFX.clear();
+      this.mageWard.reset();
       this.warriorSlashVFX.clear();
       this.warriorBladeStorm.clear();
       this.pendingBladeStorm = null;
@@ -3894,6 +3921,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       this.input.postUpdate();
       this.updateAutoAttack();
       this.player.update(delta);
+      this.mageWard.update(delta, this.player.root.position);
       this.mageVFX.update(delta);
       this.warriorSlashVFX.update(delta);
       this.warriorBladeStorm.update(delta);
