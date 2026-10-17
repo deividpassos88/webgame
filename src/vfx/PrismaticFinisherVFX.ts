@@ -169,6 +169,7 @@ export class PrismaticFinisherEffect implements PoolableVFX {
   private tertiaryBurst = false;
   private readonly burst: THREE.Sprite;
   private readonly corona: THREE.Sprite;
+  private readonly horizontalFlash: THREE.Sprite;
   private readonly plasma: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
   private readonly shockwave: THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>;
   private readonly shockFragments: Array<THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>> = [];
@@ -251,6 +252,8 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.burst.name = 'MagePrismExplosionWhiteCore';
     this.corona = new THREE.Sprite(spriteMat(0x7143ef));
     this.corona.name = 'MagePrismExplosionVioletBloom';
+    this.horizontalFlash = new THREE.Sprite(spriteMat(0xffd5ff));
+    this.horizontalFlash.name = 'MagePrismExplosionHorizontalFlash';
 
     // A onda de choque é fragmentada: arcos interrompidos em vez de um anel perfeito.
     this.shockwave = new THREE.Mesh(
@@ -307,7 +310,7 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.afterglow.points.name = 'MagePrismExplosionSmoke';
 
     this.group.add(
-      this.plasma, this.corona, this.burst, this.shockwave, this.rays, this.fragments,
+      this.plasma, this.corona, this.burst, this.horizontalFlash, this.shockwave, this.rays, this.fragments,
       this.explosiveField.group,
       this.trails.points, this.impactParticles.points, this.afterglow.points
     );
@@ -404,6 +407,7 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     for (const missile of this.missiles) missile.node.visible = false;
     this.burst.position.copy(position);
     this.corona.position.copy(position);
+    this.horizontalFlash.position.copy(position);
     this.plasma.position.copy(position);
     this.shockwave.position.copy(position).addScaledVector(UP, -0.82);
     for (const arc of this.shockFragments) arc.position.copy(this.shockwave.position);
@@ -415,17 +419,13 @@ export class PrismaticFinisherEffect implements PoolableVFX {
       this.light.light.distance = 12;
       this.light.light.intensity = 0;
     }
+    // A referência abre com faíscas pequenas no anel, antes da ruptura.
     this.impactParticles.add(position, {
-      color: 0xedfaff,
-      count: qualityCount(330, this.quality, { low: 0.3, medium: 0.62, high: 1, ultra: 1.12 }),
-      speed: 12.4, spread: 1.14, lifetime: 0.57, upwardBias: 0.1,
-      opacity: 0.99, size: [0.65, 2.8], growth: -0.8,
-    });
-    this.afterglow.add(position, {
-      color: 0x546081,
-      count: qualityCount(57, this.quality, { low: 0.3, medium: 0.57, high: 1, ultra: 1.1 }),
-      speed: 2.1, spread: 0.8, lifetime: 0.73, upwardBias: 0.2,
-      growth: 0.57, opacity: 0.075, size: [1.2, 2.8],
+      color: 0xd486ff, count: qualityCount(25, this.quality, {
+        low: 0.4, medium: 0.7, high: 1, ultra: 1.15,
+      }),
+      speed: 1.3, spread: 0.42, lifetime: 0.3,
+      upwardBias: 0.3, opacity: 0.58, size: [0.4, 1.4],
     });
   }
 
@@ -474,15 +474,22 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.explosionAge += elapsed;
     this.explosiveField.update(this.explosionAge);
     const t = this.explosionAge;
-    const p = THREE.MathUtils.clamp(t / 0.9, 0, 1);
-    // Clarão estreito e violento, sem ficar um disco brilhante durante a expansão.
-    const flash = Math.exp(-t * 19);
-    const shock = 1 - THREE.MathUtils.smoothstep(t, 0.08, 0.39);
-    const after = 1 - THREE.MathUtils.smoothstep(t, 0.36, 0.86);
-    (this.burst.material as THREE.SpriteMaterial).opacity = 1.0 * flash;
-    (this.corona.material as THREE.SpriteMaterial).opacity = 0.27 * Math.exp(-t * 22);
-    this.burst.scale.setScalar(0.6 + (1 - Math.exp(-t * 34)) * 2.4);
-    this.corona.scale.setScalar(0.85 + (1 - Math.exp(-t * 21)) * 3.1);
+    const p = THREE.MathUtils.clamp(t / PRISM_FINISHER.explosionSeconds, 0, 1);
+    // A sequência replica o vídeo: carga rosa -> flash branco -> vórtice -> resíduo.
+    const flash = Math.exp(-Math.pow((t - 0.31) * 16, 2));
+    const charge = 1 - THREE.MathUtils.smoothstep(t, 0.19, 0.37);
+    const vortex = THREE.MathUtils.smoothstep(t, 0.24, 0.42)
+      * (1 - THREE.MathUtils.smoothstep(t, 1.0, 1.52));
+    const shock = THREE.MathUtils.smoothstep(t, 0.23, 0.35)
+      * (1 - THREE.MathUtils.smoothstep(t, 0.39, 0.68));
+    const after = (1 - THREE.MathUtils.smoothstep(t, 0.92, 1.52))
+      * THREE.MathUtils.smoothstep(t, 0.29, 0.49);
+    (this.burst.material as THREE.SpriteMaterial).opacity = 0.47 * charge + 0.96 * flash + 0.55 * vortex;
+    (this.corona.material as THREE.SpriteMaterial).opacity = 0.37 * charge + 0.48 * vortex;
+    (this.horizontalFlash.material as THREE.SpriteMaterial).opacity = 0.93 * flash;
+    this.burst.scale.setScalar(0.55 * charge + 1.45 * flash + 1.95 * vortex);
+    this.corona.scale.setScalar(1.0 + 2.35 * vortex);
+    this.horizontalFlash.scale.set(5.2 + flash * 2.3, 0.22 + 0.15 * flash, 1);
     this.plasma.scale.setScalar(0.35 + p * 2.9);
     this.plasma.material.uniforms.uTime.value = this.age;
     this.plasma.material.uniforms.uAlpha.value = 0;
@@ -513,7 +520,7 @@ export class PrismaticFinisherEffect implements PoolableVFX {
       void at;
     }
     this.rayPositions.needsUpdate = true;
-    this.fragments.material.opacity = 0.92 * after;
+    this.fragments.material.opacity = 0.85 * after;
     for (let i = 0; i < FRAGMENT_COUNT; i++) {
       const angle = i * 2.399963;
       // Fragmentos saem rápido, com assimetria e sem formar outra esfera.
@@ -531,27 +538,38 @@ export class PrismaticFinisherEffect implements PoolableVFX {
       this.fragments.setMatrixAt(i, this.fragmentMatrix);
     }
     this.fragments.instanceMatrix.needsUpdate = true;
-    if (!this.secondaryBurst && this.explosionAge > 0.095) {
+    if (!this.secondaryBurst && t > 0.30) {
       this.secondaryBurst = true;
+      // Descarga branca comprimida seguida do giro violeta da referência.
       this.impactParticles.add(this.ending, {
-        color: 0xb38cff, count: qualityCount(136, this.quality, {
+        color: 0xf9edff, count: qualityCount(170, this.quality, {
           low: 0.35, medium: 0.63, high: 1, ultra: 1.12,
         }),
-        speed: 7.2, spread: 1.0, lifetime: 0.64,
-        opacity: 0.82, size: [0.5, 2.05], growth: -0.76,
+        speed: 6.8, spread: 0.87, lifetime: 0.72,
+        upwardBias: 0.2, opacity: 0.88, size: [0.65, 2.4], growth: -0.7,
       });
     }
-    if (!this.tertiaryBurst && this.explosionAge > 0.24) {
+    if (!this.tertiaryBurst && t > 0.76) {
       this.tertiaryBurst = true;
       this.impactParticles.add(this.ending, {
-        color: 0x8fdfff, count: qualityCount(104, this.quality, {
+        color: 0xae7dff, count: qualityCount(95, this.quality, {
           low: 0.3, medium: 0.62, high: 1, ultra: 1.12,
         }),
-        speed: 4.9, spread: 0.94, lifetime: 0.62,
-        opacity: 0.68, size: [0.55, 1.8], growth: -0.73,
+        speed: 3.3, spread: 0.83, lifetime: 0.68,
+        opacity: 0.62, size: [0.55, 1.9], growth: -0.65,
+      });
+      this.afterglow.add(this.ending, {
+        color: 0x4d397b, count: qualityCount(42, this.quality, {
+          low: 0.3, medium: 0.6, high: 1, ultra: 1.12,
+        }),
+        speed: 0.9, spread: 0.8, lifetime: 0.66,
+        upwardBias: 0.2, growth: 0.45, opacity: 0.06, size: [1.0, 2.4],
       });
     }
-    if (this.light) this.light.light.intensity = 7.0 * flash + 1.4 * shock;
+    if (this.light) {
+      this.light.light.color.set(t < 0.38 ? 0xf1d7ff : 0x9f63ee);
+      this.light.light.intensity = 7.2 * flash + 0.6 * charge + 1.5 * vortex + 1.0 * shock;
+    }
     return this.explosionAge < PRISM_FINISHER.explosionSeconds;
   }
 
@@ -574,6 +592,7 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.afterglow.reset();
     (this.burst.material as THREE.SpriteMaterial).opacity = 0;
     (this.corona.material as THREE.SpriteMaterial).opacity = 0;
+    (this.horizontalFlash.material as THREE.SpriteMaterial).opacity = 0;
     this.plasma.material.uniforms.uAlpha.value = 0;
     this.shockwave.material.opacity = 0;
     for (const arc of this.shockFragments) arc.material.opacity = 0;
@@ -605,6 +624,7 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.fragments.material.dispose();
     (this.burst.material as THREE.Material).dispose();
     (this.corona.material as THREE.Material).dispose();
+    (this.horizontalFlash.material as THREE.Material).dispose();
     this.trails.dispose();
     this.impactParticles.dispose();
     this.afterglow.dispose();
