@@ -24,6 +24,7 @@ interface FakeEnemy {
   readonly hits: number[];
   readonly freezes: number;
   readonly slows: number;
+  prismaticSlows: number;
   elementalHits: number;
 }
 
@@ -38,6 +39,7 @@ function fakeEnemy(x: number, z: number): FakeEnemy {
     hits: [],
     freezes: 0,
     slows: 0,
+    prismaticSlows: 0,
     elementalHits: 0,
   };
   Object.assign(root.userData, {
@@ -58,6 +60,8 @@ function buildGame(enemies: FakeEnemy[]) {
       isDead: false,
       collisionRadius: enemy.collisionRadius,
       receivePlayerHit: (damage: number) => enemy.hits.push(damage),
+      receivePrismaticBeamHit: (damage: number) => enemy.hits.push(damage),
+      applyPrismaticSlow: () => { enemy.prismaticSlows += 1; },
       applyElementalHit: () => { enemy.elementalHits += 1; },
       applyMageFreeze: () => { (enemy as { freezes: number }).freezes += 1; },
       applyMageSlow: () => { (enemy as { slows: number }).slows += 1; },
@@ -104,7 +108,7 @@ function buildGame(enemies: FakeEnemy[]) {
   });
   const cast = (spellId: MageSpellId, target: THREE.Object3D): void => {
     (game as unknown as {
-      applyMageSkillBodyDamage(id: MageSpellId, root: THREE.Object3D): void;
+      applyMageSkillBodyDamage(id: MageSpellId, root: THREE.Object3D, fraction?: number): void;
     }).applyMageSkillBodyDamage(spellId, target);
   };
   return { game, cast, controlCalls, decals, records };
@@ -215,11 +219,30 @@ describe('dano em área das cinco skills da Maga', () => {
         expect(dentro.elementalHits).toBe(0);
       }
       if (spellId === 'laser') {
+        expect(primary.prismaticSlows).toBe(1);
+        expect(dentro.prismaticSlows).toBe(1);
+        expect(fora.prismaticSlows).toBe(0);
         // Raio Prismático é arcano, não aplica a antiga queimadura de fogo.
         expect(primary.elementalHits).toBe(0);
         expect(dentro.elementalHits).toBe(0);
       }
     }
+  });
+
+  it('distribui o Raio Prismático em oito pulsos e renova a lentidão durante o dano', () => {
+    const primary = fakeEnemy(6, 0);
+    const perto = fakeEnemy(8.2, 0);
+    const { game } = buildGame([primary, perto]);
+    const apply = (game as unknown as {
+      applyMageSkillBodyDamage(spellId: MageSpellId, target: THREE.Object3D, fraction: number): void;
+    }).applyMageSkillBodyDamage.bind(game);
+    for (let i = 0; i < 8; i++) apply('laser', primary.root, 1 / 8);
+    expect(primary.hits).toHaveLength(8);
+    expect(primary.prismaticSlows).toBe(8);
+    expect(perto.hits).toHaveLength(8);
+    expect(perto.prismaticSlows).toBe(8);
+    expect(primary.elementalHits).toBe(0);
+    expect(primary.hits.every((amount) => amount > 0)).toBe(true);
   });
 
   it('o impacto acontece no ponto do alvo, não em volta da Maga', () => {
