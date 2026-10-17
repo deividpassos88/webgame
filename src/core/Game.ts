@@ -559,6 +559,8 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
           onLaunch: () => this.player.releaseSkillCastAnchor(),
           isTargetAlive: (candidate) => this.isMageVFXTargetAlive(candidate),
           queryBodyHit: (from, to, radius) => this.queryMageSpellBody(from, to, radius),
+          getLaserHomingTargets: (source, endpoint) => this.findPrismaticHomingTargets(source, endpoint),
+          onLaserFinisher: (endpoint) => this.applyPrismaticFinisherDamage(endpoint),
         });
       });
       this.hud.onAnimationTest((state) => {
@@ -2395,6 +2397,74 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       this.getCharacterStats().physicalDamageMultiplier,
       elemental
     );
+  }
+
+  /** Mísseis da skill 4 procuram até seis inimigos vivos próximos ao alvo do feixe. */
+  private findPrismaticHomingTargets(
+    source: THREE.Vector3,
+    endpoint: THREE.Vector3
+  ): THREE.Object3D[] {
+    return this.combatRegistry.activeRoots()
+      .map((root) => this.combatRegistry.findByRoot(root))
+      .filter((record): record is CombatRecord => record !== null && !record.enemy.isDead)
+      .filter((record) => {
+        const position = record.enemy.root.position;
+        return Math.hypot(position.x - endpoint.x, position.z - endpoint.z) <= 6.0
+          && Math.hypot(position.x - source.x, position.z - source.z) <= MAGE_MAX_RANGE_METERS + 1.5;
+      })
+      .sort((a, b) => {
+        const da = a.enemy.root.position.distanceToSquared(endpoint);
+        const db = b.enemy.root.position.distanceToSquared(endpoint);
+        return da - db;
+      })
+      .slice(0, 6)
+      .map((record) => record.enemy.root);
+  }
+
+  /** Um único golpe final: explosão violeta, dano em área e queda dos inimigos.
+   * O dano é independente dos 8 ticks, mas só ocorre uma vez ao encerrar o raio.
+   */
+  private applyPrismaticFinisherDamage(center: THREE.Vector3): void {
+    if (!this.hasAdminFreeSkills()
+      && !isWarriorSkillUnlocked('triplo_ataque', this.profile.progression.level)) return;
+    const radius = 4.15;
+    const baseDamage = this.mageSkillBaseDamage('triplo_ataque', false) * 0.65;
+    for (const root of this.combatRegistry.activeRoots()) {
+      const record = this.combatRegistry.findByRoot(root);
+      if (!record || record.enemy.isDead) continue;
+      const position = record.enemy.root.position;
+      const distance = Math.hypot(position.x - center.x, position.z - center.z);
+      if (distance > radius + record.enemy.collisionRadius) continue;
+      const falloff = 1 - 0.55 * THREE.MathUtils.clamp(distance / radius, 0, 1);
+      const criticalHit = { isCritical: false };
+      const damage = this.mageSkillDamageAtDistance(
+        baseDamage * falloff, false, position,
+        record.enemy.collisionRadius ?? 0.45, criticalHit
+      );
+      if (damage <= 0) continue;
+      this.damageEnemyWithMageSkill('laser', null, record, damage, center, {
+        control: false,
+        isCritical: criticalHit.isCritical,
+        applyElementalStatus: false,
+      });
+      // Mesmo o chefe reage; a queda do chefe é menor para não quebrar as fases.
+      if (!record.enemy.isDead) record.enemy.applyWarriorKnockdown(record.enemy.isBoss ? 0.65 : 1.45);
+    }
+
+    if (this.trainingDummy) {
+      const target = this.trainingDummy.root.position;
+      const distance = Math.hypot(target.x - center.x, target.z - center.z);
+      if (distance <= radius + 0.55) {
+        const damage = this.mageSkillDamageAtDistance(
+          baseDamage * (1 - 0.55 * THREE.MathUtils.clamp(distance / radius, 0, 1)),
+          false, target, 0.55
+        );
+        if (damage > 0) {
+          this.trainingDummy.takeDamage(damage);
+          this.showFloatingDamage(target, damage, 'damage', false);
+        }
+      }
+    }
   }
 
   private onMageSpellImpact(
