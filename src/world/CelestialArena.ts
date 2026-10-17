@@ -30,6 +30,40 @@ function pseudo(seed: number): number {
   return value - Math.floor(value);
 }
 
+/** Deterministic, subtly veined pale marble; no network assets or canvas needed. */
+function marbleTexture(): THREE.DataTexture {
+  const size = 256;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const nx = x / size;
+      const ny = y / size;
+      const shift = Math.sin(ny * 15.1 + Math.sin(nx * 21) * 1.7) * 0.08;
+      const contour = Math.sin((nx + ny * 0.49 + shift) * 39);
+      const vein = Math.pow(Math.max(0, contour), 19);
+      const granular = (pseudo(x + y * 256 + 67) - 0.5) * 3.5;
+      const soft = Math.sin(nx * 11.2 + Math.sin(ny * 9.2)) * 2.8;
+      const value = THREE.MathUtils.clamp(250 - vein * 22 + granular + soft, 210, 255);
+      const i = (y * size + x) * 4;
+      data[i] = value;
+      data[i + 1] = value;
+      data[i + 2] = Math.min(255, value + 2);
+      data[i + 3] = 255;
+    }
+  }
+  const t = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  t.name = 'CampoDosDeusesMarbleVeining';
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(6, 6);
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.needsUpdate = true;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 function standard(color: number, roughness = 0.48, metalness = 0.02): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color, roughness, metalness });
 }
@@ -248,7 +282,7 @@ export class CelestialArena {
     this.materials = {
       marble: standard(0xe1e7f0, 0.42),
       tile: new THREE.MeshPhysicalMaterial({
-        color: 0xf5f4f1, metalness: 0.14, roughness: 0.19,
+        color: 0xffffff, map: marbleTexture(), metalness: 0.14, roughness: 0.19,
         clearcoat: 0.68, clearcoatRoughness: 0.16, vertexColors: false
       }),
       ivory: standard(0xe8e8e9, 0.37),
@@ -268,6 +302,7 @@ export class CelestialArena {
     this.buildGrandstands();
     this.buildFloatingIslands();
     this.buildCeremonialTorches();
+    this.buildGoldenWingedOrnaments();
   }
 
   private buildCeremonialTorches(): void {
@@ -449,12 +484,51 @@ export class CelestialArena {
         if (k % 2 === 0) {
           createBanner(side, p.royalBlue, p.gold, sign * 51.3, 7.7, z, true);
         }
+        // Round arches between the bleacher colonnades.
+        if (k < 8) {
+          const arch = new THREE.Mesh(
+            new THREE.TorusGeometry(2.85, 0.22, 6, 30, Math.PI),
+            p.ivory
+          );
+          arch.name = 'CelestialMarbleGrandstandArch';
+          arch.position.set(sign * 51.8, 11.0, z + 3);
+          arch.rotation.y = Math.PI / 2;
+          side.add(arch);
+        }
         // Segmental arches linking columns.
         if (k < 8) {
           block(side, p.ivory, sign * 51.8, 14.1, z + 3, 1.2, 0.75, 6.1);
           block(side, p.gold, sign * 51.8, 13.76, z + 3, 1.35, 0.13, 5.9);
         }
       }
+    }
+  }
+
+  private buildGoldenWingedOrnaments(): void {
+    const p=this.materials;
+    for (const sign of [-1, 1]) for (const z of [-28, 28]) {
+      const statue=new THREE.Group();
+      statue.name='CelestialGoldenWingedStatue';
+      statue.position.set(sign*51.8,15.35,z);
+      this.group.add(statue);
+      const body=new THREE.Mesh(new THREE.OctahedronGeometry(0.37,1),p.goldBright);
+      body.scale.set(0.83,1.65,0.8);
+      statue.add(body);
+      const head=new THREE.Mesh(new THREE.SphereGeometry(0.2,8,6),p.goldBright);
+      head.position.y=0.66;
+      statue.add(head);
+      for(const wingSide of [-1,1]){
+        const wing=new THREE.Mesh(new THREE.ConeGeometry(0.43,1.8,4),p.gold);
+        wing.rotation.z=wingSide*(Math.PI/2+0.3);
+        wing.position.set(wingSide*0.78,0.38,0);
+        statue.add(wing);
+        const plume=new THREE.Mesh(new THREE.ConeGeometry(0.24,1.1,4),p.goldBright);
+        plume.rotation.z=wingSide*(Math.PI/2+0.68);
+        plume.position.set(wingSide*1.26,0.61,-0.08);
+        statue.add(plume);
+      }
+      const pedestal=block(statue,p.gold,0,-1.13,0,1.5,0.32,1.5);
+      pedestal.name='CelestialWingedStatuePedestal';
     }
   }
 
