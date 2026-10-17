@@ -263,6 +263,8 @@ export class Enemy {
   private elementalStatus: ElementalStatusState | null = null;
   private mageFreezeRemaining = 0;
   private mageSlowRemaining = 0;
+  /** Lentidão independente: somente durante os pulsos do Raio Prismático. */
+  private prismaticSlowRemaining = 0;
   private mageLevitateRemaining = 0;
   private mageLevitateDuration = 0;
   private levitateElapsed = 0;
@@ -1033,6 +1035,22 @@ export class Enemy {
     this.mageSlowRemaining = Math.max(this.mageSlowRemaining, duration);
   }
 
+  /** Renova a pressão do feixe a cada hit sem afetar a magia de água.
+   * Inimigos comuns: -50% velocidade; chefes: -20% velocidade.
+   */
+  public applyPrismaticSlow(seconds = 0.31): void {
+    if (this.isDead) return;
+    const duration = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+    if (duration <= 0) return;
+    this.prismaticSlowRemaining = Math.max(this.prismaticSlowRemaining, duration);
+  }
+
+  /** Pulsos curtos não devem empurrar nem travar o alvo por 0,3 s a cada tick. */
+  public receivePrismaticBeamHit(amount: number): void {
+    if (this.isDead || !(amount > 0)) return;
+    this.takeDamage(amount);
+  }
+
   /**
    * Mage shock. Lifts the body, holds a lying pose, and wraps it in lightning
    * until the timer ends. Movement and attacks are locked for the whole lift.
@@ -1230,6 +1248,9 @@ export class Enemy {
     if (this.mageSlowRemaining > 0) {
       this.mageSlowRemaining = Math.max(0, this.mageSlowRemaining - step);
     }
+    if (this.prismaticSlowRemaining > 0) {
+      this.prismaticSlowRemaining = Math.max(0, this.prismaticSlowRemaining - step);
+    }
     if (this.mageLevitateRemaining <= 0) return;
     this.levitateElapsed += step;
     this.mageLevitateRemaining = Math.max(0, this.mageLevitateRemaining - step);
@@ -1294,6 +1315,7 @@ export class Enemy {
   private clearMageControlForDeath(): void {
     this.mageFreezeRemaining = 0;
     this.mageSlowRemaining = 0;
+    this.prismaticSlowRemaining = 0;
     this.mageLevitateRemaining = 0;
     if (this.stunActive) this.meshGroup.rotation.z = this.savedStunRoll;
     this.stunActive = false;
@@ -1759,8 +1781,9 @@ export class Enemy {
     ) {
       return 0;
     }
-    if (this.mageSlowRemaining > 0) return MAGE_WATER_SLOW_MULTIPLIER;
-    return getElementalSlowMultiplier(this.elementalStatus);
+    const water = this.mageSlowRemaining > 0 ? MAGE_WATER_SLOW_MULTIPLIER : 1;
+    const prism = this.prismaticSlowRemaining > 0 ? (this.isBoss ? 0.8 : 0.5) : 1;
+    return Math.min(water, prism, getElementalSlowMultiplier(this.elementalStatus));
   }
 
   /**
