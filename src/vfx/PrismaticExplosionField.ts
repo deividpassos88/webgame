@@ -553,7 +553,7 @@ export class PrismaticExplosionField {
     const boltOpacity=THREE.MathUtils.smoothstep(t,0.005,0.07)*
       (1-THREE.MathUtils.smoothstep(t,0.24,0.39));
     const fragmentOpacity=THREE.MathUtils.smoothstep(t,0.18,0.32)*
-      (1-THREE.MathUtils.smoothstep(t,0.87,1.28));
+      (1-THREE.MathUtils.smoothstep(t,0.87,1.25));
 
     // One broad white plasma bowl, with independent elevated rings.
     const whiteStrength=1.04*flash+0.92*swirl;
