@@ -299,7 +299,8 @@ export class PrismaticExplosionField {
       arc.position.copy(this.vortex.position);
       arc.position.y += 0.075 + i * 0.065;
       arc.rotation.z = t * (i % 2 ? -3.8 : 5.5) + i * 1.7;
-      arc.scale.setScalar((0.54 + i * 0.31) * (0.58 + 0.42 * Math.min(1, t / 0.5)));
+      // Physical arcs align with the three shader ribbons, not a tiny inner circle.
+      arc.scale.setScalar((1.5 + i * 0.32) * (0.58 + 0.42 * Math.min(1, t / 0.5)));
       arc.material.opacity = (0.36 - i * 0.05) * swirl;
     }
 
