@@ -149,7 +149,8 @@ class PrismBeam implements PoolableVFX {
     this.impactCore = new THREE.Sprite(glowMaterial(resources.softGlow, 0xf2ffff));
     this.sourceAura.name = 'MagePrismSourceBlueBloom';
     this.impactCore.name = 'MagePrismImpactWhiteFlash';
-    this.impactFlare = new THREE.Sprite(glowMaterial(resources.mageTexture('laser', 'impact'), 0xa8e8ff));
+    // Glow orgânico e compacto, sem textura de estrela artificial na ponta.
+    this.impactFlare = new THREE.Sprite(glowMaterial(resources.softGlow, 0x6dd9ff));
     this.impactFlare.name = 'MagePrismImpactTexturedBurst';
     const shardMat = new THREE.MeshBasicMaterial({
       color: 0x65d6ff, transparent: true, opacity: 0,
@@ -179,11 +180,12 @@ class PrismBeam implements PoolableVFX {
     this.beamMotes = new PooledParticleCloud(94, resources.softGlow);
     this.impactHaze = new PooledParticleCloud(44, resources.softGlow, { blending: 'normal' });
 
+    // Somente o corpo volumétrico nasce do cajado. Não sobrepor um orbe na
+    // mão ou uma estrela rígida na extremidade: ambos cortavam o feixe.
     this.group.add(
       this.field.group,
-      this.sourceAura, this.sourceCore, this.impactAura, this.impactCore,
-      this.impactFlare, this.impactStar, this.impactShards,
-      this.discharge, this.sparks.points, this.beamMotes.points, this.impactHaze.points
+      this.impactFlare, this.impactShards,
+      this.sparks.points, this.beamMotes.points, this.impactHaze.points
     );
   }
 
@@ -237,15 +239,14 @@ class PrismBeam implements PoolableVFX {
     const pulse = 0.94 + 0.06 * Math.sin(this.age * 37);
     this.updateTransform(glow);
 
-    (this.sourceAura.material as THREE.SpriteMaterial).opacity = 0.66 * glow;
-    (this.sourceCore.material as THREE.SpriteMaterial).opacity = 0.96 * glow;
+    (this.sourceAura.material as THREE.SpriteMaterial).opacity = 0;
+    (this.sourceCore.material as THREE.SpriteMaterial).opacity = 0;
     const hitPulse = this.lastPulseAge < 0 ? 0 : Math.exp(-(this.age - this.lastPulseAge) * 14);
-    const hitGlow = this.lockedTarget ? 1 : 0.32;
-    (this.impactAura.material as THREE.SpriteMaterial).opacity = (0.26 + 0.62 * hitPulse) * glow * hitGlow;
-    (this.impactCore.material as THREE.SpriteMaterial).opacity = (0.48 + 0.48 * hitPulse) * glow * hitGlow;
-    (this.impactFlare.material as THREE.SpriteMaterial).opacity = (0.4 + 0.52 * hitPulse) * glow * hitGlow;
-    (this.impactStar.material as THREE.LineBasicMaterial).opacity = (0.25 + 0.65 * hitPulse) * glow * hitGlow;
-    this.impactStar.rotation.z += elapsed * (1.2 + hitPulse * 2);
+    const hitGlow = this.lockedTarget ? 1 : 0;
+    (this.impactAura.material as THREE.SpriteMaterial).opacity = 0;
+    (this.impactCore.material as THREE.SpriteMaterial).opacity = 0;
+    (this.impactFlare.material as THREE.SpriteMaterial).opacity = (0.12 + 0.34 * hitPulse) * glow * hitGlow;
+    (this.impactStar.material as THREE.LineBasicMaterial).opacity = 0;
     (this.impactShards.material as THREE.MeshBasicMaterial).opacity = (0.24 + 0.5 * hitPulse) * glow * hitGlow;
     this.updateImpactShards(hitPulse, glow);
     (this.discharge.material as THREE.LineBasicMaterial).opacity =
@@ -346,15 +347,15 @@ class PrismBeam implements PoolableVFX {
     this.field.update(START, END, this.age, intensity, profile.laserLayerMultiplier);
     const directionRotation = new THREE.Quaternion().setFromUnitVectors(Z_AXIS, DIRECTION);
     this.sourceAura.position.copy(START);
-    this.sourceAura.scale.setScalar(1.15 + intensity * 0.25);
+    this.sourceAura.scale.setScalar(0.18);
     this.sourceCore.position.copy(START);
-    this.sourceCore.scale.setScalar(0.4 + intensity * 0.12);
+    this.sourceCore.scale.setScalar(0.12);
     this.impactAura.position.copy(END);
     this.impactAura.scale.setScalar(1.95 + intensity * 0.7);
     this.impactCore.position.copy(END);
     this.impactCore.scale.setScalar(0.45 + intensity * 0.27);
     this.impactFlare.position.copy(END);
-    this.impactFlare.scale.setScalar(1.2 + intensity * 0.9);
+    this.impactFlare.scale.setScalar(0.52 + intensity * 0.35);
     this.impactStar.position.copy(END);
     this.impactStar.quaternion.copy(directionRotation);
     this.impactStar.scale.setScalar(0.65 + intensity * 0.3);
@@ -377,7 +378,7 @@ class PrismBeam implements PoolableVFX {
   /** Fragmentos 3D compactos pulsando na pele do alvo, com uma draw call. */
   private updateImpactShards(pulse: number, fade: number): void {
     const count = this.impactShards.count;
-    const burstRadius = 0.22 + 0.37 * pulse;
+    const burstRadius = 0.16 + 0.27 * pulse;
     for (let i = 0; i < count; i++) {
       const theta = i * 2.399963 + this.age * (i % 2 === 0 ? 1.4 : -1.1);
       const elevation = Math.sin(i * 7.3) * 0.37;
