@@ -16,6 +16,17 @@ describe('Campo dos Deuses - arena celestial', () => {
     expect(level.group.getObjectByName('CelestialNorthGrandstand')).toBeDefined();
     expect(level.group.getObjectByName('CelestialNorthStadiumAudience')).toBeDefined();
     expect(level.group.getObjectByName('CelestialNorthClassicalArch')).toBeDefined();
+    const northwest = level.group.getObjectByName('CelestialNorthWestGallery');
+    const northeast = level.group.getObjectByName('CelestialNorthEastGallery');
+    expect(northwest).toBeDefined();
+    expect(northeast).toBeDefined();
+    expect(level.group.getObjectByName('CelestialCentralOpenSkyVista')).toBeDefined();
+    // No rear gallery can span the centre: otherwise the distant sky and
+    // floating temples are hidden behind a continuous stadium wall.
+    const westBounds = new THREE.Box3().setFromObject(northwest!);
+    const eastBounds = new THREE.Box3().setFromObject(northeast!);
+    expect(westBounds.max.x).toBeLessThan(-12);
+    expect(eastBounds.min.x).toBeGreaterThan(12);
   });
 
   it('renders four ceremonial braziers without the old dungeon torch pool', () => {
