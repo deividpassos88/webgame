@@ -24,6 +24,7 @@ function setupCast(spellId: MageSpellId, timeScale = 1.8, hasHand = true) {
   const vfx = new MageVFX(scene, { quality: 'high' });
   const onLaunch = vi.fn();
   const onImpact = vi.fn();
+  const onLaserFinisher = vi.fn();
   vfx.cast(spellId, {
     caster: root,
     rightHand: hasHand ? hand : null,
@@ -34,9 +35,11 @@ function setupCast(spellId: MageSpellId, timeScale = 1.8, hasHand = true) {
     isTargetAlive: () => true,
     onLaunch,
     onImpact,
+    getLaserHomingTargets: () => [target],
+    onLaserFinisher,
   });
   const step = (delta: number) => { mixer.update(delta); vfx.update(delta); };
-  return { scene, root, hand, target, mixer, action, vfx, onLaunch, onImpact, step };
+  return { scene, root, hand, target, mixer, action, vfx, onLaunch, onImpact, onLaserFinisher, step };
 }
 
 describe('Mage faster skill presentation', () => {
@@ -73,7 +76,7 @@ describe('Mage faster skill presentation', () => {
   );
 
   it('draws only the prismatic blue beam for Mage skill 4, without the legacy aura and circles', () => {
-    const { scene, vfx, step, onLaunch, onImpact } = setupCast('laser');
+    const { scene, vfx, step, onLaunch, onImpact, onLaserFinisher } = setupCast('laser');
     try {
       expect(vfx.diagnostics().activeBarriers).toBe(0);
       expect(vfx.diagnostics().activeMagicCircles).toBe(0);
@@ -91,6 +94,8 @@ describe('Mage faster skill presentation', () => {
       expect(onLaunch).toHaveBeenCalledTimes(1);
       expect(vfx.diagnostics().activeLasers).toBe(1);
       expect(scene.getObjectByName('MagePrismaticBeamVFX')).toBeDefined();
+      expect(scene.getObjectByName('MagePrismHomingFinisherVFX')).toBeDefined();
+      expect(scene.getObjectByName('MagePrismHomingMissile')).toBeDefined();
       expect(scene.getObjectByName('MagePrismChargePortalVFX')).toBeUndefined();
       // O portal não deve permanecer visível durante o feixe.
       expect(scene.getObjectByName('MagePrismCyanBeam')).toBeDefined();
@@ -105,6 +110,7 @@ describe('Mage faster skill presentation', () => {
       for (let frame = 0; frame < 110; frame += 1) step(0.04);
       expect(onImpact).toHaveBeenCalledTimes(8);
       expect(onImpact.mock.calls.every((call) => call[1] === 1 / 8)).toBe(true);
+      expect(onLaserFinisher).toHaveBeenCalledTimes(1);
       expect(vfx.diagnostics().activeLasers).toBe(0);
       expect(vfx.diagnostics().activeCharges).toBe(0);
     } finally {
