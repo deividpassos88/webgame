@@ -555,7 +555,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
           leftHand: event.leftHand,
           target,
           fallbackDirection: event.fallbackDirection,
-          onImpact: (hit) => this.onMageSpellImpact(event.spellId, hit, event.onImpact),
+          onImpact: (hit, portion = 1) => this.onMageSpellImpact(event.spellId, hit, event.onImpact, portion),
           onLaunch: () => this.player.releaseSkillCastAnchor(),
           isTargetAlive: (candidate) => this.isMageVFXTargetAlive(candidate),
           queryBodyHit: (from, to, radius) => this.queryMageSpellBody(from, to, radius),
@@ -2400,7 +2400,8 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
   private onMageSpellImpact(
     spellId: MageSpellId,
     hit: THREE.Object3D,
-    basicImpact: ((target: THREE.Object3D) => void) | null
+    basicImpact: ((target: THREE.Object3D) => void) | null,
+    damageFraction = 1
   ): void {
     if (spellId === 'basic') {
       basicImpact?.(hit);
@@ -2408,7 +2409,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
       this.applyMageBasicSplashDamage(hit);
       return;
     }
-    this.applyMageSkillBodyDamage(spellId, hit);
+    this.applyMageSkillBodyDamage(spellId, hit, damageFraction);
   }
 
   /**
@@ -2474,7 +2475,11 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
     }
   }
 
-  private applyMageSkillBodyDamage(spellId: MageSpellId, target: THREE.Object3D): void {
+  private applyMageSkillBodyDamage(
+    spellId: MageSpellId,
+    target: THREE.Object3D,
+    damageFraction = 1
+  ): void {
     const attackId = mageSkillAttackId(spellId);
     if (!attackId) {
       this.onPlayerHitEnemy(target);
@@ -2484,7 +2489,9 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
 
     const skillElement = warriorSkillElement(attackId, 'mage');
     const elemental = skillElement !== null;
-    const baseDamage = this.mageSkillBaseDamage(attackId, elemental);
+    // Mesmo dano total distribuído em pulsos para o laser, sem multiplicador oculto.
+    const baseDamage = this.mageSkillBaseDamage(attackId, elemental)
+      * (spellId === 'laser' ? THREE.MathUtils.clamp(damageFraction, 0, 1) : 1);
     const body = this.resolveLivingEnemyRoot(target) ?? target;
     // Ponto do impacto: é a posição que o dano em área e o desenho de chão usam.
     const center = body.getWorldPosition(new THREE.Vector3());
