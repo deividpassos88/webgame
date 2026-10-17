@@ -9,6 +9,7 @@ import { CelestialArena } from './CelestialArena';
  */
 export class Level extends CelestialArena {
   public readonly navigationObstacles: NavigationObstacle[] = [];
+  private readonly size = 50;
 
   public getBossSpawnPoint(): THREE.Vector3 {
     return new THREE.Vector3(0, 0, -18);
