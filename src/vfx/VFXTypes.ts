@@ -190,6 +190,13 @@ export interface MageCastContext {
   readonly fallbackDirection: THREE.Vector3;
   /** A skill laser entrega o dano total em parcelas. Outros feitiços usam 1. */
   readonly onImpact?: (target: THREE.Object3D, damageFraction?: number) => void;
+  /** Targets for the magenta homing missiles during the Mage's fourth skill. */
+  readonly getLaserHomingTargets?: (
+    source: THREE.Vector3,
+    impactPoint: THREE.Vector3
+  ) => readonly THREE.Object3D[];
+  /** One additional area-damage event when the laser's final explosion fires. */
+  readonly onLaserFinisher?: (impactPoint: THREE.Vector3) => void;
   /**
    * Fires once when the spell launches (the cast motion climax). Gameplay uses
    * it to free the caster's movement while the projectile and monster-side
