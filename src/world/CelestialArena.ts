@@ -621,10 +621,13 @@ export class CelestialArena {
   private buildFloatingIslands(): void {
     const p = this.materials;
     // Visible over the far side of the battlefield, but outside collision/raycast.
+    // Lower and nearer silhouettes remain visible behind the grandstands
+    // from the actual gameplay camera, rather than sitting above its frustum.
     const islandDefs: Array<[number, number, number, number]> = [
-      [-68, 1, -82, 12], [63, 4, -79, 14], [10, -2, -122, 17],
-      [-112, 9, -42, 8], [104, 5, -37, 8], [-20, -3, -66, 6],
-      [36, -3, -107, 6],
+      [-51, -10, -73, 11], [48, -9, -73, 12],
+      [8, -13, -94, 15], [-83, -7, -54, 8],
+      [84, -7, -56, 8], [-24, -12, -62, 7],
+      [30, -11, -86, 7],
     ];
     islandDefs.forEach(([x,y,z,r],i)=>createIsland(this.group,p,x,y,z,r,i*1.13));
   }
