@@ -8,6 +8,7 @@ import { VFXLightPool, type VFXLightHandle } from './VFXLightPool';
 import type { MageCastContext, MageSpellPreset, MageVFXQuality } from './VFXTypes';
 import { PrismPortalCharge } from './PrismPortalCharge';
 import { PrismaticLaserField } from './PrismaticLaserField';
+import { PrismaticFinisherEffect } from './PrismaticFinisherVFX';
 
 /**
  * Raio Prismático: efeito exclusivo da skill 4 da Maga.
@@ -32,6 +33,7 @@ interface LaserOptions {
   ) => THREE.Object3D | null;
   readonly onImpact?: (target: THREE.Object3D, damageFraction: number) => void;
   readonly onFinalImpact?: (position: THREE.Vector3, target: THREE.Object3D | null) => void;
+  readonly findHomingTargets?: (origin: THREE.Vector3, impactPoint: THREE.Vector3) => readonly THREE.Object3D[];
 }
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
@@ -224,6 +226,15 @@ class PrismBeam implements PoolableVFX {
       this.lightHandle.light.distance = 6;
     }
     this.updateTransform(0);
+  }
+
+  public getEndpoint(): THREE.Vector3 {
+    // O mundo já foi atualizado em play(): ponto real do inimigo ou alcance máximo.
+    return END.clone();
+  }
+
+  public setFinalImpact(callback: LaserOptions['onFinalImpact']): void {
+    this.onFinalImpact = callback;
   }
 
   public update(delta: number): boolean {
@@ -451,6 +462,8 @@ export class LaserVFX {
   private readonly active: PrismBeam[] = [];
   private readonly portalPool: VFXPool<PrismPortalCharge>;
   private readonly charging = new Map<MageCastContext, PrismPortalCharge>();
+  private readonly finisherPool: VFXPool<PrismaticFinisherEffect>;
+  private readonly activeFinishers: PrismaticFinisherEffect[] = [];
 
   public constructor(
     private readonly scene: THREE.Scene,
@@ -460,6 +473,7 @@ export class LaserVFX {
   ) {
     this.pool = new VFXPool(() => new PrismBeam(resources, quality, lightPool), MAGE_VFX_LIMITS.maxLasers);
     this.portalPool = new VFXPool(() => new PrismPortalCharge(resources), MAGE_VFX_LIMITS.maxLasers);
+    this.finisherPool = new VFXPool(() => new PrismaticFinisherEffect(resources, quality, lightPool), MAGE_VFX_LIMITS.maxLasers);
   }
 
   /** O portal nasce no intervalo de carga ANTES da animação soltar o feixe. */
@@ -492,6 +506,24 @@ export class LaserVFX {
     beam.play(options);
     this.scene.add(beam.group);
     this.active.push(beam);
+    const finisher = this.finisherPool.acquire();
+    if (finisher) {
+      const start = options.fallbackStart.clone();
+      const endpoint = beam.getEndpoint();
+      finisher.play({
+        start,
+        endpoint,
+        targets: options.findHomingTargets?.(start, endpoint) ?? (options.target ? [options.target] : []),
+        isTargetAlive: options.isTargetAlive,
+      });
+      this.scene.add(finisher.group);
+      this.activeFinishers.push(finisher);
+    }
+    // A explosão acontece no ponto onde o laser de fato termina.
+    beam.setFinalImpact((position, target) => {
+      finisher?.detonate(position);
+      options.onFinalImpact?.(position, target);
+    });
     return true;
   }
 
@@ -503,6 +535,12 @@ export class LaserVFX {
       this.pool.release(beam);
       this.active.splice(index, 1);
     }
+    for (let index = this.activeFinishers.length - 1; index >= 0; index--) {
+      const effect = this.activeFinishers[index];
+      if (effect.update(delta)) continue;
+      this.finisherPool.release(effect);
+      this.activeFinishers.splice(index, 1);
+    }
   }
 
   public clear(): void {
@@ -510,12 +548,15 @@ export class LaserVFX {
     this.charging.clear();
     for (const beam of this.active) this.pool.release(beam);
     this.active.length = 0;
+    for (const finisher of this.activeFinishers) this.finisherPool.release(finisher);
+    this.activeFinishers.length = 0;
   }
 
   public dispose(): void {
     this.clear();
     this.pool.dispose();
     this.portalPool.dispose();
+    this.finisherPool.dispose();
   }
 
   public get activeCount(): number { return this.active.length; }
