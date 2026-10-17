@@ -1092,13 +1092,9 @@ export class MageVFX {
         preset: cast.preset,
         isTargetAlive: cast.context.isTargetAlive,
         queryBodyHit: cast.context.queryBodyHit,
-        onImpact: (target) => this.handleDirectImpact(
-          this.bodyImpactPoint(target, aimed),
-          cast,
-          target,
-          direction
-        ),
-        onFinalImpact: (position, target) => this.handleDirectImpact(position, cast, target, direction),
+        // Pulsos do feixe não passam pelo guard único dos projéteis.
+        onImpact: (target, fraction) => cast.context.onImpact?.(target, fraction),
+        onFinalImpact: () => undefined,
       });
       return;
     }
