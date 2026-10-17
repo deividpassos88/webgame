@@ -112,7 +112,9 @@ describe('Raio Prismático - raios teleguiados e explosão de plasma', () => {
       expect(spiralMat.uniforms.uOpacity.value).toBeGreaterThan(0.3);
       expect((horizontalFlash.material as THREE.SpriteMaterial).opacity).toBeLessThan(0.01);
       expect((volume.material as THREE.ShaderMaterial).uniforms.uOpacity.value).toBe(0);
-      expect((jets.material as THREE.MeshBasicMaterial).opacity).toBeLessThan(0.01);
+      expect((jets.material as THREE.MeshBasicMaterial).opacity).toBeLessThan(0.25);
+      effect.update(0.22);
+      expect((jets.material as THREE.MeshBasicMaterial).opacity).toBe(0);
       let alive = true;
       for (let i = 0; i < 65; i++) alive = effect.update(0.04);
       expect(alive).toBe(false);
