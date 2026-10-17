@@ -8,10 +8,11 @@ export class CameraController {
   public camera: THREE.PerspectiveCamera;
 
   // offset da câmera em relação ao jogador (altura/distância isométrica)
-  // Lower, forward-looking three-quarter composition: the divine stands, sky
-  // and floating temples stay visible instead of showing only white floor.
-  private offset = new THREE.Vector3(0, 16, 17);
-  private lookOffset = new THREE.Vector3(0, 1.1, -9);
+  // Three-quarter gameplay view: the horizon must sit inside the vertical FOV,
+  // while the hero remains in the lower half and telegraphed attacks stay visible.
+  // Do not use a steep top-down offset: it hides the sky and all remote temples.
+  private offset = new THREE.Vector3(0, 12, 22);
+  private lookOffset = new THREE.Vector3(0, 1.1, -13);
   private currentPosition = new THREE.Vector3();
   private currentLookAt = new THREE.Vector3();
   private followTarget = new THREE.Vector3();
@@ -32,7 +33,7 @@ export class CameraController {
 
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(49, aspect, 0.1, 250);
-    this.camera.position.set(0, 16, 17);
+    this.camera.position.set(0, 12, 22);
     this.zoom = this.defaultZoom;
   }
 
