@@ -198,7 +198,7 @@ export class PrismaticExplosionField {
 
   public reset(): void {
     this.group.visible = false;
-    this.group.removeFromParent();
+    // The explosion is owned by a pooled parent. Preserve that parent across casts.
     this.ground.material.uniforms.uOpacity.value = 0;
     this.volume.material.uniforms.uOpacity.value = 0;
     this.corona.material.uniforms.uOpacity.value = 0;
