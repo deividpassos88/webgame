@@ -188,7 +188,8 @@ export interface MageCastContext {
   readonly target: THREE.Object3D | null;
   /** Used for empty-space animation tests or when the target dies before launch. */
   readonly fallbackDirection: THREE.Vector3;
-  readonly onImpact?: (target: THREE.Object3D) => void;
+  /** A skill laser entrega o dano total em parcelas. Outros feitiços usam 1. */
+  readonly onImpact?: (target: THREE.Object3D, damageFraction?: number) => void;
   /**
    * Fires once when the spell launches (the cast motion climax). Gameplay uses
    * it to free the caster's movement while the projectile and monster-side
