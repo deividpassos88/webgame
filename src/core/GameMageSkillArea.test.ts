@@ -25,6 +25,7 @@ interface FakeEnemy {
   readonly freezes: number;
   readonly slows: number;
   prismaticSlows: number;
+  knockdowns: number[];
   elementalHits: number;
 }
 
@@ -40,6 +41,7 @@ function fakeEnemy(x: number, z: number): FakeEnemy {
     freezes: 0,
     slows: 0,
     prismaticSlows: 0,
+    knockdowns: [],
     elementalHits: 0,
   };
   Object.assign(root.userData, {
@@ -62,6 +64,8 @@ function buildGame(enemies: FakeEnemy[]) {
       receivePlayerHit: (damage: number) => enemy.hits.push(damage),
       receivePrismaticBeamHit: (damage: number) => enemy.hits.push(damage),
       applyPrismaticSlow: () => { enemy.prismaticSlows += 1; },
+      applyWarriorKnockdown: (seconds: number) => enemy.knockdowns.push(seconds),
+      isBoss: false,
       applyElementalHit: () => { enemy.elementalHits += 1; },
       applyMageFreeze: () => { (enemy as { freezes: number }).freezes += 1; },
       applyMageSlow: () => { (enemy as { slows: number }).slows += 1; },
@@ -243,6 +247,28 @@ describe('dano em área das cinco skills da Maga', () => {
     expect(perto.prismaticSlows).toBe(8);
     expect(primary.elementalHits).toBe(0);
     expect(primary.hits.every((amount) => amount > 0)).toBe(true);
+  });
+
+  it('o finisher causa um unico dano extra na area e derruba inimigos proximos', () => {
+    const centro = fakeEnemy(6, 0);
+    const perto = fakeEnemy(8.8, 0);
+    const boss = fakeEnemy(6, 3.4);
+    const fora = fakeEnemy(11, 0);
+    const { game, records } = buildGame([centro, perto, boss, fora]);
+    records[2].enemy.isBoss = true;
+    const explode = (game as unknown as {
+      applyPrismaticFinisherDamage(position: THREE.Vector3): void;
+    }).applyPrismaticFinisherDamage.bind(game);
+    explode(centro.root.position);
+    expect(centro.hits).toHaveLength(1);
+    expect(perto.hits).toHaveLength(1);
+    expect(boss.hits).toHaveLength(1);
+    expect(fora.hits).toHaveLength(0);
+    expect(centro.knockdowns).toEqual([1.45]);
+    expect(perto.knockdowns).toEqual([1.45]);
+    expect(boss.knockdowns).toEqual([0.65]);
+    expect(fora.knockdowns).toHaveLength(0);
+    expect(centro.hits[0]).toBeGreaterThan(perto.hits[0]);
   });
 
   it('o impacto acontece no ponto do alvo, não em volta da Maga', () => {
