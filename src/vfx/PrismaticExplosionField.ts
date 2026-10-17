@@ -4,19 +4,23 @@ import * as THREE from 'three';
  * The Mage's skill-4 finisher, modelled after the reference rather than a
  * collection of flat concentric outlines. All times are relative to detonate().
  *
- * Charge 0-.14: cyan ground field, hot nucleus, magenta rupture rim.
- * Rupture .14-.28: seven branching white/cyan bolts and a hot flash.
- * Vortex .28-.95: three independent, physically raised rotating plasma ribbons.
- * Fade .95-1.25: light and fragments travel upward, all geometry goes dark.
+ * Charge: for the full duration of the laser, cyan ground halo and elevated
+ * magenta-white nucleus crackle. The final beam hit triggers the rupture.
+ * Rupture 0-.22s: broad branching white/cyan lightning and white flash.
+ * Vortex .22-.98s: an intensely white plasma pool wrapped in 3D magenta fire.
+ * Fade .98-1.30s: residual white core and particles dissipate.
+ *
+ * The charge during the laser is deliberately separate from the final-damage
+ * callback: changing this animation NEVER changes gameplay damage timing.
  *
  * This class owns VISUALS ONLY. Damage, knockdown and the invisible skill-4
  * collision field are handled elsewhere and remain unchanged.
  */
 export const PRISM_EXPLOSION_TIMING = {
-  charge: 0.14,
-  rupture: 0.28,
-  vortexEnd: 0.95,
-  fadeEnd: 1.25,
+  charge: 2.0,
+  rupture: 0.22,
+  vortexEnd: 0.98,
+  fadeEnd: 1.30,
 } as const;
 
 const TWO_PI = Math.PI * 2;
@@ -50,22 +54,34 @@ const GROUND_FRAGMENT = /* glsl */ `
   }
 `;
 
+/** The reference is dominated by an overexposed WHITE pool, not outlines. */
 const VORTEX_FRAGMENT = /* glsl */ `
   precision highp float;
   varying vec2 vUv;
   uniform float uTime;
   uniform float uOpacity;
   void main() {
-    vec2 p = (vUv-0.5)*2.0;
-    float r = length(p);
-    float a = atan(p.y,p.x);
-    float swirl = 0.034*sin(a*9.0-uTime*23.0)
-      + 0.022*sin(a*21.0+uTime*19.0);
-    float inner = exp(-pow((r-0.33-swirl)*18.0,2.0));
-    float outer = exp(-pow((r-0.65-1.3*swirl)*16.0,2.0));
-    float alpha = (0.24*inner+0.16*outer)*uOpacity;
+    vec2 p=(vUv-0.5)*2.0;
+    float r=length(p);
+    float a=atan(p.y,p.x);
+    float t=uTime;
+    float distortion=0.055*sin(a*6.0-t*18.0)
+      +0.025*sin(a*19.0+t*37.0);
+    float molten=0.57+distortion;
+    float whitePool=(1.0-smoothstep(0.23,molten,r));
+    float rim=exp(-pow((r-molten)*13.0,2.0));
+    float turns=exp(-pow((r-0.69-0.07*sin(a*4.0-t*15.0))*10.0,2.0));
+    float radialLicks=pow(max(0.0,sin(a*17.0-t*20.0)),9.0)
+      *exp(-pow((r-0.78)*9.0,2.0));
+    float alpha=uOpacity*(whitePool*0.90+rim*0.44+turns*0.25+radialLicks*0.32);
+    alpha*=1.0-smoothstep(0.91,1.02,r);
     if(alpha<0.008)discard;
-    gl_FragColor = vec4(mix(vec3(0.52,0.21,1.0),vec3(0.92,0.68,1.22),inner),alpha);
+    vec3 white=vec3(1.47,1.43,1.55);
+    vec3 violet=vec3(0.66,0.21,1.25);
+    vec3 pink=vec3(1.16,0.5,1.24);
+    vec3 color=mix(violet,pink,clamp(r*1.3,0.0,1.0));
+    color=mix(color,white,whitePool*0.95+rim*0.31);
+    gl_FragColor=vec4(color,min(0.99,alpha));
   }
 `;
 
@@ -84,12 +100,12 @@ const BAND_FRAGMENT = /* glsl */ `
   uniform vec3 uColor;
   void main() {
     float core = pow(max(0.0,1.0-abs(vUv.x*2.0-1.0)),1.2);
-    float cuts = sin(vUv.y*75.4+uTime*16.0)
-      + 0.65*sin(vUv.y*201.2-uTime*31.0);
-    float gaps = smoothstep(-0.95,-0.12,cuts);
-    float hot = pow(core,5.0);
-    float flicker = 0.81+0.19*sin(vUv.y*121.0-uTime*25.0);
-    float alpha = (core*0.45+hot*0.55)*gaps*flicker*uOpacity;
+    float cuts = sin(vUv.y*40.4+uTime*13.0)
+      + 0.35*sin(vUv.y*113.2-uTime*23.0);
+    float gaps = smoothstep(-1.00,-0.36,cuts);
+    float hot = pow(core,3.4);
+    float flicker = 0.83+0.17*sin(vUv.y*85.0-uTime*25.0);
+    float alpha = (core*0.35+hot*0.65)*gaps*flicker*uOpacity;
     if(alpha<0.01)discard;
     vec3 color=mix(uColor,vec3(1.28,1.2,1.38),hot*0.84);
     gl_FragColor=vec4(color,min(0.95,alpha));
@@ -257,12 +273,22 @@ export class PrismaticExplosionField {
   public readonly corona: THREE.Mesh<THREE.SphereGeometry,THREE.ShaderMaterial>;
   private readonly glow=glowTexture();
   private readonly outerGlow: THREE.Sprite;
-  private readonly haloBand=ribbon('MagePrismExplosionOuterHalo',0xd94aff,2.85,0.19);
+  // Broad additive companion strips imitate soft bloom without changing the renderer.
+  private readonly haloBand=ribbon('MagePrismExplosionOuterHalo',0xe765ff,3.04,0.37);
   private readonly orbitBands=[
-    ribbon('MagePrismExplosionOrbitA',0xf8d0ff,0.92,0.13),
-    ribbon('MagePrismExplosionOrbitB',0xc373ff,1.68,0.21),
-    ribbon('MagePrismExplosionOrbitC',0xb543f3,2.40,0.23),
+    ribbon('MagePrismExplosionOrbitA',0xfbe7ff,1.27,0.35),
+    ribbon('MagePrismExplosionOrbitB',0xe39aff,2.15,0.40),
+    ribbon('MagePrismExplosionOrbitC',0xc96aff,2.79,0.50),
   ];
+  private readonly haloBloom=ribbon('MagePrismExplosionOuterHaloBloom',0xcd61ff,3.04,0.95);
+  private readonly orbitBlooms=[
+    ribbon('MagePrismExplosionOrbitABloom',0xe6bcff,1.27,0.85),
+    ribbon('MagePrismExplosionOrbitBBloom',0xa66aff,2.15,1.00),
+    ribbon('MagePrismExplosionOrbitCBloom',0xa454ff,2.79,1.2),
+  ];
+  private readonly flameTongues: THREE.Sprite[]=[];
+  private readonly boltBranches: Lightning[]=[];
+  private charging=false;
   private readonly bolts: Lightning[]=[];
   private readonly shockArcs: THREE.Mesh<THREE.TorusGeometry,THREE.MeshBasicMaterial>[]=[];
   private localGroundY=0;
@@ -326,6 +352,21 @@ export class PrismaticExplosionField {
       bolt.mesh.name='MagePrismExplosionLightningBolt';
       this.bolts.push(bolt);
       this.lightningBurst.add(bolt.mesh);
+      const branch=lightningGeometry();
+      branch.mesh.name='MagePrismExplosionLightningBranch';
+      this.boltBranches.push(branch);
+      this.lightningBurst.add(branch.mesh);
+    }
+    for(let i=0;i<14;i++){
+      const flame=new THREE.Sprite(new THREE.SpriteMaterial({
+        map:this.glow,color:i%3===0?0xf3a1ff:i%2?0xd86aff:0x986bff,
+        opacity:0,transparent:true,depthWrite:false,depthTest:true,
+        blending:THREE.AdditiveBlending,toneMapped:false,
+      }));
+      flame.name='MagePrismExplosionFlameTongue';
+      flame.renderOrder=15;
+      this.flameTongues.push(flame);
+      this.group.add(flame);
     }
 
     const colors=[0xe1a6ff,0xc7ebff,0xb662ff];
@@ -362,8 +403,9 @@ export class PrismaticExplosionField {
     this.fragments.instanceMatrix.needsUpdate=true;
     if(this.fragments.instanceColor)this.fragments.instanceColor.needsUpdate=true;
 
-    this.group.add(this.groundDisc,this.ground,this.vortex,this.outerHalo,
-      ...this.orbitBands.map(b=>b.mesh),
+    this.group.add(this.groundDisc,this.ground,this.vortex,
+      this.haloBloom.mesh,...this.orbitBlooms.map(b=>b.mesh),
+      this.outerHalo,...this.orbitBands.map(b=>b.mesh),
       this.volume,this.corona,this.outerGlow,this.core,
       this.lightningBurst,this.fragments);
   }
