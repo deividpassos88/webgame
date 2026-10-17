@@ -4,6 +4,7 @@ import { VFXLightPool, type VFXLightHandle } from './VFXLightPool';
 import type { PoolableVFX } from './VFXPool';
 import type { MageVFXQuality } from './VFXTypes';
 import { MageVFXResources } from './MageVFXResources';
+import { PrismaticExplosionField } from './PrismaticExplosionField';
 
 /**
  * Raio Prismático, fase final.
@@ -13,10 +14,10 @@ import { MageVFXResources } from './MageVFXResources';
  * choque quebradas e três sistemas de partículas independentes.
  */
 export const PRISM_FINISHER = {
-  missileCount: 6,
-  missileInterval: 0.19,
-  flightTime: 0.62,
-  explosionSeconds: 1.42,
+  missileCount: 24,
+  missileInterval: 0.064,
+  flightTime: 0.87,
+  explosionSeconds: 1.65,
   explosionRadius: 4.15,
 } as const;
 
@@ -163,6 +164,9 @@ export class PrismaticFinisherEffect implements PoolableVFX {
   private readonly trails: PooledParticleCloud;
   private readonly impactParticles: PooledParticleCloud;
   private readonly afterglow: PooledParticleCloud;
+  private readonly explosiveField = new PrismaticExplosionField();
+  private readonly activeMissileCount: number;
+  private tertiaryBurst = false;
   private readonly burst: THREE.Sprite;
   private readonly corona: THREE.Sprite;
   private readonly plasma: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
@@ -192,6 +196,7 @@ export class PrismaticFinisherEffect implements PoolableVFX {
   ) {
     this.group.name = 'MagePrismHomingFinisherVFX';
     this.group.visible = false;
+    this.activeMissileCount = quality === 'low' ? 12 : quality === 'medium' ? 18 : PRISM_FINISHER.missileCount;
     const spriteMat = (color: number) => new THREE.SpriteMaterial({
       map: resources.softGlow,
       color,
@@ -206,9 +211,9 @@ export class PrismaticFinisherEffect implements PoolableVFX {
       const node = new THREE.Group();
       node.name = 'MagePrismHomingMissile';
       const layers = [
-        laserLayer(0.23, i % 2 ? 0x693cff : 0x9e36ef, 0.36),
-        laserLayer(0.105, i % 2 ? 0xc45bff : 0xff57d9, 0.76),
-        laserLayer(0.03, 0xf9dfff, 0.92),
+        laserLayer(0.38, i % 2 ? 0x743aff : 0xc420fe, 0.48),
+        laserLayer(0.17, i % 2 ? 0xc46cff : 0xff48e3, 0.85),
+        laserLayer(0.05, 0xffe9ff, 0.98),
       ];
       for (let k = 0; k < layers.length; k++) {
         layers[k].mesh.name = k === 2 ? 'MagePrismHomingLaserCore' : 'MagePrismHomingLaserGlow';
@@ -222,7 +227,7 @@ export class PrismaticFinisherEffect implements PoolableVFX {
         control: new THREE.Vector3(),
         impact: new THREE.Vector3(),
         target: null,
-        launchAt: 0.16 + i * PRISM_FINISHER.missileInterval,
+        launchAt: 0.13 + i * PRISM_FINISHER.missileInterval,
         flightTime: PRISM_FINISHER.flightTime + (i % 3) * 0.065,
         arrived: false,
       });
@@ -294,17 +299,24 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     );
     this.fragments.name = 'MagePrismExplosionFragments';
     this.fragments.frustumCulled = false;
-    this.trails = new PooledParticleCloud(220, resources.softGlow);
+    this.trails = new PooledParticleCloud(640, resources.softGlow);
     this.trails.points.name = 'MagePrismLaserTrailParticles';
-    this.impactParticles = new PooledParticleCloud(380, resources.impactFlare);
+    this.impactParticles = new PooledParticleCloud(880, resources.impactFlare);
     this.impactParticles.points.name = 'MagePrismExplosionSparks';
-    this.afterglow = new PooledParticleCloud(150, resources.softGlow, { blending: 'normal' });
+    this.afterglow = new PooledParticleCloud(300, resources.softGlow, { blending: 'normal' });
     this.afterglow.points.name = 'MagePrismExplosionSmoke';
 
     this.group.add(
       this.plasma, this.corona, this.burst, this.shockwave, this.rays, this.fragments,
+      this.explosiveField.group,
       this.trails.points, this.impactParticles.points, this.afterglow.points
     );
+    // The old radial spokes and thin circles looked like UI graphics, not force.
+    // The new procedural shock sheet and volumetric field replace them.
+    this.plasma.visible = false;
+    this.shockwave.visible = false;
+    this.rays.visible = false;
+    for (const arc of this.shockFragments) arc.visible = false;
   }
 
   public play(options: PrismFinisherOptions): void {
@@ -326,9 +338,9 @@ export class PrismaticFinisherEffect implements PoolableVFX {
       missile.start.copy(this.source);
       missile.start.y += 0.08 + (i % 2) * 0.1;
       const direction = i % 2 === 0 ? 1 : -1;
-      missile.control.copy(this.source).lerp(this.ending, 0.46)
-        .addScaledVector(side, direction * (1.2 + (i % 3) * 0.34));
-      missile.control.y += 0.55 + (i % 3) * 0.18;
+      missile.control.copy(this.source).lerp(this.ending, 0.42)
+        .addScaledVector(side, direction * (1.35 + (i % 7) * 0.42));
+      missile.control.y += 0.35 + (i % 6) * 0.26;
       missile.impact.copy(this.ending);
       if (missile.target) this.aimTarget(missile.target, missile.impact);
       for (const layer of missile.layers) layer.mesh.material.uniforms.uOpacity.value = 0;
@@ -343,7 +355,8 @@ export class PrismaticFinisherEffect implements PoolableVFX {
   /** Curved laser section whose glowing tail follows its travelling tip. */
   private renderLaser(missile: Missile, index: number, u: number): void {
     const lead = THREE.MathUtils.clamp(u, 0, 1);
-    const tail = Math.max(0, lead - 0.32);
+    // Long-lived curved energy ribbon, not a tiny flying dot.
+    const tail = Math.max(0, lead - 0.72);
     bezier(missile, lead, TMP_A);
     missile.node.position.copy(TMP_A);
     for (let k = 0; k < missile.layers.length; k++) {
@@ -377,7 +390,7 @@ export class PrismaticFinisherEffect implements PoolableVFX {
       positions.needsUpdate = true;
       layer.mesh.material.uniforms.uTime.value = this.age + index * 0.18;
       layer.mesh.material.uniforms.uOpacity.value =
-        (k === 0 ? 0.33 : k === 1 ? 0.82 : 0.93) * Math.min(1, u * 7);
+        (k === 0 ? 0.55 : k === 1 ? 0.98 : 1.0) * Math.min(1, u * 9);
     }
   }
 
@@ -386,6 +399,8 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.ending.copy(position);
     this.explosionAge = 0;
     this.secondaryBurst = false;
+    this.tertiaryBurst = false;
+    this.explosiveField.detonate(position);
     for (const missile of this.missiles) missile.node.visible = false;
     this.burst.position.copy(position);
     this.corona.position.copy(position);
@@ -401,15 +416,15 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     }
     this.impactParticles.add(position, {
       color: 0xecf5ff,
-      count: qualityCount(155, this.quality, { low: 0.45, medium: 0.72, high: 1, ultra: 1.12 }),
-      speed: 7, spread: 1.2, lifetime: 0.9, upwardBias: 0.16,
-      opacity: 0.9, size: [0.7, 3.1], growth: -0.56,
+      count: qualityCount(260, this.quality, { low: 0.36, medium: 0.7, high: 1, ultra: 1.1 }),
+      speed: 9.2, spread: 1.25, lifetime: 1.05, upwardBias: 0.22,
+      opacity: 0.96, size: [0.8, 3.7], growth: -0.56,
     });
     this.afterglow.add(position, {
       color: 0x584079,
-      count: qualityCount(46, this.quality, { low: 0.4, medium: 0.65, high: 1, ultra: 1.12 }),
-      speed: 1.3, spread: 0.82, lifetime: 1.15, upwardBias: 0.17,
-      growth: 0.72, opacity: 0.08, size: [1.6, 3.3],
+      count: qualityCount(80, this.quality, { low: 0.3, medium: 0.58, high: 1, ultra: 1.1 }),
+      speed: 1.6, spread: 0.9, lifetime: 1.45, upwardBias: 0.24,
+      growth: 0.92, opacity: 0.12, size: [1.8, 3.6],
     });
   }
 
@@ -421,10 +436,11 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.impactParticles.update(elapsed);
     this.afterglow.update(elapsed);
     if (this.explosionAge < 0) {
-      const emitTrail = this.trailClock >= 0.055;
+      const emitTrail = this.trailClock >= 0.07;
       if (emitTrail) this.trailClock = 0;
       for (let i = 0; i < this.missiles.length; i++) {
         const missile = this.missiles[i];
+        if (i >= this.activeMissileCount) continue;
         const t = (this.age - missile.launchAt) / missile.flightTime;
         if (t < 0 || missile.arrived) continue;
         if (t >= 1) {
@@ -446,15 +462,16 @@ export class PrismaticFinisherEffect implements PoolableVFX {
         this.renderLaser(missile, i, THREE.MathUtils.smoothstep(t, 0, 1));
         if (emitTrail) this.trails.add(missile.node.position, {
           color: i % 2 ? 0xad73ff : 0xf477db,
-          count: qualityCount(5, this.quality, { low: 0.45, medium: 0.7, high: 1, ultra: 1.14 }),
-          speed: 0.56, spread: 0.3, lifetime: 0.3,
-          opacity: 0.67, size: [0.4, 1.2], growth: -0.65,
+          count: qualityCount(4, this.quality, { low: 0.4, medium: 0.66, high: 1, ultra: 1.12 }),
+          speed: 0.65, spread: 0.34, lifetime: 0.43,
+          opacity: 0.78, size: [0.5, 1.5], growth: -0.67,
         });
       }
       return this.age < 4;
     }
 
     this.explosionAge += elapsed;
+    this.explosiveField.update(this.explosionAge);
     const p = THREE.MathUtils.clamp(this.explosionAge / PRISM_FINISHER.explosionSeconds, 0, 1);
     const flash = Math.exp(-p * 20);
     const shock = Math.max(0, 1 - THREE.MathUtils.smoothstep(p, 0.13, 0.54));
@@ -465,17 +482,17 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.corona.scale.setScalar(1.25 + p * 5);
     this.plasma.scale.setScalar(0.35 + p * 2.9);
     this.plasma.material.uniforms.uTime.value = this.age;
-    this.plasma.material.uniforms.uAlpha.value = 0.49 * shock;
-    this.shockwave.material.opacity = 0.49 * shock;
+    this.plasma.material.uniforms.uAlpha.value = 0;
+    this.shockwave.material.opacity = 0;
     const shockRadius = 0.24 + PRISM_FINISHER.explosionRadius * Math.pow(Math.min(1, p * 3.1), 0.82);
     this.shockwave.scale.setScalar(shockRadius);
     for (let i = 0; i < this.shockFragments.length; i++) {
       const arc = this.shockFragments[i];
       arc.scale.setScalar(shockRadius * (0.76 + 0.045 * (i % 6)));
       arc.rotation.z = i * 2.39996 + p * 0.22 * (i % 2 ? 1 : -1);
-      arc.material.opacity = (0.21 + (i % 3) * 0.05) * shock;
+      arc.material.opacity = 0;
     }
-    this.rays.material.opacity = 0.74 * shock;
+    this.rays.material.opacity = 0;
     const rayRadius = 0.1 + 4.6 * Math.min(1, p * 3.0);
     for (let i = 0; i < ARC_RAY_COUNT; i++) {
       const angle = i * 2.399963 + Math.sin(i * 7.2) * 0.33;
@@ -493,7 +510,7 @@ export class PrismaticFinisherEffect implements PoolableVFX {
       void at;
     }
     this.rayPositions.needsUpdate = true;
-    this.fragments.material.opacity = 0.76 * after;
+    this.fragments.material.opacity = 0.88 * after;
     for (let i = 0; i < FRAGMENT_COUNT; i++) {
       const angle = i * 2.399963;
       const radius = (0.18 + p * 5) * (0.53 + (i % 7) * 0.087);
@@ -519,7 +536,17 @@ export class PrismaticFinisherEffect implements PoolableVFX {
         opacity: 0.75, size: [0.6, 2.2], growth: -0.63,
       });
     }
-    if (this.light) this.light.light.intensity = 4.5 * flash + 0.7 * shock;
+    if (!this.tertiaryBurst && this.explosionAge > 0.33) {
+      this.tertiaryBurst = true;
+      this.impactParticles.add(this.ending, {
+        color: 0xc5eaff, count: qualityCount(125, this.quality, {
+          low: 0.3, medium: 0.64, high: 1, ultra: 1.1,
+        }),
+        speed: 4.8, spread: 1.0, lifetime: 0.8,
+        opacity: 0.82, size: [0.7, 2.6], growth: -0.55,
+      });
+    }
+    if (this.light) this.light.light.intensity = 6.5 * flash + 2.3 * shock;
     return this.explosionAge < PRISM_FINISHER.explosionSeconds;
   }
 
@@ -530,6 +557,8 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.trailClock = 0;
     this.explosionAge = -1;
     this.secondaryBurst = false;
+    this.tertiaryBurst = false;
+    this.explosiveField.reset();
     this.aliveCheck = undefined;
     for (const missile of this.missiles) {
       missile.node.visible = false;
@@ -574,5 +603,6 @@ export class PrismaticFinisherEffect implements PoolableVFX {
     this.trails.dispose();
     this.impactParticles.dispose();
     this.afterglow.dispose();
+    this.explosiveField.dispose();
   }
 }
