@@ -1095,7 +1095,11 @@ export class MageVFX {
         // Pulsos do feixe não passam pelo guard único dos projéteis.
         onImpact: (target, fraction) => cast.context.onImpact?.(target, fraction),
         findHomingTargets: cast.context.getLaserHomingTargets,
-        onFinalImpact: (position) => cast.context.onLaserFinisher?.(position),
+        onFinalImpact: (position) => {
+          this.cameraShake.add(0.15, 0.31);
+          this.emitAudio(cast.context, cast.preset, 'impact', position);
+          cast.context.onLaserFinisher?.(position);
+        },
       });
       return;
     }
