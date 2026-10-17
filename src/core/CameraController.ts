@@ -10,8 +10,8 @@ export class CameraController {
   // offset da câmera em relação ao jogador (altura/distância isométrica)
   // Lower, forward-looking three-quarter composition: the divine stands, sky
   // and floating temples stay visible instead of showing only white floor.
-  private offset = new THREE.Vector3(0, 17, 19);
-  private lookOffset = new THREE.Vector3(0, 1.1, -6);
+  private offset = new THREE.Vector3(0, 16, 17);
+  private lookOffset = new THREE.Vector3(0, 1.1, -9);
   private currentPosition = new THREE.Vector3();
   private currentLookAt = new THREE.Vector3();
   private followTarget = new THREE.Vector3();
@@ -31,8 +31,8 @@ export class CameraController {
   private adminMode = false;
 
   constructor(aspect: number) {
-    this.camera = new THREE.PerspectiveCamera(39, aspect, 0.1, 250);
-    this.camera.position.set(0, 17, 19);
+    this.camera = new THREE.PerspectiveCamera(49, aspect, 0.1, 250);
+    this.camera.position.set(0, 16, 17);
     this.zoom = this.defaultZoom;
   }
 
