@@ -9,7 +9,7 @@ import {
 import { Enemy } from '../entities/Enemy';
 import { TrainingDummy } from '../entities/TrainingDummy';
 import { createBoss } from '../entities/Boss';
-import { Level } from '../world/Level';
+import { CelestialArena } from '../world/celestial/CelestialArena';
 import { HUD } from '../ui/HUD';
 import type { FloatingDamageCriticalType, FloatingDamageVariant } from '../ui/HUD';
 import { Logger } from '../utils/Logger';
@@ -305,7 +305,7 @@ export class Game {
   private runProgression!: RunProgression;
   private combatRegistry = new CombatEntityRegistry();
   private finalBattleSlots = new FinalBattleSlotRegistry();
-  private level = new Level();
+  private level = new CelestialArena();
   private hud: HUD;
   private flow!: GameFlowController;
   private profile!: PlayerProfile;
@@ -385,13 +385,17 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.35;
+    this.renderer.toneMappingExposure =
+      this.level.lightingStyle === 'celestial' ? 1.0 : 1.35;
 
     this.cameraController = new CameraController(window.innerWidth / window.innerHeight);
+    if (this.level.lightingStyle === 'celestial') {
+      this.cameraController.applyCelestialFraming();
+    }
     this.input = new InputManager(canvas);
 
-    this.scene.fog = new THREE.Fog(0x111827, 22, 48);
-    this.scene.background = new THREE.Color(0x111827);
+    // O cenário define fundo, neblina e envmap (arena celeste ou masmorra).
+    this.level.configureScene(this.scene, this.renderer);
 
     window.addEventListener('resize', () => this.onResize());
     canvas.addEventListener('wheel', (e) => {
@@ -816,7 +820,7 @@ onBlacksmithCraft: (recipeId) => this.craftBlacksmithRecipe(recipeId),
   }
 
   private setupLights() {
-    this.lightingRig = new GameLightingRig(this.scene);
+    this.lightingRig = new GameLightingRig(this.scene, this.level.lightingStyle);
   }
 
   /** True when the profile wears a weapon, regardless of its 3D attachment. */

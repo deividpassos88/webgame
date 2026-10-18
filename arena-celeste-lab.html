@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Arena Celeste · laboratório de reconstrução</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --panel: rgba(9, 16, 30, 0.88);
+    --line: rgba(198, 168, 96, 0.38);
+    --gold: #e3c173;
+    --text: #f2f5fb;
+    --muted: #9dabc2;
+    --accent: #6fc8ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #05070d; color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; overflow: hidden; }
+  canvas { display: block; }
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { width: 100%; height: 100%; }
+
+  header {
+    position: fixed; top: 0; left: 0; right: 0; padding: 12px 18px;
+    display: flex; align-items: baseline; gap: 14px; pointer-events: none;
+    background: linear-gradient(180deg, rgba(4, 8, 16, 0.9), rgba(4, 8, 16, 0));
+    z-index: 5;
+  }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: 0.08em; text-transform: uppercase; }
+  header h1 span { color: var(--gold); }
+  header p { margin: 0; font-size: 12px; color: var(--muted); }
+  body.hide-ui header { display: none; }
+
+  #panel {
+    position: fixed; top: 14px; right: 14px; width: 330px; max-height: calc(100% - 28px);
+    overflow-y: auto; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; backdrop-filter: blur(12px); z-index: 6;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  }
+  body.hide-ui #panel { display: none; }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0;
+    background: var(--panel);
+  }
+  .panel-head strong { font-size: 12.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold); }
+  .section { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+  .section h2 { margin: 0 0 8px; font-size: 10.5px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; }
+  button {
+    flex: 1 1 46%; padding: 8px 6px; font-size: 11.5px; border-radius: 8px; cursor: pointer;
+    background: rgba(227, 193, 115, 0.12); color: var(--text);
+    border: 1px solid var(--line); transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover { background: rgba(227, 193, 115, 0.22); }
+  button.on { background: rgba(120, 210, 255, 0.24); border-color: rgba(140, 225, 255, 0.7); }
+  button.wide { flex: 1 1 100%; }
+  .stats { font-size: 11.5px; line-height: 1.7; color: #c9d6ea; font-variant-numeric: tabular-nums; }
+  .stats b { color: #fff; }
+  .stats .ok { color: #7ee0a2; }
+  .hint { padding: 10px 12px 14px; font-size: 10.5px; line-height: 1.55; color: var(--muted); }
+  #errors {
+    position: fixed; left: 12px; bottom: 12px; right: 12px; max-height: 34%;
+    overflow: auto; display: none; padding: 10px 12px; font: 12px/1.5 monospace;
+    color: #ffd9d9; background: rgba(80, 10, 16, 0.94); border: 1px solid #ff5a66;
+    border-radius: 8px; white-space: pre-wrap; z-index: 9;
+  }
+  #legend {
+    position: fixed; left: 14px; bottom: 14px; font-size: 11px; color: var(--muted);
+    line-height: 1.6; text-shadow: 0 1px 2px #000; pointer-events: none; z-index: 5;
+  }
+  body.hide-ui #legend { display: none; }
+
+  /* Comparador A/B */
+  #compare { position: fixed; inset: 0; z-index: 4; display: none; pointer-events: none; }
+  #compare.on { display: block; }
+  #compare img { position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; opacity: 0.55; }
+  #compare .divider { position: absolute; top: 0; bottom: 0; width: 2px;
+    background: rgba(255, 214, 120, 0.9); box-shadow: 0 0 16px rgba(255, 210, 120, 0.8); }
+  #compare .handle { position: absolute; top: 50%; transform: translate(-50%, -50%);
+    width: 34px; height: 34px; border-radius: 50%; border: 2px solid #ffe6a8;
+    background: rgba(20, 30, 50, 0.85); pointer-events: auto; cursor: ew-resize;
+    display: grid; place-items: center; color: #ffe6a8; font-size: 14px; }
+  #overlay { position: fixed; inset: 0; z-index: 3; display: none; pointer-events: none; }
+  #overlay.on { display: block; }
+  #overlay img { width: 100%; height: 100%; object-fit: cover; opacity: 0.45; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="lab-canvas"></canvas></div>
+
+<header>
+  <h1>Arena Celeste · <span>reconstrução</span></h1>
+  <p>Comparação cirúrgica com as duas referências · câmeras calibradas · 100% procedural</p>
+</header>
+
+<aside id="panel">
+  <div class="panel-head"><strong>Controle de QA</strong><span id="clock">t=0.0s</span></div>
+  <div class="section">
+    <h2>Câmeras de referência</h2>
+    <div class="row">
+      <button type="button" data-camera="ref1">1 · Frontal (ref 1)</button>
+      <button type="button" data-camera="ref2">2 · Perspectiva (ref 2)</button>
+      <button type="button" data-camera="overview">Visão geral</button>
+      <button type="button" data-camera="boss">Câmera do jogo</button>
+    </div>
+  </div>
+  <div class="section">
+    <h2>Comparação</h2>
+    <div class="row">
+      <button type="button" id="toggle-overlay">Sobrepor referência</button>
+      <button type="button" id="toggle-compare">Dividir A/B</button>
+    </div>
+  </div>
+  <div class="section">
+    <h2>Camadas</h2>
+    <div class="row">
+      <button type="button" data-layer="sky" class="on">Céu e ilhas</button>
+      <button type="button" data-layer="tribunes" class="on">Arquibancadas</button>
+      <button type="button" data-layer="banners" class="on">Bandeiras</button>
+      <button type="button" data-layer="inlays" class="on">Marchetaria</button>
+      <button type="button" data-layer="props" class="on">Brasseiros</button>
+      <button type="button" id="toggle-bloom">Bloom</button>
+      <button type="button" id="toggle-shadows" class="on">Sombras</button>
+      <button type="button" id="toggle-pause">Pausar tempo</button>
+    </div>
+  </div>
+  <div class="section">
+    <h2>Diagnóstico</h2>
+    <div class="stats">
+      <div>FPS <b id="fps">–</b> · frame <b id="frame-ms">–</b> ms</div>
+      <div>Draw calls <b id="calls">–</b> · triângulos <b id="tris">–</b></div>
+      <div style="opacity:.6">conta do último render (bloom = 1 passe)</div>
+      <div>Câmera <b id="camera-label">–</b></div>
+      <div id="health" class="ok">WebGL OK</div>
+    </div>
+  </div>
+  <p class="hint">Arraste para orbitar · roda para zoom · F2 esconde o painel ·
+    <code>?ui=0&amp;camera=ref1</code> gera a captura limpa usada no QA.</p>
+</aside>
+
+<div id="overlay"><img id="overlay-img" alt="Referência sobreposta" /></div>
+<div id="compare">
+  <img id="compare-img" alt="Referência para comparação" />
+  <div class="divider" id="divider" style="left: 50%"></div>
+  <div class="handle" id="compare-handle" style="left: 50%">↔</div>
+</div>
+<div id="legend">Arena Celeste · <span id="legend-camera">frontal</span> · PBR procedural</div>
+<div id="errors"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { CelestialArena } from '/src/world/celestial/CelestialArena.ts';
+import { createCelestialLighting } from '/src/world/celestial/CelestialLighting.ts';
+import { ARENA_CAMERAS } from '/src/world/celestial/CelestialConfig.ts';
+
+const params = new URLSearchParams(window.location.search);
+const uiHidden = params.get('ui') === '0';
+if (uiHidden) document.body.classList.add('hide-ui');
+
+const errors = document.getElementById('errors');
+function fail(message) {
+  errors.style.display = 'block';
+  errors.textContent += message + '\n';
+  const health = document.getElementById('health');
+  if (health) { health.textContent = 'Falha no WebGL'; health.classList.remove('ok'); }
+}
+window.addEventListener('error', (event) => fail('[erro] ' + event.message));
+window.addEventListener('unhandledrejection', (event) => fail('[promise] ' + event.reason));
+
+const canvas = document.getElementById('lab-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(params.get('shot') === '1' ? 1 : Math.min(2, window.devicePixelRatio || 1));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.9;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.4, 4000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 8;
+controls.maxDistance = 260;
+controls.maxPolarAngle = Math.PI * 0.495;
+
+const arena = new CelestialArena({ quality: 'high' });
+arena.configureScene(scene, renderer);
+arena.group.traverse((object) => {
+  if (object.isMesh) object.castShadow = object.castShadow ?? false;
+});
+scene.add(arena.group);
+
+const lighting = createCelestialLighting('high');
+scene.add(lighting.group);
+
+// O sol precisa de um alvo na cena para a sombra cobrir a arena.
+lighting.sun.target.position.set(0, 0, 0);
+scene.add(lighting.sun.target);
+
+const composer = new EffectComposer(renderer);
+composer.setSize(window.innerWidth, window.innerHeight);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.16,
+  0.6,
+  1.1
+);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+let bloomEnabled = params.get('bloom') === '1';
+let paused = params.get('t') !== '' && params.get('t') !== null;
+
+let currentCamera = params.get('camera') || 'overview';
+function applyCamera(name) {
+  const preset = ARENA_CAMERAS[name] || ARENA_CAMERAS.overview;
+  currentCamera = ARENA_CAMERAS[name] ? name : 'overview';
+  camera.fov = preset.fov;
+  camera.position.set(...preset.position);
+  camera.updateProjectionMatrix();
+  controls.target.set(...preset.target);
+  controls.update();
+  camera.lookAt(controls.target);
+  document.getElementById('camera-label').textContent = currentCamera;
+  document.getElementById('legend-camera').textContent =
+    currentCamera === 'ref1' ? 'frontal' : currentCamera === 'ref2' ? 'perspectiva' : 'visão geral';
+  for (const button of document.querySelectorAll('[data-camera]')) {
+    button.classList.toggle('on', button.dataset.camera === currentCamera);
+  }
+}
+applyCamera(currentCamera);
+
+for (const button of document.querySelectorAll('[data-camera]')) {
+  button.addEventListener('click', () => applyCamera(button.dataset.camera));
+}
+
+for (const button of document.querySelectorAll('[data-layer]')) {
+  button.addEventListener('click', () => {
+    const layer = arena.layers[button.dataset.layer];
+    if (!layer) return;
+    layer.visible = !layer.visible;
+    button.classList.toggle('on', layer.visible);
+  });
+}
+
+const bloomButton = document.getElementById('toggle-bloom');
+bloomButton.classList.toggle('on', bloomEnabled);
+bloomButton.addEventListener('click', () => {
+  bloomEnabled = !bloomEnabled;
+  bloomButton.classList.toggle('on', bloomEnabled);
+  bloom.enabled = bloomEnabled;
+});
+
+const shadowsButton = document.getElementById('toggle-shadows');
+shadowsButton.addEventListener('click', () => {
+  renderer.shadowMap.enabled = !renderer.shadowMap.enabled;
+  shadowsButton.classList.toggle('on', renderer.shadowMap.enabled);
+  scene.traverse((object) => {
+    if (object.material) object.material.needsUpdate = true;
+  });
+});
+
+const pauseButton = document.getElementById('toggle-pause');
+pauseButton.classList.toggle('on', paused);
+pauseButton.addEventListener('click', () => {
+  paused = !paused;
+  pauseButton.classList.toggle('on', paused);
+});
+
+// Overlay e comparador A/B com a referência da câmera atual.
+const overlay = document.getElementById('overlay');
+const overlayImg = document.getElementById('overlay-img');
+const compare = document.getElementById('compare');
+const compareImg = document.getElementById('compare-img');
+const divider = document.getElementById('divider');
+const handle = document.getElementById('compare-handle');
+let compareX = 0.5;
+
+function referenceUrl() {
+  return currentCamera === 'ref2'
+    ? '/arena-celeste/refs/ref-2-perspectiva.png'
+    : '/arena-celeste/refs/ref-1-frontal.png';
+}
+function refreshReference() {
+  overlayImg.src = referenceUrl();
+  compareImg.src = referenceUrl();
+}
+refreshReference();
+
+document.getElementById('toggle-overlay').addEventListener('click', (event) => {
+  const on = overlay.classList.toggle('on');
+  event.currentTarget.classList.toggle('on', on);
+  if (on) { compare.classList.remove('on'); document.getElementById('toggle-compare').classList.remove('on'); }
+});
+document.getElementById('toggle-compare').addEventListener('click', (event) => {
+  const on = compare.classList.toggle('on');
+  event.currentTarget.classList.toggle('on', on);
+  if (on) { overlay.classList.remove('on'); document.getElementById('toggle-overlay').classList.remove('on'); }
+  updateCompare();
+});
+function updateCompare() {
+  const x = compareX * 100;
+  divider.style.left = x + '%';
+  handle.style.left = x + '%';
+  compareImg.style.clipPath = `inset(0 0 0 ${x}%)`;
+}
+let dragging = false;
+handle.addEventListener('pointerdown', (event) => {
+  dragging = true;
+  handle.setPointerCapture(event.pointerId);
+});
+handle.addEventListener('pointermove', (event) => {
+  if (!dragging) return;
+  compareX = Math.min(1, Math.max(0, event.clientX / window.innerWidth));
+  updateCompare();
+});
+handle.addEventListener('pointerup', () => { dragging = false; });
+
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'F2') document.body.classList.toggle('hide-ui');
+  if (event.key === 'Escape') {
+    overlay.classList.remove('on');
+    compare.classList.remove('on');
+  }
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clock = new THREE.Clock();
+let elapsed = Number(params.get('t') || 0) || 0;
+let frames = 0;
+let fpsTime = 0;
+let fps = 0;
+const fpsLabel = document.getElementById('fps');
+const frameLabel = document.getElementById('frame-ms');
+const callsLabel = document.getElementById('calls');
+const trisLabel = document.getElementById('tris');
+const clockLabel = document.getElementById('clock');
+
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = Math.min(clock.getDelta(), 0.1);
+  if (!paused) elapsed += delta;
+  arena.update(elapsed);
+  lighting.update(elapsed);
+  controls.update();
+
+  if (bloomEnabled) composer.render(delta);
+  else renderer.render(scene, camera);
+
+  frames++;
+  fpsTime += delta;
+  if (fpsTime >= 0.5) {
+    fps = Math.round(frames / fpsTime);
+    frames = 0;
+    fpsTime = 0;
+    fpsLabel.textContent = String(fps);
+    frameLabel.textContent = (1000 / Math.max(1, fps)).toFixed(1);
+    callsLabel.textContent = String(renderer.info.render.calls);
+    trisLabel.textContent = renderer.info.render.triangles.toLocaleString('pt-BR');
+    clockLabel.textContent = `t=${elapsed.toFixed(1)}s`;
+  }
+}
+
+animate();
+// Sinaliza pronto para o capturador (tools/capture-arena.mjs).
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  window.__arenaReady = true;
+}));
+</script>
+</body>
+</html>

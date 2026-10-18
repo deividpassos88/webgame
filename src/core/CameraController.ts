@@ -19,18 +19,31 @@ export class CameraController {
   public zoom = 1;
 
   /** Zoom padrão dos jogadores (mais longe = personagem pequeno na tela). */
-  private readonly defaultZoom = 1.2;
+  private defaultZoom = 1.2;
   /** Limites de zoom para jogadores normais. */
-  private readonly playerZoomMin = 0.85;
-  private readonly playerZoomMax = 1.6;
+  private playerZoomMin = 0.85;
+  private playerZoomMax = 1.6;
   /** Limites de zoom liberados para ADM (qualquer distância). */
   private readonly adminZoomMin = 0.6;
   private readonly adminZoomMax = 2.2;
   private adminMode = false;
 
   constructor(aspect: number) {
-    this.camera = new THREE.PerspectiveCamera(35, aspect, 0.1, 200);
+    this.camera = new THREE.PerspectiveCamera(35, aspect, 0.4, 2500);
     this.camera.position.set(0, 16, 11);
+    this.zoom = this.defaultZoom;
+  }
+
+  /**
+   * Enquadramento da Arena Celeste: câmera um pouco mais alta e aberta, para o
+   * jogador ver a colunata, os brasseiros e o céu — o cenário é o conteúdo.
+   */
+  public applyCelestialFraming(): void {
+    this.offset.set(0, 22, 23.5);
+    this.lookOffset.set(0, 2.0, 0);
+    this.defaultZoom = 1.28;
+    this.playerZoomMin = 0.95;
+    this.playerZoomMax = 1.85;
     this.zoom = this.defaultZoom;
   }
 

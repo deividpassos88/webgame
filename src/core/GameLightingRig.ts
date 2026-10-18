@@ -1,10 +1,36 @@
 import * as THREE from 'three';
+import {
+  CELESTIAL_ENVIRONMENT,
+  createCelestialLighting,
+  type CelestialLighting,
+} from '../world/celestial/CelestialLighting';
+
+export type LightingStyle = 'dungeon' | 'celestial';
 
 export class GameLightingRig {
   public readonly playerLight = new THREE.PointLight(0xffe0b8, 30, 18, 2);
   public readonly bossLight = new THREE.PointLight(0xffb06a, 0, 18, 2);
+  private readonly celestial: CelestialLighting | null;
 
-  public constructor(scene: THREE.Scene) {
+  /**
+   * `dungeon` mantém a masmorra noturna original; `celestial` usa o dia claro
+   * da Arena Celeste (sol quente, céu azul e sombras suaves). O estilo antigo é
+   * o padrão para preservar o comportamento coberto pelos testes existentes.
+   */
+  public constructor(scene: THREE.Scene, style: LightingStyle = 'dungeon') {
+    if (style === 'celestial') {
+      this.celestial = createCelestialLighting('high');
+      scene.add(this.celestial.group);
+      scene.background = new THREE.Color(CELESTIAL_ENVIRONMENT.background);
+      scene.fog = new THREE.Fog(
+        CELESTIAL_ENVIRONMENT.fog,
+        CELESTIAL_ENVIRONMENT.fogNear,
+        CELESTIAL_ENVIRONMENT.fogFar
+      );
+      return;
+    }
+    this.celestial = null;
+
     const darkness = new THREE.Color(0x060912);
     scene.background = darkness.clone();
     // Fog é calculada a partir da câmera elevada; esta faixa mantém o jogador
@@ -31,8 +57,13 @@ export class GameLightingRig {
 
   public update(
     playerPosition: THREE.Vector3,
-    bossPosition: THREE.Vector3 | null
+    bossPosition: THREE.Vector3 | null,
+    time = 0
   ): void {
+    if (this.celestial) {
+      this.celestial.update(time);
+      return;
+    }
     this.playerLight.position.set(
       playerPosition.x,
       playerPosition.y + 5,
