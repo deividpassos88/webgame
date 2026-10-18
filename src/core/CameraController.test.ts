@@ -38,18 +38,18 @@ describe('CameraController dead zone', () => {
     // dead zone 3: followTarget fica em (2, 0, -2)
     expect(controller.followTargetX()).toBeCloseTo(2);
     expect(controller.camera.position.x).toBeCloseTo(2);
-    // câmera z = followTarget(-2) + offset(22) * zoom(1.10)
+    // câmera z = followTarget(-2) + offset(52) * zoom(1.10)
     expect(controller.camera.position.z).toBeCloseTo(-2 + 52 * 1.1);
   });
 
   it('clamps player zoom but allows free zoom in admin mode', () => {
     const controller = new CameraController(16 / 9);
 
-    // jogador: limitado entre 1.0 e 1.6
+    // Player can inspect the huge arena without forcing permanent top-down zoom.
     controller.adjustZoom(-5);
-    expect(controller.zoom).toBe(0.45);
+    expect(controller.zoom).toBe(0.6);
     controller.adjustZoom(+10);
-    expect(controller.zoom).toBe(4.0);
+    expect(controller.zoom).toBe(2.2);
 
     // ADM: faixa ampliada
     controller.setAdminMode(true);
