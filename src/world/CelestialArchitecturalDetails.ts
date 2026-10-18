@@ -29,88 +29,96 @@ function instances(
   return mesh;
 }
 
-export function buildCelestialArchitectureDetails(root: THREE.Object3D, p: CelestialArtMaterials): void {
+export function buildCelestialArchitectureDetails(
+  root: THREE.Object3D, p: CelestialArtMaterials, arenaSize = 162
+): void {
+  const half = arenaSize / 2;
   const facade = new THREE.Group();
   facade.name = 'CelestialSculptedPlatformFacade';
   root.add(facade);
-  const arches: Array<{ position: [number, number, number], rotation: number }> = [];
-  const innerArches: Array<{ position: [number, number, number], rotation: number }> = [];
-  const pilasters: Array<{ position: [number, number, number], rotation: number, scale: [number, number, number] }> = [];
-  const jewels: Array<{ position: [number, number, number], rotation: number }> = [];
+
+  const arcades: Array<{position:[number,number,number],rotation:number}> = [];
+  const inset: Array<{position:[number,number,number],rotation:number}> = [];
+  const pillars: Array<{position:[number,number,number],rotation:number,scale:[number,number,number]}> = [];
+  const rosettes: Array<{position:[number,number,number],rotation:number}> = [];
+  const spacing = 3.35;
+  const count = Math.floor((arenaSize - 8) / spacing);
   for (let side = 0; side < 4; side++) {
-    const sign = side % 2 === 0 ? -1 : 1;
+    const sign = side % 2 ? 1 : -1;
     const alongX = side < 2;
-    const angle = alongX ? 0 : Math.PI / 2;
-    for (let k = 0; k < 15; k++) {
-      const along = -22.4 + 3.2 * k;
-      const center: [number, number, number] = alongX
-        ? [along, -3.31, sign * 25.31] : [sign * 25.31, -3.31, along];
-      arches.push({ position: center, rotation: angle });
-      const secondary: [number, number, number] = alongX
-        ? [along, -3.47, sign * 25.39] : [sign * 25.39, -3.47, along];
-      innerArches.push({ position: secondary, rotation: angle });
-      const support: [number, number, number] = alongX
-        ? [along + 1.6, -2.8, sign * 25.35] : [sign * 25.35, -2.8, along + 1.6];
-      pilasters.push({ position: support, rotation: angle, scale: [0.18, 2.8, 0.22] });
-      jewels.push({ position: [center[0], -1.31, center[2]], rotation: angle });
+    const rotation = alongX ? 0 : Math.PI / 2;
+    for (let k = 0; k < count; k++) {
+      const along = -(count - 1) * spacing / 2 + k * spacing;
+      const makePosition = (y:number, distance:number):[number,number,number] =>
+        alongX ? [along,y,sign*distance] : [sign*distance,y,along];
+      arcades.push({position:makePosition(-3.35,half+0.31), rotation});
+      inset.push({position:makePosition(-3.47,half+0.41), rotation});
+      pillars.push({position: alongX
+        ? [along+spacing/2,-2.8,sign*(half+0.35)]
+        : [sign*(half+0.35),-2.8,along+spacing/2],
+        rotation,scale:[0.17,3.3,0.22]});
+      rosettes.push({position:makePosition(-1.31,half+0.33),rotation});
     }
   }
-  const light = instances(facade, 'CelestialPlatformArcades',
-    new THREE.TorusGeometry(1.33, 0.125, 8, 24, Math.PI), p.ivory, arches);
-  light.frustumCulled = false;
-  instances(facade, 'CelestialArcadeInnerGoldInlay',
-    new THREE.TorusGeometry(1.07, 0.048, 5, 20, Math.PI), p.goldSoft, innerArches);
-  instances(facade, 'CelestialFacadeCarvedPilasters',
-    new THREE.BoxGeometry(1, 1, 1), p.ivory, pilasters);
-  instances(facade, 'CelestialFacadeGoldRosettes',
-    new THREE.OctahedronGeometry(0.17, 0), p.goldBright, jewels);
+  const arcs=instances(facade,'CelestialPlatformArcades',
+    new THREE.TorusGeometry(1.38,0.14,8,24,Math.PI),p.ivory,arcades);
+  arcs.frustumCulled=false;
+  instances(facade,'CelestialArcadeInnerGoldInlay',
+    new THREE.TorusGeometry(1.12,0.045,6,22,Math.PI),p.goldSoft,inset);
+  instances(facade,'CelestialFacadeCarvedPilasters',
+    new THREE.BoxGeometry(1,1,1),p.ivory,pillars);
+  instances(facade,'CelestialFacadeGoldRosettes',
+    new THREE.OctahedronGeometry(0.18,0),p.goldBright,rosettes);
 
-  // A continuous cornice and several thinner ledges create realistic depth
-  // in the floating slab. All decorative geometry is BELOW the ground.
-  for (const sign of [-1, 1]) {
-    const front = new THREE.Mesh(new THREE.BoxGeometry(51.5, 0.16, 0.22), p.goldSoft);
-    front.position.set(0, -1.17, sign * 25.51);
-    facade.add(front);
-    const left = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 51.5), p.goldSoft);
-    left.position.set(sign * 25.51, -1.17, 0);
-    facade.add(left);
+  for(const sign of [-1,1]){
+    const edge=new THREE.Mesh(new THREE.BoxGeometry(arenaSize+1.5,0.16,0.22),p.goldSoft);
+    edge.position.set(0,-1.17,sign*(half+0.51));facade.add(edge);
+    const side=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.16,arenaSize+1.5),p.goldSoft);
+    side.position.set(sign*(half+0.51),-1.17,0);facade.add(side);
   }
 
-  // Delicate arcade rails and balusters along the inner edges of the two
-  // lateral spectator galleries; remain at least 5 m beyond combat bounds.
+  // Additional balusters along the open front edge of every gallery.
   const rails = new THREE.Group();
   rails.name = 'CelestialGrandstandBalustrades';
   root.add(rails);
-  const posts: Array<{ position: [number, number, number], rotation: number, scale: [number, number, number] }> = [];
-  const collars: Array<{ position: [number, number, number], rotation: number, scale: [number, number, number] }> = [];
-  for (const sign of [-1, 1]) {
-    const x = sign * 30.45;
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.22, 53.5), p.ivory);
-    cap.position.set(x, 6.07, -6);
-    rails.add(cap);
-    const rim = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.09, 53.5), p.gold);
-    rim.position.set(x, 6.24, -6);
-    rails.add(rim);
-    for (let n = 0; n < 54; n++) {
-      const z = -32 + n * 0.96;
-      posts.push({ position: [x, 5.42, z], rotation: 0, scale: [0.15, 1.22, 0.15] });
-      collars.push({ position: [x, 5.95, z], rotation: 0, scale: [0.29, 0.10, 0.29] });
+  const balusters:Array<{position:[number,number,number],rotation:number,scale:[number,number,number]}>=[];
+  const capitals:Array<{position:[number,number,number],rotation:number,scale:[number,number,number]}>=[];
+  for(const sign of [-1,1]){
+    for(const side of ['east','west','north','south']){
+      for(const halfSector of [-1,1]){
+        // 65m per wing, leaving a wide central vista.
+        const offset=halfSector*43;
+        for(let k=0;k<53;k++){
+          const along=offset-31.6+k*1.2;
+          const pos:[number,number,number]=side==='east'||side==='west'
+            ? [sign*(half+4.1),5.6,along]
+            : [along,5.6,sign*(half+4.1)];
+          // Each side of the map gets only its relevant signed facade.
+          if ((side==='east'&&sign!==1)||(side==='west'&&sign!==-1)
+             ||(side==='north'&&sign!==-1)||(side==='south'&&sign!==1))continue;
+          balusters.push({position:pos,rotation:0,scale:[0.19,1.3,0.19]});
+          capitals.push({position:[pos[0],6.33,pos[2]],rotation:0,scale:[0.32,0.12,0.32]});
+        }
+      }
     }
   }
-  instances(rails, 'CelestialGalleryStoneBalusters', new THREE.BoxGeometry(1, 1, 1), p.ivory, posts);
-  instances(rails, 'CelestialGalleryGoldCapitals', new THREE.BoxGeometry(1, 1, 1), p.gold, collars);
-
-  // Repeating gold accents on the grandstand terraces avoid the appearance
-  // of one solid monochrome block when seen from the normal gameplay camera.
-  const friezes: Array<{position: [number, number, number], rotation: number, scale: [number, number, number]}> = [];
-  for (const sign of [-1, 1]) for (let row = 0; row < 9; row++) {
-    friezes.push({
-      position: [sign * (31.8 + row * 1.99), 4.69 + row * 0.61, -6],
-      rotation: 0, scale: [0.13, 0.16, 51.0]
-    });
+  instances(rails,'CelestialGalleryStoneBalusters',
+    new THREE.BoxGeometry(1,1,1),p.ivory,balusters);
+  instances(rails,'CelestialGalleryGoldCapitals',
+    new THREE.BoxGeometry(1,1,1),p.gold,capitals);
+  // No solid rail spans the open sections; the eight separate galleries retain
+  // the silhouette of two independent stadiums on each side.
+  const friezes:Array<{position:[number,number,number],rotation:number,scale:[number,number,number]}>=[];
+  for(const sign of [-1,1])for(const wing of [-1,1])for(let row=0;row<10;row++){
+    const along=wing*43;
+    const distance=84.5+row*2.04;
+    friezes.push({position:[sign*distance,4.88+row*0.83,along],
+      rotation:0,scale:[0.12,0.16,63.8]});
+    friezes.push({position:[along,4.88+row*0.83,sign*distance],
+      rotation:0,scale:[63.8,0.16,0.12]});
   }
-  instances(rails, 'CelestialTerraceGildedRisers',
-    new THREE.BoxGeometry(1, 1, 1), p.goldSoft, friezes);
+  instances(rails,'CelestialTerraceGildedRisers',
+    new THREE.BoxGeometry(1,1,1),p.goldSoft,friezes);
 }
 
 /**
