@@ -8,27 +8,27 @@ export class GameLightingRig {
   public constructor(scene: THREE.Scene) {
     const sky = new THREE.Color(0xb2d8ff);
     scene.background = sky.clone();
-    // The playable 50-metre square remains clear. Fog blends distant
+    // The 162-metre square remains clear. Fog blends distant
     // floating temples and cloud banks into the bright sky.
-    scene.fog = new THREE.Fog(sky, 105, 205);
-    scene.add(new THREE.AmbientLight(0xdfe7f9, 0.44));
+    scene.fog = new THREE.Fog(sky, 235, 790);
+    scene.add(new THREE.AmbientLight(0xdfe7f9, 0.66));
 
-    const sunlight = new THREE.DirectionalLight(0xffeddb, 1.52);
+    const sunlight = new THREE.DirectionalLight(0xffedd1, 2.15);
     sunlight.name = 'CelestialSunLight';
-    sunlight.position.set(33, 48, -36);
+    sunlight.position.set(96, 156, -115);
     sunlight.target.position.set(0, 0, 0);
     sunlight.castShadow = true;
-    sunlight.shadow.mapSize.set(1024, 1024);
-    sunlight.shadow.camera.left = -35;
-    sunlight.shadow.camera.right = 35;
-    sunlight.shadow.camera.top = 35;
-    sunlight.shadow.camera.bottom = -35;
+    sunlight.shadow.mapSize.set(2048, 2048);
+    sunlight.shadow.camera.left = -108;
+    sunlight.shadow.camera.right = 108;
+    sunlight.shadow.camera.top = 108;
+    sunlight.shadow.camera.bottom = -108;
     sunlight.shadow.camera.near = 0.5;
-    sunlight.shadow.camera.far = 120;
+    sunlight.shadow.camera.far = 380;
     sunlight.shadow.bias = -0.00075;
     scene.add(sunlight, sunlight.target);
 
-    scene.add(new THREE.HemisphereLight(0xb8d6ff, 0x8193bc, 0.58));
+    scene.add(new THREE.HemisphereLight(0xc8e0ff, 0x8595a5, 0.92));
     scene.add(this.playerLight, this.bossLight);
   }
 
