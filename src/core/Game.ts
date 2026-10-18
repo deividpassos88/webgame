@@ -10,6 +10,7 @@ import { Enemy } from '../entities/Enemy';
 import { TrainingDummy } from '../entities/TrainingDummy';
 import { createBoss } from '../entities/Boss';
 import { Level } from '../world/Level';
+import { CELESTIAL_HALF } from '../world/CelestialArena';
 import { HUD } from '../ui/HUD';
 import type { FloatingDamageCriticalType, FloatingDamageVariant } from '../ui/HUD';
 import { Logger } from '../utils/Logger';
@@ -347,7 +348,7 @@ export class Game {
 
   private raycaster = new THREE.Raycaster();
   private spawnPoint = new THREE.Vector3(0, 0, 14);
-  private worldLimit = 23;
+  private worldLimit = CELESTIAL_HALF - 2;
 
   private elapsedTime = 0;
   private running = false;
