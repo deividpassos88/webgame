@@ -11,9 +11,9 @@ describe('CameraController dead zone', () => {
 
     // Default zoom 1.1 frames both the player and the open celestial horizon.
     expect(controller.camera.position.x).toBeCloseTo(0);
-    expect(controller.camera.position.z).toBeCloseTo(22 * 1.1);
-    expect(controller.camera.position.y).toBeCloseTo(12 * 1.1);
-    expect(controller.camera.fov).toBe(49);
+    expect(controller.camera.position.z).toBeCloseTo(52 * 1.1);
+    expect(controller.camera.position.y).toBeCloseTo(24 * 1.1);
+    expect(controller.camera.fov).toBe(55);
     // The audience is framed in the upper portion without sacrificing VFX projection.
     const audience = new THREE.Vector3(0, 5, -29).project(controller.camera);
     expect(audience.y).toBeLessThan(1);
@@ -39,7 +39,7 @@ describe('CameraController dead zone', () => {
     expect(controller.followTargetX()).toBeCloseTo(2);
     expect(controller.camera.position.x).toBeCloseTo(2);
     // câmera z = followTarget(-2) + offset(22) * zoom(1.10)
-    expect(controller.camera.position.z).toBeCloseTo(-2 + 22 * 1.1);
+    expect(controller.camera.position.z).toBeCloseTo(-2 + 52 * 1.1);
   });
 
   it('clamps player zoom but allows free zoom in admin mode', () => {
@@ -47,16 +47,16 @@ describe('CameraController dead zone', () => {
 
     // jogador: limitado entre 1.0 e 1.6
     controller.adjustZoom(-5);
-    expect(controller.zoom).toBe(0.85);
+    expect(controller.zoom).toBe(0.45);
     controller.adjustZoom(+10);
-    expect(controller.zoom).toBe(1.6);
+    expect(controller.zoom).toBe(4.0);
 
     // ADM: faixa ampliada
     controller.setAdminMode(true);
     controller.adjustZoom(-10);
-    expect(controller.zoom).toBe(0.6);
+    expect(controller.zoom).toBe(0.45);
     controller.adjustZoom(+10);
-    expect(controller.zoom).toBe(2.2);
+    expect(controller.zoom).toBe(4.0);
 
     // desligando ADM volta ao padrão
     controller.setAdminMode(false);
