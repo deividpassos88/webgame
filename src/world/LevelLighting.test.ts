@@ -1,92 +1,67 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { Level } from './Level';
-import { CELESTIAL_ARENA_SIZE, CELESTIAL_HALF } from './CelestialArena';
+import { GOTHIC_ARENA_SIZE, GOTHIC_CENTER_RADIUS, GOTHIC_BOSS_DAIS } from './GothicArena';
 
-describe('Campo dos Deuses - arena celestial', () => {
-  it('keeps the playable arena square while placing all stands beyond the combat boundary', () => {
+describe('Gothic ruined coliseum reference reconstruction', () => {
+  it('uses a real 162m traversable floor while keeping unchanged wave progression', () => {
     const level = new Level();
     const floor = level.groundMeshes[0] as THREE.Mesh;
-    expect(floor.name).toBe('CelestialPlayableSmoothMarbleFloor');
-    expect((floor.geometry as THREE.PlaneGeometry).parameters.width).toBe(CELESTIAL_ARENA_SIZE);
-    expect((floor.geometry as THREE.PlaneGeometry).parameters.height).toBe(CELESTIAL_ARENA_SIZE);
+    expect(level.group.name).toBe('GothicRuinedColiseum162m');
+    expect(floor.name).toBe('GothicPlayableStoneFloor');
+    expect(floor.geometry).toBeInstanceOf(THREE.PlaneGeometry);
+    expect((floor.geometry as THREE.PlaneGeometry).parameters.width).toBe(GOTHIC_ARENA_SIZE);
+    expect((floor.geometry as THREE.PlaneGeometry).parameters.height).toBe(GOTHIC_ARENA_SIZE);
+    expect(floor.userData.isGround).toBe(true);
+    expect(level.groundMeshes).toHaveLength(1);
     expect(level.navigationObstacles).toHaveLength(0);
-    expect(level.group.getObjectByName('CelestialFloatingSquareFoundation')).toBeDefined();
-    expect(level.group.getObjectByName('CelestialEastGrandstand')).toBeDefined();
-    expect(level.group.getObjectByName('CelestialWestGrandstand')).toBeDefined();
-    expect(level.group.getObjectByName('CelestialNorthGrandstand')).toBeDefined();
-    expect(level.group.getObjectByName('CelestialNorthStadiumAudience')).toBeDefined();
-    expect(level.group.getObjectByName('CelestialNorthClassicalArch')).toBeDefined();
-    const northwest = level.group.getObjectByName('CelestialNorthWestGallery');
-    const northeast = level.group.getObjectByName('CelestialNorthEastGallery');
-    expect(northwest).toBeDefined();
-    expect(northeast).toBeDefined();
-    expect(level.group.getObjectByName('CelestialCentralOpenSkyVista')).toBeDefined();
-    // No rear gallery can span the centre: otherwise the distant sky and
-    // floating temples are hidden behind a continuous stadium wall.
-    const westBounds = new THREE.Box3().setFromObject(northwest!);
-    const eastBounds = new THREE.Box3().setFromObject(northeast!);
-    expect(westBounds.max.x).toBeLessThan(-8);
-    expect(eastBounds.min.x).toBeGreaterThan(8);
-  });
-
-  it('renders four ceremonial braziers without the old dungeon torch pool', () => {
-    const level = new Level();
-    const lights = level.group.children.filter(
-      (child): child is THREE.PointLight => child instanceof THREE.PointLight
-    );
-    expect(lights).toHaveLength(4);
-    expect(lights.every((l) => l.name.startsWith('CelestialBrazierLight'))).toBe(true);
-    const before = lights.map(l => l.intensity);
-    level.update(1.1, new THREE.Vector3());
-    expect(lights.some((l, i) => l.intensity !== before[i])).toBe(true);
-    expect(level.group.getObjectByName('CelestialVolumetricCloudBanks')).toBeDefined();
-    expect(level.group.getObjectByName('CelestialSkydomeSun')).toBeDefined();
-    const clouds = level.group.getObjectByName('CelestialVolumetricCloudBanks') as THREE.InstancedMesh;
-    expect(clouds.count).toBeGreaterThan(800);
-    expect(clouds.geometry).toBeInstanceOf(THREE.SphereGeometry);
-    const marble = (level.groundMeshes[0] as THREE.Mesh).material as THREE.MeshPhysicalMaterial;
-    expect(marble.roughness).toBeGreaterThan(0.25);
-    expect(marble.map?.name).toBe('CelestialMarblePBRAlbedo');
-    expect(marble.bumpMap?.name).toBe('CelestialMarbleMicroRelief');
-    expect(marble.roughnessMap?.name).toBe('CelestialMarblePolishedRoughness');
-    expect(level.group.getObjectByName('CelestialSculptedPlatformFacade')).toBeDefined();
-    expect(level.group.getObjectByName('CelestialPlatformArcades')).toBeInstanceOf(THREE.InstancedMesh);
-    expect(level.group.getObjectByName('CelestialGrandstandBalustrades')).toBeDefined();
-    expect(level.group.getObjectByName('CelestialGalleryStoneBalusters')).toBeInstanceOf(THREE.InstancedMesh);
-    expect(level.group.getObjectByName('CelestialSculptedFloatingRock')).toBeDefined();
-    expect(level.group.getObjectByName('CelestialFloatingIslandVegetation')).toBeInstanceOf(THREE.InstancedMesh);
-    const waterfall = level.group.getObjectByName('CelestialIslandAnimatedWaterfall') as THREE.Mesh;
-    expect(waterfall).toBeDefined();
-    const waterMaterial = waterfall.material as THREE.MeshBasicMaterial;
-    const initialOffset = waterMaterial.map?.offset.y;
-    level.update(4.2);
-    expect(waterMaterial.map?.offset.y).not.toEqual(initialOffset);
-    expect(level.group.getObjectByName('CelestialFlameLuminousCore')).toBeDefined();
-  });
-
-  it('preserves the wave, boss and mini-boss spawn positions on the playing floor', () => {
-    const level = new Level();
     expect(level.getWaveSpawnPoints()).toHaveLength(8);
-    expect(level.getWaveSpawnPoints().every(p => Math.abs(p.x) < 40 && Math.abs(p.z) < 40)).toBe(true);
-    expect(level.getBossSpawnPoint().toArray()).toEqual([0, 0, -18]);
-    expect(CELESTIAL_HALF).toBe(81);
-    const foundation = level.group.getObjectByName('CelestialFloatingSquareFoundation') as THREE.Mesh;
-    expect((foundation.geometry as THREE.BoxGeometry).parameters.width).toBeGreaterThanOrEqual(162);
-    // Eight independent stands: exactly two on each of the four sides.
-    for (const side of ['West', 'East', 'North', 'South']) {
-      const grandstand = level.group.getObjectByName('Celestial' + side + 'Grandstand');
-      expect(grandstand).toBeDefined();
-      const wings = grandstand!.children.filter(child => child.name.endsWith('Gallery'));
-      expect(wings).toHaveLength(2);
-      for (const wing of wings) {
-        const bounds = new THREE.Box3().setFromObject(wing);
-        if (side === 'East') expect(bounds.min.x).toBeGreaterThan(CELESTIAL_HALF);
-        if (side === 'West') expect(bounds.max.x).toBeLessThan(-CELESTIAL_HALF);
-        if (side === 'North') expect(bounds.max.z).toBeLessThan(-CELESTIAL_HALF);
-        if (side === 'South') expect(bounds.min.z).toBeGreaterThan(CELESTIAL_HALF);
-      }
-    }
+    expect(level.getWaveSpawnPoints().every(p=>Math.abs(p.x)<40 && Math.abs(p.z)<40)).toBe(true);
+    expect(level.getBossSpawnPoint().toArray()).toEqual([0,0,-18]);
     expect(level.getFinalBattleSpawnLayout().miniBosses).toHaveLength(4);
+  });
+
+  it('renders all the distinctive reference geometry and material layers', () => {
+    const level=new Level();
+    const get=(name:string)=>level.group.getObjectByName(name);
+    expect(get('GothicUnderstructure')).toBeDefined();
+    expect(get('GothicCentralWornStoneDisc')).toBeDefined();
+    expect((get('GothicCentralWornStoneDisc') as THREE.Mesh).geometry).toBeInstanceOf(THREE.CircleGeometry);
+    expect(GOTHIC_CENTER_RADIUS).toBeGreaterThan(25);
+    for(const name of [
+      'GothicInnerReliefRing', 'GothicRuneFrieze', 'GothicOuterRaisedCircle',
+      'GothicRadialBluestoneTiles', 'GothicOuterFineBand',
+      'GothicRaisedRadialSpoke','GothicSpokeEngravedChannel','GothicSpokeFineIronInlay',
+      'GothicBossCurvedStair1','GothicBossCurvedStair2',
+      'GothicBossCurvedStair3','GothicBossCurvedStair4',
+      'GothicBossPlatformRealElevation','GothicBossDiscEngravedSurface',
+      'GothicCathedralPerimeter','GothicPointedArchVoussoir',
+      'GothicRuinedBridgesInMist','GothicDistantBrokenTower',
+      'GothicWeatheredRedStoneStains'
+    ]) expect(get(name),name).toBeDefined();
+    const ground=(level.groundMeshes[0] as THREE.Mesh).material as THREE.MeshStandardMaterial;
+    expect(ground.map?.name).toBe('GothicCrackedBluestoneAlbedo');
+    expect(ground.bumpMap?.name).toBe('GothicStoneEngravedMicrorelief');
+    expect(ground.roughnessMap?.name).toBe('GothicStoneVariableWetness');
+    expect(get('GothicChiseledRuneBorder')).toBeInstanceOf(THREE.InstancedMesh);
+    expect(get('GothicConcentricTileJoints')).toBeInstanceOf(THREE.InstancedMesh);
+    expect(get('GothicSpokeEtchedTriangles')).toBeInstanceOf(THREE.InstancedMesh);
+    expect(get('GothicBossCurvedStair1')).toBeInstanceOf(THREE.Mesh);
+    expect((get('GothicBossCurvedStair1') as THREE.Mesh).geometry).toBeInstanceOf(THREE.ExtrudeGeometry);
+    expect((get('GothicBossPlatformRealElevation') as THREE.Mesh).position.y * 2)
+      .toBeCloseTo(GOTHIC_BOSS_DAIS.height);
+  });
+
+  it('never inserts expensive decorative geometry into the ground raycast', () => {
+    const level = new Level();
+    const names=level.groundMeshes.map(x=>x.name);
+    expect(names).toEqual(['GothicPlayableStoneFloor']);
+    const stairs=['GothicBossCurvedStair1','GothicBossCurvedStair2','GothicBossCurvedStair3','GothicBossCurvedStair4'];
+    const heights=stairs.map(n=>(level.group.getObjectByName(n) as THREE.Mesh).userData.stepHeight as number);
+    expect(heights).toHaveLength(4);
+    expect(heights.every(v=>v>0)).toBe(true);
+    expect(heights[0]).toBeGreaterThan(heights[1]);
+    expect(heights[1]).toBeGreaterThan(heights[2]);
+    expect(heights[2]).toBeGreaterThan(heights[3]);
   });
 });
