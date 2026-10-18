@@ -386,7 +386,7 @@ export class CelestialArena {
   private buildEngravedFloor(): void {
     const p = this.materials;
     // One uninterrupted clickable floor at y=0. Decorative pieces don't steal raycasts.
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(CELESTIAL_ARENA_SIZE - 0.5, CELESTIAL_ARENA_SIZE - 0.5), p.tile);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(CELESTIAL_ARENA_SIZE, CELESTIAL_ARENA_SIZE), p.tile);
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = 0.035;
     floor.receiveShadow = true;
