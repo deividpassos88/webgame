@@ -11,8 +11,8 @@ export class CameraController {
   // Three-quarter gameplay view: the horizon must sit inside the vertical FOV,
   // while the hero remains in the lower half and telegraphed attacks stay visible.
   // Do not use a steep top-down offset: it hides the sky and all remote temples.
-  private offset = new THREE.Vector3(0, 24, 52);
-  private lookOffset = new THREE.Vector3(0, 1.1, -20);
+  private offset = new THREE.Vector3(0, 21, 43);
+  private lookOffset = new THREE.Vector3(0, 1.1, -17);
   private currentPosition = new THREE.Vector3();
   private currentLookAt = new THREE.Vector3();
   private followTarget = new THREE.Vector3();
@@ -33,7 +33,7 @@ export class CameraController {
 
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(55, aspect, 0.1, 920);
-    this.camera.position.set(0, 24, 52);
+    this.camera.position.set(0, 21, 43);
     this.zoom = this.defaultZoom;
   }
 
