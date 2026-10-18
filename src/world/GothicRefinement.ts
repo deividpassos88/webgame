@@ -47,7 +47,7 @@ export function gothicSectorGeometry(inner:number,outer:number,angle:number,dept
       [inner*Math.cos(a1),-inner*Math.sin(a1)]
     ];
     const top=coords.map(([x,z])=>add(x,depth,z));
-    idx.push(top[0],top[2],top[1],top[0],top[3],top[2]);
+    idx.push(top[0],top[1],top[2],top[0],top[2],top[3]);
     for(let side=0;side<4;side++){
       const cur=coords[side],next=coords[(side+1)%4];
       const a=add(cur[0],0,cur[1]), b=add(next[0],0,next[1]);
@@ -248,9 +248,9 @@ export function buildGothicCathedralDetails(root:THREE.Object3D,p:GothicPalette)
         rib(cathedral,'GothicSideFlyingArch',
           gothicArchPoints(0,8.9,17,16,sidePoint),p.border,0.38);
         rib(cathedral,'GothicSideArchInnerRib',
-          gothicArchPoints(0,9.5,15,15,local=>
-            new THREE.Vector3(x-sign*2.9,local,cz), // overwritten below
-          ),p.darkIron,0.07);
+          gothicArchPoints(0,9.5,15,15,(local,y)=>
+            new THREE.Vector3(x-sign*2.9,y,cz+local)
+          ),p.darkIron,0.13);
         if(sign===1) {
           masonry(cathedral,'GothicSideShadowedRecess',p.relief,
             x+1.0,13.7,cz,1,16,14.8);
