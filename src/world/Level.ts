@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { NavigationObstacle } from './NavigationObstacle';
-import { CelestialArena } from './CelestialArena';
+import { CelestialArena, CELESTIAL_ARENA_SIZE } from './CelestialArena';
 
 /**
  * Level's gameplay interface is preserved while the old dungeon visuals are
@@ -9,7 +9,7 @@ import { CelestialArena } from './CelestialArena';
  */
 export class Level extends CelestialArena {
   public readonly navigationObstacles: NavigationObstacle[] = [];
-  private readonly size = 50;
+  private readonly size = CELESTIAL_ARENA_SIZE;
 
   public getBossSpawnPoint(): THREE.Vector3 {
     return new THREE.Vector3(0, 0, -18);
@@ -17,7 +17,9 @@ export class Level extends CelestialArena {
 
   /** Spawns de inimigos: bordas/cantos do cenário — eles vêm "de fora" para dentro. */
   public getEnemySpawnPoints(): THREE.Vector3[] {
-    const half = this.size / 2 - 1.5;
+    // Keep waves in a playable combat ring instead of forcing a 160m chase.
+    // The player can still explore the complete 162m square.
+    const half = Math.min(38, this.size / 2 - 4);
     return [
       // cantos
       new THREE.Vector3(-half + 2, 0, -half + 2),
