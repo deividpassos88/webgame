@@ -52,6 +52,43 @@ describe('Gothic ruined coliseum reference reconstruction', () => {
       .toBeCloseTo(GOTHIC_BOSS_DAIS.height);
   });
 
+  it('surgeon audit: compares physical gothic geometry against the reference components', () => {
+    const level=new Level();
+    const get=(name:string)=>level.group.getObjectByName(name);
+    const findAll=(name:string)=>{
+      const matches:THREE.Object3D[]=[];
+      level.group.traverse(object=>{ if(object.name===name)matches.push(object); });
+      return matches;
+    };
+    // Three ring courses of independently raised blue-gray flagstones.
+    const courses=findAll('GothicRealRadialFlagstoneCourse') as THREE.InstancedMesh[];
+    expect(courses).toHaveLength(3);
+    expect(courses.every(course=>course.count===96)).toBe(true);
+    expect(courses.every(course=>course.geometry.getAttribute('normal')!==undefined)).toBe(true);
+    expect(get('GothicReferenceRuneVCarvings')).toBeInstanceOf(THREE.InstancedMesh);
+    expect(get('GothicStoneMicroChiselMarks')).toBeInstanceOf(THREE.InstancedMesh);
+    // Twelve stone bays with 3D pointed voussoirs and moulding, not a flat wall.
+    expect(findAll('GothicPointedArchVoussoir').length).toBeGreaterThanOrEqual(12);
+    expect(findAll('GothicSideFlyingArch').length).toBeGreaterThanOrEqual(6);
+    expect(findAll('GothicOrnateButtress').length).toBeGreaterThanOrEqual(12);
+    expect(get('GothicCarvedHeraldicDiamond')).toBeDefined();
+    expect(get('GothicMistyRuinsStormSky')).toBeInstanceOf(THREE.Mesh);
+    const slab=get('GothicOrnateButtress') as THREE.Mesh;
+    expect((slab.material as THREE.MeshStandardMaterial).map?.name)
+      .toBe('GothicChippedMasonryAlbedo');
+    // Separate stone wedges, nose mouldings, and incised grooves of the boss.
+    const steps=findAll('GothicIndividualBeveledBossStairTreads') as THREE.InstancedMesh[];
+    expect(steps).toHaveLength(4);
+    expect(steps.every(step=>step.count===34)).toBe(true);
+    expect(findAll('GothicBossCarvedConcentricTesserae')).toHaveLength(2);
+    expect(get('GothicBossEngravedHairlineSeams')).toBeInstanceOf(THREE.InstancedMesh);
+    // A legacy stadium-era crescent was intruding across the foreground.
+    expect(get('GothicRearStoneTerrace')).toBeUndefined();
+    // Combat input must still raycast a SINGLE flat ground mesh.
+    expect(level.groundMeshes).toHaveLength(1);
+    expect(level.groundMeshes[0].name).toBe('GothicPlayableStoneFloor');
+  });
+
   it('never inserts expensive decorative geometry into the ground raycast', () => {
     const level = new Level();
     const names=level.groundMeshes.map(x=>x.name);
