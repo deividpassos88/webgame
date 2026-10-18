@@ -17,14 +17,14 @@ describe('GameLightingRig - Campo dos Deuses', () => {
     expect(sun.shadow.mapSize.toArray()).toEqual([2048, 2048]);
   });
 
-  it('keeps the fighter bright while the distant gothic ruins fade into blue mist', () => {
+  it('keeps the fighter illuminated with a near-black world background', () => {
     const scene = new THREE.Scene();
     new GameLightingRig(scene);
     expect(scene.fog).toBeInstanceOf(THREE.Fog);
-    expect((scene.fog as THREE.Fog).near).toBe(145);
-    expect((scene.fog as THREE.Fog).far).toBe(540);
-    expect((scene.fog as THREE.Fog).color.getHex()).toBe(0x586e87);
-    expect((scene.background as THREE.Color).getHex()).toBe(0x586e87);
+    expect((scene.fog as THREE.Fog).near).toBe(108);
+    expect((scene.fog as THREE.Fog).far).toBe(235);
+    expect((scene.fog as THREE.Fog).color.getHex()).toBe(0x090d16);
+    expect((scene.background as THREE.Color).getHex()).toBe(0x090d16);
     const ambient = scene.children.find(child => child instanceof THREE.AmbientLight) as THREE.AmbientLight;
     expect(ambient.intensity).toBeGreaterThan(0.6);
     expect(ambient.intensity).toBeLessThan(0.8);
