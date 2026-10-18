@@ -6,11 +6,11 @@ export class GameLightingRig {
   public readonly bossLight = new THREE.PointLight(0xffcb92, 0, 18, 2);
 
   public constructor(scene: THREE.Scene) {
-    const sky = new THREE.Color(0x586e87);
-    scene.background = sky.clone();
-    // Distant cathedral towers fade into cold blue mist. Keep the familiar
-    // character lighting, skills and combat visibility exactly as before.
-    scene.fog = new THREE.Fog(sky, 145, 540);
+    // Fade the perimeter into black while preserving the player/boss light
+    // and the combat floor. The sky shader has the same dark hue.
+    const voidColor = new THREE.Color(0x090d16);
+    scene.background = voidColor.clone();
+    scene.fog = new THREE.Fog(voidColor, 108, 235);
     scene.add(new THREE.AmbientLight(0xdfe7f9, 0.66));
 
     const sunlight = new THREE.DirectionalLight(0xffedd1, 2.15); // unchanged fighter illumination
