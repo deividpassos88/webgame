@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createCelestialMarble, createCelestialLimestone } from './CelestialSurface';
 import { buildCelestialStadium } from './CelestialGrandstand';
+import { createCelestialHangingBanner } from './CelestialFabric';
 import {
   buildCelestialArchitectureDetails,
   createFloatingRock,
@@ -109,15 +110,11 @@ function emblem(parent: THREE.Object3D, gold: THREE.Material, blue: THREE.Materi
   cross.rotation.y = Math.PI / 4;
 }
 
-function createBanner(parent: THREE.Object3D, blue: THREE.Material, gold: THREE.Material, x: number, y: number, z: number, alongZ: boolean): void {
-  const banner = block(parent, blue, x, y, z, alongZ ? 0.08 : 1.9, 5.7, alongZ ? 1.9 : 0.08);
-  banner.name = 'CelestialAzureBanner';
-  const rim = block(parent, gold, x, y + 2.93, z, alongZ ? 0.22 : 2.02, 0.12, alongZ ? 2.02 : 0.22);
-  rim.name = 'CelestialBannerGoldRail';
-  const badge = block(parent, gold,
-    x + (alongZ ? 0.065 : 0), y + 0.4, z + (!alongZ ? 0.065 : 0),
-    alongZ ? 0.08 : 0.7, 0.7, alongZ ? 0.7 : 0.08);
-  badge.rotation.set(0, alongZ ? Math.PI / 4 : 0, Math.PI / 4);
+function createBanner(
+  parent: THREE.Object3D, blue: THREE.Material, gold: THREE.Material,
+  x: number, y: number, z: number, alongZ: boolean
+): void {
+  createCelestialHangingBanner(parent, blue, gold, x, y, z, alongZ);
 }
 
 function makeClouds(parent: THREE.Object3D): THREE.InstancedMesh {
