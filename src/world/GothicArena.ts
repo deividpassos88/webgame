@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { createGothicPalette, type GothicPalette } from './GothicMaterials';
 import { buildGothicFloorDetail, buildGothicCathedralDetails } from './GothicRefinement';
+import { finishGothicBossSanctum } from './GothicBossFinish';
+import { createGothicStormSky } from './GothicSky';
 
 /**
  * Ruined Gothic Coliseum / reference 20261018.
@@ -70,7 +72,7 @@ function slabLine(parent: THREE.Object3D, name: string, mat: THREE.Material,
   const mid = (r1 + r2) / 2;
   const mesh = stone(parent, name, mat,
     centerX + Math.sin(a) * mid, height, centerZ + Math.cos(a) * mid,
-    thickness, height * 0.6, r2 - r1);
+    thickness, 0.045, r2 - r1);
   mesh.rotation.y = a;
   return mesh;
 }
@@ -108,6 +110,7 @@ export class GothicArena {
   constructor() {
     this.group.name = 'GothicRuinedColiseum162m';
     this.p = createGothicPalette();
+    createGothicStormSky(this.group);
     this.buildFloor();
     this.buildEngravedCombatCircle();
     this.buildRadialSpokes();
@@ -134,8 +137,8 @@ export class GothicArena {
     // Even the ordinary slabs have real raised fine grout grooves and
     // staggered joints, sparsely batched to keep GPU draw calls low.
     const seams: THREE.Matrix4[] = [];
-    for (let k = -16; k <= 16; k++) {
-      const d = k * 5;
+    for (let k = -7; k <= 7; k++) {
+      const d = k * 11;
       seams.push(transform(d, 0.031, 0, 0.048, 0.009, 160));
       seams.push(transform(0, 0.029, d, 160, 0.009, 0.043));
     }
@@ -262,11 +265,9 @@ export class GothicArena {
       finial.name='GothicBossPointedStoneFinial';
       area.add(finial);
     }
-    // Subtle radial engravings on the elevated boss disk.
-    for(let i=0;i<24;i++) {
-      const theta=i/24*Math.PI*2;
-      slabLine(area,'GothicBossFloorRadialSeam',p.engraving,4.4,radius-2.5,theta,x,z,0.06,height+0.1);
-    }
+    // Individual bevelled treads, fine engravings and real joints replace
+    // the previously oversized wheel-like spokes on the boss platform.
+    finishGothicBossSanctum(this.group,p,x,z,radius,height);
   }
 
   private buildGothicCathedralWalls(): void {
@@ -361,11 +362,11 @@ export class GothicArena {
     const material=this.p.blood.clone();
     material.map=map;material.color.setHex(0x8b3034);
     const marks:THREE.Matrix4[]=[];
-    for(let i=0;i<52;i++){
+    for(let i=0;i<22;i++){
       const angle=seeded(i*3+13)*Math.PI*2;
       const radius=28+seeded(i*7+4)*47;
       const px=Math.sin(angle)*radius,pz=Math.cos(angle)*radius;
-      const size=1.3+seeded(i*4+61)*5.2;
+      const size=2.6+seeded(i*4+61)*7.0;
       marks.push(transform(px,0.074,pz,size,1,size*(0.7+seeded(i+19)*1.9),
         seeded(i*13)*Math.PI*2,-Math.PI/2));
     }
