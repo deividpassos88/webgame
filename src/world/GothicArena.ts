@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createGothicPalette, type GothicPalette } from './GothicMaterials';
-import { buildGothicFloorDetail, buildGothicCathedralDetails } from './GothicRefinement';
+import { buildGothicFloorDetail } from './GothicRefinement';
+import { buildGothicFreestandingPillars } from './GothicPillars';
 import { finishGothicBossSanctum } from './GothicBossFinish';
 import { createGothicStormSky } from './GothicSky';
 
@@ -116,9 +117,8 @@ export class GothicArena {
     this.buildRadialSpokes();
     buildGothicFloorDetail(this.group, this.p);
     this.buildBossDais();
-    // Sculpted vaulted bays replace the previous primitive rectangular wall.
-    buildGothicCathedralDetails(this.group, this.p);
-    this.buildDistantRuins();
+    // Open void + free pillars only. No wall, arches, bridges, or ruins.
+    buildGothicFreestandingPillars(this.group, this.p);
     this.buildStains();
   }
 
@@ -268,79 +268,6 @@ export class GothicArena {
     // Individual bevelled treads, fine engravings and real joints replace
     // the previously oversized wheel-like spokes on the boss platform.
     finishGothicBossSanctum(this.group,p,x,z,radius,height);
-  }
-
-  private buildGothicCathedralWalls(): void {
-    const p=this.p;
-    const cathedral=new THREE.Group();
-    cathedral.name='GothicCathedralPerimeter';
-    this.group.add(cathedral);
-
-    // Back vaults are split into readable bays. Dark recesses behind stone
-    // arches add perspective; light enters from left ruined openings.
-    for(let i=0;i<13;i++){
-      const x=(i-6)*12.4;
-      const z=-87.5;
-      stone(cathedral,'GothicBackWallButtress',p.slab,x,15.5,z-0.6,2.1,31,4.6);
-      stone(cathedral,'GothicBackWallMasonry',p.slab,x+6.2,24.0,z-2.2,10.5,14,2.3);
-      stone(cathedral,'GothicShadowedArchRecess',p.relief,x+6.2,12,z-0.95,8.7,23.3,0.6);
-      // Tall pointed arches are formed from two slanted masonry ribs.
-      stone(cathedral,'GothicArcadeJamb',p.border,x+2.45,11.2,z+0.12,0.73,21,0.82);
-      stone(cathedral,'GothicArcadeJamb',p.border,x+9.95,11.2,z+0.12,0.73,21,0.82);
-      const left=stone(cathedral,'GothicPointedArchVoussoir',p.border,
-        x+4.35,24.5,z+0.18,0.78,10.1,0.98);
-      left.rotation.z=-0.42;
-      const right=stone(cathedral,'GothicPointedArchVoussoir',p.border,
-        x+8.05,24.5,z+0.18,0.78,10.1,0.98);
-      right.rotation.z=0.42;
-      stone(cathedral,'GothicVaultedWallCornice',p.darkIron,x+6.2,31.3,z,12.1,0.45,4.0);
-      if(i%2===0) {
-        const crest = new THREE.Mesh(new THREE.OctahedronGeometry(1.1,0),p.darkIron);
-        crest.name='GothicVaultDiamondSigil';
-        crest.scale.set(0.85,1.9,0.25);
-        crest.position.set(x+6.2,16.7,z+0.42);
-        cathedral.add(crest);
-      }
-    }
-    // Huge side flying-buttresses with a distant open valley toward the left.
-    for(const sign of [-1,1]){
-      for(let i=0;i<8;i++) {
-        const z=-72+i*19;
-        const x=sign*84.8;
-        stone(cathedral,'GothicOuterWallPier',p.slab,x,12,z,5.8,24,5.5);
-        stone(cathedral,'GothicPierBase',p.border,x,1.9,z,6.7,3.9,6.5);
-        stone(cathedral,'GothicPierCapital',p.border,x,24.2,z,7.1,1.5,7.1);
-        const top=stone(cathedral,'GothicSidePointedButtress',p.slab,x,30.6,z,2.4,11,2.4);
-        top.rotation.z=sign*0.17;
-        if(i<7 && (sign===1 || i%3!==1)) {
-          stone(cathedral,'GothicFlyingButtress',p.slab,x,22.4,z+9.5,2.5,2.2,15.0);
-          stone(cathedral,'GothicRaisedGalleryParapet',p.border,x,24.5,z+9.5,1.0,2.3,15.0);
-        }
-      }
-    }
-    // Tiered walls visible behind the dais on the back right.
-    // Retired: the oversized artificial crescent arcs obscured the reference floor.
-  }
-
-  private buildDistantRuins():void {
-    const p=this.p;
-    const distant=new THREE.Group();
-    distant.name='GothicRuinedBridgesInMist';
-    this.group.add(distant);
-    const backdrop=[
-      [-130,-182,45],[-157,-214,65],[-112,-254,49],[-220,-203,83]
-    ] as const;
-    for(const [x,z,h] of backdrop){
-      stone(distant,'GothicDistantBrokenTower',p.slab,x,h/2-8,z,13,h,12);
-      stone(distant,'GothicDistantArchWindow',p.relief,x,h/2+4,z+6.2,5.2,h*0.48,0.5);
-      const spire = new THREE.Mesh(new THREE.ConeGeometry(7,24,4),p.slab);
-      spire.name='GothicDistantRuinedSpire';
-      spire.position.set(x,h+3,z);
-      distant.add(spire);
-    }
-    for(let i=0;i<5;i++){
-      stone(distant,'GothicDistantArcadeBridge',p.slab,-195+i*19,28,-205,17,3.5,8);
-    }
   }
 
   private buildStains(): void {
