@@ -1,15 +1,15 @@
 import * as THREE from 'three';
 import type { NavigationObstacle } from './NavigationObstacle';
-import { CelestialArena, CELESTIAL_ARENA_SIZE } from './CelestialArena';
+import { GothicArena, GOTHIC_ARENA_SIZE } from './GothicArena';
 
 /**
- * Level's gameplay interface is preserved while the old dungeon visuals are
- * replaced by Campo dos Deuses. Spawn positions stay inside the square and
+ * Preserves the combat, wave and boss API while replacing the old
+ * celestial arena with the gothic reference layout. Spawn positions stay inside the square and
  * all decorative architecture sits outside the movement limit.
  */
-export class Level extends CelestialArena {
+export class Level extends GothicArena {
   public readonly navigationObstacles: NavigationObstacle[] = [];
-  private readonly size = CELESTIAL_ARENA_SIZE;
+  private readonly size = GOTHIC_ARENA_SIZE;
 
   public getBossSpawnPoint(): THREE.Vector3 {
     return new THREE.Vector3(0, 0, -18);
@@ -76,7 +76,7 @@ export class Level extends CelestialArena {
   }
 
 
-  /** Same Level API as before; celestial lighting is animated by time. */
+  /** Same Level API as before; gothic scenery is static; fighter lighting remains dynamic. */
   public update(time: number, _playerPosition?: THREE.Vector3): void {
     super.update(time);
   }
