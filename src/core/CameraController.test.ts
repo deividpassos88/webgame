@@ -9,16 +9,16 @@ describe('CameraController dead zone', () => {
 
     controller.update(new THREE.Vector3(2, 0, 2), 1);
 
-    // Default zoom 1.1 frames both the player and the open celestial horizon.
+    // Default zoom 1.1 frames the gothic stonework and the player.
     expect(controller.camera.position.x).toBeCloseTo(0);
-    expect(controller.camera.position.z).toBeCloseTo(52 * 1.1);
-    expect(controller.camera.position.y).toBeCloseTo(24 * 1.1);
+    expect(controller.camera.position.z).toBeCloseTo(43 * 1.1);
+    expect(controller.camera.position.y).toBeCloseTo(21 * 1.1);
     expect(controller.camera.fov).toBe(55);
     // The audience is framed in the upper portion without sacrificing VFX projection.
     const audience = new THREE.Vector3(0, 5, -29).project(controller.camera);
     expect(audience.y).toBeLessThan(1);
     expect(audience.y).toBeGreaterThan(0);
-    // The opening between north galleries reveals elevated distant temples.
+    // Rear gothic architecture remains visible across the arena.
     const distantTemple = new THREE.Vector3(0, 24, -116).project(controller.camera);
     expect(distantTemple.y).toBeLessThan(1);
     expect(distantTemple.y).toBeGreaterThan(-1);
@@ -38,8 +38,8 @@ describe('CameraController dead zone', () => {
     // dead zone 3: followTarget fica em (2, 0, -2)
     expect(controller.followTargetX()).toBeCloseTo(2);
     expect(controller.camera.position.x).toBeCloseTo(2);
-    // câmera z = followTarget(-2) + offset(52) * zoom(1.10)
-    expect(controller.camera.position.z).toBeCloseTo(-2 + 52 * 1.1);
+    // câmera z = followTarget(-2) + offset(43) * zoom(1.10)
+    expect(controller.camera.position.z).toBeCloseTo(-2 + 43 * 1.1);
   });
 
   it('clamps player zoom but allows free zoom in admin mode', () => {
