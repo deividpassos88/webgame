@@ -54,11 +54,11 @@ export function createCelestialMarble(): THREE.MeshPhysicalMaterial {
     roughness[i] = roughness[i + 1] = roughness[i + 2] = r;
     roughness[i + 3] = 255;
   }
-  const map = surfaceTexture(albedo, size, true, 3);
+  const map = surfaceTexture(albedo, size, true, 18);
   map.name = 'CelestialMarblePBRAlbedo';
-  const bumpMap = surfaceTexture(heights, size, false, 3);
+  const bumpMap = surfaceTexture(heights, size, false, 18);
   bumpMap.name = 'CelestialMarbleMicroRelief';
-  const roughnessMap = surfaceTexture(roughness, size, false, 3);
+  const roughnessMap = surfaceTexture(roughness, size, false, 18);
   roughnessMap.name = 'CelestialMarblePolishedRoughness';
   return new THREE.MeshPhysicalMaterial({
     color: 0xf4f3f2,
