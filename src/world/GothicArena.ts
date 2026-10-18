@@ -134,15 +134,10 @@ export class GothicArena {
     for (let k = -16; k <= 16; k++) {
       const d = k * 5;
       seams.push(transform(d, 0.031, 0, 0.048, 0.009, 160));
-      for (let j = -16; j <= 16; j++) {
-        const z = j * 5;
-        seams.push(transform(0, 0.029, z, 160, 0.009, 0.043));
-      }
+      seams.push(transform(0, 0.029, d, 160, 0.009, 0.043));
     }
-    // Avoid duplicated horizontal lines from the nested loop.
-    const unique = seams.slice(0, 33).concat(seams.filter((_,i) => i >= 33 && (i - 33) % 33 === 0));
     instanced(this.group, 'GothicChiselledFloorJoints',
-      new THREE.BoxGeometry(1,1,1), p.relief, unique);
+      new THREE.BoxGeometry(1,1,1), p.relief, seams);
   }
 
   private buildEngravedCombatCircle(): void {
@@ -222,7 +217,8 @@ export class GothicArena {
     const area = new THREE.Group();
     area.name = 'GothicRaisedBossSanctum';
     this.group.add(area);
-    const a = Math.atan2(-z, -x);
+    // Extrusion rotates local Y into negative world Z: orient semicircle toward the player.
+    const a = Math.atan2(z, -x);
     const start = a - Math.PI/2;
     // Four physical semi-circular steps, 17cm each, matching the reference.
     // They face the center and never change the flat wave-spawn surfaces.
