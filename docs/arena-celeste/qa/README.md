@@ -18,3 +18,15 @@ Para regerar:
 npm run dev                      # laboratório em http://localhost:5173
 node tools/capture-arena.mjs http://127.0.0.1:5173 docs/arena-celeste/qa
 ```
+
+
+## v2 (revisão após reprovação)
+
+As capturas desta pasta foram refeitas com a câmera recalibrada
+(`(0, 37,86, 63,16) → (0, −4,09, 0)`, fov 58°) e com o piso re-retificado a
+partir do quadrilátero corrigido (`fl 89,851 · fr 1163,851 · bl 330,420 ·
+br 925,420`). `comparativo-ref1.png` / `comparativo-ref2.png` são lado a lado
+(referência | reconstrução), 2508 × 1254.
+
+Pendências visuais desta rodada estão listadas na seção 8.3 da especificação
+(tribunas, céu e relevo da fachada).

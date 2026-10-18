@@ -7,6 +7,7 @@ import {
   createCypressParts,
   createRockGeometry,
 } from './CelestialGeometry';
+import { makeSkyGradientTexture } from './CelestialTextures';
 import type { CelestialMaterials } from './CelestialMaterials';
 
 /**
@@ -38,7 +39,7 @@ const SKY_FRAGMENT = /* glsl */ `
   void main() {
     vec3 direction = normalize(vDirection);
     float height = direction.y;
-    vec3 color = mix(horizonColor, topColor, smoothstep(-0.02, 0.34, height));
+    vec3 color = mix(horizonColor, topColor, smoothstep(-0.01, 0.045, height));
     color = mix(bottomColor, color, smoothstep(-0.2, 0.01, height));
 
     float sunAmount = max(dot(direction, normalize(sunDirection)), 0.0);
@@ -66,15 +67,14 @@ interface IslandSpec {
 }
 
 const ISLANDS: readonly IslandSpec[] = [
-  { x: 78, y: 44, z: -215, scale: 0.92, rotation: 0.18, kind: 'temple', seed: 11 },
-  { x: -118, y: 34, z: -185, scale: 0.8, rotation: -0.32, kind: 'temple', seed: 23 },
-  { x: 30, y: 64, z: -360, scale: 1.8, rotation: 0.08, kind: 'temple', seed: 41 },
-  { x: -168, y: 62, z: -290, scale: 1.15, rotation: 0.45, kind: 'rotunda', seed: 57 },
-  { x: 168, y: 58, z: -305, scale: 1.0, rotation: -0.4, kind: 'temple', seed: 71 },
-  { x: -132, y: -18, z: -196, scale: 0.9, rotation: 0.6, kind: 'rock', seed: 83 },
-  { x: 150, y: -26, z: -228, scale: 0.7, rotation: 1.2, kind: 'rock', seed: 97 },
-  { x: -240, y: 88, z: -400, scale: 1.5, rotation: 0.3, kind: 'rock', seed: 109 },
-  { x: 196, y: 50, z: -300, scale: 1.15, rotation: 0.2, kind: 'rotunda', seed: 127 },
+  { x: -18, y: 62, z: -262, scale: 2.2, rotation: 0.14, kind: 'temple', seed: 41 },
+  { x: 96, y: 54, z: -330, scale: 1.25, rotation: -0.4, kind: 'rotunda', seed: 71 },
+  { x: -120, y: 46, z: -300, scale: 1.05, rotation: 0.45, kind: 'rotunda', seed: 57 },
+  { x: -58, y: 26, z: -190, scale: 0.52, rotation: 0.6, kind: 'rock', seed: 83 },
+  { x: 128, y: 18, z: -215, scale: 0.44, rotation: 1.2, kind: 'rock', seed: 97 },
+  { x: -210, y: 34, z: -330, scale: 0.6, rotation: 0.9, kind: 'rock', seed: 139 },
+  { x: 220, y: 40, z: -350, scale: 0.8, rotation: 0.3, kind: 'temple', seed: 109 },
+  { x: -300, y: 24, z: -380, scale: 0.7, rotation: 0.8, kind: 'rock', seed: 151 },
 ];
 
 export class CelestialSky {
@@ -87,6 +87,7 @@ export class CelestialSky {
   private cloudSeaMaterial!: THREE.MeshBasicMaterial;
   private readonly waterMist: { sprite: THREE.Sprite; base: THREE.Vector2 }[] = [];
   private readonly sunSprite: THREE.Sprite;
+  private domeMaterial?: THREE.MeshBasicMaterial;
 
   public constructor(materials: CelestialMaterials) {
     this.materials = materials;
@@ -106,24 +107,20 @@ export class CelestialSky {
   }
 
   private createDome(): THREE.Mesh {
-    const material = new THREE.ShaderMaterial({
-      uniforms: {
-        topColor: { value: new THREE.Color(0x1f6cc4) },
-        horizonColor: { value: new THREE.Color(0xdceefb) },
-        bottomColor: { value: new THREE.Color(0xeef7fd) },
-        sunColor: { value: new THREE.Color(PALETTE.sun) },
-        sunDirection: { value: this.sunDirection.clone() },
-      },
-      vertexShader: SKY_VERTEX,
-      fragmentShader: SKY_FRAGMENT,
+    // Textura em vez de shader: o gradiente tem de ficar idêntico em qualquer
+    // GPU (o tone mapping do lab lavava o azul do shader).
+    const material = new THREE.MeshBasicMaterial({
+      map: makeSkyGradientTexture(),
       side: THREE.BackSide,
       depthWrite: false,
       fog: false,
+      toneMapped: false,
     });
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(800, 32, 24), material);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(800, 48, 32), material);
     dome.name = 'celestial-sky-dome';
     dome.renderOrder = -10;
     dome.frustumCulled = false;
+    this.domeMaterial = material;
     return dome;
   }
 
@@ -140,49 +137,56 @@ export class CelestialSky {
     const group = new THREE.Group();
     group.name = 'celestial-clouds';
     const rand = createSeededRandom(0xc10d5);
-    for (let i = 0; i < 34; i++) {
-      const angle = rand() * Math.PI * 2;
-      const radius = 260 + rand() * 420;
-      const x = Math.cos(angle) * radius;
-      const z = Math.sin(angle) * radius;
-      // Nuvens concentradas perto do horizonte: o topo do céu fica azul.
-      const y = -26 + rand() * 52 - Math.abs(Math.sin(angle)) * 12;
+    const puff = (x: number, y: number, z: number, s: number, flat = 0.5) => {
       const sprite = new THREE.Sprite(this.materials.cloud);
       sprite.position.set(x, y, z);
-      const scale = 90 + rand() * 130;
-      sprite.scale.set(scale * (1.35 + rand() * 0.5), scale * (0.5 + rand() * 0.28), 1);
+      sprite.scale.set(s, s * flat, 1);
       sprite.renderOrder = -6;
       group.add(sprite);
       this.clouds.push(sprite);
+    };
+    // Cúmulos abaixo da arena: a ilha flutua sobre um mar de nuvens.
+    for (let i = 0; i < 14; i++) {
+      const angle = rand() * Math.PI * 2;
+      const radius = 95 + rand() * 260;
+      puff(Math.cos(angle) * radius, -62 + rand() * 24, Math.sin(angle) * radius, 14 + rand() * 24, 0.45);
     }
-    // Faixa alta de nuvens atrás das ilhas (ref 1: cúmulos acima do horizonte).
-    for (const item of [
-      { x: -150, y: 74, z: -420, s: 230 },
-      { x: 210, y: 92, z: -430, s: 250 },
-      { x: 60, y: 128, z: -470, s: 210 },
+    // Banco médio: preenche o fundo atrás do anel, entre a arena e as ilhas.
+    for (let i = 0; i < 22; i++) {
+      const angle = -Math.PI * 0.95 + rand() * Math.PI * 1.9;
+      const radius = 230 + rand() * 260;
+      puff(Math.cos(angle) * radius, -54 + rand() * 26, Math.sin(angle) * radius - 70, 24 + rand() * 30, 0.5);
+    }
+    // Muralha de cúmulos na faixa média: substitui o plano do mar de nuvens.
+    for (let i = 0; i < 26; i++) {
+      const angle = -Math.PI * 0.95 + rand() * Math.PI * 1.9;
+      const radius = 160 + rand() * 220;
+      puff(Math.cos(angle) * radius, -86 + rand() * 34, Math.sin(angle) * radius - 45, 26 + rand() * 36, 0.55);
+    }
+    // Grandes bancos de cúmulos emoldurando as ilhas (ref 1).
+    for (const b of [
+      { x: -250, y: -34, z: -330, s: 120 },
+      { x: -110, y: -22, z: -360, s: 96 },
+      { x: 160, y: -30, z: -350, s: 110 },
+      { x: 290, y: -18, z: -390, s: 88 },
+      { x: 30, y: -46, z: -300, s: 130 },
     ]) {
-      const sprite = new THREE.Sprite(this.materials.cloud);
-      sprite.position.set(item.x, item.y, item.z);
-      sprite.scale.set(item.s * 1.4, item.s * 0.62, 1);
-      sprite.renderOrder = -6;
-      group.add(sprite);
-      this.clouds.push(sprite);
+      puff(b.x, b.y, b.z, b.s, 0.62);
     }
-    // Cúmulos altos emoldurando a ilha colossal (ref 1).
-    const crown = [
-      { x: 12, y: 40, z: -330, s: 250 },
-      { x: -130, y: 30, z: -340, s: 280 },
-      { x: 190, y: 46, z: -350, s: 300 },
-      { x: 96, y: 6, z: -260, s: 180 },
-      { x: -66, y: -6, z: -250, s: 165 },
-    ];
-    for (const item of crown) {
-      const sprite = new THREE.Sprite(this.materials.cloud);
-      sprite.position.set(item.x, item.y, item.z);
-      sprite.scale.set(item.s, item.s * 0.48, 1);
-      sprite.renderOrder = -6;
-      group.add(sprite);
-      this.clouds.push(sprite);
+    // Coroa de cúmulos altos contra o azul (topo do quadro, ref 1).
+    for (let i = 0; i < 12; i++) {
+      const angle = -Math.PI * 0.8 + rand() * Math.PI * 1.6;
+      const radius = 300 + rand() * 240;
+      puff(Math.cos(angle) * radius, -14 + rand() * 18, Math.sin(angle) * radius - 80, 26 + rand() * 26, 0.55);
+    }
+    // Torres altas: como o horizonte fica acima do quadro, são elas que
+    // fecham o fundo e emolduram as ilhas (ref 1).
+    for (const t of [
+      { x: -140, y: 2, z: -380, s: 44 },
+      { x: 118, y: 6, z: -400, s: 50 },
+      { x: 250, y: -16, z: -340, s: 38 },
+    ]) {
+      puff(t.x, t.y, t.z, t.s, 0.62);
     }
     return group;
   }
@@ -192,9 +196,9 @@ export class CelestialSky {
     group.name = 'celestial-cloud-sea';
     this.cloudSeaMaterial = new THREE.MeshBasicMaterial({
       map: this.materials.cloudSeaTexture,
-      color: 0xffffff,
+      color: 0xe9f1fb,
       transparent: true,
-      opacity: 0.98,
+      opacity: 0.9,
       depthWrite: false,
       side: THREE.DoubleSide,
       toneMapped: false,
@@ -202,22 +206,23 @@ export class CelestialSky {
     });
     this.materials.cloudSeaTexture.wrapS = THREE.RepeatWrapping;
     this.materials.cloudSeaTexture.wrapT = THREE.RepeatWrapping;
-    this.materials.cloudSeaTexture.repeat.set(5, 5);
-    const sea = new THREE.Mesh(new THREE.CircleGeometry(1600, 64), this.cloudSeaMaterial);
+    this.materials.cloudSeaTexture.repeat.set(6, 6);
+    const sea = new THREE.Mesh(new THREE.CircleGeometry(1100, 64), this.cloudSeaMaterial);
+    sea.visible = false;
     sea.rotation.x = -Math.PI / 2;
-    sea.position.y = -58;
+    sea.position.y = -270;
     sea.name = 'cloud-sea';
     sea.receiveShadow = false;
     group.add(sea);
 
     const rand = createSeededRandom(0x5ea5);
-    for (let i = 0; i < 20; i++) {
-      const angle = (i / 22) * Math.PI * 2 + rand() * 0.2;
-      const radius = 78 + rand() * 190;
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2 + rand() * 0.3;
+      const radius = 36 + rand() * 40;
       const sprite = new THREE.Sprite(this.materials.cloud);
-      sprite.position.set(Math.cos(angle) * radius, -34 + rand() * 10, Math.sin(angle) * radius);
-      const scale = 40 + rand() * 60;
-      sprite.scale.set(scale * 1.3, scale * 0.5, 1);
+      sprite.position.set(Math.cos(angle) * radius, -46 + rand() * 12, Math.sin(angle) * radius);
+      const scale = 26 + rand() * 30;
+      sprite.scale.set(scale, scale * 0.4, 1);
       sprite.renderOrder = -5;
       group.add(sprite);
       this.clouds.push(sprite);
@@ -233,7 +238,7 @@ export class CelestialSky {
 
     const materials = this.materials;
     const rock = createRockGeometry(spec.seed, 2, 0.52, 0.55);
-    const rockMesh = new THREE.Mesh(rock, materials.rock);
+    const rockMesh = new THREE.Mesh(rock, materials.rockFar);
     const width = 17 * spec.scale;
     const height = 11 * spec.scale;
     rockMesh.scale.set(width, height, width * 0.82);
@@ -280,17 +285,17 @@ export class CelestialSky {
     batch.build(group, { castShadow: false, receiveShadow: false, name: 'island-temple' });
 
     // Cachoeiras: duas por ilha grande, caindo até o mar de nuvens.
-    const fallHeight = 64 + spec.scale * 30;
+    const fallHeight = width * 0.75 + 6;
     for (const side of [-1, 1] as const) {
       const fallWidth = width * (0.16 + (side > 0 ? 0.05 : 0));
       const waterfall = new THREE.Mesh(
         new THREE.PlaneGeometry(fallWidth, fallHeight, 1, 1),
         this.waterfallMaterial
       );
-      waterfall.position.set(side * width * 0.52, topY - fallHeight * 0.45, width * 0.52);
+      waterfall.position.set(side * width * 0.52, topY - fallHeight * 0.5, width * 0.52);
       group.add(waterfall);
       const mist = new THREE.Sprite(materials.cloudHaze);
-      mist.position.set(side * width * 0.52, topY - fallHeight * 0.9, width * 0.6);
+      mist.position.set(side * width * 0.52, topY - fallHeight * 0.95, width * 0.6);
       mist.scale.set(fallWidth * 5, fallWidth * 2.4, 1);
       mist.renderOrder = -3;
       group.add(mist);
@@ -502,5 +507,7 @@ export class CelestialSky {
       }
     });
     this.cloudSeaMaterial.dispose();
+    this.domeMaterial?.map?.dispose();
+    this.domeMaterial?.dispose();
   }
 }

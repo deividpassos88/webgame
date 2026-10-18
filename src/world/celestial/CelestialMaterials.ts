@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import floorUrl from '../../assets/celestial/floor-albedo.png?url';
+import bannerFrontUrl from '../../assets/celestial/banner-front.png?url';
+import bannerAlphaUrl from '../../assets/celestial/banner-alpha.png?url';
+import crowdUrl from '../../assets/celestial/crowd.png?url';
 import { PALETTE } from './CelestialConfig';
 import {
   makeBannerTexture,
@@ -20,6 +24,12 @@ import {
  * arquibancadas, ilhas e bandeiras; `dispose` libera texturas de uma vez.
  */
 export class CelestialMaterials {
+  /** Piso da referência (albedo retificado, sem iluminação: cor exata). */
+  public readonly floorReference: THREE.MeshBasicMaterial;
+  /** Bandeira recortada da referência, com alpha próprio. */
+  public readonly bannerCloth: THREE.MeshBasicMaterial;
+  /** Multidão das tribunas (recorte da referência, tileável). */
+  public readonly crowdReference: THREE.MeshBasicMaterial;
   public readonly marbleFloor: THREE.MeshPhysicalMaterial;
   public readonly marblePolished: THREE.MeshStandardMaterial;
   public readonly marbleTrim: THREE.MeshStandardMaterial;
@@ -36,7 +46,11 @@ export class CelestialMaterials {
   public readonly banner: THREE.MeshStandardMaterial;
   public readonly limestone: THREE.MeshStandardMaterial;
   public readonly limestoneBlock: THREE.MeshStandardMaterial;
+  /** Pedra da fachada: cinza-azulada, não bege. */
+  public readonly facadeStone: THREE.MeshStandardMaterial;
   public readonly rock: THREE.MeshStandardMaterial;
+  /** Rocha distante das ilhas: clara e azulada, como na ref 1. */
+  public readonly rockFar: THREE.MeshStandardMaterial;
   public readonly rockDark: THREE.MeshStandardMaterial;
   public readonly moss: THREE.MeshStandardMaterial;
   public readonly foliage: THREE.MeshStandardMaterial;
@@ -51,6 +65,42 @@ export class CelestialMaterials {
   private readonly textures: THREE.Texture[] = [];
 
   public constructor() {
+    const loader = new THREE.TextureLoader();
+    const load = (url: string) => {
+      const texture = loader.load(url);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = 8;
+      return this.track(texture);
+    };
+    const floorMap = load(floorUrl);
+    floorMap.wrapS = THREE.ClampToEdgeWrapping;
+    floorMap.wrapT = THREE.ClampToEdgeWrapping;
+    const bannerMap = load(bannerFrontUrl);
+    const bannerAlpha = load(bannerAlphaUrl);
+    const crowdMap = load(crowdUrl);
+    crowdMap.wrapS = THREE.RepeatWrapping;
+    crowdMap.wrapT = THREE.ClampToEdgeWrapping;
+    this.floorReference = new THREE.MeshBasicMaterial({
+      map: floorMap,
+      toneMapped: false,
+      // O albedo é o próprio quadro de referência: nada de luz por cima.
+      fog: false,
+    });
+    this.bannerCloth = new THREE.MeshBasicMaterial({
+      map: bannerMap,
+      alphaMap: bannerAlpha,
+      transparent: true,
+      alphaTest: 0.35,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+      fog: false,
+    });
+    this.crowdReference = new THREE.MeshBasicMaterial({
+      map: crowdMap,
+      color: 0xb9c2d2,
+      toneMapped: false,
+      fog: false,
+    });
     const marble = this.track(makeMarbleTexture());
     const gold = this.track(makeGoldTexture());
     const enamel = this.track(makeEnamelTexture());
@@ -88,7 +138,7 @@ export class CelestialMaterials {
       envMapIntensity: 0.45,
     });
     this.marbleTrim = new THREE.MeshStandardMaterial({
-      color: PALETTE.marbleLight,
+      color: 0xbdb7b8,
       roughness: 0.5,
       metalness: 0.01,
       envMapIntensity: 0.3,
@@ -101,19 +151,19 @@ export class CelestialMaterials {
     });
     this.gold = new THREE.MeshStandardMaterial({
       map: gold,
-      color: 0xc99a3f,
-      metalness: 0.88,
-      roughness: 0.27,
+      color: 0xd3aa66,
+      metalness: 0.7,
+      roughness: 0.38,
       envMapIntensity: 1.0,
     });
     // Sem mapa: nas incrustações longas (braços, molduras) o mapa de ouro
     // repetia como listras de madeira. Metal sólido lê como ouro polido.
     this.goldInlay = new THREE.MeshStandardMaterial({
       map: gold,
-      color: 0xe8b64a,
-      metalness: 0.86,
-      roughness: 0.24,
-      envMapIntensity: 0.85,
+      color: 0xe3c07a,
+      metalness: 0.62,
+      roughness: 0.38,
+      envMapIntensity: 0.6,
     });
     this.groove = new THREE.MeshStandardMaterial({
       color: 0x6a6158,
@@ -132,9 +182,9 @@ export class CelestialMaterials {
       envMapIntensity: 0.9,
     });
     this.goldDark = new THREE.MeshStandardMaterial({
-      color: 0x9c7526,
-      metalness: 0.95,
-      roughness: 0.42,
+      color: 0xa88544,
+      metalness: 0.8,
+      roughness: 0.45,
       envMapIntensity: 0.6,
     });
     this.enamel = new THREE.MeshStandardMaterial({
@@ -174,12 +224,28 @@ export class CelestialMaterials {
       metalness: 0.02,
       envMapIntensity: 0.22,
     });
+    this.facadeStone = new THREE.MeshStandardMaterial({
+      map: limestoneRepeat,
+      color: 0x868d9f,
+      roughness: 0.92,
+      metalness: 0.02,
+      envMapIntensity: 0.2,
+    });
     this.rock = new THREE.MeshStandardMaterial({
       map: rockRepeat,
       color: 0xd3c8b6,
       roughness: 0.95,
       metalness: 0.02,
       envMapIntensity: 0.12,
+    });
+    this.rockFar = new THREE.MeshStandardMaterial({
+      map: rockRepeat,
+      color: 0xc4cede,
+      emissive: 0x6d86a8,
+      emissiveIntensity: 0.55,
+      roughness: 0.98,
+      metalness: 0,
+      envMapIntensity: 0.2,
     });
     this.rockDark = new THREE.MeshStandardMaterial({
       map: rockRepeat,
@@ -272,10 +338,11 @@ export class CelestialMaterials {
     for (const texture of this.textures) texture.dispose();
     this.textures.length = 0;
     const materials: THREE.Material[] = [
+      this.floorReference, this.bannerCloth, this.crowdReference,
       this.marbleFloor, this.marblePolished, this.marbleTrim, this.ivory,
       this.gold, this.goldInlay, this.groove, this.goldLight, this.goldDark,
       this.enamel, this.sapphire, this.banner,
-      this.limestone, this.limestoneBlock, this.rock, this.rockDark, this.moss,
+      this.limestone, this.limestoneBlock, this.facadeStone, this.rock, this.rockFar, this.rockDark, this.moss,
       this.foliage, this.crowd, this.flame, this.ember, this.waterfall,
       this.cloud, this.cloudHaze, this.sunGlow,
     ];

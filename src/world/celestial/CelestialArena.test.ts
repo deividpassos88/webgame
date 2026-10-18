@@ -85,14 +85,14 @@ describe('Arena Celeste · marchetaria', () => {
 });
 
 describe('Arena Celeste · bandeiras', () => {
-  it('distribui 4 na frente, 3 no fundo e 3 em cada lateral', () => {
+  it('pendura duas bandeiras grandes em cada face da laje', () => {
     const banners = arenaBannerPlacements();
     const front = banners.filter((banner) => banner.z > 0 && banner.rotationY === 0);
     const back = banners.filter((banner) => banner.z < 0 && banner.rotationY === Math.PI);
     const sides = banners.filter((banner) => Math.abs(banner.rotationY) === Math.PI / 2);
-    expect(front).toHaveLength(4);
-    expect(back).toHaveLength(3);
-    expect(sides).toHaveLength(6);
+    expect(front).toHaveLength(2);
+    expect(back).toHaveLength(2);
+    expect(sides).toHaveLength(4);
   });
 
   it('pendura uma bandeira em cada brasseiro interno, virada para a arena', () => {
@@ -110,12 +110,12 @@ describe('Arena Celeste · bandeiras', () => {
     const banners = standBannerPlacements();
     expect(banners.length).toBeGreaterThanOrEqual(10);
     for (const banner of banners) {
-      // Simetria de 180°: para cada bandeira existe a oposta em (-x, -z).
+      // Simetria especular: para cada bandeira existe a oposta em (-x, z).
       const mirrored = banners.find(
         (other) =>
           other !== banner &&
           Math.abs(other.x + banner.x) < 1e-6 &&
-          Math.abs(other.z + banner.z) < 1e-6
+          Math.abs(other.z - banner.z) < 1e-6
       );
       expect(mirrored).toBeDefined();
       // A ponta frontal da tribuna converge e encosta na borda, nunca na área central.

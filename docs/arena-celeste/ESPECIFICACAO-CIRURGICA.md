@@ -289,3 +289,49 @@ Capturas comparativas (referência à esquerda, reconstrução à direita):
 - `docs/arena-celeste/qa/comparativo-ref2.png`
 - `docs/arena-celeste/qa/arena-ref1.png`, `arena-ref2.png`, `arena-overview.png`
 - `artifacts/arena/game-arena-wave2.png` (arena em jogo, wave 2)
+
+---
+
+## 8. Revisão v2 — reconstrução após a reprovação da v1
+
+A v1 foi reprovada ("não ficou igual à imagem"). A v2 refez a câmera, o piso e o
+primeiro plano; o restante (tribunas, céu) segue em aberto.
+
+### 8.1 O que mudou
+
+| Área | Mudança |
+| --- | --- |
+| Câmera `ref1` | Recalibrada por mínimos quadrados sobre os 4 cantos do piso medidos na ref (`fl 89,851 · fr 1163,851 · bl 330,420 · br 925,420`): `(0, 37,86, 63,16) → (0, −4,09, 0)`, **fov 58°**, erro ≈ 0,02. O horizonte fica **acima do quadro** — a ref não tem linha de horizonte visível. |
+| Piso | Textura `floor-albedo.png` re-retificada a partir do quadrilátero corrigido; medalhão ampliado para **r 10,0 / 7,95 / 6,95 m** (o raio de 10,0 casa com a elipse medida: 310 × 160 px). |
+| Fachada | Gola dourada 1,8 → **1,3 m**; mármore 1,95 → 1,75 m; moldura 1,25 → 0,35 m; parede de pedra começa em **−3,5 m**; pilastras e corbelos passaram de ouro para **pedra**; pendente central refeito e esmalte no lugar da ranhura escura. |
+| Bandeiras | 4 por face da laje (frente/fundo/laterais) em vez de 10 no total; largura 5 → **7 m**; suporte a `tip` por bandeira. |
+| Tribunas | Reescritas: agora ficam **atrás das esquinas do fundo, de frente para a câmera** (`±42, −26`, giro 90°), com deck, balaustrada, banco de multidão, colunata, braseiros, bandeiras e saia de rocha. |
+| Céu | Dome com **textura de gradiente** (o shader era lavado pelo tone mapping do lab); mar de nuvens rebaixado para fora do quadro alto; cúmulos reorganizados em três faixas. |
+| Luz | Sol 3,2 → 2,35; hemisférica 0,52 → 0,66; ambiente 0,09 → 0,16; bloom 0,16/1,1 → 0,1/1,35. |
+
+### 8.2 Medições da ref 1 (1254²) usadas no ajuste
+
+- Aresta frontal do piso: **y 851–902**, x **89–1163** (largura 1074 px).
+- Aresta do fundo: x **330–925** em **y 420**.
+- Borda dourada contínua só na aresta frontal (y 858–870); no fundo o ouro aparece apenas nos topos dos plintos (y ≈ 408).
+- Medalhão: caixa **471–781 × 486–667 px** (diâmetro 310 px).
+- Céu: azul no topo (tom médio ≈ `#7fb0dd`), nuvens brancas em toda a faixa, ilhas `#c0c9d2`.
+
+### 8.3 Pendências conhecidas (não atendidas nesta rodada)
+
+1. **Tribunas** ainda lêem como "telhado azul" — a textura de multidão repete como
+   telha e falta a multidão figurada em filas; a colunata e o entablamento têm
+   volume, mas o conjunto não tem a densidade da ref.
+2. **Céu** está azul, mas os cúmulos são "desenhados" (sprites redondos) e as
+   ilhas não têm a escala/posição da ref; a ilha-templo grande ainda não aparece
+   no enquadramento.
+3. **Fachada** clara demais: a ref é cinza-azulada com sombras fortes; falta o
+   relevo profundo dos painéis.
+4. **Luz**: a ref tem sol rasante pela esquerda com sombras longas; a cena está
+   mais plana (ambient/hemisférica altas para compensar a falta de AO).
+5. Sem correspondência exata de **ornamentos** (balaústres torneados, capitéis,
+   dentículos de ouro).
+
+Veredito desta rodada: **composição e primeiro plano convergem** (câmera, piso,
+medalhão, fachada e enquadramento), **tribunas e céu ainda divergem**. Não é
+"exatamente igual" à referência.

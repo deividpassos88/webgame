@@ -668,3 +668,26 @@ export function makeSkyEnvironmentTexture(seed = 0x5bc1): THREE.CanvasTexture {
   texture.mapping = THREE.EquirectangularReflectionMapping;
   return texture;
 }
+
+/**
+ * Gradiente vertical do dome do céu.
+ *
+ * A câmera da ref 1 olha 33,6° para baixo, então só uma faixa estreita em
+ * torno do horizonte aparece no quadro. O gradiente concentra o azul saturado
+ * logo acima da linha do horizonte e clareia abaixo dela, como na referência.
+ */
+export function makeSkyGradientTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = createCanvas(8, 512);
+  const gradient = ctx.createLinearGradient(0, 0, 0, 512);
+  gradient.addColorStop(0.0, '#155ab4');
+  gradient.addColorStop(0.5, '#1b66c2');
+  gradient.addColorStop(0.58, '#2a78cf');
+  gradient.addColorStop(0.64, '#4189d6');
+  gradient.addColorStop(0.69, '#74a9df');
+  gradient.addColorStop(0.73, '#a9cbe9');
+  gradient.addColorStop(0.78, '#d6e8f6');
+  gradient.addColorStop(1.0, '#eef5fb');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 8, 512);
+  return toTexture(canvas);
+}

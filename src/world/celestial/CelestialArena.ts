@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import {
   ARENA,
   ARENA_CAMERAS,
+  FASCIA,
   arenaBannerPlacements,
   cornerGemPositions,
   createSeededRandom,
   brazierPositions,
   enemySpawnPoints,
-  pillarBannerPlacements,
   plinthPositions,
   standBannerPlacements,
   type BannerPlacement,
@@ -109,11 +109,12 @@ export class CelestialArena {
     this.buildFloor(floor);
     this.buildFoundation(floor);
     this.buildPlinths(floor);
-    this.buildBorder(inlays);
-    this.buildMedallion(inlays);
-    this.buildCornerGems(inlays);
-    this.buildBraziers(props);
-    this.buildBenches(props);
+    // O padrão do piso (moldura, medalhão e gemas) vem retificado da própria
+    // referência em `floor-albedo.png`: nenhuma peça procedural por cima.
+    void inlays;
+    // Brasseiros e bancos dentro da arena não existem na ref 1: as chamas da
+    // referência ficam nos pilares das tribunas (ver CelestialTribunes).
+    void props;
     this.buildBanners(banners);
 
     this.tribunes = options.tribunes === false ? null : new CelestialTribunes(this.materials);
@@ -152,240 +153,237 @@ export class CelestialArena {
       new THREE.BoxGeometry(size - 0.04, ARENA.slabThickness, size - 0.04),
       slabMaterial
     );
-    slab.position.y = -ARENA.slabThickness / 2 - 0.005;
+    slab.position.y = -ARENA.slabThickness / 2 - 0.006;
     slab.castShadow = false;
     slab.receiveShadow = true;
     slab.name = 'celestial-slab';
     floor.add(slab);
 
+    // Piso: albedo retificado da referência. É uma textura plana, então vale
+    // de qualquer ângulo — o padrão e os veios não se distorcem.
     const floorMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(size, size),
-      materials.marbleFloor
+      materials.floorReference
     );
     floorMesh.rotation.x = -Math.PI / 2;
-    floorMesh.position.y = 0;
-    floorMesh.receiveShadow = true;
+    floorMesh.position.y = 0.002;
+    floorMesh.receiveShadow = false;
     floorMesh.name = 'celestial-ground';
     floorMesh.userData.isGround = true;
     floor.add(floorMesh);
     this.groundMeshes.push(floorMesh);
     this.floorMesh = floorMesh;
 
-    // Cornija dourada e faixa inferior na face externa da laje.
+    // Borda da laje em três faixas, como na ref 1: gola dourada, faixa de
+    // mármore e moldura dourada saliente.
     const trim = new MeshBatch();
-    for (const z of [-1, 1] as const) {
-      trim.add(
-        new THREE.BoxGeometry(size + 0.7, 0.13, 0.3),
-        materials.goldInlay,
-        new THREE.Matrix4().setPosition(0, -0.065, z * (ARENA.half + 0.04))
-      );
-      trim.add(
-        new THREE.BoxGeometry(size + 0.45, 0.07, 0.24),
-        materials.goldDark,
-        new THREE.Matrix4().setPosition(0, -0.3, z * (ARENA.half + 0.03))
-      );
+    const half = ARENA.half;
+    const bull = FASCIA.bullnoseHeight;
+    const marble = FASCIA.marbleHeight;
+    const molding = FASCIA.moldingHeight;
+    const faces: { axis: 'x' | 'z'; sign: 1 | -1 }[] = [
+      { axis: 'z', sign: 1 }, { axis: 'z', sign: -1 },
+      { axis: 'x', sign: 1 }, { axis: 'x', sign: -1 },
+    ];
+    for (const { axis, sign } of faces) {
+      const along = size + 0.5;
+      const place = (depth: number, height: number, y: number, out: number, material: THREE.Material, geomAlong = along) => {
+        const geometry = axis === 'z'
+          ? new THREE.BoxGeometry(geomAlong, height, depth)
+          : new THREE.BoxGeometry(depth, height, geomAlong);
+        const matrix = new THREE.Matrix4().setPosition(
+          axis === 'x' ? sign * (half + out - depth / 2) : 0,
+          y,
+          axis === 'z' ? sign * (half + out - depth / 2) : 0
+        );
+        trim.add(geometry, material, matrix);
+      };
+      // gola dourada fina (bojo) no topo
+      place(0.42, bull, -bull / 2 - 0.004, FASCIA.bullnoseOut, materials.gold);
+      // faixa de mármore logo abaixo
+      place(0.34, marble, -bull - marble / 2, 0.05, materials.marbleTrim);
+      // filete dourado na base do mármore
+      place(0.4, 0.1, -bull - marble - 0.05, 0.1, materials.goldDark);
+      // cornija de pedra saliente sob o mármore
+      place(0.62, molding, -bull - marble - 0.12 - molding / 2, FASCIA.moldingOut, materials.marbleTrim);
+      place(0.7, 0.12, -bull - marble - 0.14, 0.06, materials.goldLight);
     }
-    for (const x of [-1, 1] as const) {
-      trim.add(
-        new THREE.BoxGeometry(0.3, 0.13, size + 0.7),
-        materials.goldInlay,
-        new THREE.Matrix4().setPosition(x * (ARENA.half + 0.04), -0.065, 0)
-      );
-      trim.add(
-        new THREE.BoxGeometry(0.24, 0.07, size + 0.45),
-        materials.goldDark,
-        new THREE.Matrix4().setPosition(x * (ARENA.half + 0.03), -0.3, 0)
-      );
-    }
-
-    // Curb perimetral: mármore com topo dourado.
-    const curbHalf = ARENA.half - ARENA.curbWidth / 2;
-    for (const z of [-1, 1] as const) {
-      trim.add(
-        new THREE.BoxGeometry(size, ARENA.curbHeight, ARENA.curbWidth),
-        materials.marblePolished,
-        new THREE.Matrix4().setPosition(0, ARENA.curbHeight / 2, z * curbHalf)
-      );
-      trim.add(
-        new THREE.BoxGeometry(size + 0.06, 0.05, ARENA.curbWidth + 0.06),
-        materials.gold,
-        new THREE.Matrix4().setPosition(0, ARENA.curbHeight + 0.02, z * curbHalf)
-      );
-    }
-    for (const x of [-1, 1] as const) {
-      trim.add(
-        new THREE.BoxGeometry(ARENA.curbWidth, ARENA.curbHeight, size),
-        materials.marblePolished,
-        new THREE.Matrix4().setPosition(x * curbHalf, ARENA.curbHeight / 2, 0)
-      );
-      trim.add(
-        new THREE.BoxGeometry(ARENA.curbWidth + 0.06, 0.05, size + 0.06),
-        materials.gold,
-        new THREE.Matrix4().setPosition(x * curbHalf, ARENA.curbHeight + 0.02, 0)
-      );
-    }
-    trim.build(floor, { castShadow: true, receiveShadow: true, name: 'celestial-trim' });
+    trim.build(floor, { castShadow: true, receiveShadow: false, name: 'celestial-trim' });
   }
 
   /**
-   * Fundação sob a laje: bloco de pedra escalonado (a laje "arrancada" da ilha),
-   * com cornija dourada, rocha irregular nos cantos e vegetação pendurada —
-   * a leitura da ref 2, sem virar uma pilha de pedras soltas.
+   * Fundação: a fachada alta da ref 1. Sob a moldura dourada corre uma parede
+   * de pedra de ~17 m com pilastras douradas, corbelos, bandeiras penduradas e
+   * o pendente central em losango; na base, rocha e vegetação.
    */
   private buildFoundation(floor: THREE.Group): void {
     const materials = this.materials;
     const batch = new MeshBatch();
-    const stone = this.cloneWithRepeat(materials.limestoneBlock, 10, 2);
+    const half = ARENA.half;
+    const top = FASCIA.stoneTop;
+    const bottom = FASCIA.stoneBottom;
+    const height = top - bottom;
+    const centerY = (top + bottom) / 2;
+    const stone = this.cloneWithRepeat(materials.facadeStone, 8, 4);
     const stoneDark = this.cloneWithRepeat(materials.rockDark, 4, 2);
 
-    // Bloco principal, afinando para baixo (dois degraus).
     batch.add(
-      new THREE.BoxGeometry(ARENA.size - 1.2, 2.6, ARENA.size - 1.2),
+      new THREE.BoxGeometry(ARENA.size - 0.24, height, ARENA.size - 0.24),
       stone,
-      new THREE.Matrix4().setPosition(0, -1.55, 0)
-    );
-    batch.add(
-      new THREE.BoxGeometry(ARENA.size - 3.4, 2.2, ARENA.size - 3.4),
-      stoneDark,
-      new THREE.Matrix4().setPosition(0, -3.9, 0)
-    );
-    batch.add(
-      new THREE.BoxGeometry(ARENA.size - 1.0, 0.22, ARENA.size - 1.0),
-      materials.goldDark,
-      new THREE.Matrix4().setPosition(0, -2.86, 0)
+      new THREE.Matrix4().setPosition(0, centerY, 0)
     );
 
-    // Rocha irregular só nos cantos (a massa central já é o bloco).
+    const faces: { axis: 'x' | 'z'; sign: 1 | -1 }[] = [
+      { axis: 'z', sign: 1 }, { axis: 'z', sign: -1 },
+      { axis: 'x', sign: 1 }, { axis: 'x', sign: -1 },
+    ];
+    const at = (axis: 'x' | 'z', sign: 1 | -1, along: number, out: number, y: number) =>
+      new THREE.Matrix4().setPosition(
+        axis === 'x' ? sign * (half - 0.12 + out) : along,
+        y,
+        axis === 'z' ? sign * (half - 0.12 + out) : along
+      );
+    const strip = (
+      axis: 'x' | 'z',
+      sign: 1 | -1,
+      w: number,
+      h: number,
+      d: number,
+      along: number,
+      out: number,
+      y: number,
+      material: THREE.Material
+    ) => {
+      const geometry = axis === 'z' ? new THREE.BoxGeometry(w, h, d) : new THREE.BoxGeometry(d, h, w);
+      batch.add(geometry, material, at(axis, sign, along, out, y));
+    };
+
+    for (const { axis, sign } of faces) {
+      // Pilastras de pedra: a referência não tem pilastras douradas na fachada.
+      for (const along of [-18.2, -9.6, 9.6, 18.2]) {
+        strip(axis, sign, 0.7, height - 0.4, 0.34, along, 0.14, centerY, stoneDark);
+        strip(axis, sign, 0.5, height - 0.5, 0.32, along, 0.24, centerY, stone);
+      }
+      // Cornija de pedra no topo e plinto na base.
+      strip(axis, sign, ARENA.size - 0.1, 0.36, 0.5, 0, 0.2, top - 0.2, stone);
+      strip(axis, sign, ARENA.size - 0.1, 0.22, 0.46, 0, 0.16, top - 0.5, stoneDark);
+      strip(axis, sign, ARENA.size - 0.1, 0.7, 0.44, 0, 0.12, bottom + 0.5, stoneDark);
+
+      // Corbelos de pedra sob a cornija: degraus salientes a cada 3,4 m.
+      for (let along = -20.4; along <= 20.5; along += 3.4) {
+        strip(axis, sign, 0.95, 0.95, 0.66, along, 0.3, top - 1.1, stone);
+        strip(axis, sign, 0.66, 0.5, 0.54, along, 0.34, top - 1.72, stoneDark);
+      }
+
+      // Painéis rebaixados entre as pilastras: dão relevo à parede.
+      for (const along of [-14, 0, 14]) {
+        strip(axis, sign, 5.8, height - 4.2, 0.14, along, 0.01, centerY - 0.6, stoneDark);
+        strip(axis, sign, 5.2, height - 5.0, 0.16, along, 0.04, centerY - 0.6, stone);
+      }
+    }
+
+    // Pendente central: placa, haste e losango vazado com losango interno.
+    const vertical = (w: number, h: number, depth: number, bevel: number) =>
+      new THREE.ExtrudeGeometry(diamondShape(w, h), {
+        depth,
+        bevelEnabled: true,
+        bevelThickness: bevel * 0.6,
+        bevelSize: bevel,
+        bevelSegments: 2,
+        curveSegments: 4,
+      });
+    const face = half + 0.1;
+    const pendantAt = (geometry: THREE.BufferGeometry, material: THREE.Material, y: number, z = face) =>
+      batch.add(geometry, material, new THREE.Matrix4().setPosition(0, y, z));
+    pendantAt(vertical(4.6, 1.9, 0.3, 0.1), materials.gold, -1.2, face + 0.22);
+    pendantAt(vertical(3.2, 1.3, 0.26, 0.08), materials.ivory, -1.2, face + 0.36);
+    pendantAt(vertical(1.0, 0.48, 0.24, 0.06), materials.goldInlay, -1.2, face + 0.5);
+    batch.add(
+      new THREE.BoxGeometry(0.62, 2.2, 0.34),
+      materials.gold,
+      new THREE.Matrix4().setPosition(0, -3.2, face + 0.18)
+    );
+    pendantAt(vertical(5.2, 8.4, 0.34, 0.12), materials.gold, -6.6, face + 0.24);
+    pendantAt(vertical(3.8, 6.4, 0.36, 0.1), materials.enamel, -6.6, face + 0.34);
+    pendantAt(vertical(2.4, 2.4, 0.3, 0.08), materials.gold, -6.6, face + 0.5);
+
+    // Rocha e vegetação na base da fachada (a ilha suspensa).
     const rand = createSeededRandom(0xba5e);
-    for (let i = 0; i < 8; i++) {
-      const angle = (i / 8) * Math.PI * 2 + rand() * 0.25;
-      const radius = ARENA.half * (0.78 + rand() * 0.12);
-      const size = 2.2 + rand() * 2.6;
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2 + rand() * 0.3;
+      const radius = half * (0.72 + rand() * 0.18);
+      const size = 3 + rand() * 3.4;
       const outcrop = createRockGeometry(0x1000 + i, 2, 0.55, 0.5);
       const matrix = new THREE.Matrix4()
         .makeRotationY(rand() * Math.PI)
-        .scale(new THREE.Vector3(size, size * 1.25, size))
+        .scale(new THREE.Vector3(size, size * 1.4, size))
         .setPosition(
           Math.cos(angle) * radius,
-          -3.6 - size * 0.8 - rand() * 1.2,
+          bottom - size * 0.7 - rand() * 2,
           Math.sin(angle) * radius
         );
       batch.add(outcrop, materials.rockDark, matrix);
     }
-
-    // Vegetação pendurada na borda inferior, em tufos pequenos (ref 2).
-    for (let i = 0; i < 18; i++) {
-      const angle = (i / 18) * Math.PI * 2 + 0.06;
-      const radius = ARENA.half * 0.985;
+    for (let i = 0; i < 20; i++) {
+      const angle = (i / 20) * Math.PI * 2 + 0.06;
+      const radius = half * 0.99;
       const bush = createBushGeometry(0x3000 + i);
-      const scale = 0.55 + rand() * 0.4;
+      const scale = 0.7 + rand() * 0.6;
       const matrix = new THREE.Matrix4()
         .makeRotationY(angle)
-        .scale(new THREE.Vector3(scale * 1.5, scale, scale * 1.5))
-        .setPosition(Math.cos(angle) * radius, -1.15 - rand() * 0.3, Math.sin(angle) * radius);
+        .scale(new THREE.Vector3(scale * 1.6, scale, scale * 1.6))
+        .setPosition(Math.cos(angle) * radius, bottom - 0.1 - rand() * 0.5, Math.sin(angle) * radius);
       batch.add(bush, materials.moss, matrix);
     }
 
-    // Pendentes nas quatro faces (ref 1: face frontal com medalhão pendurado).
-    const front = ARENA.half;
-    batch.add(
-      new THREE.BoxGeometry(0.34, 0.9, 0.1),
-      materials.goldInlay,
-      new THREE.Matrix4().setPosition(0, -0.55, front + 0.05)
-    );
-    const facePlate = (size: number, depth: number, material: THREE.Material, y: number, z: number) => {
-      const geometry = horizontalPlate(diamondShape(size), depth, 0.03, 0);
-      const matrix = new THREE.Matrix4().makeRotationX(Math.PI / 2).setPosition(0, y, z);
-      batch.add(geometry, material, matrix);
-    };
-    facePlate(1.15, 0.06, materials.goldInlay, -1.16, front + 0.12);
-    facePlate(0.62, 0.05, materials.ivory, -1.16, front + 0.16);
-    facePlate(0.26, 0.04, materials.goldInlay, -1.16, front + 0.19);
-
-    batch.build(floor, { castShadow: false, receiveShadow: true, name: 'celestial-foundation' });
+    batch.build(floor, { castShadow: false, receiveShadow: false, name: 'celestial-foundation' });
   }
 
-  /** Plintos de canto: mármore escalonado, tampa dourada e esmalte azul. */
+  /** Plintos de canto: pedestal de pedra, moldura dourada e tampa de safira. */
   private buildPlinths(floor: THREE.Group): void {
     const materials = this.materials;
     const batch = new MeshBatch();
-    const width = ARENA.plinthWidth;
+    const width = 3.0;
 
     for (const { x, z } of plinthPositions()) {
-      this.navigationObstacles.push({ x, z, radius: width * 0.72 });
+      this.navigationObstacles.push({ x, z, radius: width * 0.66 });
       batch.add(
-        new THREE.BoxGeometry(width + 0.24, 0.28, width + 0.24),
-        materials.marblePolished,
-        new THREE.Matrix4().setPosition(x, 0.14, z)
+        new THREE.BoxGeometry(width + 1.1, 0.26, width + 1.1),
+        materials.facadeStone,
+        new THREE.Matrix4().setPosition(x, 0.13, z)
       );
       batch.add(
-        new THREE.BoxGeometry(width, 0.34, width),
-        materials.ivory,
-        new THREE.Matrix4().setPosition(x, 0.45, z)
-      );
-      batch.add(
-        new THREE.BoxGeometry(width + 0.16, 0.1, width + 0.16),
+        new THREE.BoxGeometry(width + 0.72, 0.18, width + 0.72),
         materials.gold,
-        new THREE.Matrix4().setPosition(x, 0.67, z)
+        new THREE.Matrix4().setPosition(x, 0.35, z)
       );
-      const cap = new THREE.CylinderGeometry(width * 0.52, width * 0.66, 0.28, 4);
-      cap.rotateY(Math.PI / 4);
-      batch.add(cap, materials.gold, new THREE.Matrix4().setPosition(x, 0.86, z));
-      // Tampa de esmalte com moldura dourada e emblema.
       batch.add(
-        new THREE.BoxGeometry(width * 0.68, 0.07, width * 0.68),
-        materials.enamel,
-        new THREE.Matrix4().setPosition(x, 1.035, z)
+        new THREE.BoxGeometry(width + 0.2, 0.62, width + 0.2),
+        materials.facadeStone,
+        new THREE.Matrix4().setPosition(x, 0.75, z)
       );
-      const frame = width * 0.74;
-      for (const [dx, dz] of [[0, 1], [0, -1], [1, 0], [-1, 0]] as const) {
-        batch.add(
-          new THREE.BoxGeometry(
-            dx === 0 ? frame : 0.09,
-            0.07,
-            dz === 0 ? frame : 0.09
-          ),
-          materials.gold,
-          new THREE.Matrix4().setPosition(x + dx * frame * 0.5, 1.04, z + dz * frame * 0.5)
-        );
-      }
-      // Emblema dourado sobre o azul (ref 2): losango vazado + losango central.
-      const emblem = horizontalPlate(diamondShape(width * 0.46), 0.018, 0.012, 1.07);
-      batch.add(emblem, materials.goldInlay, new THREE.Matrix4().setPosition(x, 0, z));
-      const emblemHole = horizontalPlate(diamondShape(width * 0.3), 0.02, 0.008, 1.08);
-      batch.add(emblemHole, materials.enamel, new THREE.Matrix4().setPosition(x, 0, z));
-      const inner = horizontalPlate(diamondShape(width * 0.14), 0.016, 0.008, 1.095);
-      batch.add(inner, materials.goldInlay, new THREE.Matrix4().setPosition(x, 0, z));
-
-      // Estátua de mármore coroando o plinto (refs 1 e 2: figuras nos cantos).
-      this.addStatue(batch, x, 1.12, z);
+      batch.add(
+        new THREE.BoxGeometry(width + 0.5, 0.16, width + 0.5),
+        materials.gold,
+        new THREE.Matrix4().setPosition(x, 1.13, z)
+      );
+      batch.add(
+        new THREE.BoxGeometry(width - 0.15, 0.18, width - 0.15),
+        materials.gold,
+        new THREE.Matrix4().setPosition(x, 1.3, z)
+      );
+      batch.add(
+        new THREE.BoxGeometry(width - 0.75, 0.1, width - 0.75),
+        materials.sapphire,
+        new THREE.Matrix4().setPosition(x, 1.44, z)
+      );
+      batch.add(
+        new THREE.BoxGeometry(width - 0.55, 0.05, width - 0.55),
+        materials.goldLight,
+        new THREE.Matrix4().setPosition(x, 1.5, z)
+      );
     }
     batch.build(floor, { castShadow: true, receiveShadow: true, name: 'celestial-plinths' });
-  }
-
-  /** Silhueta clássica de mármore: manto cônico, tronco, braços e cabeça. */
-  private addStatue(batch: MeshBatch, x: number, baseY: number, z: number): void {
-    const materials = this.materials;
-    const at = (geometry: THREE.BufferGeometry, material: THREE.Material, y: number, scale = 1) => {
-      const matrix = new THREE.Matrix4()
-        .makeScale(scale, scale, scale)
-        .setPosition(x, baseY + y * scale, z);
-      batch.add(geometry, material, matrix);
-    };
-    // Base, manto, tronco, cabeça e coroa dourada — leitura de estátua a 20 m.
-    at(new THREE.CylinderGeometry(0.55, 0.72, 0.24, 12), materials.goldInlay, 0.12);
-    at(new THREE.CylinderGeometry(0.46, 0.66, 1.5, 12), materials.ivory, 0.95);
-    at(new THREE.CylinderGeometry(0.32, 0.46, 0.62, 12), materials.ivory, 1.9);
-    at(new THREE.SphereGeometry(0.38, 12, 10), materials.ivory, 2.5);
-    for (const side of [-1, 1] as const) {
-      const arm = new THREE.CylinderGeometry(0.1, 0.13, 0.86, 8);
-      const matrix = new THREE.Matrix4()
-        .makeRotationZ(side * 0.9)
-        .setPosition(x + side * 0.58, baseY + 1.92, z);
-      batch.add(arm, materials.ivory, matrix);
-    }
-    at(new THREE.ConeGeometry(0.42, 0.34, 10), materials.goldInlay, 2.94);
-    at(new THREE.SphereGeometry(0.2, 8, 6), materials.goldInlay, 3.14);
   }
 
   // ------------------------------------------------------------------ marchetaria
@@ -621,7 +619,6 @@ export class CelestialArena {
   private buildBanners(parent: THREE.Group): void {
     const placements: BannerPlacement[] = [
       ...arenaBannerPlacements(),
-      ...pillarBannerPlacements(),
       ...standBannerPlacements(),
     ];
     const geometries = new Map<string, THREE.BufferGeometry>();
@@ -633,7 +630,7 @@ export class CelestialArena {
         geometry = createBannerGeometry(
           placement.width,
           placement.height,
-          ARENA.bannerTip,
+          placement.tip ?? ARENA.bannerTip,
           seed
         );
         geometries.set(key, geometry);
@@ -642,17 +639,17 @@ export class CelestialArena {
       sway.position.set(placement.x, placement.y, placement.z);
       sway.rotation.y = placement.rotationY;
 
-      const cloth = new THREE.Mesh(geometry, this.materials.banner);
+      const cloth = new THREE.Mesh(geometry, this.materials.bannerCloth);
       cloth.castShadow = false;
       cloth.receiveShadow = false;
       sway.add(cloth);
 
       const rod = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.055, 0.055, placement.width + 0.34, 8),
+        new THREE.CylinderGeometry(0.075, 0.075, placement.width + 0.3, 8),
         this.materials.gold
       );
       rod.rotation.z = Math.PI / 2;
-      rod.position.set(0, 0.04, 0.05);
+      rod.position.set(0, 0.02, 0.02);
       sway.add(rod);
 
       parent.add(sway);
@@ -775,8 +772,9 @@ export class CelestialArena {
     const rand = createSeededRandom(0x4a2e);
     const ring = new THREE.Group();
     ring.name = 'celestial-haze';
-    for (let i = 0; i < 16; i++) {
-      const angle = (i / 16) * Math.PI * 2 + rand() * 0.18;
+    ring.visible = false;
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + rand() * 0.18;
       const radius = 31 + rand() * 12;
       const sprite = new THREE.Sprite(this.materials.cloudHaze);
       sprite.position.set(
@@ -784,7 +782,7 @@ export class CelestialArena {
         -10 - rand() * 7,
         Math.sin(angle) * radius
       );
-      const scale = 26 + rand() * 30;
+      const scale = 16 + rand() * 16;
       sprite.scale.set(scale, scale * 0.42, 1);
       ring.add(sprite);
     }
@@ -792,6 +790,7 @@ export class CelestialArena {
   }
 
   public update(time: number, _playerPosition?: THREE.Vector3): void {
+    this.tribunes?.update(time);
     for (const flame of this.flames) {
       const flicker =
         0.9 + Math.sin(time * 9 + flame.phase) * 0.07 + Math.sin(time * 21 + flame.phase * 2) * 0.04;

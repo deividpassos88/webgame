@@ -380,6 +380,7 @@ function animate() {
   }
 }
 
+window.__debug = { scene, camera, renderer, arena };
 animate();
 // Sinaliza pronto para o capturador (tools/capture-arena.mjs).
 requestAnimationFrame(() => requestAnimationFrame(() => {

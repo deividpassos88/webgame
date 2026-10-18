@@ -22,7 +22,7 @@ export function createCelestialLighting(quality: 'high' | 'medium' | 'low' = 'hi
   const group = new THREE.Group();
   group.name = 'celestial-lighting';
 
-  const sun = new THREE.DirectionalLight(0xffe6bd, 3.2);
+  const sun = new THREE.DirectionalLight(0xffe6bd, 2.35);
   sun.position.set(
     ARENA.sunPosition.x,
     ARENA.sunPosition.y,
@@ -43,13 +43,13 @@ export function createCelestialLighting(quality: 'high' | 'medium' | 'low' = 'hi
   sun.shadow.radius = 3;
   group.add(sun, sun.target);
 
-  const hemisphere = new THREE.HemisphereLight(0x9cc9f5, 0xdcc9a8, 0.52);
+  const hemisphere = new THREE.HemisphereLight(0x9cc9f5, 0xdcc9a8, 0.66);
   group.add(hemisphere);
 
-  const ambient = new THREE.AmbientLight(0xcfe0f7, 0.09);
+  const ambient = new THREE.AmbientLight(0xcfe0f7, 0.16);
   group.add(ambient);
 
-  const fill = new THREE.DirectionalLight(0xbfd9ff, 0.22);
+  const fill = new THREE.DirectionalLight(0xbfd9ff, 0.16);
   fill.position.set(40, 28, -55);
   group.add(fill);
 
@@ -61,7 +61,7 @@ export function createCelestialLighting(quality: 'high' | 'medium' | 'low' = 'hi
     fill,
     update(time: number) {
       // O sol fica fixo (hora dourada); o brilho varia 1% para o cenário vivo.
-      sun.intensity = 3.2 + Math.sin(time * 0.2) * 0.03;
+      sun.intensity = 2.35 + Math.sin(time * 0.2) * 0.02;
     },
     dispose() {
       sun.shadow.map?.dispose();

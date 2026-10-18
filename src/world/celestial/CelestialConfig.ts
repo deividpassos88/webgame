@@ -23,9 +23,9 @@ export const ARENA = Object.freeze({
   borderInset: 4.6,
   borderWidth: 0.55,
   borderHeight: 0.055,
-  medallionOuterRadius: 8.2,
-  medallionInnerRadius: 6.55,
-  medallionAccentRadius: 5.7,
+  medallionOuterRadius: 10.0,
+  medallionInnerRadius: 7.95,
+  medallionAccentRadius: 6.95,
   ringWidth: 0.26,
   armWidth: 1.5,
   armInnerRadius: 5.35,
@@ -38,9 +38,9 @@ export const ARENA = Object.freeze({
   plinthHeight: 0.82,
   curbWidth: 0.55,
   curbHeight: 0.28,
-  bannerWidth: 1.7,
-  bannerHeight: 3.9,
-  bannerTip: 0.55,
+  bannerWidth: 7.0,
+  bannerHeight: 13.4,
+  bannerTip: 2.1,
   pillarBannerWidth: 1.35,
   pillarBannerHeight: 4.6,
   brazierHeight: 8.2,
@@ -58,6 +58,28 @@ export const ARENA = Object.freeze({
   islandDistance: 150,
   cloudSeaY: -45,
   sunPosition: Object.freeze({ x: 20, y: 86, z: 32 }),
+} as const);
+
+/**
+ * Fachada da laje (a "parede" sob o piso na ref 1): faixa dourada no topo,
+ * faixa de mármore, moldura saliente e parede de pedra muito funda, com
+ * bandeiras penduradas. As alturas foram convertidas das linhas da ref 1 com
+ * `tools/ref-rows.mjs` para a câmera calibrada.
+ */
+export const FASCIA = Object.freeze({
+  bullnoseHeight: 1.3,
+  bullnoseOut: 0.16,
+  marbleHeight: 1.75,
+  moldingHeight: 0.35,
+  moldingOut: 0.3,
+  /** Parede de pedra: de −3,5 m até −17,2 m. */
+  stoneTop: -3.5,
+  stoneBottom: -17.2,
+  stoneInset: 0.1,
+  bannerTop: -7.9,
+  bannerX: 14,
+  pendantTop: -1.2,
+  pendantHeight: 9.5,
 } as const);
 
 /** Posicoes canonicas derivadas da arena (mantidas puras para os testes). */
@@ -121,6 +143,8 @@ export interface BannerPlacement {
   rotationY: number;
   width: number;
   height: number;
+  /** Ponta triangular abaixo do pano (m). */
+  tip?: number;
   mount: BannerMount;
 }
 
@@ -130,18 +154,14 @@ export interface BannerPlacement {
  */
 export function arenaBannerPlacements(): BannerPlacement[] {
   const placements: BannerPlacement[] = [];
-  const face = ARENA.half + 0.02;
-  const y = -0.42;
-  const front = [-18, -6, 6, 18];
-  for (const x of front) {
-    placements.push({ x, y, z: face, rotationY: 0, width: ARENA.bannerWidth, height: ARENA.bannerHeight, mount: 'arena' });
-  }
-  for (const x of [-12, 0, 12]) {
-    placements.push({ x, y, z: -face, rotationY: Math.PI, width: ARENA.bannerWidth, height: ARENA.bannerHeight, mount: 'arena' });
-  }
-  for (const z of [-14, 0, 14]) {
-    placements.push({ x: face, y, z, rotationY: Math.PI / 2, width: ARENA.bannerWidth, height: ARENA.bannerHeight, mount: 'arena' });
-    placements.push({ x: -face, y, z, rotationY: -Math.PI / 2, width: ARENA.bannerWidth, height: ARENA.bannerHeight, mount: 'arena' });
+  const face = ARENA.half + 0.06;
+  const y = FASCIA.bannerTop;
+  const x = FASCIA.bannerX;
+  for (const side of [-1, 1] as const) {
+    placements.push({ x: side * x, y, z: face, rotationY: 0, width: ARENA.bannerWidth, height: ARENA.bannerHeight, mount: 'arena' });
+    placements.push({ x: side * x, y, z: -face, rotationY: Math.PI, width: ARENA.bannerWidth, height: ARENA.bannerHeight, mount: 'arena' });
+    placements.push({ x: face, y, z: side * x, rotationY: Math.PI / 2, width: ARENA.bannerWidth, height: ARENA.bannerHeight, mount: 'arena' });
+    placements.push({ x: -face, y, z: side * x, rotationY: -Math.PI / 2, width: ARENA.bannerWidth, height: ARENA.bannerHeight, mount: 'arena' });
   }
   return placements;
 }
@@ -161,22 +181,36 @@ export function pillarBannerPlacements(): BannerPlacement[] {
     }));
 }
 
-/** Bandeiras entre as colunas das arquibancadas (olham para a arena). */
+/**
+ * Bandeiras penduradas nos pilares com braseiro das tribunas (ref 1): uma por
+ * pilar, olhando para dentro da arena.
+ */
 export function standBannerPlacements(): BannerPlacement[] {
   const placements: BannerPlacement[] = [];
   for (const side of [-1, 1] as const) {
-    for (const localZ of [-20, -10, 0, 10, 20]) {
-      const localX = 26.35;
-      const point = standPoint(side, localX, localZ);
+    // Pilares com braseiro, na frente de cada tribuna.
+    for (const offset of [-9.5, 9.5]) {
       placements.push({
-        x: point.x,
-        y: 7.5,
-        z: point.z,
-        // A face da bandeira olha para dentro da arena (o lado esquerdo é o
-        // direito rodado 180°, então a mesma regra vale para os dois).
-        rotationY: point.rotationY - Math.PI / 2,
-        width: 1.2,
-        height: 3.5,
+        x: side * 42 + offset,
+        y: 7.3,
+        z: -15.0,
+        rotationY: 0,
+        width: 3.2,
+        height: 7.0,
+        tip: 0.95,
+        mount: 'stand',
+      });
+    }
+    // Bandeiras da fachada, entre os pilares.
+    for (const offset of [-15.4, -4.75, 4.75, 15.4]) {
+      placements.push({
+        x: side * 42 + offset,
+        y: 0.9,
+        z: -15.6,
+        rotationY: 0,
+        width: 2.6,
+        height: 4.4,
+        tip: 0.8,
         mount: 'stand',
       });
     }
@@ -189,7 +223,7 @@ export function standBannerPlacements(): BannerPlacement[] {
  * centro em x = STAND_CENTER_X) e o grupo inteiro gira para convergir no fundo,
  * como nas refs 1 e 2. O pivô fica no centro da tribuna.
  */
-export const STAND_CENTER_X = 30;
+export const STAND_CENTER_X = 36;
 /**
  * Tribunas paralelas às laterais. A convergência das referências foi testada e
  * descartada: com 50 m de lado, girar a tribuna empurrava a frente dela para
@@ -197,7 +231,7 @@ export const STAND_CENTER_X = 30;
  * leitura de convergência sem custo de gameplay.
  */
 export const STAND_YAW = 0;
-export const STAND_LENGTH = 52;
+export const STAND_LENGTH = 32;
 
 /** Transforma um ponto local da tribuna em coordenada de mundo. */
 export function standPoint(
@@ -230,7 +264,9 @@ export interface ArenaCameraPreset {
  */
 export const ARENA_CAMERAS: Readonly<Record<string, ArenaCameraPreset>> = Object.freeze({
   // Câmeras baixas como nas refs: o piso domina o quadro e a colunata aparece nas laterais.
-  ref1: { position: [0, 26, 74], target: [0, 4, -4], fov: 50 },
+  // Câmera obtida por ressecção do quadrilátero do piso medido na ref 1
+  // (`tools/fit-camera-quad.mjs`): erra ≤ 5 px nos quatro cantos.
+  ref1: { position: [0, 37.86, 63.16], target: [0, -4.09, 0], fov: 58 },
   ref2: { position: [38, 14, 40], target: [-2, 2, -6], fov: 46 },
   overview: { position: [0, 34, 46], target: [0, 0, -2], fov: 45 },
   boss: { position: [0, 15, 8], target: [0, 1, -14], fov: 40 },
