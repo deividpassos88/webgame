@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CELESTIAL_HALF } from '../world/CelestialArena';
 import type { RegularEnemyVisual } from '../waves/EnemyAssetStore';
 import {
   ENEMY_ATTACK_DURATION,
@@ -1460,8 +1461,8 @@ export class Enemy {
     }
     away.normalize();
     this.root.position.addScaledVector(away, ENEMY_HIT_KNOCKBACK_METERS);
-    this.root.position.x = THREE.MathUtils.clamp(this.root.position.x, -22, 22);
-    this.root.position.z = THREE.MathUtils.clamp(this.root.position.z, -22, 22);
+    this.root.position.x = THREE.MathUtils.clamp(this.root.position.x, -CELESTIAL_HALF + 2, CELESTIAL_HALF - 2);
+    this.root.position.z = THREE.MathUtils.clamp(this.root.position.z, -CELESTIAL_HALF + 2, CELESTIAL_HALF - 2);
   }
 
   private tickHitStagger(delta: number): void {
