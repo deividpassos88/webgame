@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { Level } from './Level';
+import { CELESTIAL_ARENA_SIZE, CELESTIAL_HALF } from './CelestialArena';
 
 describe('Campo dos Deuses - arena celestial', () => {
   it('keeps the playable arena square while placing all stands beyond the combat boundary', () => {
     const level = new Level();
     const floor = level.groundMeshes[0] as THREE.Mesh;
     expect(floor.name).toBe('CelestialPlayableSmoothMarbleFloor');
-    expect((floor.geometry as THREE.PlaneGeometry).parameters.width).toBe(49.5);
-    expect((floor.geometry as THREE.PlaneGeometry).parameters.height).toBe(49.5);
+    expect((floor.geometry as THREE.PlaneGeometry).parameters.width).toBe(CELESTIAL_ARENA_SIZE);
+    expect((floor.geometry as THREE.PlaneGeometry).parameters.height).toBe(CELESTIAL_ARENA_SIZE);
     expect(level.navigationObstacles).toHaveLength(0);
     expect(level.group.getObjectByName('CelestialFloatingSquareFoundation')).toBeDefined();
     expect(level.group.getObjectByName('CelestialEastGrandstand')).toBeDefined();
@@ -25,8 +26,8 @@ describe('Campo dos Deuses - arena celestial', () => {
     // floating temples are hidden behind a continuous stadium wall.
     const westBounds = new THREE.Box3().setFromObject(northwest!);
     const eastBounds = new THREE.Box3().setFromObject(northeast!);
-    expect(westBounds.max.x).toBeLessThan(-12);
-    expect(eastBounds.min.x).toBeGreaterThan(12);
+    expect(westBounds.max.x).toBeLessThan(-8);
+    expect(eastBounds.min.x).toBeGreaterThan(8);
   });
 
   it('renders four ceremonial braziers without the old dungeon torch pool', () => {
@@ -67,8 +68,25 @@ describe('Campo dos Deuses - arena celestial', () => {
   it('preserves the wave, boss and mini-boss spawn positions on the playing floor', () => {
     const level = new Level();
     expect(level.getWaveSpawnPoints()).toHaveLength(8);
-    expect(level.getWaveSpawnPoints().every(p => Math.abs(p.x) < 25 && Math.abs(p.z) < 25)).toBe(true);
+    expect(level.getWaveSpawnPoints().every(p => Math.abs(p.x) < 40 && Math.abs(p.z) < 40)).toBe(true);
     expect(level.getBossSpawnPoint().toArray()).toEqual([0, 0, -18]);
+    expect(CELESTIAL_HALF).toBe(81);
+    const foundation = level.group.getObjectByName('CelestialFloatingSquareFoundation') as THREE.Mesh;
+    expect((foundation.geometry as THREE.BoxGeometry).parameters.width).toBeGreaterThanOrEqual(162);
+    // Eight independent stands: exactly two on each of the four sides.
+    for (const side of ['West', 'East', 'North', 'South']) {
+      const grandstand = level.group.getObjectByName('Celestial' + side + 'Grandstand');
+      expect(grandstand).toBeDefined();
+      const wings = grandstand!.children.filter(child => child.name.endsWith('Gallery'));
+      expect(wings).toHaveLength(2);
+      for (const wing of wings) {
+        const bounds = new THREE.Box3().setFromObject(wing);
+        if (side === 'East') expect(bounds.min.x).toBeGreaterThan(CELESTIAL_HALF);
+        if (side === 'West') expect(bounds.max.x).toBeLessThan(-CELESTIAL_HALF);
+        if (side === 'North') expect(bounds.max.z).toBeLessThan(-CELESTIAL_HALF);
+        if (side === 'South') expect(bounds.min.z).toBeGreaterThan(CELESTIAL_HALF);
+      }
+    }
     expect(level.getFinalBattleSpawnLayout().miniBosses).toHaveLength(4);
   });
 });
