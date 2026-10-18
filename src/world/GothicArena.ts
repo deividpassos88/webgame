@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createGothicPalette, type GothicPalette } from './GothicMaterials';
+import { buildGothicFloorDetail, buildGothicCathedralDetails } from './GothicRefinement';
 
 /**
  * Ruined Gothic Coliseum / reference 20261018.
@@ -110,8 +111,10 @@ export class GothicArena {
     this.buildFloor();
     this.buildEngravedCombatCircle();
     this.buildRadialSpokes();
+    buildGothicFloorDetail(this.group, this.p);
     this.buildBossDais();
-    this.buildGothicCathedralWalls();
+    // Sculpted vaulted bays replace the previous primitive rectangular wall.
+    buildGothicCathedralDetails(this.group, this.p);
     this.buildDistantRuins();
     this.buildStains();
   }
@@ -315,10 +318,7 @@ export class GothicArena {
       }
     }
     // Tiered walls visible behind the dais on the back right.
-    for(const rad of [66,71,76]){
-      const platform=ring(cathedral,'GothicRearStoneTerrace',p.slab,0,-10,rad,rad+1.7,0.30,Math.PI*0.98,Math.PI*0.75);
-      platform.position.y=0.055;
-    }
+    // Retired: the oversized artificial crescent arcs obscured the reference floor.
   }
 
   private buildDistantRuins():void {
