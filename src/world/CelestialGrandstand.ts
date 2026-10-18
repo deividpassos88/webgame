@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createCelestialHangingBanner } from './CelestialFabric';
 import type { CelestialArtMaterials } from './CelestialArchitecturalDetails';
 
 /** Two independent stands on EVERY side of the 162m square (eight galleries). */
@@ -157,12 +158,12 @@ function buildSector(sideGroup: THREE.Group, side: StadiumSide, half: -1 | 1, p:
   for (const x of [-31.5, 0, 31.5]) {
     site(sector, p.ivory, x, 7.45, front - 0.7, 0.62, 0.55, 2, 12);
     slab(sector, p.goldBright, x, 8.58, front - 0.7, 1.4, 0.29, 1.4);
-    // Tall fabric panels with a central gilded sigil.
-    const banner = slab(sector, p.royalBlue, x, 12.4, back - 1.65, 2.0, 6.1, 0.09,
-      'CelestialStadiumRoyalBanner');
-    banner.receiveShadow = false;
-    slab(sector, p.goldBright, x, 15.50, back - 1.63, 2.13, 0.16, 0.13);
-    slab(sector, p.gold, x, 12.7, back - 1.56, 0.72, 0.11, 0.13);
+    // Sculpted fabric folds and raised gold crests catch the sun.
+    const banner = createCelestialHangingBanner(
+      sector, p.royalBlue, p.goldBright, x, 12.4, back - 1.65,
+      false, 2.0, 6.1
+    );
+    banner.name = 'CelestialStadiumRoyalBanner';
   }
   // Floating supports make the side structures genuinely separate islands.
   for (const x of [-25, 0, 25]) {
