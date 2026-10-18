@@ -35,9 +35,8 @@ describe('Gothic ruined coliseum reference reconstruction', () => {
       'GothicBossCurvedStair1','GothicBossCurvedStair2',
       'GothicBossCurvedStair3','GothicBossCurvedStair4',
       'GothicBossPlatformRealElevation','GothicBossDiscEngravedSurface',
-      'GothicCathedralPerimeter','GothicPointedArchVoussoir',
-      'GothicRuinedBridgesInMist','GothicDistantBrokenTower',
-      'GothicWeatheredRedStoneStains'
+      'GothicOnlyPerimeterPillars','GothicFreestandingPerimeterPillar',
+      'GothicPillarTaperedShaft','GothicWeatheredRedStoneStains'
     ]) expect(get(name),name).toBeDefined();
     const ground=(level.groundMeshes[0] as THREE.Mesh).material as THREE.MeshStandardMaterial;
     expect(ground.map?.name).toBe('GothicCrackedBluestoneAlbedo');
@@ -67,26 +66,49 @@ describe('Gothic ruined coliseum reference reconstruction', () => {
     expect(courses.every(course=>course.geometry.getAttribute('normal')!==undefined)).toBe(true);
     expect(get('GothicReferenceRuneVCarvings')).toBeInstanceOf(THREE.InstancedMesh);
     expect(get('GothicStoneMicroChiselMarks')).toBeInstanceOf(THREE.InstancedMesh);
-    // Twelve stone bays with 3D pointed voussoirs and moulding, not a flat wall.
-    expect(findAll('GothicPointedArchVoussoir').length).toBeGreaterThanOrEqual(12);
-    expect(findAll('GothicSideFlyingArch').length).toBeGreaterThanOrEqual(6);
-    expect(findAll('GothicOrnateButtress').length).toBeGreaterThanOrEqual(12);
-    expect(get('GothicCarvedHeraldicDiamond')).toBeDefined();
-    expect(get('GothicMistyRuinsStormSky')).toBeInstanceOf(THREE.Mesh);
-    const slab=get('GothicOrnateButtress') as THREE.Mesh;
-    expect((slab.material as THREE.MeshStandardMaterial).map?.name)
+    // Minimal perimeter: ONLY 17 independent pillars, no joined scenery.
+    const pillars=findAll('GothicFreestandingPerimeterPillar');
+    expect(pillars).toHaveLength(17);
+    expect(pillars.every(p=>p.userData.isPerimeterPillar===true)).toBe(true);
+    expect(findAll('GothicPillarFlutedShaft')).toHaveLength(17);
+    const shaft=get('GothicPillarTaperedShaft') as THREE.Mesh;
+    expect((shaft.material as THREE.MeshStandardMaterial).map?.name)
       .toBe('GothicChippedMasonryAlbedo');
+    // Everything enclosing the prior cathedral must be gone, including bridges.
+    for(const forbidden of [
+      'GothicCathedralPerimeter','GothicRecessedMasonryBay',
+      'GothicPointedArchVoussoir','GothicSideFlyingArch',
+      'GothicRuinedBridgesInMist','GothicDistantBrokenTower',
+      'GothicRearStoneTerrace',
+    ]) {
+      expect(get(forbidden),forbidden).toBeUndefined();
+    }
+    expect(get('GothicMistyRuinsStormSky')).toBeInstanceOf(THREE.Mesh);
     // Separate stone wedges, nose mouldings, and incised grooves of the boss.
     const steps=findAll('GothicIndividualBeveledBossStairTreads') as THREE.InstancedMesh[];
     expect(steps).toHaveLength(4);
     expect(steps.every(step=>step.count===34)).toBe(true);
     expect(findAll('GothicBossCarvedConcentricTesserae')).toHaveLength(2);
     expect(get('GothicBossEngravedHairlineSeams')).toBeInstanceOf(THREE.InstancedMesh);
-    // A legacy stadium-era crescent was intruding across the foreground.
-    expect(get('GothicRearStoneTerrace')).toBeUndefined();
+    // No large decorative crescents close off the open perimeter.
     // Combat input must still raycast a SINGLE flat ground mesh.
     expect(level.groundMeshes).toHaveLength(1);
     expect(level.groundMeshes[0].name).toBe('GothicPlayableStoneFloor');
+  });
+
+  it('leaves the camera-facing edge open, with only freestanding columns on three sides', () => {
+    const level=new Level();
+    const pillarRoot=level.group.getObjectByName('GothicOnlyPerimeterPillars');
+    expect(pillarRoot).toBeDefined();
+    expect(pillarRoot!.children).toHaveLength(17);
+    expect(pillarRoot!.children.every(p=>p.type==='Group')).toBe(true);
+    expect(pillarRoot!.children.every(p=>
+      p.position.z <= 51 && (Math.abs(p.position.x)>=85 || p.position.z===-85)
+    )).toBe(true);
+    expect(level.group.getObjectByName('GothicCathedralPerimeter')).toBeUndefined();
+    expect(level.group.getObjectByName('GothicRuinedBridgesInMist')).toBeUndefined();
+    expect(level.group.getObjectByName('GothicRaisedBossSanctum')).toBeDefined();
+    expect(level.groundMeshes).toHaveLength(1);
   });
 
   it('never inserts expensive decorative geometry into the ground raycast', () => {
