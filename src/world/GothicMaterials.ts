@@ -61,9 +61,11 @@ export function createGothicPalette(): GothicPalette {
     const crack = veins < 0.044 && coarse < 0.69 ? 1 : 0;
     const edgeDirt = (1 - Math.abs(Math.sin(x / size * Math.PI))) * 3;
     const staining = layer(x + 195, y + 226, 37);
-    const red = Math.max(0, (staining - 0.63) * 1.9) * (mid > 0.4 ? 1 : 0);
-    const value = 112 + (coarse - 0.5) * 38 + (mid - 0.5) * 24
-      + (fine - 0.5) * 12 + (grain - 0.5) * 11 - crack * 43 - edgeDirt;
+    // Rare large stains, never the repeated red freckles of the first build.
+    // Most red damage is handled with separate translucent decals in the level.
+    const red = Math.max(0, (staining - 0.78) * 0.48) * (mid > 0.64 ? 1 : 0);
+    const value = 126 + (coarse - 0.5) * 39 + (mid - 0.5) * 27
+      + (fine - 0.5) * 9 + (grain - 0.5) * 10 - crack * 36 - edgeDirt;
     const n = (y * size + x) * 4;
     const r = Math.max(0, Math.min(255, value + red * 76));
     const g = Math.max(0, Math.min(255, value + 6 - red * 71));
@@ -77,11 +79,11 @@ export function createGothicPalette(): GothicPalette {
     roughPixels[n] = roughPixels[n + 1] = roughPixels[n + 2] = rough;
     roughPixels[n + 3] = 255;
   }
-  const map = texture(pixels, size, 14, true);
+  const map = texture(pixels, size, 10, true);
   map.name = 'GothicCrackedBluestoneAlbedo';
-  const bumpMap = texture(heightPixels, size, 14, false);
+  const bumpMap = texture(heightPixels, size, 10, false);
   bumpMap.name = 'GothicStoneEngravedMicrorelief';
-  const roughnessMap = texture(roughPixels, size, 14, false);
+  const roughnessMap = texture(roughPixels, size, 10, false);
   roughnessMap.name = 'GothicStoneVariableWetness';
   const floor = new THREE.MeshStandardMaterial({
     color: 0xb8cad5, map, bumpMap, bumpScale: 0.052,
@@ -92,13 +94,33 @@ export function createGothicPalette(): GothicPalette {
   center.color.setHex(0x9d9c94);
   center.bumpScale = 0.065;
   center.name = 'GothicCentralWearPBR';
+  // Reuse one coherent PBR source but give masonry, carved coping and
+  // recessed relief distinct local UV scales and reflectance.
+  const masonryMap = map.clone(); masonryMap.repeat.set(2, 2);
+  masonryMap.name = 'GothicChippedMasonryAlbedo'; masonryMap.needsUpdate = true;
+  const masonryBump = bumpMap.clone(); masonryBump.repeat.set(2, 2);
+  masonryBump.needsUpdate = true;
+  const copingMap = map.clone(); copingMap.repeat.set(1.5, 1.5);
+  copingMap.name = 'GothicCarvedCopingAlbedo'; copingMap.needsUpdate = true;
+  const carvedBump = bumpMap.clone(); carvedBump.repeat.set(1.5, 1.5);
+  carvedBump.needsUpdate = true;
+  const wallPbr = {
+    map: masonryMap, bumpMap: masonryBump, bumpScale: 0.092,
+    roughness: 0.82, metalness: 0.025
+  };
   return {
     floor, center,
-    slab: new THREE.MeshStandardMaterial({ color: 0x46566a, roughness: 0.76, metalness: 0.04 }),
-    border: new THREE.MeshStandardMaterial({ color: 0x82919b, roughness: 0.52, metalness: 0.25 }),
-    engraving: new THREE.MeshStandardMaterial({ color: 0x697481, roughness: 0.58, metalness: 0.16 }),
-    darkIron: new THREE.MeshStandardMaterial({ color: 0x41434b, roughness: 0.47, metalness: 0.54 }),
-    relief: new THREE.MeshStandardMaterial({ color: 0x34404f, roughness: 0.83, metalness: 0.03 }),
+    slab: new THREE.MeshStandardMaterial({ ...wallPbr, color: 0x8c9aa9 }),
+    border: new THREE.MeshStandardMaterial({
+      color: 0xaeb8bf, map: copingMap, bumpMap: carvedBump,
+      bumpScale: 0.048, roughness: 0.55, metalness: 0.14
+    }),
+    engraving: new THREE.MeshStandardMaterial({
+      color: 0x71808b, map: copingMap, bumpMap: carvedBump,
+      bumpScale: 0.03, roughness: 0.65, metalness: 0.04
+    }),
+    darkIron: new THREE.MeshStandardMaterial({ color: 0x44484e, roughness: 0.47, metalness: 0.49 }),
+    relief: new THREE.MeshStandardMaterial({ ...wallPbr, color: 0x536070, roughness: 0.9 }),
     blood: new THREE.MeshBasicMaterial({ color: 0x62282d, transparent: true,
       opacity: 0.28, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 })
   };
