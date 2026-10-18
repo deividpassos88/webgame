@@ -14,20 +14,20 @@ describe('GameLightingRig - Campo dos Deuses', () => {
       child => child instanceof THREE.DirectionalLight
     ) as THREE.DirectionalLight;
     expect(sun.name).toBe('CelestialSunLight');
-    expect(sun.shadow.mapSize.toArray()).toEqual([1024, 1024]);
+    expect(sun.shadow.mapSize.toArray()).toEqual([2048, 2048]);
   });
 
   it('keeps marble combat visible and fades only the distant temples into daylight', () => {
     const scene = new THREE.Scene();
     new GameLightingRig(scene);
     expect(scene.fog).toBeInstanceOf(THREE.Fog);
-    expect((scene.fog as THREE.Fog).near).toBe(105);
-    expect((scene.fog as THREE.Fog).far).toBe(205);
+    expect((scene.fog as THREE.Fog).near).toBe(235);
+    expect((scene.fog as THREE.Fog).far).toBe(790);
     expect((scene.fog as THREE.Fog).color.getHex()).toBe(0xb2d8ff);
     expect((scene.background as THREE.Color).getHex()).toBe(0xb2d8ff);
     const ambient = scene.children.find(child => child instanceof THREE.AmbientLight) as THREE.AmbientLight;
-    expect(ambient.intensity).toBeGreaterThan(0.4);
-    expect(ambient.intensity).toBeLessThan(0.6);
+    expect(ambient.intensity).toBeGreaterThan(0.6);
+    expect(ambient.intensity).toBeLessThan(0.8);
   });
 
   it('still updates the boss light dynamically on the divine platform', () => {
