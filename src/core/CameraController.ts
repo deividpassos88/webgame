@@ -11,8 +11,8 @@ export class CameraController {
   // Three-quarter gameplay view: the horizon must sit inside the vertical FOV,
   // while the hero remains in the lower half and telegraphed attacks stay visible.
   // Do not use a steep top-down offset: it hides the sky and all remote temples.
-  private offset = new THREE.Vector3(0, 12, 22);
-  private lookOffset = new THREE.Vector3(0, 1.1, -13);
+  private offset = new THREE.Vector3(0, 24, 52);
+  private lookOffset = new THREE.Vector3(0, 1.1, -20);
   private currentPosition = new THREE.Vector3();
   private currentLookAt = new THREE.Vector3();
   private followTarget = new THREE.Vector3();
@@ -24,16 +24,16 @@ export class CameraController {
   /** Zoom padrão dos jogadores (mais longe = personagem pequeno na tela). */
   private readonly defaultZoom = 1.1;
   /** Limites de zoom para jogadores normais. */
-  private readonly playerZoomMin = 0.85;
-  private readonly playerZoomMax = 1.6;
+  private readonly playerZoomMin = 0.6;
+  private readonly playerZoomMax = 2.2;
   /** Limites de zoom liberados para ADM (qualquer distância). */
-  private readonly adminZoomMin = 0.6;
-  private readonly adminZoomMax = 2.2;
+  private readonly adminZoomMin = 0.45;
+  private readonly adminZoomMax = 4.0;
   private adminMode = false;
 
   constructor(aspect: number) {
-    this.camera = new THREE.PerspectiveCamera(49, aspect, 0.1, 250);
-    this.camera.position.set(0, 12, 22);
+    this.camera = new THREE.PerspectiveCamera(55, aspect, 0.1, 920);
+    this.camera.position.set(0, 24, 52);
     this.zoom = this.defaultZoom;
   }
 
